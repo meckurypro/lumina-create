@@ -1,7 +1,16 @@
+import { supabase } from './supabase'
+
 export async function callGenerate(action, payload = {}, onProgress) {
-  const response = await fetch('/api/generate', {
+  const { data: { session } } = await supabase.auth.getSession()
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID
+  const url = `https://${projectId}.supabase.co/functions/v1/generate`
+  const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
     body: JSON.stringify({ action, ...payload }),
   })
   if (!response.ok) {
