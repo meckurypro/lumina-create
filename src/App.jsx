@@ -7,6 +7,7 @@ import CreatePage from '@/pages/CreatePage'
 import GeneratePage from '@/pages/GeneratePage'
 import HistoryPage from '@/pages/HistoryPage'
 import ProfilePage from '@/pages/ProfilePage'
+import ResetPasswordPage from '@/pages/ResetPasswordPage'
 // import TemplateRunner from '@/pages/TemplateRunner'
 // import HistoryPage from '@/pages/HistoryPage'
 // import ResultPage from '@/pages/ResultPage'
@@ -39,6 +40,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/feed" replace />} />
       <Route path="/auth" element={<Placeholder name="AuthPage" />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/feed" element={<RequireAuth><FeedPage /></RequireAuth>} />
       <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
       <Route path="/generate" element={<RequireAuth><GeneratePage /></RequireAuth>} />
