@@ -252,7 +252,7 @@ function AuthPage() {
   async function handleVerifyOtp() {
     clearErrors();
     const code = otp.trim();
-    if (!/^\d{6}$/.test(code)) return setErrors({ otp: "Enter the 6-digit code" });
+    if (!/^\d{8}$/.test(code)) return setErrors({ otp: "Enter the 8-digit code" });
 
     setLoading(true);
     const { error } = await supabase.auth.verifyOtp({
@@ -387,19 +387,19 @@ function AuthPage() {
                       Verify your email
                     </h1>
                     <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                      Enter the 6-digit code we sent to{" "}
+                      Enter the 8-digit code we sent to{" "}
                       <span style={{ color: "var(--text-primary)" }}>{email}</span>
                     </p>
                   </div>
                   <div className="space-y-3">
                     <Field
                       value={otp}
-                      onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="123456"
+                      onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 8))}
+                      placeholder="12345678"
                       error={errors.otp}
                       autoFocus
                       autoComplete="one-time-code"
-                      maxLength={6}
+                      maxLength={8}
                     />
                     <PrimaryButton onClick={handleVerifyOtp} loading={loading}>Verify & continue</PrimaryButton>
                   </div>
