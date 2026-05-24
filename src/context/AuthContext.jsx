@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     init()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
       if (event === 'SIGNED_OUT') {
         setUser(null)
@@ -88,7 +88,10 @@ export const AuthProvider = ({ children }) => {
       }
       if (['SIGNED_IN', 'USER_UPDATED', 'INITIAL_SESSION'].includes(event) && session?.user) {
         setUser(session.user)
-        await loadProfile(session.user)
+        // Defer Supabase calls out of the auth callback to avoid deadlocks
+        setTimeout(() => {
+          if (mounted) loadProfile(session.user)
+        }, 0)
       }
     })
     return () => {
