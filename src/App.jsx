@@ -11,8 +11,8 @@ import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import SettingsPage from '@/pages/SettingsPage'
 import AdminPage from '@/pages/AdminPage'
 import ResultPage from '@/pages/ResultPage'
+import AuthPage from '@/pages/AuthPage'
 // import TemplateRunner from '@/pages/TemplateRunner'
-// import AuthPage from '@/pages/AuthPage'
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -37,7 +37,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/feed" replace />} />
-      <Route path="/auth" element={<Placeholder name="AuthPage" />} />
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth/callback" element={<Navigate to="/auth" replace />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/feed" element={<RequireAuth><FeedPage /></RequireAuth>} />
       <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
