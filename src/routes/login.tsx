@@ -13,6 +13,7 @@ export const Route = createFileRoute("/login")({
 const VIEWS = {
   LANDING: "landing",
   SIGNUP: "signup",
+  OTP_VERIFY: "otp_verify",
   LOGIN: "login",
   FORGOT_PASSWORD: "forgot_password",
   RESET_SENT: "reset_sent",
@@ -22,6 +23,7 @@ type View = (typeof VIEWS)[keyof typeof VIEWS];
 const BACK_MAP: Record<View, View> = {
   [VIEWS.LANDING]: VIEWS.LANDING,
   [VIEWS.SIGNUP]: VIEWS.LANDING,
+  [VIEWS.OTP_VERIFY]: VIEWS.SIGNUP,
   [VIEWS.LOGIN]: VIEWS.LANDING,
   [VIEWS.FORGOT_PASSWORD]: VIEWS.LOGIN,
   [VIEWS.RESET_SENT]: VIEWS.LOGIN,
@@ -201,12 +203,20 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [otp, setOtp] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!authLoading && user) navigate({ to: "/" });
   }, [user, authLoading, navigate]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
 
   const clearErrors = () => setErrors({});
   const back = useCallback(() => {
@@ -233,7 +243,40 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+    setOtp("");
+    setResendCooldown(45);
+    setView(VIEWS.OTP_VERIFY);
+    toast.success("Verification code sent to your email");
+  }
+
+  async function handleVerifyOtp() {
+    clearErrors();
+    const code = otp.trim();
+    if (!/^\d{6}$/.test(code)) return setErrors({ otp: "Enter the 6-digit code" });
+
+    setLoading(true);
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: "signup",
+    });
+    setLoading(false);
+    if (error) return setErrors({ otp: error.message || "Invalid or expired code" });
     toast.success("Welcome to Meckury AI! 🎉");
+  }
+
+  async function handleResendOtp() {
+    if (resendCooldown > 0) return;
+    setLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/` },
+    });
+    setLoading(false);
+    if (error) return toast.error(error.message || "Failed to resend code");
+    setResendCooldown(45);
+    toast.success("New code sent");
   }
 
   async function handleLogin() {
@@ -333,6 +376,43 @@ function AuthPage() {
                   <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
                     Already have an account?{" "}
                     <button onClick={() => setView(VIEWS.LOGIN)} className="font-semibold" style={{ color: "var(--brand)" }}>Sign in</button>
+                  </p>
+                </div>
+              )}
+
+              {view === VIEWS.OTP_VERIFY && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="font-black tracking-tight mb-2" style={{ fontSize: "clamp(1.75rem, 3vw, 2.25rem)", letterSpacing: "-0.04em" }}>
+                      Verify your email
+                    </h1>
+                    <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                      Enter the 6-digit code we sent to{" "}
+                      <span style={{ color: "var(--text-primary)" }}>{email}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <Field
+                      value={otp}
+                      onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                      error={errors.otp}
+                      autoFocus
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                    />
+                    <PrimaryButton onClick={handleVerifyOtp} loading={loading}>Verify & continue</PrimaryButton>
+                  </div>
+                  <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                    Didn't get a code?{" "}
+                    <button
+                      onClick={handleResendOtp}
+                      disabled={resendCooldown > 0 || loading}
+                      className="font-semibold disabled:opacity-50"
+                      style={{ color: "var(--brand)" }}
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+                    </button>
                   </p>
                 </div>
               )}
