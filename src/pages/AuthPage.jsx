@@ -208,8 +208,8 @@ const OrDivider = () => (
 // ─────────────────────────────────────────────────────────────
 
 export default function AuthPage() {
-  const navigate                   = useNavigate()
-  const { user, onboardingNeeded } = useAuth()
+  const navigate                                   = useNavigate()
+  const { user, onboardingNeeded, refreshProfile } = useAuth()
 
   const [view,        setView]        = useState(VIEWS.LANDING)
   const [email,       setEmail]       = useState('')
@@ -314,6 +314,7 @@ export default function AuthPage() {
 
     if (error) { toast.error('Failed to save profile'); return }
 
+    await refreshProfile()
     toast.success('Welcome to Meckury AI! 🎉')
     // The useEffect above will fire once onboardingNeeded flips to false
     // via refreshProfile (called inside completeOnboarding or AuthContext).
