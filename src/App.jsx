@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 
 // Pages — drop your page files into src/pages/ then uncomment.
@@ -12,12 +12,23 @@ import SettingsPage from '@/pages/SettingsPage'
 import AdminPage from '@/pages/AdminPage'
 import ResultPage from '@/pages/ResultPage'
 import AuthPage from '@/pages/AuthPage'
-// import TemplateRunner from '@/pages/TemplateRunner'
+import TemplateRunnerPage from '@/pages/TemplateRunnerPage'
 
 function RequireAuth({ children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, onboardingNeeded } = useAuth()
+  const location = useLocation()
+  if (loading) return <div style={{ padding: 24 }}>Loading…</div>
+  if (!user) return <Navigate to="/auth" replace state={{ from: location }} />
+  if (onboardingNeeded) return <Navigate to="/auth" replace />
+  return children
+}
+
+function RequireAdmin({ children }) {
+  const { user, loading, onboardingNeeded, isAdmin } = useAuth()
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>
   if (!user) return <Navigate to="/auth" replace />
+  if (onboardingNeeded) return <Navigate to="/auth" replace />
+  if (!isAdmin) return <Navigate to="/feed" replace />
   return children
 }
 
@@ -43,12 +54,12 @@ export default function App() {
       <Route path="/feed" element={<RequireAuth><FeedPage /></RequireAuth>} />
       <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
       <Route path="/generate" element={<RequireAuth><GeneratePage /></RequireAuth>} />
-      <Route path="/create/:templateSlug" element={<RequireAuth><Placeholder name="TemplateRunner" /></RequireAuth>} />
+      <Route path="/create/:templateSlug" element={<RequireAuth><TemplateRunnerPage /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
       <Route path="/result/:id" element={<RequireAuth><ResultPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
-      <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+      <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
       <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
     </Routes>
   )
