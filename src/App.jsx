@@ -6,6 +6,7 @@ import FeedPage from '@/pages/FeedPage'
 import CreatePage from '@/pages/CreatePage'
 import GeneratePage from '@/pages/GeneratePage'
 import HistoryPage from '@/pages/HistoryPage'
+import ProfilePage from '@/pages/ProfilePage'
 // import TemplateRunner from '@/pages/TemplateRunner'
 // import HistoryPage from '@/pages/HistoryPage'
 // import ResultPage from '@/pages/ResultPage'
@@ -44,7 +45,7 @@ export default function App() {
       <Route path="/create/:templateSlug" element={<RequireAuth><Placeholder name="TemplateRunner" /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
       <Route path="/result/:id" element={<RequireAuth><Placeholder name="ResultPage" /></RequireAuth>} />
-      <Route path="/profile" element={<RequireAuth><Placeholder name="ProfilePage" /></RequireAuth>} />
+      <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Placeholder name="SettingsPage" /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><Placeholder name="AdminPage" /></RequireAuth>} />
       <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
