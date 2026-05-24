@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 
 // Pages — drop your page files into src/pages/ then uncomment.
-// import FeedPage from '@/pages/FeedPage'
+import FeedPage from '@/pages/FeedPage'
 import CreatePage from '@/pages/CreatePage'
 // import TemplateRunner from '@/pages/TemplateRunner'
 // import HistoryPage from '@/pages/HistoryPage'
@@ -36,7 +36,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/feed" replace />} />
       <Route path="/auth" element={<Placeholder name="AuthPage" />} />
-      <Route path="/feed" element={<RequireAuth><Placeholder name="FeedPage" /></RequireAuth>} />
+      <Route path="/feed" element={<RequireAuth><FeedPage /></RequireAuth>} />
       <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
       <Route path="/create/:templateSlug" element={<RequireAuth><Placeholder name="TemplateRunner" /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><Placeholder name="HistoryPage" /></RequireAuth>} />
