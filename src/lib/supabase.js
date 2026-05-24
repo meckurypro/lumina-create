@@ -95,7 +95,7 @@ export const generations = {
 
 export const feed = {
   getPosts: ({ limit = 20, offset = 0, templateId = null } = {}) => {
-    let q = supabase.from('feed_posts').select('*, profiles(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' }).eq('status', 'approved').order('published_at', { ascending: false }).range(offset, offset + limit - 1)
+    let q = supabase.from('feed_posts').select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' }).eq('status', 'approved').order('published_at', { ascending: false }).range(offset, offset + limit - 1)
     if (templateId) q = q.eq('template_id', templateId)
     return q
   },
