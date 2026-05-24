@@ -259,13 +259,13 @@ export default function AuthPage() {
     setLoading(false)
 
     if (error) { toast.error(error.message || 'Failed to send code'); return }
-    toast.success('Check your email for the 8-digit code!')
+    toast.success('Check your email for the 6-digit code!')
     setView(VIEWS.OTP_VERIFY)
   }
 
   const handleVerifyOTP = async () => {
     clearErrors()
-    if (otp.length < 8) return setErrors({ otp: 'Enter the complete 8-digit code' })
+    if (otp.length < 6) return setErrors({ otp: 'Enter the complete 6-digit code' })
 
     setLoading(true)
     const { error } = await auth.verifyOTP(email, otp)
@@ -445,7 +445,7 @@ export default function AuthPage() {
                 <div>
                   <h2 className="text-3xl font-black mb-2">Create account</h2>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    We'll send an 8-digit verification code to your email
+                    We'll send an 6-digit verification code to your email
                   </p>
                 </div>
                 <div className="flex flex-col gap-4">
@@ -490,8 +490,8 @@ export default function AuthPage() {
                     label="Verification code" type="text" inputMode="numeric"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                    placeholder="Enter 8-digit code" error={errors.otp}
-                    autoComplete="one-time-code" autoFocus maxLength={8}
+                    placeholder="Enter 6-digit code" error={errors.otp}
+                    autoComplete="one-time-code" autoFocus maxLength={6}
                   />
                   <PrimaryButton onClick={handleVerifyOTP} loading={loading}>
                     Verify code
