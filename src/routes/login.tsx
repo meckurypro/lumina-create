@@ -209,7 +209,7 @@ function AuthPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!authLoading && user) navigate({ to: "/" });
+    if (!authLoading && user) navigate({ to: "/feed" });
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
@@ -263,6 +263,7 @@ function AuthPage() {
     setLoading(false);
     if (error) return setErrors({ otp: error.message || "Invalid or expired code" });
     toast.success("Welcome to Meckury AI! 🎉");
+    navigate({ to: "/feed" });
   }
 
   async function handleResendOtp() {
@@ -290,12 +291,13 @@ function AuthPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setErrors({ password: "Invalid email or password" });
+    navigate({ to: "/feed" });
   }
 
   async function handleGoogle() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/` },
+      options: { redirectTo: `${window.location.origin}/feed` },
     });
     if (error) toast.error("Google sign in failed");
   }
