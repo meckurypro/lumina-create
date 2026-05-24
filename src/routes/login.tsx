@@ -13,6 +13,7 @@ export const Route = createFileRoute("/login")({
 const VIEWS = {
   LANDING: "landing",
   SIGNUP: "signup",
+  OTP_VERIFY: "otp_verify",
   LOGIN: "login",
   FORGOT_PASSWORD: "forgot_password",
   RESET_SENT: "reset_sent",
@@ -22,6 +23,7 @@ type View = (typeof VIEWS)[keyof typeof VIEWS];
 const BACK_MAP: Record<View, View> = {
   [VIEWS.LANDING]: VIEWS.LANDING,
   [VIEWS.SIGNUP]: VIEWS.LANDING,
+  [VIEWS.OTP_VERIFY]: VIEWS.SIGNUP,
   [VIEWS.LOGIN]: VIEWS.LANDING,
   [VIEWS.FORGOT_PASSWORD]: VIEWS.LOGIN,
   [VIEWS.RESET_SENT]: VIEWS.LOGIN,
