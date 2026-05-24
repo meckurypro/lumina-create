@@ -123,8 +123,8 @@ export const AuthProvider = ({ children }) => {
     onboardingNeeded,
     refreshProfile,
     updateProfileLocal,
-    isAdmin: roles.includes('admin'),
-    isStaff: roles.includes('staff') || roles.includes('moderator') || roles.includes('admin'),
+    isAdmin: roles.includes('admin') || profile?.role === 'admin',
+    isStaff: roles.includes('staff') || roles.includes('moderator') || roles.includes('admin') || profile?.role === 'staff' || profile?.role === 'admin' || profile?.is_staff === true,
     credits: profile?.credits ?? 0,
   }), [user, profile, roles, loading, onboardingNeeded, refreshProfile, updateProfileLocal])
 
