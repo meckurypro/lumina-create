@@ -9,12 +9,9 @@ import HistoryPage from '@/pages/HistoryPage'
 import ProfilePage from '@/pages/ProfilePage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import SettingsPage from '@/pages/SettingsPage'
+import AdminPage from '@/pages/AdminPage'
+import ResultPage from '@/pages/ResultPage'
 // import TemplateRunner from '@/pages/TemplateRunner'
-// import HistoryPage from '@/pages/HistoryPage'
-// import ResultPage from '@/pages/ResultPage'
-// import ProfilePage from '@/pages/ProfilePage'
-// import SettingsPage from '@/pages/SettingsPage'
-// import AdminPage from '@/pages/AdminPage'
 // import AuthPage from '@/pages/AuthPage'
 
 function RequireAuth({ children }) {
@@ -47,10 +44,10 @@ export default function App() {
       <Route path="/generate" element={<RequireAuth><GeneratePage /></RequireAuth>} />
       <Route path="/create/:templateSlug" element={<RequireAuth><Placeholder name="TemplateRunner" /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
-      <Route path="/result/:id" element={<RequireAuth><Placeholder name="ResultPage" /></RequireAuth>} />
+      <Route path="/result/:id" element={<RequireAuth><ResultPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
-      <Route path="/admin" element={<RequireAuth><Placeholder name="AdminPage" /></RequireAuth>} />
+      <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
       <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
     </Routes>
   )
