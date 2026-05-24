@@ -13,6 +13,7 @@ import AdminPage from '@/pages/AdminPage'
 import ResultPage from '@/pages/ResultPage'
 import AuthPage from '@/pages/AuthPage'
 import TemplateRunnerPage from '@/pages/TemplateRunnerPage'
+import AuthCallbackPage from '@/pages/AuthCallbackPage'
 
 function RequireAuth({ children }) {
   const { user, loading, onboardingNeeded } = useAuth()
@@ -49,7 +50,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/feed" replace />} />
       <Route path="/auth" element={<AuthPage />} />
-      <Route path="/auth/callback" element={<Navigate to="/auth" replace />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/feed" element={<RequireAuth><FeedPage /></RequireAuth>} />
       <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
