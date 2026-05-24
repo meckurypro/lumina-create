@@ -6,6 +6,7 @@
       "DOM",
       "DOM.Iterable"
     ],
+    "types": ["vite/client"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
