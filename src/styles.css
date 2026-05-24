@@ -1,6 +1,6 @@
 /* src/index.css */
 
-@tailwind base;
+@import "tailwindcss";
 
 @layer base {
   html {
@@ -29,9 +29,6 @@
     font-family: inherit;
   }
 }
-
-@tailwind components;
-@tailwind utilities;
 
 /* ============================================================
    CSS CUSTOM PROPERTIES — THEME SYSTEM
