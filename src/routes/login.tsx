@@ -380,6 +380,43 @@ function AuthPage() {
                 </div>
               )}
 
+              {view === VIEWS.OTP_VERIFY && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="font-black tracking-tight mb-2" style={{ fontSize: "clamp(1.75rem, 3vw, 2.25rem)", letterSpacing: "-0.04em" }}>
+                      Verify your email
+                    </h1>
+                    <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                      Enter the 6-digit code we sent to{" "}
+                      <span style={{ color: "var(--text-primary)" }}>{email}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <Field
+                      value={otp}
+                      onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                      error={errors.otp}
+                      autoFocus
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                    />
+                    <PrimaryButton onClick={handleVerifyOtp} loading={loading}>Verify & continue</PrimaryButton>
+                  </div>
+                  <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                    Didn't get a code?{" "}
+                    <button
+                      onClick={handleResendOtp}
+                      disabled={resendCooldown > 0 || loading}
+                      className="font-semibold disabled:opacity-50"
+                      style={{ color: "var(--brand)" }}
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+                    </button>
+                  </p>
+                </div>
+              )}
+
               {view === VIEWS.LOGIN && (
                 <div className="space-y-6">
                   <div>
