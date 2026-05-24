@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext'
 
 // Pages — drop your page files into src/pages/ then uncomment.
 // import FeedPage from '@/pages/FeedPage'
-// import CreatePage from '@/pages/CreatePage'
+import CreatePage from '@/pages/CreatePage'
 // import TemplateRunner from '@/pages/TemplateRunner'
 // import HistoryPage from '@/pages/HistoryPage'
 // import ResultPage from '@/pages/ResultPage'
@@ -37,7 +37,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/feed" replace />} />
       <Route path="/auth" element={<Placeholder name="AuthPage" />} />
       <Route path="/feed" element={<RequireAuth><Placeholder name="FeedPage" /></RequireAuth>} />
-      <Route path="/create" element={<RequireAuth><Placeholder name="CreatePage" /></RequireAuth>} />
+      <Route path="/create" element={<RequireAuth><CreatePage /></RequireAuth>} />
       <Route path="/create/:templateSlug" element={<RequireAuth><Placeholder name="TemplateRunner" /></RequireAuth>} />
       <Route path="/history" element={<RequireAuth><Placeholder name="HistoryPage" /></RequireAuth>} />
       <Route path="/result/:id" element={<RequireAuth><Placeholder name="ResultPage" /></RequireAuth>} />
