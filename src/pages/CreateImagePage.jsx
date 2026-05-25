@@ -1,5 +1,5 @@
 // src/pages/CreateImagePage.jsx
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Modal'
 import { calculateCreditCost } from '@/lib/creditUtils'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 // ── Setting Chips ──────────────────────────────────────────
@@ -44,28 +45,14 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// ── Model config ───────────────────────────────────────────
-
-const IMAGE_MODELS = [
-  { value: 'flux_schnell',        label: 'FLUX Schnell',     sublabel: 'Fastest',       locked: false },
-  { value: 'flux_dev_ultra_fast', label: 'FLUX Dev UF',      sublabel: 'Balanced',      locked: false },
-  { value: 'z_image_turbo',       label: 'Z-Image Turbo',    sublabel: 'Text-accurate', locked: false },
-  { value: 'flux_dev',            label: 'FLUX Dev',         sublabel: 'High detail',   locked: false },
-  { value: 'z_image_base',        label: 'Z-Image Base',     sublabel: 'Fine control',  locked: false },
-  { value: 'wan_2_7',             label: 'WAN 2.7',          sublabel: 'Versatile',     locked: false },
-  { value: 'grok_imagine',        label: 'Grok Imagine',     sublabel: 'Soon',          locked: true  },
-  { value: 'ernie_image_turbo',   label: 'ERNIE Turbo',      sublabel: 'Soon',          locked: true  },
-  { value: 'seedream_v4_5',       label: 'Seedream 4.5',     sublabel: 'Soon',          locked: true  },
-  { value: 'gpt_image_2',         label: 'GPT Image 2',      sublabel: 'Soon',          locked: true  },
-  { value: 'imagen_4',            label: 'Imagen 4',         sublabel: 'Soon',          locked: true  },
-  { value: 'nano_banana_pro',     label: 'Nano Banana Pro',  sublabel: 'Soon',          locked: true  },
-]
-
 // ── Model Dropdown ─────────────────────────────────────────
 
-const ModelDropdown = ({ value, onChange }) => {
+const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
-  const selected = IMAGE_MODELS.find(m => m.value === value) || IMAGE_MODELS[0]
+
+  const unlocked = models.filter((m) => !m.is_locked)
+  const locked   = models.filter((m) =>  m.is_locked)
+  const selected = models.find((m) => m.value === value) || unlocked[0]
 
   return (
     <div className="relative">
@@ -74,7 +61,7 @@ const ModelDropdown = ({ value, onChange }) => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
       >
-        <span>{selected.label}</span>
+        <span>{selected?.label ?? 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path
             d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
@@ -100,23 +87,18 @@ const ModelDropdown = ({ value, onChange }) => {
                 boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
               }}
             >
+              {/* Unlocked models */}
               <div className="py-1">
-                {IMAGE_MODELS.filter(m => !m.locked).map((model) => (
+                {unlocked.map((model) => (
                   <button
                     key={model.value}
                     onClick={() => { onChange(model.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{
-                      background: model.value === value ? 'var(--bg-elevated)' : 'transparent',
-                    }}
+                    style={{ background: model.value === value ? 'var(--bg-elevated)' : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {model.label}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {model.sublabel}
-                      </p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
                     </div>
                     {model.value === value && (
                       <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
@@ -125,21 +107,19 @@ const ModelDropdown = ({ value, onChange }) => {
                 ))}
               </div>
 
-              <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-
-              <div className="py-1">
-                {IMAGE_MODELS.filter(m => m.locked).map((model) => (
-                  <div
-                    key={model.value}
-                    className="flex items-center justify-between px-4 py-2"
-                  >
-                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
-                      {model.label}
-                    </p>
-                    <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
+              {locked.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
+                  <div className="py-1">
+                    {locked.map((model) => (
+                      <div key={model.value} className="flex items-center justify-between px-4 py-2">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{model.label}</p>
+                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </motion.div>
           </>
         )}
@@ -155,13 +135,33 @@ export default function CreateImagePage() {
   const { credits }                     = useAuth()
   const { generate, status, isLoading } = useGenerate()
 
+  const [models,        setModels]        = useState([])
+  const [modelsLoading, setModelsLoading] = useState(true)
   const [prompt,        setPrompt]        = useState('')
   const [referenceImg,  setReferenceImg]  = useState(null)
   const [imgDimensions, setImgDimensions] = useState(null)
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
-  const [model,         setModel]         = useState('flux_dev_ultra_fast')
+  const [model,         setModel]         = useState('')
   const [fullscreen,    setFullscreen]    = useState(false)
+
+  const loadModels = useCallback(async () => {
+    setModelsLoading(true)
+    const { data } = await supabase
+      .from('models')
+      .select('*')
+      .eq('type', 'image')
+      .eq('is_active', true)
+      .order('sort_order')
+    const list = data || []
+    setModels(list)
+    // Default to first unlocked model
+    const firstUnlocked = list.find((m) => !m.is_locked)
+    if (firstUnlocked) setModel(firstUnlocked.value)
+    setModelsLoading(false)
+  }, [])
+
+  useEffect(() => { loadModels() }, [loadModels])
 
   const type             = referenceImg ? 'image_to_image' : 'text_to_image'
   const estimatedCredits = calculateCreditCost(type, { imageCount: 1 })
@@ -209,9 +209,7 @@ export default function CreateImagePage() {
     : '1 / 1'
 
   const cardMaxWidth = imgDimensions
-    ? imgDimensions.width > imgDimensions.height
-      ? '100%'
-      : '200px'
+    ? imgDimensions.width > imgDimensions.height ? '100%' : '200px'
     : '140px'
 
   return (
@@ -222,20 +220,16 @@ export default function CreateImagePage() {
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)' }}
       >
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-xl"
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
 
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Create Image
-        </h1>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Image</h1>
 
         <div className="flex items-center gap-2">
-          <ModelDropdown value={model} onChange={setModel} />
+          {!modelsLoading && (
+            <ModelDropdown models={models} value={model} onChange={setModel} />
+          )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
@@ -277,9 +271,7 @@ export default function CreateImagePage() {
       <AnimatePresence>
         {fullscreen && referenceImg && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(12px)' }}
             onClick={() => setFullscreen(false)}
@@ -315,41 +307,24 @@ export default function CreateImagePage() {
               Reference Image{' '}
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
             </p>
-
             <div className="flex justify-center">
               {referenceImg ? (
                 <div className="relative" style={{ width: '100%', maxWidth: cardMaxWidth }}>
                   <div
                     className="relative overflow-hidden rounded-2xl cursor-pointer w-full"
-                    style={{
-                      aspectRatio: cardAspectRatio,
-                      maxHeight:   '300px',
-                      background:  'var(--bg-elevated)',
-                    }}
+                    style={{ aspectRatio: cardAspectRatio, maxHeight: '300px', background: 'var(--bg-elevated)' }}
                     onClick={() => setFullscreen(true)}
                   >
-                    <img
-                      src={referenceImg.url}
-                      alt="Reference"
-                      className="w-full h-full"
-                      style={{ objectFit: 'contain' }}
-                    />
-                    <div
-                      className="absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
-                    >
+                    <img src={referenceImg.url} alt="Reference" className="w-full h-full" style={{ objectFit: 'contain' }} />
+                    <div className="absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}>
                       <Maximize2 size={11} />
                     </div>
                     {autoRatio && (
-                      <div
-                        className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
-                      >
+                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}>
                         {aspectRatio}
                       </div>
                     )}
                   </div>
-
                   <button
                     onClick={handleRemoveImage}
                     className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
@@ -361,18 +336,11 @@ export default function CreateImagePage() {
               ) : (
                 <label
                   className="flex flex-col items-center justify-center cursor-pointer rounded-2xl transition-all"
-                  style={{
-                    width:       '140px',
-                    aspectRatio: '1 / 1',
-                    border:      '1.5px dashed var(--border-color)',
-                    background:  'var(--bg-card)',
-                  }}
+                  style={{ width: '140px', aspectRatio: '1 / 1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
                 >
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                   <ImagePlus size={22} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                    Add reference
-                  </span>
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Add reference</span>
                 </label>
               )}
             </div>
@@ -406,10 +374,7 @@ export default function CreateImagePage() {
       </div>
 
       {/* ── Generate button ── */}
-      <div
-        className="flex-shrink-0 px-4 lg:px-8 py-4"
-        style={{ borderTop: '1px solid var(--border-color)' }}
-      >
+      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
@@ -427,11 +392,7 @@ export default function CreateImagePage() {
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button
-                onClick={() => navigate('/profile')}
-                className="font-semibold"
-                style={{ color: 'var(--text-primary)' }}
-              >
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                 Top up
               </button>
             </p>
@@ -441,4 +402,4 @@ export default function CreateImagePage() {
 
     </div>
   )
-                                                     }
+}
