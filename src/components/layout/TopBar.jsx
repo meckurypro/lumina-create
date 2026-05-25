@@ -39,7 +39,7 @@ export const TopBar = ({
   showBack    = false,
   onBack,
 }) => {
-  const navigate      = useNavigate()
+  const navigate             = useNavigate()
   const { credits, isStaff } = useAuth()
   const [showPIQ, setShowPIQ] = useState(false)
 
@@ -50,11 +50,11 @@ export const TopBar = ({
       <header
         className="fixed top-0 left-0 right-0 z-30 px-4 lg:px-8"
         style={{
-          background:   'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
-          borderBottom: '1px solid var(--border-color)',
-          backdropFilter: 'blur(14px)',
+          background:         'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
+          borderBottom:       '1px solid var(--border-color)',
+          backdropFilter:     'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
-          height: '56px',
+          height:             '56px',
         }}
       >
         <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between gap-3">
@@ -76,12 +76,11 @@ export const TopBar = ({
                 className="flex items-center gap-2"
                 aria-label="Home"
               >
-                <span
-                  className="grid h-9 w-9 place-items-center rounded-2xl brand-gradient"
-                  style={{ color: 'white' }}
-                >
-                  <Zap size={18} fill="currentColor" />
-                </span>
+                <img
+                  src="/icon.png"
+                  alt="Meckury AI"
+                  className="h-9 w-9 rounded-2xl object-cover"
+                />
                 <span className="text-lg font-extrabold">Meckury</span>
               </button>
             ) : null}
@@ -98,7 +97,7 @@ export const TopBar = ({
             ))}
           </nav>
 
-          {/* ── Right: PromptIQ + credits ── */}
+          {/* ── Right: PromptIQ pill + credits ── */}
           <div className="flex flex-1 items-center justify-end gap-2">
             {isStaff && showLogo && (
               <button
