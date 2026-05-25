@@ -1,33 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+/* ============================================================
+   CSS CUSTOM PROPERTIES
+   ============================================================ */
 
 :root {
   /* shadcn HSL tokens — light */
-  --background: 0 0% 100%;
-  --foreground: 240 10% 4%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 4%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 4%;
-  --primary: 24 95% 53%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 240 5% 96%;
-  --secondary-foreground: 240 6% 10%;
-  --muted: 240 5% 96%;
-  --muted-foreground: 240 4% 46%;
-  --accent: 240 5% 96%;
-  --accent-foreground: 240 6% 10%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 240 6% 90%;
-  --input: 240 6% 90%;
-  --ring: 24 95% 53%;
-  --radius: 0.75rem;
+  --background:            0 0% 100%;
+  --foreground:            240 10% 4%;
+  --card:                  0 0% 100%;
+  --card-foreground:       240 10% 4%;
+  --popover:               0 0% 100%;
+  --popover-foreground:    240 10% 4%;
+  --primary:               24 95% 53%;
+  --primary-foreground:    0 0% 100%;
+  --secondary:             240 5% 96%;
+  --secondary-foreground:  240 6% 10%;
+  --muted:                 240 5% 96%;
+  --muted-foreground:      240 4% 46%;
+  --accent:                240 5% 96%;
+  --accent-foreground:     240 6% 10%;
+  --destructive:           0 84% 60%;
+  --destructive-foreground:0 0% 100%;
+  --border:                240 6% 90%;
+  --input:                 240 6% 90%;
+  --ring:                  0 0% 20%;
+  --radius:                0.75rem;
 
-  /* Semantic aliases — your original naming */
+  /* Semantic */
   --bg-primary:   #ffffff;
   --bg-secondary: #fafafa;
   --bg-card:      #ffffff;
@@ -47,9 +51,9 @@
   --brand-light: #fff7ed;
   --brand-dark:  #ea580c;
 
-  --shadow:    0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 10px 30px rgba(0,0,0,0.10);
+  --shadow:          0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:       0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg:       0 10px 30px rgba(0,0,0,0.10);
   --shadow-brand:    0 12px 30px -18px rgba(249,115,22,0.6);
   --shadow-brand-lg: 0 18px 42px -18px rgba(249,115,22,0.68);
 
@@ -58,28 +62,28 @@
 }
 
 [data-theme='dark'], .dark {
-  /* shadcn HSL tokens — true black dark */
-  --background: 0 0% 0%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 7%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 7%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 24 95% 53%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 11%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 11%;
-  --muted-foreground: 0 0% 45%;
-  --accent: 0 0% 11%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 74% 56%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 15%;
-  --input: 0 0% 10%;
-  --ring: 24 95% 53%;
+  /* shadcn HSL tokens — true black */
+  --background:            0 0% 0%;
+  --foreground:            0 0% 98%;
+  --card:                  0 0% 7%;
+  --card-foreground:       0 0% 98%;
+  --popover:               0 0% 7%;
+  --popover-foreground:    0 0% 98%;
+  --primary:               24 95% 53%;
+  --primary-foreground:    0 0% 100%;
+  --secondary:             0 0% 11%;
+  --secondary-foreground:  0 0% 98%;
+  --muted:                 0 0% 11%;
+  --muted-foreground:      0 0% 45%;
+  --accent:                0 0% 11%;
+  --accent-foreground:     0 0% 98%;
+  --destructive:           0 74% 56%;
+  --destructive-foreground:0 0% 100%;
+  --border:                0 0% 15%;
+  --input:                 0 0% 10%;
+  --ring:                  0 0% 80%;
 
-  /* Semantic aliases — true black */
+  /* Semantic */
   --bg-primary:   #000000;
   --bg-secondary: #0c0c0c;
   --bg-card:      #111111;
@@ -93,7 +97,7 @@
   --text-inverse:   #000000;
 
   --border-color: #27272a;
-  --border-focus: #fafafa;
+  --border-focus: #52525b;
 
   --brand:       #f97316;
   --brand-light: #1c0f05;
@@ -104,7 +108,9 @@
   --shadow-lg: 0 10px 30px rgba(0,0,0,0.6);
 }
 
-/* ── Reset ─────────────────────────────────────────── */
+/* ============================================================
+   RESET
+   ============================================================ */
 
 *,
 *::before,
@@ -145,8 +151,8 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0;
 }
 
-p  { margin: 0; line-height: 1.6; }
-a  { color: inherit; text-decoration: none; }
+p   { margin: 0; line-height: 1.6; }
+a   { color: inherit; text-decoration: none; }
 img, video { display: block; max-width: 100%; }
 
 button {
@@ -156,27 +162,33 @@ button {
   padding: 0;
   font-family: inherit;
 }
-button:disabled { cursor: not-allowed; }
+button:disabled      { cursor: not-allowed; }
 input, textarea, select { font: inherit; }
 
-/* ── Scrollbar ──────────────────────────────────────── */
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
 
-::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-color); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-.no-scrollbar                    { -ms-overflow-style: none; scrollbar-width: none; }
-.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar                     { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar  { display: none; }
 
-/* ── Selection ──────────────────────────────────────── */
+/* ============================================================
+   SELECTION
+   ============================================================ */
 
 ::selection {
-  background: rgba(249,115,22,0.15);
+  background: rgba(249,115,22,0.12);
   color: var(--text-primary);
 }
 
-/* ── Layout ─────────────────────────────────────────── */
+/* ============================================================
+   LAYOUT
+   ============================================================ */
 
 .page-container {
   max-width: 480px;
@@ -189,13 +201,17 @@ input, textarea, select { font: inherit; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
 
-/* ── Typography ─────────────────────────────────────── */
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
 
 .font-display { font-family: 'Inter', -apple-system, sans-serif !important; }
 .font-body    { font-family: 'Inter', -apple-system, sans-serif !important; }
 .font-mono    { font-family: 'JetBrains Mono', 'Courier New', monospace !important; }
 
-/* ── Brand ──────────────────────────────────────────── */
+/* ============================================================
+   BRAND
+   ============================================================ */
 
 .brand-gradient {
   background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
@@ -211,7 +227,9 @@ input, textarea, select { font: inherit; }
 .shadow-brand    { box-shadow: var(--shadow-brand); }
 .shadow-brand-lg { box-shadow: var(--shadow-brand-lg); }
 
-/* ── Glass ──────────────────────────────────────────── */
+/* ============================================================
+   GLASS
+   ============================================================ */
 
 .glass {
   background: rgba(255,255,255,0.05);
@@ -225,7 +243,9 @@ input, textarea, select { font: inherit; }
   border: 1px solid rgba(255,255,255,0.05);
 }
 
-/* ── Card ───────────────────────────────────────────── */
+/* ============================================================
+   CARD
+   ============================================================ */
 
 .card {
   background:    var(--bg-card);
@@ -234,7 +254,9 @@ input, textarea, select { font: inherit; }
   box-shadow:    var(--shadow);
 }
 
-/* ── Input ──────────────────────────────────────────── */
+/* ============================================================
+   INPUT
+   ============================================================ */
 
 .input-base {
   width: 100%;
@@ -246,7 +268,7 @@ input, textarea, select { font: inherit; }
   font-family: 'Inter', sans-serif !important;
   font-size: 15px;
   line-height: 1.5;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
   outline: none;
   -webkit-appearance: none;
   appearance: none;
@@ -256,16 +278,26 @@ input, textarea, select { font: inherit; }
 
 .input-base:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(9,9,11,0.08);
-}
-
-.dark .input-base:focus {
-  box-shadow: 0 0 0 3px rgba(250,250,250,0.08);
+  box-shadow: none;
 }
 
 .input-base:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ── Shimmer ────────────────────────────────────────── */
+/* ============================================================
+   FOCUS — keyboard nav only, no orange
+   ============================================================ */
+
+:focus-visible {
+  outline: 1.5px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) { outline: none; }
+
+/* ============================================================
+   SHIMMER
+   ============================================================ */
 
 .shimmer {
   background: linear-gradient(
@@ -283,7 +315,9 @@ input, textarea, select { font: inherit; }
   100% { background-position:  200% 0; }
 }
 
-/* ── Glow ───────────────────────────────────────────── */
+/* ============================================================
+   GLOW
+   ============================================================ */
 
 .glow-brand {
   box-shadow: 0 0 20px rgba(249,115,22,0.12), 0 0 60px rgba(249,115,22,0.06);
@@ -293,23 +327,15 @@ input, textarea, select { font: inherit; }
   box-shadow: 0 0 20px rgba(249,115,22,0.20), 0 0 60px rgba(249,115,22,0.10);
 }
 
-/* ── Focus ──────────────────────────────────────────── */
-
-:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-:focus:not(:focus-visible) { outline: none; }
-
-/* ── Reduced motion ─────────────────────────────────── */
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    animation-duration:       0.01ms !important;
+    animation-iteration-count:1 !important;
+    scroll-behavior:          auto !important;
+    transition-duration:      0.01ms !important;
   }
 }
