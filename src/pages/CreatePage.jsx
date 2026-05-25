@@ -103,53 +103,51 @@ export default function CreatePage() {
           ))}
         </div>
 
-        {/* Tools Tab */}
-        {activeTab === 'tools' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col gap-4"
-          >
-            {TOOLS.map(({ id, label, subtitle, icon: Icon, type }, i) => (
-              <motion.button
-                key={id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleToolSelect({ id, label, type })}
-                className="w-full flex items-center gap-5 p-5 rounded-2xl text-left transition-all"
-                style={{
-                  background: 'var(--bg-card)',
-                  border:     '1px solid var(--border-color)',
-                }}
-              >
-                {/* Icon box */}
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.06))',
-                    border:     '1px solid rgba(249,115,22,0.2)',
-                  }}
-                >
-                  <Icon size={24} style={{ color: 'var(--brand)' }} strokeWidth={1.5} />
-                </div>
+{/* Tools Tab */}
+{activeTab === 'tools' && (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="grid grid-cols-2 gap-4"
+  >
+    {TOOLS.map(({ id, label, subtitle, icon: Icon, type }, i) => (
+      <motion.button
+        key={id}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: i * 0.08 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => handleToolSelect({ id, label, type })}
+        className="flex flex-col items-start justify-between p-5 rounded-2xl text-left aspect-square transition-all"
+        style={{
+          background: 'var(--bg-card)',
+          border:     '1px solid var(--border-color)',
+        }}
+      >
+        {/* Icon box */}
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center"
+          style={{
+            background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.06))',
+            border:     '1px solid rgba(249,115,22,0.2)',
+          }}
+        >
+          <Icon size={22} style={{ color: 'var(--brand)' }} strokeWidth={1.5} />
+        </div>
 
-                {/* Text */}
-                <div className="flex flex-col gap-0.5 flex-1">
-                  <span className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {label}
-                  </span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {subtitle}
-                  </span>
-                </div>
-
-                <ArrowRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              </motion.button>
-            ))}
-          </motion.div>
-        )}
+        {/* Text at bottom */}
+        <div className="flex flex-col gap-1">
+          <span className="text-base font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
+            {label}
+          </span>
+          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+            {subtitle}
+          </span>
+        </div>
+      </motion.button>
+    ))}
+  </motion.div>
+)}
 
         {/* Templates Tab */}
         {activeTab === 'templates' && (
