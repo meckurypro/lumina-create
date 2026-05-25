@@ -30,8 +30,11 @@ const NavItem = ({ path, icon: Icon, label }) => {
       {isActive && (
         <motion.span
           layoutId="nav-pill"
-          className="absolute inset-0 rounded-2xl"
-          style={{ background: 'rgba(255,255,255,0.08)' }}
+          className="absolute inset-0"
+          style={{
+            background:   'rgba(255,255,255,0.1)',
+            borderRadius: '14px',
+          }}
           transition={{ type: 'spring', damping: 30, stiffness: 400 }}
         />
       )}
@@ -40,7 +43,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
           size={22}
           strokeWidth={isActive ? 2 : 1.5}
           style={{
-            color: isActive ? '#ffffff' : 'rgba(255,255,255,0.35)',
+            color:      isActive ? '#ffffff' : 'rgba(255,255,255,0.32)',
             transition: 'color 0.2s ease',
           }}
         />
@@ -57,38 +60,36 @@ const PromptIQButton = ({ onPress }) => (
     style={{ flex: 1 }}
   >
     <span
-      className="relative p-3 flex items-center justify-center rounded-2xl"
-      style={{ background: 'rgba(249,115,22,0.12)' }}
+      className="relative p-3 flex items-center justify-center"
+      style={{ borderRadius: '14px', background: 'rgba(249,115,22,0.12)' }}
     >
-      <Zap
-        size={22}
-        strokeWidth={1.5}
-        style={{ color: '#f97316' }}
-      />
+      <Zap size={22} strokeWidth={1.5} style={{ color: '#f97316' }} />
     </span>
   </button>
 )
 
 export const BottomNav = () => {
-  const { isStaff }   = useAuth()
+  const { isStaff } = useAuth()
   const [showPIQ, setShowPIQ] = useState(false)
 
   return (
     <>
+      {/* ── Nav bar ── */}
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 12px)', padding: '0 16px 12px' }}
+        style={{
+          background:    '#0a0a0a',
+          borderTop:     '1px solid rgba(255,255,255,0.07)',
+          borderRadius:  '24px 24px 0 0',
+          paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+        }}
       >
         <div
           className="mx-auto flex items-center"
           style={{
-            maxWidth:     '480px',
-            background:   '#0a0a0a',
-            border:       '1px solid rgba(255,255,255,0.07)',
-            borderRadius: '28px',
-            boxShadow:    '0 8px 32px rgba(0,0,0,0.6)',
-            padding:      '6px',
-            height:       '64px',
+            maxWidth: '480px',
+            padding:  '8px 12px',
+            height:   '60px',
           }}
         >
           {isStaff ? (
@@ -109,9 +110,13 @@ export const BottomNav = () => {
         </div>
       </nav>
 
-      {/* Bottom spacer so content isn't hidden behind nav */}
-      <div className="lg:hidden" style={{ height: '84px' }} />
+      {/* ── Spacer — prevents content scrolling under nav ── */}
+      <div
+        className="lg:hidden"
+        style={{ height: 'calc(60px + env(safe-area-inset-bottom, 8px))' }}
+      />
 
+      {/* ── PromptIQ sheet ── */}
       <AnimatePresence>
         {showPIQ && (
           <motion.div
