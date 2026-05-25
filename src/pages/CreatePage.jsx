@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Film, Image, Layers, Wand2, Sparkles, ArrowRight } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
@@ -19,19 +19,27 @@ const TYPE_LABELS = {
 }
 
 const TOOLS = [
-  { id: 'text_to_image',   label: 'Text to Image',      icon: Image    },
-  { id: 'image_to_image',  label: 'Image to Image',     icon: Wand2    },
-  { id: 'text_to_video',   label: 'Text to Video',      icon: Film     },
-  { id: 'image_to_video',  label: 'Image to Video',     icon: Sparkles },
-  { id: 'start_end_frame', label: 'Start + End Frame',  icon: Layers   },
-  { id: 'end_frame_text',  label: 'End Frame + Text',   icon: Film     },
+  {
+    id:       'create_image',
+    label:    'Create Image',
+    subtitle: 'From text or reference photo',
+    icon:     ImageIcon,
+    type:     'text_to_image',
+  },
+  {
+    id:       'create_video',
+    label:    'Create Video',
+    subtitle: 'Animate, generate or transform frames',
+    icon:     VideoIcon,
+    type:     'text_to_video',
+  },
 ]
 
 export default function CreatePage() {
-  const navigate             = useNavigate()
-  const [activeTab,  setActiveTab]  = useState('tools')
-  const [templates,  setTemplates]  = useState([])
-  const [loading,    setLoading]    = useState(true)
+  const navigate                    = useNavigate()
+  const [activeTab, setActiveTab]   = useState('tools')
+  const [templates, setTemplates]   = useState([])
+  const [loading,   setLoading]     = useState(true)
 
   useEffect(() => {
     templatesDb.getAll().then(({ data }) => {
@@ -41,7 +49,7 @@ export default function CreatePage() {
   }, [])
 
   const handleToolSelect = (tool) => {
-    navigate('/generate', { state: { type: tool.id, toolLabel: tool.label } })
+    navigate('/generate', { state: { type: tool.type, toolLabel: tool.label } })
   }
 
   const handleTemplateSelect = (template) => {
@@ -95,29 +103,51 @@ export default function CreatePage() {
           ))}
         </div>
 
-       {/* Canvas Tab */}
-{activeTab === 'canvas' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <SmartPromptInput
-              onConfirm={(data) => {
-                navigate('/generate', {
-                  state: {
-                    type:           data.templateSlug ? 'template' : data.type,
-                    templateSlug:   data.templateSlug || null,
-                    templateName:   data.templateSlug
-                      ? data.templateSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-                      : null,
-                    toolLabel:      TYPE_LABELS[data.type] || 'AI Creation',
-                    prompt:         data.enhanced_prompt,
-                    aspectRatio:    data.aspect_ratio,
-                    duration:       data.duration,
-                    model:          data.model,
-                    prefillImages:  data.uploadedImages || [],
-                    smartGenerated: true,
-                  },
-                })
-              }}
-            />
+        {/* Tools Tab */}
+        {activeTab === 'tools' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col gap-4"
+          >
+            {TOOLS.map(({ id, label, subtitle, icon: Icon, type }, i) => (
+              <motion.button
+                key={id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleToolSelect({ id, label, type })}
+                className="w-full flex items-center gap-5 p-5 rounded-2xl text-left transition-all"
+                style={{
+                  background: 'var(--bg-card)',
+                  border:     '1px solid var(--border-color)',
+                }}
+              >
+                {/* Icon box */}
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.06))',
+                    border:     '1px solid rgba(249,115,22,0.2)',
+                  }}
+                >
+                  <Icon size={24} style={{ color: 'var(--brand)' }} strokeWidth={1.5} />
+                </div>
+
+                {/* Text */}
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {label}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {subtitle}
+                  </span>
+                </div>
+
+                <ArrowRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              </motion.button>
+            ))}
           </motion.div>
         )}
 
@@ -149,7 +179,6 @@ export default function CreatePage() {
                   className="w-full rounded-2xl overflow-hidden text-left"
                   style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
                 >
-                  {/* Thumbnail */}
                   <div
                     className="h-32 w-full relative flex items-center justify-center"
                     style={{
@@ -171,8 +200,6 @@ export default function CreatePage() {
                         : `${template.credit_cost} cr`}
                     </div>
                   </div>
-
-                  {/* Info row */}
                   <div className="px-4 py-3 flex items-center justify-between">
                     <div>
                       <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
@@ -190,40 +217,32 @@ export default function CreatePage() {
           </motion.div>
         )}
 
-{/* Tools Tab */}
-{activeTab === 'tools' && (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="grid grid-cols-2 gap-3"
-  >
-    {TOOLS.map(({ id, label, icon: Icon }, i) => (
-      <motion.button
-        key={id}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: i * 0.05 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={() => handleToolSelect({ id, label })}
-        className="flex flex-col items-start gap-3 p-4 rounded-2xl transition-colors text-left"
-        style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-color)',
-        }}
-      >
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: 'var(--bg-elevated)' }}
-        >
-          <Icon size={17} style={{ color: 'var(--brand)' }} strokeWidth={1.6} />
-        </div>
-        <span className="text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
-          {label}
-        </span>
-      </motion.button>
-    ))}
-  </motion.div>
-)}
+        {/* Canvas Tab */}
+        {activeTab === 'canvas' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <SmartPromptInput
+              onConfirm={(data) => {
+                navigate('/generate', {
+                  state: {
+                    type:           data.templateSlug ? 'template' : data.type,
+                    templateSlug:   data.templateSlug || null,
+                    templateName:   data.templateSlug
+                      ? data.templateSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+                      : null,
+                    toolLabel:      TYPE_LABELS[data.type] || 'AI Creation',
+                    prompt:         data.enhanced_prompt,
+                    aspectRatio:    data.aspect_ratio,
+                    duration:       data.duration,
+                    model:          data.model,
+                    prefillImages:  data.uploadedImages || [],
+                    smartGenerated: true,
+                  },
+                })
+              }}
+            />
+          </motion.div>
+        )}
+
       </PageWrapper>
     </>
   )
