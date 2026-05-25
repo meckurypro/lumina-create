@@ -9,42 +9,27 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
-// ─── Section ──────────────────────────────────────────────
+// ─── Row ──────────────────────────────────────────────────
 
-const Section = ({ title, children }) => (
-  <div className="mb-6">
-    <p
-      className="text-xs font-bold uppercase tracking-widest mb-3 px-1"
-      style={{ color: 'var(--text-muted)' }}
-    >
-      {title}
-    </p>
-    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-      {children}
-    </div>
-  </div>
-)
-
-const SettingRow = ({ icon: Icon, label, value, onClick, danger = false }) => (
+const Row = ({ icon: Icon, label, value, onClick, last = false }) => (
   <button
     onClick={onClick}
-    className="w-full flex items-center gap-3 p-4 transition-colors text-left"
-    style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}
+    className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
+    style={{
+      background:   'var(--bg-card)',
+      borderBottom: last ? 'none' : '1px solid var(--border-color)',
+    }}
   >
-    <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-      style={{ background: danger ? 'rgba(239,68,68,0.1)' : 'var(--bg-elevated)' }}
-    >
-      <Icon size={18} style={{ color: danger ? '#ef4444' : 'var(--text-secondary)' }} />
-    </div>
-    <span
-      className="flex-1 text-sm font-medium"
-      style={{ color: danger ? '#ef4444' : 'var(--text-primary)' }}
-    >
+    <Icon size={17} strokeWidth={1.5} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    <span className="flex-1 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
       {label}
     </span>
-    {value && <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{value}</span>}
-    <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+    {value && (
+      <span className="text-xs mr-1 truncate max-w-[120px]" style={{ color: 'var(--text-muted)' }}>
+        {value}
+      </span>
+    )}
+    <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
   </button>
 )
 
@@ -70,17 +55,15 @@ export default function SettingsPage() {
   const handleChangePassword = async () => {
     const errors = {}
     if (!newPass)                errors.newPass     = 'Required'
-    else if (newPass.length < 8) errors.newPass     = 'At least 8 characters'
+    else if (newPass.length < 8) errors.newPass     = 'Minimum 8 characters'
     if (newPass !== confirmPass) errors.confirmPass = 'Passwords do not match'
     if (Object.keys(errors).length > 0) return setPassErrors(errors)
 
     setPassLoading(true)
     const { error } = await auth.updatePassword(newPass)
     setPassLoading(false)
-
     if (error) { toast.error(error.message || 'Failed to update password'); return }
-
-    toast.success('Password updated!')
+    toast.success('Password updated')
     setShowChangePassword(false)
     setNewPass('')
     setConfirmPass('')
@@ -90,11 +73,9 @@ export default function SettingsPage() {
     setProfileLoading(true)
     const { data, error } = await profiles.update(user.id, { display_name: displayName, bio })
     setProfileLoading(false)
-
     if (error) { toast.error('Failed to update profile'); return }
-
     updateProfileLocal(data)
-    toast.success('Profile updated!')
+    toast.success('Profile updated')
     setShowEditProfile(false)
   }
 
@@ -105,12 +86,12 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div
-        className="flex-shrink-0 flex items-center gap-3 px-6 h-14"
-        style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}
+        className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
+        style={{ borderBottom: '1px solid var(--border-color)' }}
       >
         <button
           onClick={() => navigate(-1)}
@@ -120,66 +101,94 @@ export default function SettingsPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
           Settings
         </h1>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 pb-24">
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-        {/* Appearance */}
-        <Section title="Appearance">
-          <div className="p-4" style={{ background: 'var(--bg-card)' }}>
-            <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Theme</p>
-            <div className="flex gap-2">
-              {THEME_OPTIONS.map(({ value, label, Icon }) => (
-                <button
-                  key={value}
-                  onClick={() => setTheme(value)}
-                  className="flex-1 flex flex-col items-center gap-2 py-3 rounded-2xl transition-all text-sm font-semibold"
-                  style={{
-                    background: theme === value ? 'var(--text-primary)' : 'var(--bg-elevated)',
-                    color:      theme === value ? 'var(--text-inverse)' : 'var(--text-secondary)',
-                  }}
-                >
-                  <Icon size={18} />
-                  {label}
-                </button>
-              ))}
+          {/* Appearance */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-3 px-1"
+               style={{ color: 'var(--text-muted)' }}>
+              Appearance
+            </p>
+            <div
+              className="rounded-2xl p-4"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+            >
+              <div className="flex gap-2">
+                {THEME_OPTIONS.map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setTheme(value)}
+                    className="flex-1 flex flex-col items-center gap-2 py-3 rounded-xl transition-all text-xs font-semibold"
+                    style={{
+                      background: theme === value ? 'var(--text-primary)' : 'var(--bg-elevated)',
+                      color:      theme === value ? 'var(--text-inverse)' : 'var(--text-muted)',
+                    }}
+                  >
+                    <Icon size={16} strokeWidth={1.5} />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </Section>
 
-        {/* Account */}
-        <Section title="Account">
-          <SettingRow
-            icon={User} label="Edit profile"
-            value={profile?.display_name || profile?.username}
-            onClick={() => setShowEditProfile(true)}
-          />
-          <SettingRow
-            icon={Lock} label="Change password"
-            onClick={() => setShowChangePassword(true)}
-          />
-          <SettingRow
-            icon={Shield} label="Email address"
-            value={user?.email}
-            onClick={() => {}}
-          />
-        </Section>
-
-        {/* About */}
-        <Section title="About">
-          <div className="p-4 flex items-center justify-between" style={{ background: 'var(--bg-card)' }}>
-            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Version</span>
-            <span className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>0.1.0</span>
+          {/* Account */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-3 px-1"
+               style={{ color: 'var(--text-muted)' }}>
+              Account
+            </p>
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ border: '1px solid var(--border-color)' }}
+            >
+              <Row
+                icon={User}
+                label="Edit profile"
+                value={profile?.display_name || profile?.username}
+                onClick={() => setShowEditProfile(true)}
+              />
+              <Row
+                icon={Lock}
+                label="Change password"
+                onClick={() => setShowChangePassword(true)}
+              />
+              <Row
+                icon={Shield}
+                label="Email"
+                value={user?.email}
+                onClick={() => {}}
+                last
+              />
+            </div>
           </div>
-        </Section>
 
+          {/* About */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-3 px-1"
+               style={{ color: 'var(--text-muted)' }}>
+              About
+            </p>
+            <div
+              className="rounded-2xl px-4 py-3 flex items-center justify-between"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+            >
+              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Version</span>
+              <span className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>0.1.0</span>
+            </div>
+          </div>
+
+        </div>
       </div>
 
-      {/* Change Password Modal */}
+      {/* ── Change Password Modal ── */}
       <Modal
         isOpen={showChangePassword}
         onClose={() => { setShowChangePassword(false); setPassErrors({}) }}
@@ -189,11 +198,11 @@ export default function SettingsPage() {
           <Input
             label="New password" type="password" value={newPass}
             onChange={(e) => setNewPass(e.target.value)}
-            placeholder="At least 8 characters" icon={Lock}
+            placeholder="Minimum 8 characters" icon={Lock}
             error={passErrors.newPass} autoFocus
           />
           <Input
-            label="Confirm new password" type="password" value={confirmPass}
+            label="Confirm password" type="password" value={confirmPass}
             onChange={(e) => setConfirmPass(e.target.value)}
             placeholder="Repeat new password" icon={Lock}
             error={passErrors.confirmPass}
@@ -201,7 +210,7 @@ export default function SettingsPage() {
           <button
             onClick={handleChangePassword}
             disabled={passLoading}
-            className="w-full py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
+            className="w-full py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
@@ -213,7 +222,7 @@ export default function SettingsPage() {
         </div>
       </Modal>
 
-      {/* Edit Profile Modal */}
+      {/* ── Edit Profile Modal ── */}
       <Modal isOpen={showEditProfile} onClose={() => setShowEditProfile(false)} title="Edit profile">
         <div className="flex flex-col gap-4">
           <Input
@@ -222,20 +231,25 @@ export default function SettingsPage() {
             placeholder="Your name" icon={User} maxLength={50} autoFocus
           />
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Bio</label>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              Bio
+            </label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell the community about yourself..."
-              rows={3} maxLength={160}
+              placeholder="Tell the community about yourself…"
+              rows={3}
+              maxLength={160}
               className="input-base resize-none"
             />
-            <p className="text-xs text-right mt-1" style={{ color: 'var(--text-muted)' }}>{bio.length}/160</p>
+            <p className="text-xs text-right mt-1" style={{ color: 'var(--text-muted)' }}>
+              {bio.length}/160
+            </p>
           </div>
           <button
             onClick={handleUpdateProfile}
             disabled={profileLoading}
-            className="w-full py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
+            className="w-full py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
@@ -246,6 +260,7 @@ export default function SettingsPage() {
           </button>
         </div>
       </Modal>
+
     </div>
   )
 }
