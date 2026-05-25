@@ -12,7 +12,7 @@ import CreateImagePage     from '@/pages/CreateImagePage'
 import CreateVideoPage     from '@/pages/CreateVideoPage'
 import GeneratePage        from '@/pages/GeneratePage'
 import ResultPage          from '@/pages/ResultPage'
-import HistoryPage         from '@/pages/HistoryPage'
+import MediaPage           from '@/pages/MediaPage'
 import ProfilePage         from '@/pages/ProfilePage'
 import SettingsPage        from '@/pages/SettingsPage'
 import AdminPage           from '@/pages/AdminPage'
@@ -22,18 +22,11 @@ import AuthCallbackPage    from '@/pages/AuthCallbackPage'
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
 
-// ── Loader ─────────────────────────────────────────────────
-
 const FullLoader = () => (
-  <div
-    className="min-h-dvh flex items-center justify-center"
-    style={{ background: 'var(--bg-primary)' }}
-  >
+  <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
     <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Loading…</div>
   </div>
 )
-
-// ── Guards ─────────────────────────────────────────────────
 
 function RequireAuth({ children }) {
   const { user, loading, onboardingNeeded } = useAuth()
@@ -53,29 +46,18 @@ function RequireAdmin({ children }) {
   return children
 }
 
-// ── App layout ─────────────────────────────────────────────
-// On mobile: constrained by page-container (480px centered)
-// On desktop: full width, BottomNav hidden via lg:hidden in BottomNav
-
 const AppLayout = ({ children }) => (
-  <div
-    className="w-full min-h-dvh"
-    style={{ background: 'var(--bg-primary)' }}
-  >
+  <div className="w-full min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
     {children}
     <BottomNav />
   </div>
 )
-
-// ── Routes ─────────────────────────────────────────────────
 
 export default function App() {
   const { user, loading, onboardingNeeded } = useAuth()
 
   return (
     <Routes>
-
-      {/* Auth callbacks — never blocked */}
       <Route path="/auth/callback"  element={<AuthCallbackPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
@@ -83,7 +65,6 @@ export default function App() {
         <Route path="*" element={<FullLoader />} />
       ) : (
         <>
-          {/* Public */}
           <Route
             path="/"
             element={user ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace /> : <LandingPage />}
@@ -93,51 +74,29 @@ export default function App() {
             element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
-          {/* Protected */}
-          <Route path="/feed" element={
-            <RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/create" element={
-            <RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/create/image" element={
-            <RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/create/video" element={
-            <RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/create/:templateSlug" element={
-            <RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/generate" element={
-            <RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/result/:id" element={
-            <RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/history" element={
-            <RequireAuth><AppLayout><HistoryPage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/profile" element={
-            <RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>
-          } />
-          <Route path="/settings" element={
-            <RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>
-          } />
+          <Route path="/feed"    element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
+          <Route path="/create"  element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/image" element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/video" element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
+          <Route path="/generate" element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
+          <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
 
-          {/* Admin — no AppLayout */}
-          <Route path="/admin" element={
-            <RequireAdmin><AdminPage /></RequireAdmin>
-          } />
+          {/* Media (was History) */}
+          <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
+          {/* Legacy redirect */}
+          <Route path="/history" element={<Navigate to="/media" replace />} />
 
-          {/* Fallback */}
+          <Route path="/profile"  element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
+          <Route path="/settings" element={<RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>} />
+          <Route path="/admin"    element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+
           <Route
             path="*"
             element={<Navigate to={user ? (onboardingNeeded ? '/auth' : '/feed') : '/'} replace />}
           />
         </>
       )}
-
     </Routes>
   )
 }
