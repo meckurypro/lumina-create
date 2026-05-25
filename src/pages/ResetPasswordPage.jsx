@@ -57,11 +57,11 @@ export default function ResetPasswordPage() {
           onClick={() => navigate('/')}
         >
           <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
-          >
-            <Zap size={14} fill="white" className="text-white" />
-          </div>
+  className="w-7 h-7 rounded-lg flex items-center justify-center"
+  style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
+>
+  <Zap size={14} fill="white" className="text-white" />
+</div>
           <span className="font-bold text-base tracking-tight">Meckury AI</span>
         </div>
       </div>
