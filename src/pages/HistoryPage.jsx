@@ -43,7 +43,7 @@ const HistoryCard = ({ gen, onClick }) => {
       onClick={onClick}
       disabled={!isComplete}
       className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-colors"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       {/* Thumbnail */}
       <div
@@ -90,7 +90,7 @@ const HistoryCard = ({ gen, onClick }) => {
         <div className="flex items-center gap-2 mt-1.5">
           <StatusBadge status={gen.status} />
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            ⚡ {gen.credits_charged} credits
+            ⚡ {gen.credits_charged} cr
           </span>
         </div>
       </div>
@@ -102,12 +102,10 @@ const HistoryCard = ({ gen, onClick }) => {
   )
 }
 
-// ─── Filters ──────────────────────────────────────────────
+// ─── History Page ─────────────────────────────────────────
 
 const FILTERS   = ['all', 'completed', 'failed']
 const PAGE_SIZE = 20
-
-// ─── History Page ─────────────────────────────────────────
 
 export default function HistoryPage() {
   const navigate  = useNavigate()
@@ -152,16 +150,15 @@ export default function HistoryPage() {
 
   return (
     <>
-      <TopBar title="History" showCredits />
+      <TopBar showLogo showCredits />
       <PageWrapper>
 
-        {/* Header */}
         <div className="pt-2 pb-5">
           <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-            My Creations
+            History
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {totalCount} total generation{totalCount !== 1 ? 's' : ''}
+            {totalCount} generation{totalCount !== 1 ? 's' : ''}
           </p>
         </div>
 
@@ -195,14 +192,14 @@ export default function HistoryPage() {
             title={filter === 'all' ? 'No creations yet' : `No ${filter} generations`}
             description={
               filter === 'all'
-                ? 'Start creating something amazing!'
-                : `You have no ${filter} generations in this page`
+                ? 'Start creating something.'
+                : `No ${filter} generations found`
             }
             action={
               filter === 'all' && (
                 <button
                   onClick={() => navigate('/create')}
-                  className="py-3 px-6 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
+                  className="py-3 px-6 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
                   style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
                 >
                   Create something
@@ -235,7 +232,7 @@ export default function HistoryPage() {
                 style={{
                   background: 'var(--bg-elevated)',
                   color:      'var(--text-secondary)',
-                  border:     '1px solid var(--border)',
+                  border:     '1px solid var(--border-color)',
                 }}
               >
                 Load more
@@ -245,6 +242,7 @@ export default function HistoryPage() {
             {loadingMore && <Skeleton className="h-20 w-full" />}
           </div>
         )}
+
       </PageWrapper>
     </>
   )
