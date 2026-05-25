@@ -1,9 +1,6 @@
 // src/App.jsx
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/lib/supabase'
-import { useNavigate } from 'react-router-dom'
 
 // Pages
 import LandingPage         from '@/pages/LandingPage'
@@ -23,7 +20,7 @@ import AuthCallbackPage    from '@/pages/AuthCallbackPage'
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
 
-// ── Loaders ────────────────────────────────────────────────
+// ── Loader ─────────────────────────────────────────────────
 
 const FullLoader = () => (
   <div
@@ -54,10 +51,15 @@ function RequireAdmin({ children }) {
   return children
 }
 
-// ── App layout (BottomNav + page-container) ────────────────
+// ── App layout ─────────────────────────────────────────────
+// On mobile: constrained by page-container (480px centered)
+// On desktop: full width, BottomNav hidden via lg:hidden in BottomNav
 
 const AppLayout = ({ children }) => (
-  <div className="page-container" style={{ background: 'var(--bg-primary)' }}>
+  <div
+    className="w-full min-h-dvh"
+    style={{ background: 'var(--bg-primary)' }}
+  >
     {children}
     <BottomNav />
   </div>
@@ -72,10 +74,9 @@ export default function App() {
     <Routes>
 
       {/* Auth callbacks — never blocked */}
-      <Route path="/auth/callback"    element={<AuthCallbackPage />} />
-      <Route path="/reset-password"   element={<ResetPasswordPage />} />
+      <Route path="/auth/callback"  element={<AuthCallbackPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      {/* Wait for auth before rendering anything else */}
       {loading ? (
         <Route path="*" element={<FullLoader />} />
       ) : (
@@ -90,7 +91,7 @@ export default function App() {
             element={user ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
-          {/* Protected — all wrapped in AppLayout for BottomNav */}
+          {/* Protected */}
           <Route path="/feed" element={
             <RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>
           } />
@@ -116,7 +117,7 @@ export default function App() {
             <RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>
           } />
 
-          {/* Admin — no AppLayout, no BottomNav */}
+          {/* Admin — no AppLayout */}
           <Route path="/admin" element={
             <RequireAdmin><AdminPage /></RequireAdmin>
           } />
