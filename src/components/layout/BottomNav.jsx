@@ -32,7 +32,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
           layoutId="nav-pill"
           className="absolute inset-0"
           style={{
-            background:   'rgba(255,255,255,0.1)',
+            background:   'var(--bg-elevated)',
             borderRadius: '14px',
           }}
           transition={{ type: 'spring', damping: 30, stiffness: 400 }}
@@ -43,7 +43,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
           size={22}
           strokeWidth={isActive ? 2 : 1.5}
           style={{
-            color:      isActive ? '#ffffff' : 'rgba(255,255,255,0.32)',
+            color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
             transition: 'color 0.2s ease',
           }}
         />
@@ -61,7 +61,7 @@ const PromptIQButton = ({ onPress }) => (
   >
     <span
       className="relative p-3 flex items-center justify-center"
-      style={{ borderRadius: '14px', background: 'rgba(249,115,22,0.12)' }}
+      style={{ borderRadius: '14px', background: 'var(--brand-light)' }}
     >
       <Zap size={22} strokeWidth={1.5} style={{ color: '#f97316' }} />
     </span>
@@ -78,8 +78,8 @@ export const BottomNav = () => {
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
         style={{
-          background:    '#0a0a0a',
-          borderTop:     '1px solid rgba(255,255,255,0.07)',
+          background:    'var(--bg-card)',
+          borderTop:     '1px solid var(--border-color)',
           borderRadius:  '24px 24px 0 0',
           paddingBottom: 'env(safe-area-inset-bottom, 8px)',
         }}
@@ -110,7 +110,7 @@ export const BottomNav = () => {
         </div>
       </nav>
 
-      {/* ── Spacer — prevents content scrolling under nav ── */}
+      {/* ── Spacer ── */}
       <div
         className="lg:hidden"
         style={{ height: 'calc(60px + env(safe-area-inset-bottom, 8px))' }}
