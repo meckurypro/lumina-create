@@ -118,29 +118,37 @@ export default function CreatePage() {
         transition={{ delay: i * 0.08 }}
         whileTap={{ scale: 0.97 }}
         onClick={() => handleToolSelect({ id, label, type })}
-        className="flex flex-col items-start justify-between p-5 rounded-2xl text-left aspect-square transition-all"
+        className="relative flex flex-col items-center justify-center rounded-2xl text-left overflow-hidden transition-all"
         style={{
-          background: 'var(--bg-card)',
-          border:     '1px solid var(--border-color)',
+          background:   'var(--bg-card)',
+          border:       '1px solid var(--border-color)',
+          aspectRatio:  '3 / 4',
         }}
       >
-        {/* Icon box */}
-        <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center"
-          style={{
-            background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.06))',
-            border:     '1px solid rgba(249,115,22,0.2)',
-          }}
-        >
-          <Icon size={22} style={{ color: 'var(--brand)' }} strokeWidth={1.5} />
+        {/* Big centered icon */}
+        <div className="flex flex-col items-center justify-center flex-1 w-full gap-4 px-4 pt-6">
+          <div
+            className="rounded-3xl flex items-center justify-center"
+            style={{
+              width:      '60%',
+              aspectRatio: '1 / 1',
+              background: 'linear-gradient(135deg, rgba(249,115,22,0.18), rgba(234,88,12,0.07))',
+              border:     '1px solid rgba(249,115,22,0.25)',
+            }}
+          >
+            <Icon
+              style={{ width: '45%', height: '45%', color: 'var(--brand)' }}
+              strokeWidth={1.3}
+            />
+          </div>
         </div>
 
-        {/* Text at bottom */}
-        <div className="flex flex-col gap-1">
-          <span className="text-base font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
+        {/* Text pinned to bottom */}
+        <div className="w-full px-4 pb-5 pt-2 flex flex-col gap-0.5">
+          <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
             {label}
           </span>
-          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {subtitle}
           </span>
         </div>
@@ -148,7 +156,6 @@ export default function CreatePage() {
     ))}
   </motion.div>
 )}
-
         {/* Templates Tab */}
         {activeTab === 'templates' && (
           <motion.div
