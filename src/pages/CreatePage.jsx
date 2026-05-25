@@ -190,38 +190,40 @@ export default function CreatePage() {
           </motion.div>
         )}
 
-        {/* Tools Tab */}
-        {activeTab === 'tools' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl overflow-hidden"
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-          >
-            {TOOLS.map(({ id, label, icon: Icon }, i) => (
-              <motion.button
-                key={id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: i * 0.04 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleToolSelect({ id, label })}
-                className="w-full flex items-center justify-between px-4 py-4 transition-colors"
-                style={{
-                  borderBottom: i < TOOLS.length - 1 ? '1px solid var(--border-color)' : 'none',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon size={18} style={{ color: 'var(--text-muted)' }} strokeWidth={1.5} />
-                  <span className="text-sm font-medium">{label}</span>
-                </div>
-                <ArrowRight size={15} style={{ color: 'var(--text-muted)' }} />
-              </motion.button>
-            ))}
-          </motion.div>
-        )}
-
+{/* Tools Tab */}
+{activeTab === 'tools' && (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="grid grid-cols-2 gap-3"
+  >
+    {TOOLS.map(({ id, label, icon: Icon }, i) => (
+      <motion.button
+        key={id}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: i * 0.05 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => handleToolSelect({ id, label })}
+        className="flex flex-col items-start gap-3 p-4 rounded-2xl transition-colors text-left"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+        }}
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center"
+          style={{ background: 'var(--bg-elevated)' }}
+        >
+          <Icon size={17} style={{ color: 'var(--brand)' }} strokeWidth={1.6} />
+        </div>
+        <span className="text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+          {label}
+        </span>
+      </motion.button>
+    ))}
+  </motion.div>
+)}
       </PageWrapper>
     </>
   )
