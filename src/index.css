@@ -228,6 +228,20 @@ input, textarea, select { font: inherit; }
 .shadow-brand-lg { box-shadow: var(--shadow-brand-lg); }
 
 /* ============================================================
+   LOGO — invert on light theme (white-on-black → black-on-white)
+   ============================================================ */
+
+.logo-icon {
+  filter: invert(1);
+  transition: filter 0.2s ease;
+}
+
+[data-theme='dark'] .logo-icon,
+.dark .logo-icon {
+  filter: invert(0);
+}
+
+/* ============================================================
    GLASS
    ============================================================ */
 
