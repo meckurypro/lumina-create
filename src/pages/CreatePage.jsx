@@ -29,7 +29,7 @@ const TOOLS = [
 
 export default function CreatePage() {
   const navigate             = useNavigate()
-  const [activeTab,  setActiveTab]  = useState('chat')
+  const [activeTab,  setActiveTab]  = useState('canvas')
   const [templates,  setTemplates]  = useState([])
   const [loading,    setLoading]    = useState(true)
 
@@ -79,7 +79,7 @@ export default function CreatePage() {
           className="flex gap-1 p-1 rounded-2xl mb-6"
           style={{ background: 'var(--bg-elevated)' }}
         >
-          {['chat', 'templates', 'tools'].map((tab) => (
+          {['tools', 'templates', 'canvas'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -95,8 +95,8 @@ export default function CreatePage() {
           ))}
         </div>
 
-        {/* Chat Tab */}
-        {activeTab === 'chat' && (
+       {/* Canvas Tab */}
+{activeTab === 'canvas' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <SmartPromptInput
               onConfirm={(data) => {
