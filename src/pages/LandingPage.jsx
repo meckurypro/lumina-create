@@ -74,7 +74,7 @@ export default function LandingPage() {
           <img
             src="/icon.png"
             alt="Meckury AI"
-            className="w-7 h-7 rounded-lg object-cover"
+            className="h-7 w-auto rounded-lg object-contain"
           />
           <span className="font-bold text-base tracking-tight">Meckury AI</span>
         </div>
