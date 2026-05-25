@@ -6,6 +6,7 @@ import { Mail, Lock, User, Zap } from 'lucide-react'
 import { auth, profiles } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Input } from '@/components/ui/Input'
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard'
 import toast from 'react-hot-toast'
 
 // ─────────────────────────────────────────────────────────────
@@ -291,36 +292,7 @@ export default function AuthPage() {
     setView(VIEWS.SET_PROFILE)
   }
 
-  const handleSetProfile = async () => {
-    clearErrors()
-    const errs = {}
-    if (!username)                               errs.username = 'Username is required'
-    else if (username.length < 3)                errs.username = 'At least 3 characters'
-    else if (!/^[a-zA-Z0-9_]+$/.test(username)) errs.username = 'Letters, numbers and underscores only'
-    if (Object.keys(errs).length)                return setErrors(errs)
-
-    setLoading(true)
-    const { available } = await profiles.checkUsername(username.toLowerCase())
-    if (!available) {
-      setLoading(false)
-      return setErrors({ username: 'Username is taken. Try another.' })
-    }
-
-    const { error } = await profiles.completeOnboarding(user.id, {
-      username:    username.toLowerCase(),
-      displayName: displayName.trim() || username,
-    })
-    setLoading(false)
-
-    if (error) { toast.error('Failed to save profile'); return }
-
-    await refreshProfile()
-    toast.success('Welcome to Meckury AI! 🎉')
-    // The useEffect above will fire once onboardingNeeded flips to false
-    // via refreshProfile (called inside completeOnboarding or AuthContext).
-    // Explicit navigate here as a fallback:
-    navigate('/feed', { replace: true })
-  }
+  // Onboarding handled by <OnboardingWizard /> on the SET_PROFILE view.
 
   const handleLogin = async () => {
     clearErrors()
@@ -540,31 +512,8 @@ export default function AuthPage() {
 
             {/* ── Set Profile ───────────────────────────── */}
             {view === VIEWS.SET_PROFILE && (
-              <motion.div key="profile" {...slideIn} className="flex flex-col gap-6">
-                <BackButton />
-                <div>
-                  <h2 className="text-3xl font-black mb-2">Set up profile</h2>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Almost there! Choose your username
-                  </p>
-                </div>
-                <div className="flex flex-col gap-4">
-                  <Input
-                    label="Username" value={username}
-                    onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                    placeholder="yourname" icon={User} error={errors.username}
-                    hint="Letters, numbers and underscores only"
-                    maxLength={30} autoFocus
-                  />
-                  <Input
-                    label="Display name (optional)" value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Your Name" icon={User} maxLength={50}
-                  />
-                  <PrimaryButton onClick={handleSetProfile} loading={loading}>
-                    Start creating 🎉
-                  </PrimaryButton>
-                </div>
+              <motion.div key="profile" {...slideIn}>
+                <OnboardingWizard onComplete={() => navigate('/feed', { replace: true })} />
               </motion.div>
             )}
 
