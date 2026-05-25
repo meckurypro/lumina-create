@@ -355,12 +355,23 @@ export default function AuthPage() {
             role="link"
             aria-label="Go to homepage"
           >
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
-            >
-              <Zap size={14} fill="white" className="text-white" aria-hidden="true" />
-            </div>
+            // REMOVE this import if Zap is no longer used elsewhere in the file
+import { Mail, Lock } from 'lucide-react'
+
+// Header logo — replace the Zap div with:
+<div
+  className="flex items-center gap-2 cursor-pointer"
+  onClick={() => navigate('/')}
+  role="link"
+  aria-label="Go to homepage"
+>
+  <img
+    src="/icon.png"
+    alt="Meckury AI"
+    className="h-7 w-auto rounded-lg object-contain logo-icon"
+  />
+  <span className="font-bold text-base tracking-tight">Meckury AI</span>
+</div>
             <span className="font-bold text-base tracking-tight">Meckury AI</span>
           </div>
         </div>
