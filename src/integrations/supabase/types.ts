@@ -446,6 +446,7 @@ export type Database = {
           avatar_url: string | null
           bio: string | null
           created_at: string | null
+          creator_type: string | null
           credits: number | null
           display_name: string | null
           id: string
@@ -460,9 +461,12 @@ export type Database = {
             | Database["public"]["Enums"]["video_duration"]
             | null
           preferred_model: Database["public"]["Enums"]["ai_model"] | null
+          primary_use_case: string | null
+          referral_source: string | null
           role: Database["public"]["Enums"]["user_role"] | null
           staff_note: string | null
           staff_since: string | null
+          team_role: string | null
           tier: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased: number | null
           total_credits_used: number | null
@@ -474,6 +478,7 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
+          creator_type?: string | null
           credits?: number | null
           display_name?: string | null
           id: string
@@ -488,9 +493,12 @@ export type Database = {
             | Database["public"]["Enums"]["video_duration"]
             | null
           preferred_model?: Database["public"]["Enums"]["ai_model"] | null
+          primary_use_case?: string | null
+          referral_source?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
+          team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased?: number | null
           total_credits_used?: number | null
@@ -502,6 +510,7 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
+          creator_type?: string | null
           credits?: number | null
           display_name?: string | null
           id?: string
@@ -516,9 +525,12 @@ export type Database = {
             | Database["public"]["Enums"]["video_duration"]
             | null
           preferred_model?: Database["public"]["Enums"]["ai_model"] | null
+          primary_use_case?: string | null
+          referral_source?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
+          team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased?: number | null
           total_credits_used?: number | null
