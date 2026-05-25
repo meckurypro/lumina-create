@@ -8,6 +8,8 @@ import AuthPage            from '@/pages/AuthPage'
 import ResetPasswordPage   from '@/pages/ResetPasswordPage'
 import FeedPage            from '@/pages/FeedPage'
 import CreatePage          from '@/pages/CreatePage'
+import CreateImagePage     from '@/pages/CreateImagePage'
+import CreateVideoPage     from '@/pages/CreateVideoPage'
 import GeneratePage        from '@/pages/GeneratePage'
 import ResultPage          from '@/pages/ResultPage'
 import HistoryPage         from '@/pages/HistoryPage'
@@ -97,6 +99,12 @@ export default function App() {
           } />
           <Route path="/create" element={
             <RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>
+          } />
+          <Route path="/create/image" element={
+            <RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>
+          } />
+          <Route path="/create/video" element={
+            <RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>
           } />
           <Route path="/create/:templateSlug" element={
             <RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>
