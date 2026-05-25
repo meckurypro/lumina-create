@@ -24,14 +24,14 @@ const TOOLS = [
     label:    'Create Image',
     subtitle: 'From text or reference photo',
     icon:     ImageIcon,
-    type:     'text_to_image',
+    route:    '/create/image',
   },
   {
     id:       'create_video',
     label:    'Create Video',
     subtitle: 'Animate, generate or transform frames',
     icon:     VideoIcon,
-    type:     'text_to_video',
+    route:    '/create/video',
   },
 ]
 
@@ -47,10 +47,6 @@ export default function CreatePage() {
       setLoading(false)
     })
   }, [])
-
-  const handleToolSelect = (tool) => {
-    navigate('/generate', { state: { type: tool.type, toolLabel: tool.label } })
-  }
 
   const handleTemplateSelect = (template) => {
     navigate('/generate', {
@@ -72,26 +68,16 @@ export default function CreatePage() {
     <>
       <TopBar showLogo showCredits />
       <PageWrapper>
-        <div
-          className="flex flex-col"
-          style={{ height: '100%', minHeight: '100%' }}
-        >
+        <div className="flex flex-col h-full">
 
           {/* Header */}
           <div className="pt-2 pb-6 flex-shrink-0">
-            <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-              Create
-            </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              What are we making today?
-            </p>
+            <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Create</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>What are we making today?</p>
           </div>
 
           {/* Tabs */}
-          <div
-            className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0"
-            style={{ background: 'var(--bg-elevated)' }}
-          >
+          <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
             {['tools', 'templates', 'canvas'].map((tab) => (
               <button
                 key={tab}
@@ -108,7 +94,7 @@ export default function CreatePage() {
             ))}
           </div>
 
-          {/* Tab content — fills remaining height */}
+          {/* Tab content */}
           <div className="flex flex-col flex-1 min-h-0">
 
             {/* Tools Tab */}
@@ -118,18 +104,15 @@ export default function CreatePage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-1 items-center justify-center"
               >
-                <div
-                  className="grid grid-cols-2 w-full"
-                  style={{ gap: '16px', maxWidth: '500px' }}
-                >
-                  {TOOLS.map(({ id, label, subtitle, icon: Icon, type }, i) => (
+                <div className="grid grid-cols-2 w-full" style={{ gap: '16px', maxWidth: '520px' }}>
+                  {TOOLS.map(({ id, label, subtitle, icon: Icon, route }, i) => (
                     <motion.button
                       key={id}
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.08 }}
                       whileTap={{ scale: 0.97 }}
-                      onClick={() => handleToolSelect({ id, label, type })}
+                      onClick={() => navigate(route)}
                       className="flex flex-col items-center justify-between rounded-2xl overflow-hidden transition-all"
                       style={{
                         background:  'var(--bg-card)',
@@ -139,7 +122,7 @@ export default function CreatePage() {
                         padding:     '20px',
                       }}
                     >
-                      {/* Icon box — top, centered */}
+                      {/* Icon */}
                       <div className="flex flex-1 items-center justify-center w-full">
                         <div
                           className="rounded-2xl flex items-center justify-center"
@@ -157,14 +140,10 @@ export default function CreatePage() {
                         </div>
                       </div>
 
-                      {/* Text — pinned to bottom */}
+                      {/* Text */}
                       <div className="w-full flex flex-col gap-0.5 items-center text-center flex-shrink-0">
-                        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                          {label}
-                        </span>
-                        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-                          {subtitle}
-                        </span>
+                        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
+                        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
                       </div>
                     </motion.button>
                   ))}
@@ -185,9 +164,7 @@ export default function CreatePage() {
                     <Skeleton className="h-36 w-full rounded-2xl" />
                   </>
                 ) : templates.length === 0 ? (
-                  <p className="text-sm text-center py-16" style={{ color: 'var(--text-muted)' }}>
-                    No templates yet
-                  </p>
+                  <p className="text-sm text-center py-16" style={{ color: 'var(--text-muted)' }}>No templates yet</p>
                 ) : (
                   templates.map((template, i) => (
                     <motion.button
@@ -223,12 +200,8 @@ export default function CreatePage() {
                       </div>
                       <div className="px-4 py-3 flex items-center justify-between">
                         <div>
-                          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                            {template.name}
-                          </h3>
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {template.description}
-                          </p>
+                          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{template.name}</h3>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{template.description}</p>
                         </div>
                         <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginLeft: 12 }} />
                       </div>
