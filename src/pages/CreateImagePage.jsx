@@ -100,7 +100,6 @@ const ModelDropdown = ({ value, onChange }) => {
                 boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
               }}
             >
-              {/* Selectable models */}
               <div className="py-1">
                 {IMAGE_MODELS.filter(m => !m.locked).map((model) => (
                   <button
@@ -126,10 +125,8 @@ const ModelDropdown = ({ value, onChange }) => {
                 ))}
               </div>
 
-              {/* Divider */}
               <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
 
-              {/* Locked models — compact single line */}
               <div className="py-1">
                 {IMAGE_MODELS.filter(m => m.locked).map((model) => (
                   <div
@@ -200,22 +197,22 @@ export default function CreateImagePage() {
       aspectRatio, duration: null, model,
     })
     if (result) {
+      toast.success('On its way! Check your Media page.', { duration: 4000 })
       navigate(`/result/${result.generationId}`, {
         state: { outputUrl: result.outputUrl, outputType: result.outputType },
       })
     }
   }
 
-  // Natural aspect ratio for uploaded image card — capped at 280px tall
   const cardAspectRatio = imgDimensions
     ? `${imgDimensions.width} / ${imgDimensions.height}`
     : '1 / 1'
 
   const cardMaxWidth = imgDimensions
     ? imgDimensions.width > imgDimensions.height
-      ? '100%'      // landscape — full width
-      : '200px'     // portrait or square — constrained
-    : '140px'       // placeholder
+      ? '100%'
+      : '200px'
+    : '140px'
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -319,11 +316,9 @@ export default function CreateImagePage() {
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
             </p>
 
-            {/* Centered container */}
             <div className="flex justify-center">
               {referenceImg ? (
                 <div className="relative" style={{ width: '100%', maxWidth: cardMaxWidth }}>
-                  {/* Image card */}
                   <div
                     className="relative overflow-hidden rounded-2xl cursor-pointer w-full"
                     style={{
@@ -339,14 +334,12 @@ export default function CreateImagePage() {
                       className="w-full h-full"
                       style={{ objectFit: 'contain' }}
                     />
-                    {/* Expand icon */}
                     <div
                       className="absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
                     >
                       <Maximize2 size={11} />
                     </div>
-                    {/* Aspect ratio badge */}
                     {autoRatio && (
                       <div
                         className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -357,7 +350,6 @@ export default function CreateImagePage() {
                     )}
                   </div>
 
-                  {/* Remove button — outside card, top-right */}
                   <button
                     onClick={handleRemoveImage}
                     className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
@@ -449,4 +441,4 @@ export default function CreateImagePage() {
 
     </div>
   )
-                    }
+                                                     }
