@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, Lock, Zap } from 'lucide-react'
+import { Mail, Lock } from 'lucide-react'
 import { auth } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Input } from '@/components/ui/Input'
@@ -206,7 +206,7 @@ const OrDivider = () => (
 // ─────────────────────────────────────────────────────────────
 
 export default function AuthPage() {
-  const navigate                                   = useNavigate()
+  const navigate                   = useNavigate()
   const { user, onboardingNeeded } = useAuth()
 
   const [view,        setView]        = useState(VIEWS.LANDING)
@@ -218,7 +218,6 @@ export default function AuthPage() {
   const [loading,     setLoading]     = useState(false)
   const [errors,      setErrors]      = useState({})
 
-  // Redirect authenticated users
   useEffect(() => {
     if (!user) return
     if (onboardingNeeded) {
@@ -355,23 +354,11 @@ export default function AuthPage() {
             role="link"
             aria-label="Go to homepage"
           >
-            // REMOVE this import if Zap is no longer used elsewhere in the file
-import { Mail, Lock } from 'lucide-react'
-
-// Header logo — replace the Zap div with:
-<div
-  className="flex items-center gap-2 cursor-pointer"
-  onClick={() => navigate('/')}
-  role="link"
-  aria-label="Go to homepage"
->
-  <img
-    src="/icon.png"
-    alt="Meckury AI"
-    className="h-7 w-auto rounded-lg object-contain logo-icon"
-  />
-  <span className="font-bold text-base tracking-tight">Meckury AI</span>
-</div>
+            <img
+              src="/icon.png"
+              alt="Meckury AI"
+              className="h-7 w-auto rounded-lg object-contain logo-icon"
+            />
             <span className="font-bold text-base tracking-tight">Meckury AI</span>
           </div>
         </div>
@@ -633,4 +620,4 @@ import { Mail, Lock } from 'lucide-react'
       </div>
     </div>
   )
-}
+      }
