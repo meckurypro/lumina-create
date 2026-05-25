@@ -56,11 +56,19 @@ export default function ResetPasswordPage() {
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigate('/')}
         >
-          <div
-  className="w-7 h-7 rounded-lg flex items-center justify-center"
-  style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
+          import { Lock, CheckCircle } from 'lucide-react'
+
+// Header logo — replace the Zap div with:
+<div
+  className="flex items-center gap-2 cursor-pointer"
+  onClick={() => navigate('/')}
 >
-  <Zap size={14} fill="white" className="text-white" />
+  <img
+    src="/icon.png"
+    alt="Meckury AI"
+    className="h-7 w-auto rounded-lg object-contain logo-icon"
+  />
+  <span className="font-bold text-base tracking-tight">Meckury AI</span>
 </div>
           <span className="font-bold text-base tracking-tight">Meckury AI</span>
         </div>
