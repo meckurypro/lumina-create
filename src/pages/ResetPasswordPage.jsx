@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Lock, CheckCircle, Zap } from 'lucide-react'
+import { Lock, CheckCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/Input'
 import toast from 'react-hot-toast'
@@ -56,20 +56,11 @@ export default function ResetPasswordPage() {
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigate('/')}
         >
-          import { Lock, CheckCircle } from 'lucide-react'
-
-// Header logo — replace the Zap div with:
-<div
-  className="flex items-center gap-2 cursor-pointer"
-  onClick={() => navigate('/')}
->
-  <img
-    src="/icon.png"
-    alt="Meckury AI"
-    className="h-7 w-auto rounded-lg object-contain logo-icon"
-  />
-  <span className="font-bold text-base tracking-tight">Meckury AI</span>
-</div>
+          <img
+            src="/icon.png"
+            alt="Meckury AI"
+            className="h-7 w-auto rounded-lg object-contain logo-icon"
+          />
           <span className="font-bold text-base tracking-tight">Meckury AI</span>
         </div>
       </div>
