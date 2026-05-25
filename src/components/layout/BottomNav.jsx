@@ -2,15 +2,15 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Sparkles, Film, User, Zap } from 'lucide-react'
+import { Home, Sparkles, GalleryHorizontalEnd, User, Zap } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 const NAV_ITEMS = [
-  { path: '/feed',    icon: Home,     label: 'Home'    },
-  { path: '/create',  icon: Sparkles, label: 'Create'  },
-  { path: '/history', icon: Film,     label: 'History' },
-  { path: '/profile', icon: User,     label: 'Profile' },
+  { path: '/feed',   icon: Home,                  label: 'Home'   },
+  { path: '/create', icon: Sparkles,               label: 'Create' },
+  { path: '/media',  icon: GalleryHorizontalEnd,   label: 'Media'  },
+  { path: '/profile',icon: User,                   label: 'Profile'},
 ]
 
 const STAFF_NAV_LEFT  = NAV_ITEMS.slice(0, 2)
@@ -31,10 +31,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
         <motion.span
           layoutId="nav-pill"
           className="absolute inset-0"
-          style={{
-            background:   'var(--bg-elevated)',
-            borderRadius: '14px',
-          }}
+          style={{ background: 'var(--bg-elevated)', borderRadius: '14px' }}
           transition={{ type: 'spring', damping: 30, stiffness: 400 }}
         />
       )}
@@ -42,10 +39,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
         <Icon
           size={22}
           strokeWidth={isActive ? 2 : 1.5}
-          style={{
-            color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-            transition: 'color 0.2s ease',
-          }}
+          style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)', transition: 'color 0.2s ease' }}
         />
       </span>
     </NavLink>
@@ -74,7 +68,6 @@ export const BottomNav = () => {
 
   return (
     <>
-      {/* ── Nav bar ── */}
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
         style={{
@@ -86,11 +79,7 @@ export const BottomNav = () => {
       >
         <div
           className="mx-auto flex items-center"
-          style={{
-            maxWidth: '480px',
-            padding:  '8px 12px',
-            height:   '60px',
-          }}
+          style={{ maxWidth: '480px', padding: '8px 12px', height: '60px' }}
         >
           {isStaff ? (
             <>
@@ -110,13 +99,8 @@ export const BottomNav = () => {
         </div>
       </nav>
 
-      {/* ── Spacer ── */}
-      <div
-        className="lg:hidden"
-        style={{ height: 'calc(60px + env(safe-area-inset-bottom, 8px))' }}
-      />
+      <div className="lg:hidden" style={{ height: 'calc(60px + env(safe-area-inset-bottom, 8px))' }} />
 
-      {/* ── PromptIQ sheet ── */}
       <AnimatePresence>
         {showPIQ && (
           <motion.div
