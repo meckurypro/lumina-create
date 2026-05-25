@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, Lock, User, Zap } from 'lucide-react'
-import { auth, profiles } from '@/lib/supabase'
+import { Mail, Lock, Zap } from 'lucide-react'
+import { auth } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Input } from '@/components/ui/Input'
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard'
@@ -35,12 +35,12 @@ const BACK_MAP = Object.freeze({
 })
 
 const REEL_ITEMS = [
-  { id: 1, colors: ['#1a0a00', '#f97316', '#7c2d12'], label: 'Office Handover'  },
-  { id: 2, colors: ['#000000', '#1c1c1c', '#2d2d2d'], label: 'Memory Lane'      },
-  { id: 3, colors: ['#0a0a1a', '#1e3a5f', '#0ea5e9'], label: 'AI Portrait'      },
-  { id: 4, colors: ['#0a1a0a', '#14532d', '#16a34a'], label: 'Brand Video'      },
-  { id: 5, colors: ['#1a0a1a', '#6b21a8', '#a855f7'], label: 'Cinematic'        },
-  { id: 6, colors: ['#1a1000', '#92400e', '#d97706'], label: 'History'          },
+  { id: 1, colors: ['#1a0a00', '#f97316', '#7c2d12'], label: 'Office Handover' },
+  { id: 2, colors: ['#000000', '#1c1c1c', '#2d2d2d'], label: 'Memory Lane'     },
+  { id: 3, colors: ['#0a0a1a', '#1e3a5f', '#0ea5e9'], label: 'AI Portrait'     },
+  { id: 4, colors: ['#0a1a0a', '#14532d', '#16a34a'], label: 'Brand Video'     },
+  { id: 5, colors: ['#1a0a1a', '#6b21a8', '#a855f7'], label: 'Cinematic'       },
+  { id: 6, colors: ['#1a1000', '#92400e', '#d97706'], label: 'History'         },
 ]
 
 // ─────────────────────────────────────────────────────────────
@@ -48,22 +48,22 @@ const REEL_ITEMS = [
 // ─────────────────────────────────────────────────────────────
 
 const slideIn = {
-  initial:  { opacity: 0, x: 30  },
-  animate:  { opacity: 1, x: 0   },
-  exit:     { opacity: 0, x: -30 },
+  initial: { opacity: 0, x: 30  },
+  animate: { opacity: 1, x: 0   },
+  exit:    { opacity: 0, x: -30 },
 }
 const fadeIn = {
-  initial:  { opacity: 0, y: 20  },
-  animate:  { opacity: 1, y: 0   },
-  exit:     { opacity: 0, y: -20 },
+  initial: { opacity: 0, y: 20  },
+  animate: { opacity: 1, y: 0   },
+  exit:    { opacity: 0, y: -20 },
 }
 const scaleIn = {
-  initial:  { opacity: 0, scale: 0.95 },
-  animate:  { opacity: 1, scale: 1    },
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1    },
 }
 
 // ─────────────────────────────────────────────────────────────
-// Reel slideshow (desktop right panel)
+// Reel slideshow — desktop right panel
 // ─────────────────────────────────────────────────────────────
 
 const ReelSlideshow = () => {
@@ -142,8 +142,7 @@ const ReelSlideshow = () => {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Reusable button primitives (defined outside component to
-// avoid re-creating on every render)
+// Button primitives
 // ─────────────────────────────────────────────────────────────
 
 const PrimaryButton = ({ onClick, loading, children }) => (
@@ -169,7 +168,7 @@ const SecondaryButton = ({ onClick, children }) => (
     style={{
       background: 'var(--bg-elevated)',
       color:      'var(--text-secondary)',
-      border:     '1px solid var(--border)',
+      border:     '1px solid var(--border-color)',
     }}
   >
     {children}
@@ -183,14 +182,12 @@ const GoogleButton = ({ onClick }) => (
     style={{
       background: 'var(--bg-elevated)',
       color:      'var(--text-secondary)',
-      border:     '1px solid var(--border)',
+      border:     '1px solid var(--border-color)',
     }}
   >
     <img
       src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-      alt=""
-      aria-hidden="true"
-      className="w-4 h-4"
+      alt="" aria-hidden="true" className="w-4 h-4"
     />
     Continue with Google
   </button>
@@ -198,9 +195,9 @@ const GoogleButton = ({ onClick }) => (
 
 const OrDivider = () => (
   <div className="flex items-center gap-3">
-    <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+    <div className="flex-1 h-px" style={{ background: 'var(--border-color)' }} />
     <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>or</span>
-    <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+    <div className="flex-1 h-px" style={{ background: 'var(--border-color)' }} />
   </div>
 )
 
@@ -210,7 +207,7 @@ const OrDivider = () => (
 
 export default function AuthPage() {
   const navigate                                   = useNavigate()
-  const { user, onboardingNeeded, refreshProfile } = useAuth()
+  const { user, onboardingNeeded } = useAuth()
 
   const [view,        setView]        = useState(VIEWS.LANDING)
   const [email,       setEmail]       = useState('')
@@ -218,14 +215,10 @@ export default function AuthPage() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPass, setConfirmPass] = useState('')
   const [otp,         setOtp]         = useState('')
-  const [username,    setUsername]    = useState('')
-  const [displayName, setDisplayName] = useState('')
   const [loading,     setLoading]     = useState(false)
   const [errors,      setErrors]      = useState({})
 
-  // ── BUG FIX: redirect authenticated users ─────────────────
-  // - Fully authenticated (onboarding done) → /feed
-  // - Auth done but profile not set up yet  → SET_PROFILE view
+  // Redirect authenticated users
   useEffect(() => {
     if (!user) return
     if (onboardingNeeded) {
@@ -234,10 +227,6 @@ export default function AuthPage() {
       navigate('/feed', { replace: true })
     }
   }, [user, onboardingNeeded, navigate])
-
-  // ─────────────────────────────────────────────────────────
-  // Helpers
-  // ─────────────────────────────────────────────────────────
 
   const clearErrors = () => setErrors({})
 
@@ -260,13 +249,13 @@ export default function AuthPage() {
     setLoading(false)
 
     if (error) { toast.error(error.message || 'Failed to send code'); return }
-    toast.success('Check your email for the 6-digit code!')
+    toast.success('Verification code sent!')
     setView(VIEWS.OTP_VERIFY)
   }
 
   const handleVerifyOTP = async () => {
     clearErrors()
-    if (otp.length < 6) return setErrors({ otp: 'Enter the complete 6-digit code' })
+    if (otp.length < 8) return setErrors({ otp: 'Enter the complete 8-digit code' })
 
     setLoading(true)
     const { error } = await auth.verifyOTP(email, otp)
@@ -292,8 +281,6 @@ export default function AuthPage() {
     setView(VIEWS.SET_PROFILE)
   }
 
-  // Onboarding handled by <OnboardingWizard /> on the SET_PROFILE view.
-
   const handleLogin = async () => {
     clearErrors()
     const errs = {}
@@ -306,14 +293,11 @@ export default function AuthPage() {
     setLoading(false)
 
     if (error) { setErrors({ password: 'Invalid email or password' }); return }
-    // Navigation is handled by the useEffect above once user + profile load
   }
 
   const handleGoogleAuth = async () => {
     const { error } = await auth.signInWithGoogle()
     if (error) toast.error('Google sign in failed')
-    // Supabase redirects to /auth/callback → back to /auth
-    // The useEffect above will then redirect to /feed or SET_PROFILE
   }
 
   const handleForgotPassword = async () => {
@@ -329,8 +313,7 @@ export default function AuthPage() {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Sub-components (inline to access handlers without prop
-  // drilling, but defined as stable named components)
+  // Back button
   // ─────────────────────────────────────────────────────────
 
   const BackButton = () =>
@@ -356,15 +339,15 @@ export default function AuthPage() {
       className="h-dvh flex overflow-hidden"
       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
     >
-      {/* ── LEFT: form panel ────────────────────────────── */}
+      {/* ── LEFT: form panel ── */}
       <div
         className="flex flex-col w-full lg:w-[480px] xl:w-[520px] flex-shrink-0 h-full"
-        style={{ borderRight: '1px solid var(--border)' }}
+        style={{ borderRight: '1px solid var(--border-color)' }}
       >
         {/* Header */}
         <div
           className="flex items-center px-8 h-14 flex-shrink-0"
-          style={{ borderBottom: '1px solid var(--border)' }}
+          style={{ borderBottom: '1px solid var(--border-color)' }}
         >
           <div
             className="flex items-center gap-2 cursor-pointer"
@@ -386,7 +369,7 @@ export default function AuthPage() {
         <div className="flex flex-col flex-1 justify-center px-8 py-10 overflow-y-auto">
           <AnimatePresence mode="wait">
 
-            {/* ── Landing ──────────────────────────────── */}
+            {/* Landing */}
             {view === VIEWS.LANDING && (
               <motion.div key="landing" {...fadeIn} className="flex flex-col gap-6">
                 <div>
@@ -411,14 +394,14 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── Email Entry ───────────────────────────── */}
+            {/* Email Entry */}
             {view === VIEWS.EMAIL_ENTRY && (
               <motion.div key="email" {...slideIn} className="flex flex-col gap-6">
                 <BackButton />
                 <div>
                   <h2 className="text-3xl font-black mb-2">Create account</h2>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    We'll send an 6-digit verification code to your email
+                    We'll send an 8-digit verification code to your email
                   </p>
                 </div>
                 <div className="flex flex-col gap-4">
@@ -447,24 +430,29 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── OTP Verify ────────────────────────────── */}
+            {/* OTP Verify */}
             {view === VIEWS.OTP_VERIFY && (
               <motion.div key="otp" {...slideIn} className="flex flex-col gap-6">
                 <BackButton />
                 <div>
                   <h2 className="text-3xl font-black mb-2">Check your email</h2>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    We sent a code to{' '}
+                    We sent an 8-digit code to{' '}
                     <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>
                   </p>
                 </div>
                 <div className="flex flex-col gap-4">
                   <Input
-                    label="Verification code" type="text" inputMode="numeric"
+                    label="Verification code"
+                    type="text"
+                    inputMode="numeric"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                    placeholder="Enter 6-digit code" error={errors.otp}
-                    autoComplete="one-time-code" autoFocus maxLength={6}
+                    placeholder="Enter 8-digit code"
+                    error={errors.otp}
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={8}
                   />
                   <PrimaryButton onClick={handleVerifyOTP} loading={loading}>
                     Verify code
@@ -472,7 +460,7 @@ export default function AuthPage() {
                   <button
                     onClick={handleSendOTP}
                     className="text-sm text-center font-medium"
-                    style={{ color: 'var(--brand)' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     Resend code
                   </button>
@@ -480,7 +468,7 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── Set Password ──────────────────────────── */}
+            {/* Set Password */}
             {view === VIEWS.SET_PASSWORD && (
               <motion.div key="set-password" {...slideIn} className="flex flex-col gap-6">
                 <BackButton />
@@ -510,14 +498,14 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── Set Profile ───────────────────────────── */}
+            {/* Onboarding */}
             {view === VIEWS.SET_PROFILE && (
               <motion.div key="profile" {...slideIn}>
                 <OnboardingWizard onComplete={() => navigate('/feed', { replace: true })} />
               </motion.div>
             )}
 
-            {/* ── Login ─────────────────────────────────── */}
+            {/* Login */}
             {view === VIEWS.LOGIN && (
               <motion.div key="login" {...slideIn} className="flex flex-col gap-6">
                 <BackButton />
@@ -543,7 +531,7 @@ export default function AuthPage() {
                   <button
                     onClick={() => setView(VIEWS.FORGOT_PASSWORD)}
                     className="text-sm text-right font-medium -mt-2"
-                    style={{ color: 'var(--brand)' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     Forgot password?
                   </button>
@@ -566,7 +554,7 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── Forgot Password ───────────────────────── */}
+            {/* Forgot Password */}
             {view === VIEWS.FORGOT_PASSWORD && (
               <motion.div key="forgot" {...slideIn} className="flex flex-col gap-6">
                 <BackButton />
@@ -590,12 +578,12 @@ export default function AuthPage() {
               </motion.div>
             )}
 
-            {/* ── Reset Sent ────────────────────────────── */}
+            {/* Reset Sent */}
             {view === VIEWS.RESET_SENT && (
               <motion.div key="reset-sent" {...scaleIn} className="flex flex-col items-center text-center gap-6">
                 <div
                   className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
                 >
                   <Mail size={28} style={{ color: 'var(--text-primary)' }} aria-hidden="true" />
                 </div>
@@ -618,7 +606,7 @@ export default function AuthPage() {
         {/* Footer */}
         <div
           className="flex-shrink-0 px-8 py-5 flex items-center justify-between"
-          style={{ borderTop: '1px solid var(--border)' }}
+          style={{ borderTop: '1px solid var(--border-color)' }}
         >
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>By LinkAI</p>
           <div className="flex items-center gap-4">
@@ -628,7 +616,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* ── RIGHT: reel slideshow (desktop only) ─────────── */}
+      {/* ── RIGHT: reel slideshow desktop only ── */}
       <div className="hidden lg:block flex-1 h-full" aria-hidden="true">
         <ReelSlideshow />
       </div>
