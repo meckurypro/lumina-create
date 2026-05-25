@@ -3,7 +3,6 @@ import { supabase, profiles as profilesApi, userRoles } from '@/lib/supabase'
 
 const PROFILE_RETRY_ATTEMPTS = 4
 const PROFILE_RETRY_DELAY_MS = 800
-const OAUTH_PROVIDERS = new Set(['google', 'github', 'facebook', 'apple'])
 const AuthContext = createContext(null)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -17,11 +16,9 @@ const fetchProfileWithRetry = async (userId) => {
   return { data: null, isNewUser: true }
 }
 
-const deriveOnboardingNeeded = (profile, authUser) => {
+const deriveOnboardingNeeded = (profile) => {
   if (!profile) return true
-  if (profile.onboarding_completed) return false
-  const provider = authUser?.app_metadata?.provider ?? ''
-  return !(OAUTH_PROVIDERS.has(provider) && !!profile.display_name && !!profile.avatar_url)
+  return !profile.onboarding_completed
 }
 
 export const AuthProvider = ({ children }) => {
@@ -48,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         setOnboardingNeeded(true)
       } else {
         setProfile(data)
-        setOnboardingNeeded(deriveOnboardingNeeded(data, authUser))
+        setOnboardingNeeded(deriveOnboardingNeeded(data))
       }
     } finally {
       if (activeProfileLoad.current === userId) activeProfileLoad.current = null
@@ -110,7 +107,7 @@ export const AuthProvider = ({ children }) => {
     setProfile((prev) => {
       if (!prev) return prev
       const next = { ...prev, ...updates }
-      setOnboardingNeeded(deriveOnboardingNeeded(next, user))
+      setOnboardingNeeded(deriveOnboardingNeeded(next))
       return next
     })
   }, [user])

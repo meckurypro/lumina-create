@@ -37,7 +37,7 @@ export const profiles = {
     const { data, error } = await supabase.from('profiles').select('username').eq('username', username).maybeSingle()
     return { available: !data && !error, error }
   },
-  completeOnboarding: (userId, { username, displayName }) => supabase.from('profiles').update({ username, display_name: displayName, onboarding_completed: true }).eq('id', userId).select().single(),
+  completeOnboarding: (userId, payload) => supabase.from('profiles').update({ ...payload, onboarding_completed: true }).eq('id', userId).select().single(),
 }
 
 export const userRoles = {
