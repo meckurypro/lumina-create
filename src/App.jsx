@@ -68,7 +68,7 @@ const AppLayout = ({ children }) => (
 // ── Routes ─────────────────────────────────────────────────
 
 export default function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, onboardingNeeded } = useAuth()
 
   return (
     <Routes>
@@ -84,11 +84,11 @@ export default function App() {
           {/* Public */}
           <Route
             path="/"
-            element={user ? <Navigate to="/feed" replace /> : <LandingPage />}
+            element={user ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace /> : <LandingPage />}
           />
           <Route
             path="/auth"
-            element={user ? <Navigate to="/feed" replace /> : <AuthPage />}
+            element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
           {/* Protected */}
@@ -125,7 +125,7 @@ export default function App() {
           {/* Fallback */}
           <Route
             path="*"
-            element={<Navigate to={user ? '/feed' : '/'} replace />}
+            element={<Navigate to={user ? (onboardingNeeded ? '/auth' : '/feed') : '/'} replace />}
           />
         </>
       )}
