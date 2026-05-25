@@ -7,6 +7,14 @@ import { ThemeProvider } from '@/context/ThemeContext'
 import App from './App'
 import './index.css'
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => {
+      registrations.forEach((registration) => registration.update())
+    })
+    .catch(() => {})
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
