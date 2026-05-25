@@ -76,10 +76,10 @@ export const TopBar = ({
                 className="flex items-center gap-2"
                 aria-label="Home"
               >
-                <img
+<img
   src="/icon.png"
   alt="Meckury AI"
-  className="h-7 w-auto rounded-lg object-contain"
+  className="h-7 w-auto rounded-lg object-contain logo-icon"
 />
 <span className="text-lg font-extrabold">Meckury AI</span>
               </button>
