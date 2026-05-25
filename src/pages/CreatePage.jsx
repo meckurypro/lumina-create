@@ -29,7 +29,7 @@ const TOOLS = [
 
 export default function CreatePage() {
   const navigate             = useNavigate()
-  const [activeTab,  setActiveTab]  = useState('canvas')
+  const [activeTab,  setActiveTab]  = useState('tools')
   const [templates,  setTemplates]  = useState([])
   const [loading,    setLoading]    = useState(true)
 
