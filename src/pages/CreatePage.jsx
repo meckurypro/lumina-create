@@ -118,37 +118,40 @@ export default function CreatePage() {
         transition={{ delay: i * 0.08 }}
         whileTap={{ scale: 0.97 }}
         onClick={() => handleToolSelect({ id, label, type })}
-        className="relative flex flex-col items-center justify-center rounded-2xl text-left overflow-hidden transition-all"
+        className="relative flex flex-col items-center justify-center rounded-2xl overflow-hidden transition-all"
         style={{
-          background:   'var(--bg-card)',
-          border:       '1px solid var(--border-color)',
-          aspectRatio:  '3 / 4',
+          background:  'var(--bg-card)',
+          border:      '1px solid var(--border-color)',
+          aspectRatio: '1 / 1',
+          maxWidth:    '220px',
+          width:       '100%',
+          justifySelf: 'center',
         }}
       >
-        {/* Big centered icon */}
-        <div className="flex flex-col items-center justify-center flex-1 w-full gap-4 px-4 pt-6">
+        {/* Icon area */}
+        <div className="flex flex-col items-center justify-center flex-1 w-full px-4 pt-5">
           <div
-            className="rounded-3xl flex items-center justify-center"
+            className="rounded-2xl flex items-center justify-center"
             style={{
-              width:      '60%',
+              width:       '56%',
               aspectRatio: '1 / 1',
-              background: 'linear-gradient(135deg, rgba(249,115,22,0.18), rgba(234,88,12,0.07))',
-              border:     '1px solid rgba(249,115,22,0.25)',
+              background:  'var(--bg-elevated)',
+              border:      '1px solid var(--border-color)',
             }}
           >
             <Icon
-              style={{ width: '45%', height: '45%', color: 'var(--brand)' }}
-              strokeWidth={1.3}
+              style={{ width: '42%', height: '42%', color: 'var(--text-primary)' }}
+              strokeWidth={1.4}
             />
           </div>
         </div>
 
-        {/* Text pinned to bottom */}
-        <div className="w-full px-4 pb-5 pt-2 flex flex-col gap-0.5">
+        {/* Text */}
+        <div className="w-full px-4 pb-4 pt-2 flex flex-col gap-0.5">
           <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
             {label}
           </span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
             {subtitle}
           </span>
         </div>
