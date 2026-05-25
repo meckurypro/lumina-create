@@ -355,8 +355,7 @@ Changes take effect immediately. Failed generations auto-fallback to the other p
 | Pro      | 100     | ₦32,000  |
 | Creator  | 260     | ₦72,000  |
 
-New users receive **5 free credits** on signup. Credits never expire. Failed generations are auto-refunded via DB trigger.
-
+Credits never expire. Failed generations are auto-refunded via DB trigger.
 ---
 
 ## Model Reference
