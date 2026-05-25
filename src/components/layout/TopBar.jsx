@@ -77,11 +77,11 @@ export const TopBar = ({
                 aria-label="Home"
               >
                 <img
-                  src="/icon.png"
-                  alt="Meckury AI"
-                  className="h-9 w-9 rounded-2xl object-cover"
-                />
-                <span className="text-lg font-extrabold">Meckury</span>
+  src="/icon.png"
+  alt="Meckury AI"
+  className="h-7 w-auto rounded-lg object-contain"
+/>
+<span className="text-lg font-extrabold">Meckury AI</span>
               </button>
             ) : null}
           </div>
