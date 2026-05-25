@@ -10,6 +10,8 @@ import { Loader } from '@/components/ui/Modal'
 import { calculateCreditCost } from '@/lib/creditUtils'
 import toast from 'react-hot-toast'
 
+// ── Setting Chips ──────────────────────────────────────────
+
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -33,6 +35,8 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
+// ── Helpers ────────────────────────────────────────────────
+
 function detectAspectRatio(width, height) {
   const ratio = width / height
   if (ratio > 1.6)  return '16:9'
@@ -40,21 +44,21 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// ── Model selector config ──────────────────────────────────
+// ── Model config ───────────────────────────────────────────
 
 const IMAGE_MODELS = [
-  { value: 'flux_schnell',       label: 'FLUX Schnell',    sublabel: 'Fastest',        locked: false },
-  { value: 'flux_dev_ultra_fast',label: 'FLUX Dev UF',     sublabel: 'Balanced',       locked: false },
-  { value: 'z_image_turbo',      label: 'Z-Image Turbo',   sublabel: 'Text-accurate',  locked: false },
-  { value: 'flux_dev',           label: 'FLUX Dev',        sublabel: 'High detail',    locked: false },
-  { value: 'z_image_base',       label: 'Z-Image Base',    sublabel: 'Fine control',   locked: false },
-  { value: 'wan_2_7',            label: 'WAN 2.7',         sublabel: 'Versatile',      locked: false },
-  { value: 'grok_imagine',       label: 'Grok Imagine',    sublabel: 'Coming soon',    locked: true  },
-  { value: 'ernie_image_turbo',  label: 'ERNIE Turbo',     sublabel: 'Coming soon',    locked: true  },
-  { value: 'seedream_v4_5',      label: 'Seedream 4.5',    sublabel: 'Coming soon',    locked: true  },
-  { value: 'gpt_image_2',        label: 'GPT Image 2',     sublabel: 'Coming soon',    locked: true  },
-  { value: 'imagen_4',           label: 'Imagen 4',        sublabel: 'Coming soon',    locked: true  },
-  { value: 'nano_banana_pro',    label: 'Nano Banana Pro', sublabel: 'Coming soon',    locked: true  },
+  { value: 'flux_schnell',        label: 'FLUX Schnell',     sublabel: 'Fastest',       locked: false },
+  { value: 'flux_dev_ultra_fast', label: 'FLUX Dev UF',      sublabel: 'Balanced',      locked: false },
+  { value: 'z_image_turbo',       label: 'Z-Image Turbo',    sublabel: 'Text-accurate', locked: false },
+  { value: 'flux_dev',            label: 'FLUX Dev',         sublabel: 'High detail',   locked: false },
+  { value: 'z_image_base',        label: 'Z-Image Base',     sublabel: 'Fine control',  locked: false },
+  { value: 'wan_2_7',             label: 'WAN 2.7',          sublabel: 'Versatile',     locked: false },
+  { value: 'grok_imagine',        label: 'Grok Imagine',     sublabel: 'Soon',          locked: true  },
+  { value: 'ernie_image_turbo',   label: 'ERNIE Turbo',      sublabel: 'Soon',          locked: true  },
+  { value: 'seedream_v4_5',       label: 'Seedream 4.5',     sublabel: 'Soon',          locked: true  },
+  { value: 'gpt_image_2',         label: 'GPT Image 2',      sublabel: 'Soon',          locked: true  },
+  { value: 'imagen_4',            label: 'Imagen 4',         sublabel: 'Soon',          locked: true  },
+  { value: 'nano_banana_pro',     label: 'Nano Banana Pro',  sublabel: 'Soon',          locked: true  },
 ]
 
 // ── Model Dropdown ─────────────────────────────────────────
@@ -72,58 +76,73 @@ const ModelDropdown = ({ value, onChange }) => {
       >
         <span>{selected.label}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path
+            d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
+            stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round"
+          />
         </svg>
       </button>
 
       <AnimatePresence>
         {open && (
           <>
-            {/* backdrop */}
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-
             <motion.div
               initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.15 }}
-              className="absolute right-0 top-10 z-50 w-56 rounded-2xl overflow-hidden py-1"
+              animate={{ opacity: 1, y: 0,  scale: 1    }}
+              exit={{    opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.13 }}
+              className="absolute right-0 top-9 z-50 w-52 rounded-2xl overflow-hidden"
               style={{
-                background:  'var(--bg-card)',
-                border:      '1px solid var(--border-color)',
-                boxShadow:   '0 8px 32px rgba(0,0,0,0.24)',
+                background: 'var(--bg-card)',
+                border:     '1px solid var(--border-color)',
+                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
               }}
             >
-              {IMAGE_MODELS.map((model) => (
-                <button
-                  key={model.value}
-                  onClick={() => {
-                    if (!model.locked) { onChange(model.value); setOpen(false) }
-                  }}
-                  disabled={model.locked}
-                  className="w-full flex items-center justify-between px-4 py-3 transition-colors text-left"
-                  style={{
-                    opacity:    model.locked ? 0.4 : 1,
-                    cursor:     model.locked ? 'not-allowed' : 'pointer',
-                    background: model.value === value && !model.locked ? 'var(--bg-elevated)' : 'transparent',
-                  }}
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {/* Selectable models */}
+              <div className="py-1">
+                {IMAGE_MODELS.filter(m => !m.locked).map((model) => (
+                  <button
+                    key={model.value}
+                    onClick={() => { onChange(model.value); setOpen(false) }}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
+                    style={{
+                      background: model.value === value ? 'var(--bg-elevated)' : 'transparent',
+                    }}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {model.label}
+                      </p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {model.sublabel}
+                      </p>
+                    </div>
+                    {model.value === value && (
+                      <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
+
+              {/* Locked models — compact single line */}
+              <div className="py-1">
+                {IMAGE_MODELS.filter(m => m.locked).map((model) => (
+                  <div
+                    key={model.value}
+                    className="flex items-center justify-between px-4 py-2"
+                  >
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
                       {model.label}
-                    </span>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {model.sublabel}
-                    </span>
+                    </p>
+                    <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                   </div>
-                  {model.locked
-                    ? <span className="text-xs">🔒</span>
-                    : model.value === value
-                      ? <span style={{ color: 'var(--brand)' }}>✓</span>
-                      : null
-                  }
-                </button>
-              ))}
+                ))}
+              </div>
             </motion.div>
           </>
         )}
@@ -139,13 +158,13 @@ export default function CreateImagePage() {
   const { credits }                     = useAuth()
   const { generate, status, isLoading } = useGenerate()
 
-  const [prompt,       setPrompt]       = useState('')
-  const [referenceImg, setReferenceImg] = useState(null)
-  const [imgDimensions,setImgDimensions]= useState(null) // { width, height }
-  const [aspectRatio,  setAspectRatio]  = useState('9:16')
-  const [autoRatio,    setAutoRatio]    = useState(false)
-  const [model,        setModel]        = useState('flux_dev_ultra_fast')
-  const [fullscreen,   setFullscreen]   = useState(false)
+  const [prompt,        setPrompt]        = useState('')
+  const [referenceImg,  setReferenceImg]  = useState(null)
+  const [imgDimensions, setImgDimensions] = useState(null)
+  const [aspectRatio,   setAspectRatio]   = useState('9:16')
+  const [autoRatio,     setAutoRatio]     = useState(false)
+  const [model,         setModel]         = useState('flux_dev_ultra_fast')
+  const [fullscreen,    setFullscreen]    = useState(false)
 
   const type             = referenceImg ? 'image_to_image' : 'text_to_image'
   const estimatedCredits = calculateCreditCost(type, { imageCount: 1 })
@@ -157,8 +176,7 @@ export default function CreateImagePage() {
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.onload = () => {
-      const detected = detectAspectRatio(img.width, img.height)
-      setAspectRatio(detected)
+      setAspectRatio(detectAspectRatio(img.width, img.height))
       setAutoRatio(true)
       setImgDimensions({ width: img.width, height: img.height })
     }
@@ -173,24 +191,14 @@ export default function CreateImagePage() {
     setAspectRatio('9:16')
   }
 
-  // Compute natural aspect ratio style for the uploaded image card
-  const imageCardStyle = imgDimensions
-    ? { aspectRatio: `${imgDimensions.width} / ${imgDimensions.height}`, maxHeight: '320px' }
-    : { aspectRatio: '1 / 1', maxWidth: '160px' }
-
   const handleGenerate = async () => {
     if (!prompt.trim()) return toast.error('Enter a prompt')
     if (!canAfford)     return toast.error('Not enough credits')
-
     const result = await generate({
-      type,
-      prompt,
+      type, prompt,
       startFrame:  referenceImg?.file || null,
-      aspectRatio,
-      duration:    null,
-      model,
+      aspectRatio, duration: null, model,
     })
-
     if (result) {
       navigate(`/result/${result.generationId}`, {
         state: { outputUrl: result.outputUrl, outputType: result.outputType },
@@ -198,18 +206,37 @@ export default function CreateImagePage() {
     }
   }
 
+  // Natural aspect ratio for uploaded image card — capped at 280px tall
+  const cardAspectRatio = imgDimensions
+    ? `${imgDimensions.width} / ${imgDimensions.height}`
+    : '1 / 1'
+
+  const cardMaxWidth = imgDimensions
+    ? imgDimensions.width > imgDimensions.height
+      ? '100%'      // landscape — full width
+      : '200px'     // portrait or square — constrained
+    : '140px'       // placeholder
+
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)' }}
       >
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+        <button
+          onClick={() => navigate(-1)}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Image</h1>
+
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Create Image
+        </h1>
+
         <div className="flex items-center gap-2">
           <ModelDropdown value={model} onChange={setModel} />
           <div
@@ -222,7 +249,7 @@ export default function CreateImagePage() {
         </div>
       </div>
 
-      {/* Loading overlay */}
+      {/* ── Loading overlay ── */}
       <AnimatePresence>
         {isLoading && (
           <motion.div
@@ -249,7 +276,7 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* Fullscreen image viewer */}
+      {/* ── Fullscreen viewer ── */}
       <AnimatePresence>
         {fullscreen && referenceImg && (
           <motion.div
@@ -257,7 +284,7 @@ export default function CreateImagePage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(12px)' }}
+            style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(12px)' }}
             onClick={() => setFullscreen(false)}
           >
             <button
@@ -268,9 +295,9 @@ export default function CreateImagePage() {
               <X size={18} />
             </button>
             <motion.img
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.93, opacity: 0 }}
+              animate={{ scale: 1,    opacity: 1 }}
+              exit={{    scale: 0.93, opacity: 0 }}
               src={referenceImg.url}
               alt="Reference full"
               className="rounded-2xl"
@@ -281,79 +308,82 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* Scrollable content */}
+      {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-5">
 
-          {/* Reference image upload */}
+          {/* Reference image */}
           <div>
-            <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Reference Image{' '}
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                — optional
-              </span>
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
             </p>
 
-            {referenceImg ? (
-              <div className="relative inline-block" style={{ maxWidth: '100%' }}>
-                {/* Image card — matches uploaded image's natural aspect ratio */}
-                <div
-                  className="relative overflow-hidden rounded-2xl cursor-pointer"
-                  style={{ ...imageCardStyle, width: '100%' }}
-                  onClick={() => setFullscreen(true)}
-                >
-                  <img
-                    src={referenceImg.url}
-                    alt="Reference"
-                    className="w-full h-full"
-                    style={{ objectFit: 'contain', background: 'var(--bg-elevated)' }}
-                  />
-
-                  {/* Expand hint */}
+            {/* Centered container */}
+            <div className="flex justify-center">
+              {referenceImg ? (
+                <div className="relative" style={{ width: '100%', maxWidth: cardMaxWidth }}>
+                  {/* Image card */}
                   <div
-                    className="absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
+                    className="relative overflow-hidden rounded-2xl cursor-pointer w-full"
+                    style={{
+                      aspectRatio: cardAspectRatio,
+                      maxHeight:   '300px',
+                      background:  'var(--bg-elevated)',
+                    }}
+                    onClick={() => setFullscreen(true)}
                   >
-                    <Maximize2 size={12} />
-                  </div>
-
-                  {/* Aspect ratio badge */}
-                  {autoRatio && (
+                    <img
+                      src={referenceImg.url}
+                      alt="Reference"
+                      className="w-full h-full"
+                      style={{ objectFit: 'contain' }}
+                    />
+                    {/* Expand icon */}
                     <div
-                      className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium"
+                      className="absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
                     >
-                      {aspectRatio}
+                      <Maximize2 size={11} />
                     </div>
-                  )}
-                </div>
+                    {/* Aspect ratio badge */}
+                    {autoRatio && (
+                      <div
+                        className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
+                      >
+                        {aspectRatio}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Remove button — sits outside the card, top-right */}
-                <button
-                  onClick={handleRemoveImage}
-                  className="absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center z-10"
-                  style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+                  {/* Remove button — outside card, top-right */}
+                  <button
+                    onClick={handleRemoveImage}
+                    className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
+                    style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  className="flex flex-col items-center justify-center cursor-pointer rounded-2xl transition-all"
+                  style={{
+                    width:       '140px',
+                    aspectRatio: '1 / 1',
+                    border:      '1.5px dashed var(--border-color)',
+                    background:  'var(--bg-card)',
+                  }}
                 >
-                  <X size={13} />
-                </button>
-              </div>
-            ) : (
-              <label
-                className="flex flex-col items-center justify-center cursor-pointer transition-all rounded-2xl"
-                style={{
-                  aspectRatio: '1 / 1',
-                  maxWidth:    '160px',
-                  border:      '1.5px dashed var(--border-color)',
-                  background:  'var(--bg-card)',
-                }}
-              >
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                <ImagePlus size={22} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-                <span className="text-xs font-medium text-center px-2" style={{ color: 'var(--text-muted)' }}>
-                  Add reference
-                </span>
-              </label>
-            )}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  <ImagePlus size={22} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    Add reference
+                  </span>
+                </label>
+              )}
+            </div>
           </div>
 
           {/* Prompt */}
@@ -366,7 +396,7 @@ export default function CreateImagePage() {
             maxLength={500}
           />
 
-          {/* Settings */}
+          {/* Aspect ratio */}
           <div className="pt-1">
             <SettingChips
               label="Aspect Ratio"
@@ -383,8 +413,11 @@ export default function CreateImagePage() {
         </div>
       </div>
 
-      {/* Generate button */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+      {/* ── Generate button ── */}
+      <div
+        className="flex-shrink-0 px-4 lg:px-8 py-4"
+        style={{ borderTop: '1px solid var(--border-color)' }}
+      >
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
@@ -402,7 +435,11 @@ export default function CreateImagePage() {
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+              <button
+                onClick={() => navigate('/profile')}
+                className="font-semibold"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 Top up
               </button>
             </p>
@@ -412,4 +449,4 @@ export default function CreateImagePage() {
 
     </div>
   )
-              }
+                    }
