@@ -72,10 +72,10 @@ export default function LandingPage() {
       >
         <div className="flex items-center gap-2">
           <img
-            src="/icon.png"
-            alt="Meckury AI"
-            className="h-7 w-auto rounded-lg object-contain"
-          />
+  src="/icon.png"
+  alt="Meckury AI"
+  className="h-7 w-auto rounded-lg object-contain logo-icon"
+/>
           <span className="font-bold text-base tracking-tight">Meckury AI</span>
         </div>
 
