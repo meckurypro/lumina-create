@@ -24,9 +24,7 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
       </div>
       <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</span>
     </div>
-    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-      {value}
-    </p>
+    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
     {sub && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
   </div>
 )
@@ -34,13 +32,13 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 // ─── Prompt Editor ────────────────────────────────────────
 
 const PromptEditor = ({ template, onSave }) => {
-  const { user }                           = useAuth()
-  const [prompts,       setPrompts]        = useState([])
-  const [editingPrompt, setEditingPrompt]  = useState('')
-  const [editingNotes,  setEditingNotes]   = useState('')
-  const [isEditing,     setIsEditing]      = useState(false)
-  const [saving,        setSaving]         = useState(false)
-  const [loading,       setLoading]        = useState(true)
+  const { user }                          = useAuth()
+  const [prompts,       setPrompts]       = useState([])
+  const [editingPrompt, setEditingPrompt] = useState('')
+  const [editingNotes,  setEditingNotes]  = useState('')
+  const [isEditing,     setIsEditing]     = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [loading,       setLoading]       = useState(true)
 
   const loadPrompts = useCallback(async () => {
     const { data } = await supabase
@@ -90,9 +88,7 @@ const PromptEditor = ({ template, onSave }) => {
     <div className="rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
       <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
         <div>
-          <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>
-            {template.name}
-          </h3>
+          <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{template.name}</h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
             {prompts.length} version{prompts.length !== 1 ? 's' : ''} · Used {template.usage_count ?? 0} times
           </p>
@@ -146,9 +142,7 @@ const PromptEditor = ({ template, onSave }) => {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>v{p.version_number}</span>
                   {p.is_active && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(249,115,22,0.15)', color: 'var(--brand)' }}>
-                      Active
-                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(249,115,22,0.15)', color: 'var(--brand)' }}>Active</span>
                   )}
                   <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{new Date(p.created_at).toLocaleDateString()}</span>
                 </div>
@@ -171,12 +165,11 @@ const PromptEditor = ({ template, onSave }) => {
   )
 }
 
-// ─── Template Visibility + Asset Manager ─────────────────
+// ─── Template Manager ─────────────────────────────────────
 
 const TemplateManager = ({ templates, onRefresh }) => {
-  const { user }                      = useAuth()
-  const [uploading, setUploading]     = useState({})
-  const [assets, setAssets]           = useState({})
+  const [uploading, setUploading] = useState({})
+  const [assets,    setAssets]    = useState({})
 
   const loadAssets = useCallback(async (templateId) => {
     const { data } = await supabase
@@ -215,27 +208,17 @@ const TemplateManager = ({ templates, onRefresh }) => {
   const handleAssetUpload = async (template, assetKey, file) => {
     const key = `${template.id}_${assetKey}`
     setUploading((prev) => ({ ...prev, [key]: true }))
-
     const ext  = file.name.split('.').pop()
     const path = `${template.id}/${assetKey}.${ext}`
-
     const { error: storageErr } = await supabase.storage
       .from('template-assets')
       .upload(path, file, { upsert: true, cacheControl: '3600' })
-
-    if (storageErr) {
-      toast.error('Upload failed')
-      setUploading((prev) => ({ ...prev, [key]: false }))
-      return
-    }
-
+    if (storageErr) { toast.error('Upload failed'); setUploading((prev) => ({ ...prev, [key]: false })); return }
     const { data: { publicUrl } } = supabase.storage.from('template-assets').getPublicUrl(path)
-
     await supabase.from('template_assets').upsert(
       { template_id: template.id, asset_key: assetKey, file_name: file.name, file_type: file.type, storage_path: path, public_url: publicUrl, updated_at: new Date().toISOString() },
       { onConflict: 'template_id,asset_key' }
     )
-
     toast.success('Asset uploaded!')
     setUploading((prev) => ({ ...prev, [key]: false }))
     loadAssets(template.id)
@@ -253,84 +236,45 @@ const TemplateManager = ({ templates, onRefresh }) => {
       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
         Toggle visibility between PromptIQ (staff-only) and Public. Upload or replace media assets per template.
       </p>
-
       {templates.map((template) => {
-        const isPromptIQ = template.visibility === 'promptiq'
+        const isPromptIQ     = template.visibility === 'promptiq'
         const templateAssets = assets[template.id] || []
-
         return (
-          <div
-            key={template.id}
-            className="rounded-2xl overflow-hidden"
-            style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}
-          >
-            {/* Header row */}
+          <div key={template.id} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
             <div className="flex items-center gap-3 p-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-              {/* Thumbnail */}
-              <div
-                className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
-                style={{ background: 'rgba(249,115,22,0.1)' }}
-              >
+              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ background: 'rgba(249,115,22,0.1)' }}>
                 {template.thumbnail_url
                   ? <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover" />
-                  : <Zap size={20} style={{ color: 'var(--brand)' }} />
-                }
+                  : <Zap size={20} style={{ color: 'var(--brand)' }} />}
               </div>
-
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                  {template.name}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  {template.usage_count ?? 0} uses
-                </p>
+                <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{template.name}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{template.usage_count ?? 0} uses</p>
               </div>
-
-              {/* Controls */}
               <div className="flex items-center gap-2">
-                {/* Active toggle */}
                 <button
                   onClick={() => handleToggleActive(template)}
                   className="text-xs px-2 py-1 rounded-lg font-semibold"
-                  style={{
-                    background: template.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                    color:      template.is_active ? '#10b981' : '#ef4444',
-                  }}
+                  style={{ background: template.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: template.is_active ? '#10b981' : '#ef4444' }}
                 >
                   {template.is_active ? 'Live' : 'Hidden'}
                 </button>
-
-                {/* Visibility toggle */}
                 <button
                   onClick={() => handleToggleVisibility(template)}
                   className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl font-bold transition-all"
-                  style={{
-                    background: isPromptIQ ? 'rgba(249,115,22,0.12)' : 'rgba(16,185,129,0.12)',
-                    color:      isPromptIQ ? 'var(--brand)' : '#10b981',
-                  }}
-                  title={isPromptIQ ? 'Move to Public' : 'Move to PromptIQ'}
+                  style={{ background: isPromptIQ ? 'rgba(249,115,22,0.12)' : 'rgba(16,185,129,0.12)', color: isPromptIQ ? 'var(--brand)' : '#10b981' }}
                 >
                   {isPromptIQ ? <Lock size={11} /> : <Unlock size={11} />}
                   {isPromptIQ ? 'PromptIQ' : 'Public'}
                 </button>
               </div>
             </div>
-
-            {/* Asset management */}
             <div className="p-4">
-              <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
-                Media Assets
-              </p>
-
-              {/* Existing assets */}
+              <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Media Assets</p>
               {templateAssets.length > 0 && (
                 <div className="flex flex-col gap-2 mb-3">
                   {templateAssets.map((asset) => (
-                    <div
-                      key={asset.id}
-                      className="flex items-center gap-3 p-2 rounded-xl"
-                      style={{ background: 'var(--bg-elevated)' }}
-                    >
+                    <div key={asset.id} className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                       {asset.file_type?.startsWith('image/') ? (
                         <img src={asset.public_url} alt={asset.asset_key} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                       ) : (
@@ -339,16 +283,13 @@ const TemplateManager = ({ templates, onRefresh }) => {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                          {asset.asset_key}
-                        </p>
+                        <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{asset.asset_key}</p>
                         <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{asset.file_name}</p>
                       </div>
                       <button
                         onClick={() => handleDeleteAsset(template.id, asset.asset_key, asset.storage_path)}
                         className="p-1.5 rounded-lg"
                         style={{ color: '#ef4444', background: 'rgba(239,68,68,0.1)' }}
-                        aria-label="Delete asset"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -356,16 +297,12 @@ const TemplateManager = ({ templates, onRefresh }) => {
                   ))}
                 </div>
               )}
-
-              {/* Upload new asset */}
               <label
                 className="flex items-center gap-2 w-full py-2.5 px-3 rounded-xl cursor-pointer transition-colors"
                 style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--border)' }}
               >
                 <Upload size={14} style={{ color: 'var(--brand)' }} />
-                <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                  Upload asset (thumbnail, audio, overlay…)
-                </span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Upload asset (thumbnail, audio, overlay…)</span>
                 <input
                   type="file"
                   accept="image/*,video/*,audio/*"
@@ -383,6 +320,112 @@ const TemplateManager = ({ templates, onRefresh }) => {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Models Manager ───────────────────────────────────────
+
+const ModelsManager = () => {
+  const [models,  setModels]  = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(null)
+
+  const loadModels = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('models')
+      .select('*')
+      .eq('type', 'image')
+      .order('sort_order')
+    setModels(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { loadModels() }, [loadModels])
+
+  const handleToggleLock = async (model) => {
+    setSaving(model.id)
+    const { error } = await supabase
+      .from('models')
+      .update({ is_locked: !model.is_locked, updated_at: new Date().toISOString() })
+      .eq('id', model.id)
+    setSaving(null)
+    if (error) { toast.error('Failed to update model'); return }
+    toast.success(model.is_locked ? `${model.label} unlocked` : `${model.label} locked`)
+    loadModels()
+  }
+
+  if (loading) return <Skeleton className="h-64 w-full" />
+
+  const unlocked = models.filter((m) => !m.is_locked)
+  const locked   = models.filter((m) =>  m.is_locked)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+        Unlock models to make them available to users. Locked models appear in the dropdown as "Coming Soon."
+      </p>
+
+      {/* Unlocked */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+          Available to users ({unlocked.length})
+        </p>
+        <div className="flex flex-col gap-2">
+          {unlocked.map((model) => (
+            <div
+              key={model.id}
+              className="flex items-center gap-3 p-3 rounded-2xl"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
+              </div>
+              <button
+                onClick={() => handleToggleLock(model)}
+                disabled={saving === model.id}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-semibold"
+                style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+              >
+                <Lock size={11} />
+                {saving === model.id ? '…' : 'Lock'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Locked */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+          Locked / Coming Soon ({locked.length})
+        </p>
+        <div className="flex flex-col gap-2">
+          {locked.map((model) => (
+            <div
+              key={model.id}
+              className="flex items-center gap-3 p-3 rounded-2xl"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', opacity: 0.7 }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
+              </div>
+              <button
+                onClick={() => handleToggleLock(model)}
+                disabled={saving === model.id}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-semibold"
+                style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}
+              >
+                <Unlock size={11} />
+                {saving === model.id ? '…' : 'Unlock'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -415,31 +458,27 @@ const FeedModerationItem = ({ post, onApprove, onReject }) => (
 // ─── Staff Manager ────────────────────────────────────────
 
 const StaffManager = () => {
-  const { user }                      = useAuth()
-  const [staffList,    setStaffList]  = useState([])
-  const [allUsers,     setAllUsers]   = useState([])
-  const [poolBalance,  setPoolBalance] = useState(null)
-  const [loading,      setLoading]    = useState(true)
-  const [searchQuery,  setSearchQuery] = useState('')
-  const [promoting,    setPromoting]  = useState(null)
+  const { user }                       = useAuth()
+  const [staffList,   setStaffList]    = useState([])
+  const [allUsers,    setAllUsers]     = useState([])
+  const [poolBalance, setPoolBalance]  = useState(null)
+  const [loading,     setLoading]      = useState(true)
+  const [searchQuery, setSearchQuery]  = useState('')
+  const [promoting,   setPromoting]    = useState(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
-
     const [staffRes, usersRes] = await Promise.all([
       supabase.from('profiles').select('id, username, display_name, avatar_url, credits, total_generations').eq('is_staff', true).order('username'),
       supabase.from('profiles').select('id, username, display_name, credits').eq('is_staff', false).neq('role', 'admin').order('username').limit(50),
     ])
-
-    setStaffList(staffRes.data  || [])
-    setAllUsers(usersRes.data   || [])
-
+    setStaffList(staffRes.data || [])
+    setAllUsers(usersRes.data  || [])
     const { data: poolSetting } = await supabase.from('app_settings').select('value').eq('key', 'staff_pool_user_id').single()
     if (poolSetting?.value) {
       const { data: poolProfile } = await supabase.from('profiles').select('credits, username').eq('id', poolSetting.value).single()
       setPoolBalance(poolProfile?.credits ?? null)
     }
-
     setLoading(false)
   }, [])
 
@@ -447,11 +486,7 @@ const StaffManager = () => {
 
   const handlePromote = async (userId, username) => {
     setPromoting(userId)
-    const { data, error } = await supabase.rpc('promote_to_staff', {
-      p_admin_id: user.id,
-      p_user_id:  userId,
-      p_note:     'Promoted via Admin Panel',
-    })
+    const { data, error } = await supabase.rpc('promote_to_staff', { p_admin_id: user.id, p_user_id: userId, p_note: 'Promoted via Admin Panel' })
     setPromoting(null)
     if (error || !data?.success) { toast.error('Failed to promote user'); return }
     toast.success(`@${username} is now staff!`)
@@ -459,25 +494,18 @@ const StaffManager = () => {
   }
 
   const handleDemote = async (userId, username) => {
-    const { data, error } = await supabase.rpc('demote_from_staff', {
-      p_admin_id: user.id,
-      p_user_id:  userId,
-    })
+    const { data, error } = await supabase.rpc('demote_from_staff', { p_admin_id: user.id, p_user_id: userId })
     if (error || !data?.success) { toast.error('Failed to demote user'); return }
     toast.success(`@${username} removed from staff`)
     loadData()
   }
 
-  const filteredUsers = allUsers.filter((u) =>
-    u.username?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredUsers = allUsers.filter((u) => u.username?.toLowerCase().includes(searchQuery.toLowerCase()))
 
   if (loading) return <Skeleton className="h-64 w-full" />
 
   return (
     <div className="flex flex-col gap-5">
-
-      {/* Pool balance */}
       <div className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Zap size={14} fill="var(--brand)" style={{ color: 'var(--brand)' }} />
@@ -486,16 +514,11 @@ const StaffManager = () => {
         <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
           {poolBalance !== null ? `⚡ ${Math.floor(poolBalance)} credits` : 'Not configured'}
         </p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Set staff_pool_user_id in app_settings to configure a dedicated pool account.
-        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Set staff_pool_user_id in app_settings to configure a dedicated pool account.</p>
       </div>
 
-      {/* Current staff */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
-          Current Staff ({staffList.length})
-        </p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>Current Staff ({staffList.length})</p>
         {staffList.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No staff members yet.</p>
         ) : (
@@ -509,11 +532,7 @@ const StaffManager = () => {
                   <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{s.username}</p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ {s.credits?.toFixed(1)} credits · {s.total_generations} gens</p>
                 </div>
-                <button
-                  onClick={() => handleDemote(s.id, s.username)}
-                  className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
-                >
+                <button onClick={() => handleDemote(s.id, s.username)} className="text-xs px-3 py-1.5 rounded-xl font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
                   Remove
                 </button>
               </div>
@@ -522,17 +541,9 @@ const StaffManager = () => {
         )}
       </div>
 
-      {/* Promote a user */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
-          Promote User to Staff
-        </p>
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by username…"
-          className="input-base text-sm w-full mb-3"
-        />
+        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>Promote User to Staff</p>
+        <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by username…" className="input-base text-sm w-full mb-3" />
         <div className="flex flex-col gap-2 max-h-60 overflow-y-auto no-scrollbar">
           {filteredUsers.map((u) => (
             <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
@@ -543,12 +554,7 @@ const StaffManager = () => {
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{u.username}</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ {u.credits?.toFixed(1)} credits</p>
               </div>
-              <button
-                onClick={() => handlePromote(u.id, u.username)}
-                disabled={promoting === u.id}
-                className="text-xs px-3 py-1.5 rounded-xl font-bold"
-                style={{ background: 'rgba(249,115,22,0.12)', color: 'var(--brand)' }}
-              >
+              <button onClick={() => handlePromote(u.id, u.username)} disabled={promoting === u.id} className="text-xs px-3 py-1.5 rounded-xl font-bold" style={{ background: 'rgba(249,115,22,0.12)', color: 'var(--brand)' }}>
                 {promoting === u.id ? '…' : 'Promote'}
               </button>
             </div>
@@ -617,9 +623,9 @@ const ProviderSettings = () => {
         Changes apply instantly to all new generations. Failed generations automatically fall back to the other provider.
       </p>
       <ToggleGroup label="Active Provider" settingKey="active_provider" description="Primary AI provider for all generation requests." options={[{ value: 'fal', label: 'fal.ai' }, { value: 'wavespeed', label: 'WaveSpeed' }]} />
-      <ToggleGroup label="Kling Model" settingKey="model_kling" options={[{ value: 'kling_2_5', label: 'Kling 2.5' }, { value: 'kling_3_0', label: 'Kling 3.0' }]} />
-      <ToggleGroup label="Seedance Model" settingKey="model_seedance" options={[{ value: 'seedance_1_5', label: 'Seedance 1.5' }, { value: 'seedance_2_0', label: 'Seedance 2.0' }]} />
-      <ToggleGroup label="Image Model" settingKey="model_image" options={[{ value: 'imagen_3_fast', label: 'Imagen 3 Fast' }, { value: 'imagen_3', label: 'Imagen 3' }]} />
+      <ToggleGroup label="Kling Model"     settingKey="model_kling"     options={[{ value: 'kling_2_5',    label: 'Kling 2.5'     }, { value: 'kling_3_0',    label: 'Kling 3.0'     }]} />
+      <ToggleGroup label="Seedance Model"  settingKey="model_seedance"  options={[{ value: 'seedance_1_5', label: 'Seedance 1.5'  }, { value: 'seedance_2_0', label: 'Seedance 2.0'  }]} />
+      <ToggleGroup label="Image Model"     settingKey="model_image"     options={[{ value: 'imagen_3_fast', label: 'Imagen 3 Fast'}, { value: 'imagen_3',     label: 'Imagen 3'      }]} />
     </div>
   )
 }
@@ -630,6 +636,7 @@ const TABS = (pendingCount) => [
   { id: 'dashboard', label: 'Dashboard'              },
   { id: 'prompts',   label: 'Prompts'                },
   { id: 'templates', label: 'Templates'              },
+  { id: 'models',    label: 'Models'                 },
   { id: 'staff',     label: 'Staff'                  },
   { id: 'feed',      label: `Feed (${pendingCount})` },
   { id: 'users',     label: 'Users'                  },
@@ -639,14 +646,14 @@ const TABS = (pendingCount) => [
 // ─── Admin Page ───────────────────────────────────────────
 
 export default function AdminPage() {
-  const navigate        = useNavigate()
-  const { user }        = useAuth()
-  const [activeTab,     setActiveTab]    = useState('dashboard')
-  const [stats,         setStats]        = useState(null)
-  const [templates,     setTemplates]    = useState([])
-  const [pendingPosts,  setPendingPosts] = useState([])
-  const [recentUsers,   setRecentUsers]  = useState([])
-  const [loading,       setLoading]      = useState(true)
+  const navigate       = useNavigate()
+  const { user }       = useAuth()
+  const [activeTab,    setActiveTab]    = useState('dashboard')
+  const [stats,        setStats]        = useState(null)
+  const [templates,    setTemplates]    = useState([])
+  const [pendingPosts, setPendingPosts] = useState([])
+  const [recentUsers,  setRecentUsers]  = useState([])
+  const [loading,      setLoading]      = useState(true)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -684,18 +691,16 @@ export default function AdminPage() {
   return (
     <div className="page-container min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
       <div className="sticky top-0 z-40 flex items-center gap-3 px-4 h-14" style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}>
-        <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }} aria-label="Back to profile">
+        <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
         <h1 className="text-base font-bold flex-1" style={{ color: 'var(--text-primary)' }}>Admin Panel</h1>
-        <button onClick={loadData} className="p-2 rounded-xl" style={{ color: 'var(--text-muted)' }} aria-label="Refresh data">
+        <button onClick={loadData} className="p-2 rounded-xl" style={{ color: 'var(--text-muted)' }}>
           <RotateCcw size={16} />
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto px-4 py-3 no-scrollbar" style={{ borderBottom: '1px solid var(--border)' }}>
         {tabs.map((tab) => (
           <button
@@ -714,7 +719,6 @@ export default function AdminPage() {
 
       <div className="px-4 py-5 pb-24">
 
-        {/* Dashboard */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {loading ? (
@@ -722,12 +726,12 @@ export default function AdminPage() {
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 gap-3 mb-4">
-                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}           sub={`+${stats.new_users_today} today`} />
-                  <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}      sub={`${stats.generations_today} today`}  color="#8b5cf6" />
-                  <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                sub="Today"                               color="#10b981" />
-                  <StatCard icon={AlertTriangle} label="Failed today"      value={stats.failed_today}                            sub="Auto-refunded"                       color="#ef4444" />
-                  <StatCard icon={DollarSign}    label="Revenue (NGN)"     value={`₦${stats.total_revenue_ngn?.toLocaleString()}`} sub={`₦${stats.revenue_today_ngn?.toLocaleString()} today`} color="#10b981" />
-                  <StatCard icon={Clock}         label="Pending feed"      value={stats.pending_feed_posts}                      sub="Awaiting review"                     color="#eab308" />
+                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}              sub={`+${stats.new_users_today} today`}                           />
+                  <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}         sub={`${stats.generations_today} today`}    color="#8b5cf6"       />
+                  <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                   sub="Today"                                 color="#10b981"       />
+                  <StatCard icon={AlertTriangle} label="Failed today"      value={stats.failed_today}                               sub="Auto-refunded"                         color="#ef4444"       />
+                  <StatCard icon={DollarSign}    label="Revenue (NGN)"     value={`₦${stats.total_revenue_ngn?.toLocaleString()}`}  sub={`₦${stats.revenue_today_ngn?.toLocaleString()} today`} color="#10b981" />
+                  <StatCard icon={Clock}         label="Pending feed"      value={stats.pending_feed_posts}                         sub="Awaiting review"                       color="#eab308"       />
                 </div>
                 <StatCard icon={Users} label="Active users today" value={stats.active_users_today} color="#06b6d4" />
               </>
@@ -737,33 +741,33 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Prompts */}
         {activeTab === 'prompts' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-              Edit template prompts. Changes apply instantly to all new generations.
-            </p>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Edit template prompts. Changes apply instantly to all new generations.</p>
             {templates.map((template) => (
               <PromptEditor key={template.id} template={template} onSave={loadData} />
             ))}
           </motion.div>
         )}
 
-        {/* Templates */}
         {activeTab === 'templates' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <TemplateManager templates={templates} onRefresh={loadData} />
           </motion.div>
         )}
 
-        {/* Staff */}
+        {activeTab === 'models' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <ModelsManager />
+          </motion.div>
+        )}
+
         {activeTab === 'staff' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <StaffManager />
           </motion.div>
         )}
 
-        {/* Feed Moderation */}
         {activeTab === 'feed' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {pendingPosts.length === 0 ? (
@@ -779,7 +783,6 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Users */}
         {activeTab === 'users' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex flex-col gap-2">
@@ -801,7 +804,6 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Settings */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ProviderSettings />
