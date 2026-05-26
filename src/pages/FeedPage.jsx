@@ -12,21 +12,14 @@ import toast from 'react-hot-toast'
 
 // ─── Aspect Ratio Helpers ─────────────────────────────────
 
-/**
- * Classify a width/height pair into 'tall' | 'square' | 'wide'.
- */
 const classify = (w, h) => {
   if (!w || !h) return 'square'
   const ratio = w / h
-  if (ratio < 0.8)  return 'tall'   // 9:16 and anything taller than ~4:5
-  if (ratio > 1.25) return 'wide'   // 16:9 and anything wider than ~5:4
+  if (ratio < 0.8)  return 'tall'
+  if (ratio > 1.25) return 'wide'
   return 'square'
 }
 
-/**
- * Also check post.output_aspect_ratio string if present,
- * as a cheap first-pass before the image loads.
- */
 const classifyFromMeta = (post) => {
   const ar = post.output_aspect_ratio
   if (!ar) return null
@@ -38,49 +31,47 @@ const classifyFromMeta = (post) => {
   return null
 }
 
-// ─── Layout Engine ────────────────────────────────────────
+// ─── Sort trending into buckets ───────────────────────────
 
 /**
- * Pack posts (each with a known arClass) into row descriptors.
- *
- * Row types:
- *   { type: 'pair',       left: post,  right: post | null }
- *   { type: 'tall-left',  tall: post,  stack: post[] }   ← 1-2 companions on the right
- *   { type: 'tall-right', tall: post,  stack: post[] }   ← 1-2 companions on the left
- *
- * A tall card consumes itself + up to 2 companions (the stacked column).
- * Non-tall posts are paired side-by-side.
+ * Given up to 6 posts (each with a known arClass),
+ * returns { tall, wide, squares[] } picking by likes_count desc.
  */
-const packIntoRows = (posts, arMap) => {
-  const rows = []
-  let i = 0
-  let tallLeftCount = 0
-  let tallRightCount = 0
+const bucketPosts = (posts, arMap) => {
+  const scored = [...posts].sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0))
+  let tall = null
+  let wide = null
+  const squares = []
 
-  while (i < posts.length) {
-    const post = posts[i]
-    const ar   = arMap[post.id] || 'square'
-
-    if (ar === 'tall') {
-      const companions = []
-      let j = i + 1
-      while (companions.length < 2 && j < posts.length) {
-        companions.push(posts[j++])
-      }
-      // Alternate sides
-      const side = tallLeftCount <= tallRightCount ? 'tall-left' : 'tall-right'
-      if (side === 'tall-left') tallLeftCount++
-      else tallRightCount++
-      rows.push({ type: side, tall: post, stack: companions })
-      i = j
-    } else {
-      const next = posts[i + 1]
-      rows.push({ type: 'pair', left: post, right: next || null })
-      i += next ? 2 : 1
-    }
+  for (const post of scored) {
+    const ar = arMap[post.id] || 'square'
+    if (ar === 'tall' && !tall) { tall = post; continue }
+    if (ar === 'wide' && !wide) { wide = post; continue }
+    squares.push(post)
   }
 
-  return rows
+  return { tall, wide, squares }
+}
+
+/**
+ * Build the two slides from bucketed posts.
+ * Slide 1: winner (tall vs wide by likes) + squares[0] + squares[1]
+ * Slide 2: loser + squares[2] + squares[3]
+ */
+const buildSlides = (tall, wide, squares) => {
+  const tallLikes  = tall  ? (tall.likes_count  || 0) : -1
+  const wideLikes  = wide  ? (wide.likes_count  || 0) : -1
+  const tallWins   = tallLikes >= wideLikes
+
+  const hero1  = tallWins ? tall  : wide
+  const hero2  = tallWins ? wide  : tall
+  const hero1Type = tallWins ? 'tall' : 'wide'
+  const hero2Type = tallWins ? 'wide' : 'tall'
+
+  const slide1 = { hero: hero1, heroType: hero1Type, pair: [squares[0] || null, squares[1] || null] }
+  const slide2 = { hero: hero2, heroType: hero2Type, pair: [squares[2] || null, squares[3] || null] }
+
+  return [slide1, slide2]
 }
 
 // ─── Video Modal ──────────────────────────────────────────
@@ -192,145 +183,261 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
   )
 }
 
-// ─── Media Card ───────────────────────────────────────────
+// ─── Media Card (generic) ─────────────────────────────────
 
-/**
- * Single post card. Probes image dimensions on first load to determine
- * its true aspect ratio class, then reports it upward via onAspectRatio.
- *
- * Rendering rules (NO blur anywhere):
- *  - tall   → 9/16 shell, object-fit: cover  → portrait fills the card
- *  - square → 1/1  shell, object-fit: cover  → square fills the card
- *  - wide   → 1/1  shell, object-fit: cover  → wide image zoomed/cropped to fill square
- */
-const MediaCard = ({ post, rank, arClass, onAspectRatio, onPlayVideo, onClick }) => {
-  const isVideo      = post.output_type === 'video'
-  const shellRatio   = arClass === 'tall' ? '9 / 16' : '1 / 1'
+const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
+  if (!post) return <div className={`rounded-3xl ${className}`} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', ...style }} />
 
-  const handleImgLoad = useCallback((e) => {
-    const { naturalWidth: w, naturalHeight: h } = e.currentTarget
-    if (w && h) onAspectRatio(post.id, classify(w, h))
-  }, [post.id, onAspectRatio])
+  const isVideo = post.output_type === 'video'
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: rank * 0.055, duration: 0.32 }}
-      className="rounded-3xl overflow-hidden"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+      transition={{ duration: 0.3 }}
+      className={`rounded-3xl overflow-hidden relative cursor-pointer ${className}`}
+      style={{ background: '#111', border: '1px solid var(--border-color)', ...style }}
+      onClick={onClick}
     >
+      <img
+        src={post.thumbnail_url}
+        alt={post.title || 'Creation'}
+        className="absolute inset-0 w-full h-full"
+        style={{ objectFit: 'cover', objectPosition: 'center' }}
+        loading="lazy"
+      />
+
+      {/* Type badge */}
       <div
-        className="relative overflow-hidden cursor-pointer"
-        style={{ aspectRatio: shellRatio, background: '#111' }}
-        onClick={onClick}
+        className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs z-10"
+        style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
       >
-        {/* Main image — always cover, no blur */}
-        <img
-          src={post.thumbnail_url}
-          alt={post.title || `Creation by @${post.profiles?.username}`}
-          className="absolute inset-0 w-full h-full"
-          style={{ objectFit: 'cover', objectPosition: 'center' }}
-          loading="lazy"
-          onLoad={handleImgLoad}
-        />
-
-        {/* Type badge */}
-        <div
-          className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs z-10"
-          style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
-        >
-          {isVideo ? <Film size={10} /> : <Image size={10} />}
-        </div>
-
-        {/* Play button for video */}
-        {isVideo && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onPlayVideo(post.output_url || post.thumbnail_url)
-            }}
-            className="absolute inset-0 flex items-center justify-center z-10"
-            aria-label={`Play video by @${post.profiles?.username}`}
-          >
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            >
-              <Play size={16} fill="white" className="text-white ml-0.5" />
-            </div>
-          </button>
-        )}
+        {isVideo ? <Film size={10} /> : <Image size={10} />}
       </div>
+
+      {/* Play button */}
+      {isVideo && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onPlayVideo(post.output_url || post.thumbnail_url)
+          }}
+          className="absolute inset-0 flex items-center justify-center z-10"
+          aria-label="Play video"
+        >
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          >
+            <Play size={16} fill="white" className="text-white ml-0.5" />
+          </div>
+        </button>
+      )}
     </motion.div>
   )
 }
 
-// ─── Masonry Grid ─────────────────────────────────────────
+// ─── Slide Layouts ────────────────────────────────────────
 
-const MasonryGrid = ({ posts, onPlayVideo, onNavigate }) => {
-  // arMap: { [postId]: 'tall' | 'square' | 'wide' }
-  // Seeded with metadata-derived values where available.
-  const [arMap, setArMap] = useState(() => {
-    const seed = {}
-    posts.forEach((p) => {
-      const meta = classifyFromMeta(p)
-      if (meta) seed[p.id] = meta
-    })
-    return seed
-  })
-
-  const handleAspectRatio = useCallback((id, arClass) => {
-    setArMap((prev) => {
-      if (prev[id] === arClass) return prev   // no-op if unchanged
-      return { ...prev, [id]: arClass }
-    })
-  }, [])
-
-  const rows = packIntoRows(posts, arMap)
-
-  const renderCard = (post, rank) => (
-    <MediaCard
-      key={post.id}
-      post={post}
-      rank={rank}
-      arClass={arMap[post.id] || 'square'}
-      onAspectRatio={handleAspectRatio}
-      onPlayVideo={onPlayVideo}
-      onClick={() => onNavigate(post.id)}
-    />
-  )
+/**
+ * TallSlide: 9:16 hero on the left, two 1:1 stacked on the right.
+ * The two 1:1 cards + gap between them must exactly match the hero's height.
+ * We use CSS grid rows to enforce this.
+ *
+ * Grid: two equal columns. Left col = 9:16 aspect ratio. Right col = two squares
+ * each taking exactly half the left col's height minus half the gap.
+ */
+const TallSlide = ({ hero, pair, onPlayVideo, onNavigate }) => {
+  const gap = 12 // px — same as gap-3
 
   return (
-    <div className="flex flex-col gap-3">
-      {rows.map((row, rowIdx) => {
-        if (row.type === 'pair') {
-          return (
-            <div key={rowIdx} className="grid grid-cols-2 gap-3">
-              {row.left  && renderCard(row.left,  rowIdx * 3)}
-              {row.right ? renderCard(row.right, rowIdx * 3 + 1) : <div />}
-            </div>
-          )
-        }
+    /*
+     * We drive the height from the left column's 9:16 aspect ratio.
+     * The grid itself has no fixed height — it's driven by the left column.
+     * Right column items use flex with equal sizing.
+     */
+    <div className="w-full" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap }}>
+      {/* Left — 9:16 hero */}
+      <div style={{ aspectRatio: '9 / 16', position: 'relative' }}>
+        <MediaCard
+          post={hero}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+          onPlayVideo={onPlayVideo}
+          onClick={() => hero && onNavigate(hero.id)}
+        />
+      </div>
 
-        // tall-left or tall-right
-        const tallOnLeft = row.type === 'tall-left'
-
-        const tallCol = renderCard(row.tall, rowIdx * 3)
-
-        const stackCol = (
-          <div className="flex flex-col gap-3" style={{ minWidth: 0 }}>
-            {row.stack.map((post, si) => renderCard(post, rowIdx * 3 + si + 1))}
+      {/* Right — two 1:1 stacked, sharing the exact same height as the left col */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+        {[pair[0], pair[1]].map((post, i) => (
+          <div key={i} style={{ flex: 1, position: 'relative' }}>
+            <MediaCard
+              post={post}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+              onPlayVideo={onPlayVideo}
+              onClick={() => post && onNavigate(post.id)}
+            />
           </div>
-        )
+        ))}
+      </div>
+    </div>
+  )
+}
 
-        return (
-          <div key={rowIdx} className="grid grid-cols-2 gap-3 items-start">
-            {tallOnLeft ? tallCol  : stackCol}
-            {tallOnLeft ? stackCol : tallCol}
+/**
+ * WideSlide: 16:9 hero on the bottom, two 1:1 side-by-side on top.
+ * Total width of the two 1:1s = full width = same as 16:9 hero width.
+ * Height of the 1:1 row = half the total width (since each card is square
+ * and they share the full width with a gap).
+ */
+const WideSlide = ({ hero, pair, onPlayVideo, onNavigate }) => {
+  const gap = 12
+
+  return (
+    <div className="w-full" style={{ display: 'flex', flexDirection: 'column', gap }}>
+      {/* Top — two 1:1 cards side by side */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap }}>
+        {[pair[0], pair[1]].map((post, i) => (
+          <div key={i} style={{ aspectRatio: '1 / 1', position: 'relative' }}>
+            <MediaCard
+              post={post}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+              onPlayVideo={onPlayVideo}
+              onClick={() => post && onNavigate(post.id)}
+            />
           </div>
-        )
-      })}
+        ))}
+      </div>
+
+      {/* Bottom — 16:9 hero, full width */}
+      <div style={{ aspectRatio: '16 / 9', position: 'relative', width: '100%' }}>
+        <MediaCard
+          post={hero}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+          onPlayVideo={onPlayVideo}
+          onClick={() => hero && onNavigate(hero.id)}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Swipeable Trending Section ───────────────────────────
+
+const TrendingSection = ({ slides, onPlayVideo, onNavigate, onEscape }) => {
+  const [activeSlide, setActiveSlide] = useState(0)
+  const touchStartX = useRef(null)
+  const touchStartY = useRef(null)
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    const dy = e.changedTouches[0].clientY - touchStartY.current
+
+    // Only trigger on clear horizontal swipe
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return
+
+    if (dx < 0) {
+      // swipe left
+      if (activeSlide === 0) {
+        setActiveSlide(1)
+      } else {
+        // already on slide 1 — escape to community feed
+        onEscape()
+      }
+    } else {
+      // swipe right
+      if (activeSlide === 1) setActiveSlide(0)
+    }
+
+    touchStartX.current = null
+    touchStartY.current = null
+  }
+
+  // Also support mouse drag for desktop testing
+  const mouseStartX = useRef(null)
+
+  const handleMouseDown = (e) => { mouseStartX.current = e.clientX }
+  const handleMouseUp   = (e) => {
+    if (mouseStartX.current === null) return
+    const dx = e.clientX - mouseStartX.current
+    if (Math.abs(dx) < 40) return
+    if (dx < 0) {
+      if (activeSlide === 0) setActiveSlide(1)
+      else onEscape()
+    } else {
+      if (activeSlide === 1) setActiveSlide(0)
+    }
+    mouseStartX.current = null
+  }
+
+  const slide = slides[activeSlide]
+  if (!slide) return null
+
+  return (
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      style={{ userSelect: 'none' }}
+    >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeSlide}
+          initial={{ opacity: 0, x: 40 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -40 }}
+          transition={{ duration: 0.28 }}
+        >
+          {slide.heroType === 'tall' ? (
+            <TallSlide
+              hero={slide.hero}
+              pair={slide.pair}
+              onPlayVideo={onPlayVideo}
+              onNavigate={onNavigate}
+            />
+          ) : (
+            <WideSlide
+              hero={slide.hero}
+              pair={slide.pair}
+              onPlayVideo={onPlayVideo}
+              onNavigate={onNavigate}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Dot indicators */}
+      <div className="flex items-center justify-center gap-1.5 mt-3">
+        {slides.map((_, i) => (
+          <div
+            key={i}
+            style={{
+              width:  i === activeSlide ? 18 : 6,
+              height: 6,
+              borderRadius: 99,
+              background: i === activeSlide ? 'var(--brand)' : 'var(--border-color)',
+              transition: 'width 0.25s, background 0.25s',
+            }}
+          />
+        ))}
+        {/* Third dot — represents community feed */}
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 99,
+            background: 'var(--border-color)',
+            opacity: 0.4,
+          }}
+        />
+      </div>
     </div>
   )
 }
@@ -345,8 +452,11 @@ export default function FeedPage() {
   const [publicTemplates,  setPublicTemplates]  = useState([])
   const [templatesLoading, setTemplatesLoading] = useState(true)
   const [trendingLoading,  setTrendingLoading]  = useState(true)
-  const [likedPosts,       setLikedPosts]       = useState(new Set())
   const [activeVideo,      setActiveVideo]      = useState(null)
+
+  // arMap is resolved progressively as images load.
+  // We also seed it from metadata right away.
+  const [arMap, setArMap] = useState({})
 
   useEffect(() => {
     templatesDb.getPublic().then(({ data }) => {
@@ -356,49 +466,54 @@ export default function FeedPage() {
   }, [])
 
   useEffect(() => {
-    feedDb.getTrending({ limit: 8 }).then(({ data }) => {
-      setTrending(data || [])
+    // Fetch only 6
+    feedDb.getTrending({ limit: 6 }).then(({ data }) => {
+      const posts = data || []
+      setTrending(posts)
+
+      // Seed arMap from metadata immediately
+      const seed = {}
+      posts.forEach((p) => {
+        const meta = classifyFromMeta(p)
+        if (meta) seed[p.id] = meta
+      })
+      setArMap(seed)
+
       setTrendingLoading(false)
     })
   }, [])
 
-  const loadUserLikes = useCallback(async () => {
-    if (!user) return
-    const { data } = await feedDb.getUserLikes(user.id)
-    setLikedPosts(new Set(data || []))
-  }, [user])
-
-  useEffect(() => { loadUserLikes() }, [loadUserLikes])
-
-  const handleLike = async (postId) => {
-    if (!user) return toast.error('Sign in to like posts')
-    const wasLiked = likedPosts.has(postId)
-
-    setLikedPosts((prev) => {
-      const next = new Set(prev)
-      wasLiked ? next.delete(postId) : next.add(postId)
-      return next
+  // For any post whose arClass isn't known from metadata,
+  // we probe the image dimensions once it loads.
+  // We expose a setter that child cards can call.
+  const handleAspectRatioProbed = useCallback((id, arClass) => {
+    setArMap((prev) => {
+      if (prev[id] === arClass) return prev
+      return { ...prev, [id]: arClass }
     })
-    setTrending((prev) =>
-      prev.map((p) => p.id === postId
-        ? { ...p, likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1 }
-        : p)
-    )
+  }, [])
 
-    const { data } = await feedDb.toggleLike(user.id, postId)
-    if (!data?.success) {
-      setLikedPosts((prev) => {
-        const next = new Set(prev)
-        wasLiked ? next.add(postId) : next.delete(postId)
-        return next
-      })
-      setTrending((prev) =>
-        prev.map((p) => p.id === postId
-          ? { ...p, likes_count: wasLiked ? p.likes_count + 1 : p.likes_count - 1 }
-          : p)
-      )
-    }
+  // Probing component — invisible, just loads the image to get dimensions
+  const AspectProbe = ({ post }) => {
+    if (arMap[post.id]) return null // already known
+    return (
+      <img
+        src={post.thumbnail_url}
+        style={{ display: 'none' }}
+        onLoad={(e) => {
+          const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+          if (w && h) handleAspectRatioProbed(post.id, classify(w, h))
+        }}
+        alt=""
+      />
+    )
   }
+
+  const slides = (() => {
+    if (trending.length === 0) return []
+    const { tall, wide, squares } = bucketPosts(trending, arMap)
+    return buildSlides(tall, wide, squares)
+  })()
 
   const handleTemplateUse = (template) => {
     navigate('/generate', {
@@ -485,11 +600,17 @@ export default function FeedPage() {
           />
         ) : (
           <div className="mb-4">
-            <MasonryGrid
-              posts={trending}
-              onPlayVideo={(url) => setActiveVideo(url)}
-              onNavigate={(id) => navigate('/feed/community', { state: { selectedPostId: id } })}
-            />
+            {/* Invisible probes to resolve arMap for posts not known from metadata */}
+            {trending.map((p) => <AspectProbe key={p.id} post={p} />)}
+
+            {slides.length > 0 && (
+              <TrendingSection
+                slides={slides}
+                onPlayVideo={(url) => setActiveVideo(url)}
+                onNavigate={(id) => navigate('/feed/community', { state: { selectedPostId: id } })}
+                onEscape={() => navigate('/feed/community')}
+              />
+            )}
           </div>
         )}
 
@@ -501,4 +622,4 @@ export default function FeedPage() {
       )}
     </>
   )
-}
+            }
