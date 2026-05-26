@@ -397,6 +397,54 @@ export type Database = {
           },
         ]
       }
+      models: {
+        Row: {
+          created_at: string | null
+          credit_cost_i2i: number
+          credit_cost_t2i: number
+          credit_multiplier: number
+          id: string
+          is_active: boolean | null
+          is_locked: boolean | null
+          label: string
+          sort_order: number | null
+          sublabel: string | null
+          type: string
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          credit_cost_i2i?: number
+          credit_cost_t2i?: number
+          credit_multiplier?: number
+          id?: string
+          is_active?: boolean | null
+          is_locked?: boolean | null
+          label: string
+          sort_order?: number | null
+          sublabel?: string | null
+          type: string
+          updated_at?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          credit_cost_i2i?: number
+          credit_cost_t2i?: number
+          credit_multiplier?: number
+          id?: string
+          is_active?: boolean | null
+          is_locked?: boolean | null
+          label?: string
+          sort_order?: number | null
+          sublabel?: string | null
+          type?: string
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           action_url: string | null
@@ -902,7 +950,23 @@ export type Database = {
       }
     }
     Enums: {
-      ai_model: "kling_2_5" | "seedance_1_5" | "imagen_3" | "auto"
+      ai_model:
+        | "kling_2_5"
+        | "seedance_1_5"
+        | "imagen_3"
+        | "auto"
+        | "flux_dev_ultra_fast"
+        | "flux_dev"
+        | "flux_schnell"
+        | "seedream_v4_5"
+        | "nano_banana_pro"
+        | "imagen_4"
+        | "gpt_image_2"
+        | "grok_imagine"
+        | "wan_2_7"
+        | "z_image_turbo"
+        | "z_image_base"
+        | "ernie_image_turbo"
       app_role: "admin" | "moderator" | "staff" | "user"
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
       feed_status: "pending" | "approved" | "rejected"
@@ -1061,7 +1125,24 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      ai_model: ["kling_2_5", "seedance_1_5", "imagen_3", "auto"],
+      ai_model: [
+        "kling_2_5",
+        "seedance_1_5",
+        "imagen_3",
+        "auto",
+        "flux_dev_ultra_fast",
+        "flux_dev",
+        "flux_schnell",
+        "seedream_v4_5",
+        "nano_banana_pro",
+        "imagen_4",
+        "gpt_image_2",
+        "grok_imagine",
+        "wan_2_7",
+        "z_image_turbo",
+        "z_image_base",
+        "ernie_image_turbo",
+      ],
       app_role: ["admin", "moderator", "staff", "user"],
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
       feed_status: ["pending", "approved", "rejected"],
