@@ -437,10 +437,9 @@ export default function CreateImagePage() {
             label="Prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe what you want to create…"
+            placeholder="What are we creating today?"
             rows={4}
-            maxLength={500}
-          />
+                     />
 
           {/* Aspect ratio */}
           <div className="pt-1">
