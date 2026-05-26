@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Heart, Play, Film, Image, X, ArrowLeft,
-  Share2, Copy, Check, MoreHorizontal,
+  Heart, X, ArrowLeft,
+  Share2, Copy, Check,
 } from 'lucide-react'
 import { feed as feedDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -14,50 +14,6 @@ import { Skeleton, EmptyState } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 20
-
-// ─── Video Modal ──────────────────────────────────────────
-
-const VideoModal = ({ url, onClose }) => {
-  useEffect(() => {
-    const handleKey = (e) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [onClose])
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.92)' }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.92, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.92, opacity: 0 }}
-        className="relative max-w-sm w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          className="absolute -top-10 right-0 p-2 rounded-xl"
-          style={{ color: 'white' }}
-          aria-label="Close"
-        >
-          <X size={20} />
-        </button>
-        <video
-          src={url}
-          controls autoPlay playsInline loop
-          className="w-full rounded-3xl"
-          style={{ background: '#000', maxHeight: '80vh', objectFit: 'contain' }}
-        />
-      </motion.div>
-    </motion.div>
-  )
-}
 
 // ─── Share Sheet ──────────────────────────────────────────
 
@@ -70,13 +26,11 @@ const ShareSheet = ({ post, onClose }) => {
       try {
         await navigator.share({
           title: post.title || `Creation by @${post.profiles?.username}`,
-          text: `Check out this AI creation on Meckury AI`,
+          text: 'Check out this AI creation on Meckury AI',
           url: shareUrl,
         })
         onClose()
-      } catch (e) {
-        // User cancelled — no error toast needed
-      }
+      } catch { /* cancelled */ }
     } else {
       handleCopy()
     }
@@ -110,11 +64,9 @@ const ShareSheet = ({ post, onClose }) => {
         style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-4">
           <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
-
         <div className="px-5 pb-2">
           <p className="text-base font-black mb-1" style={{ color: 'var(--text-primary)' }}>
             Share this creation
@@ -122,8 +74,6 @@ const ShareSheet = ({ post, onClose }) => {
           <p className="text-xs truncate mb-5" style={{ color: 'var(--text-muted)' }}>
             by @{post.profiles?.username || 'user'}
           </p>
-
-          {/* Link preview */}
           <div
             className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-4"
             style={{ background: 'var(--bg-elevated)' }}
@@ -132,9 +82,7 @@ const ShareSheet = ({ post, onClose }) => {
               {shareUrl}
             </span>
           </div>
-
           <div className="flex flex-col gap-2">
-            {/* Native share (mobile) */}
             {navigator.share && (
               <button
                 onClick={handleNativeShare}
@@ -145,11 +93,9 @@ const ShareSheet = ({ post, onClose }) => {
                 <span className="text-sm font-bold">Share via…</span>
               </button>
             )}
-
-            {/* Copy link */}
             <button
               onClick={handleCopy}
-              className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-all"
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
               style={{ background: 'var(--bg-elevated)' }}
             >
               {copied
@@ -167,110 +113,289 @@ const ShareSheet = ({ post, onClose }) => {
   )
 }
 
-// ─── Community Feed Card ──────────────────────────────────
+// ─── Full-Screen Mobile Card ───────────────────────────────
 
-const CommunityCard = ({ post, liked, onLike, onPlayVideo, onShare }) => {
+const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
   const isVideo = post.output_type === 'video'
-  const [aspectRatio, setAspectRatio] = useState('9 / 16')
+  const videoRef = useRef(null)
 
-  const handleImageLoad = (e) => {
-    const { naturalWidth, naturalHeight } = e.target
-    if (naturalWidth && naturalHeight) {
-      setAspectRatio(`${naturalWidth} / ${naturalHeight}`)
+  useEffect(() => {
+    if (!isVideo || !videoRef.current) return
+    if (isActive) {
+      videoRef.current.play().catch(() => {})
+    } else {
+      videoRef.current.pause()
+      videoRef.current.currentTime = 0
     }
-  }
+  }, [isActive, isVideo])
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-3xl overflow-hidden"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    <div
+      className="relative w-full flex-shrink-0"
+      style={{ height: '100svh', scrollSnapAlign: 'start' }}
     >
-      {/* Thumbnail */}
-     <div className="relative bg-black overflow-hidden" style={{ aspectRatio }}>
-     <img
-          src={post.thumbnail_url}
-          alt={post.title || `Creation by @${post.profiles?.username}`}
-          className="w-full h-full object-cover"
-          loading="lazy"
-          onLoad={handleImageLoad}
+      {/* Media */}
+      {isVideo ? (
+        <video
+          ref={videoRef}
+          src={post.output_url}
+          loop
+          playsInline
+          muted={false}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ background: '#000' }}
         />
-        {isVideo && (
-          <button
-            onClick={() => onPlayVideo(post.output_url || post.thumbnail_url)}
-            className="absolute inset-0 flex items-center justify-center"
-            aria-label={`Play video by @${post.profiles?.username}`}
-          >
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            >
-              <Play size={20} fill="white" className="text-white ml-0.5" />
-            </div>
-          </button>
-        )}
+      ) : (
+        <img
+          src={post.thumbnail_url || post.output_url}
+          alt={`Creation by @${post.profiles?.username}`}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      )}
 
-        {/* Type badge */}
-        <div
-          className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 rounded-full text-xs"
-          style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
-        >
-          {isVideo ? <Film size={10} /> : <Image size={10} />}
-          {isVideo ? 'Video' : 'Image'}
-        </div>
-      </div>
+      {/* Gradient overlay */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.7) 100%)',
+          pointerEvents: 'none',
+        }}
+      />
 
-      {/* Footer */}
-      <div className="px-4 py-3 flex items-center justify-between gap-2">
+      {/* Bottom overlay — author + actions */}
+      <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-4 pb-6"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 8px) + 80px)' }}
+      >
         {/* Author */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2">
           <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
             style={{ background: 'var(--brand)', color: 'white' }}
           >
             {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-              @{post.profiles?.username || 'user'}
-            </p>
-            {post.templates?.name && (
-              <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                {post.templates.name}
-              </p>
-            )}
-          </div>
+          <span className="text-sm font-bold text-white drop-shadow">
+            @{post.profiles?.username || 'user'}
+          </span>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Share */}
-          <button
-            onClick={() => onShare(post)}
-            className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: 'var(--bg-elevated)' }}
-            aria-label="Share"
-          >
-            <Share2 size={14} style={{ color: 'var(--text-muted)' }} />
-          </button>
-
+        {/* Action buttons */}
+        <div className="flex flex-col items-center gap-5">
           {/* Like */}
           <button
             onClick={() => onLike(post.id)}
             aria-label={liked ? 'Unlike' : 'Like'}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all"
-            style={{
-              background: liked ? 'rgba(249,115,22,0.12)' : 'var(--bg-elevated)',
-              color: liked ? 'var(--brand)' : 'var(--text-muted)',
-            }}
+            className="flex flex-col items-center gap-1"
           >
-            <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
-            <span className="text-xs font-bold">{post.likes_count || 0}</span>
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: liked ? 'rgba(249,115,22,0.25)' : 'rgba(255,255,255,0.15)' }}
+            >
+              <Heart
+                size={22}
+                fill={liked ? 'var(--brand)' : 'none'}
+                style={{ color: liked ? 'var(--brand)' : 'white' }}
+              />
+            </div>
+            <span className="text-xs font-bold text-white" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+              {post.likes_count || 0}
+            </span>
+          </button>
+
+          {/* Share */}
+          <button
+            onClick={() => onShare(post)}
+            aria-label="Share"
+            className="flex flex-col items-center gap-1"
+          >
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.15)' }}
+            >
+              <Share2 size={20} color="white" />
+            </div>
+            <span className="text-xs font-bold text-white" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+              Share
+            </span>
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Desktop Grid Card ────────────────────────────────────
+
+const GridCard = ({ post, liked, onLike, onShare }) => {
+  const isVideo = post.output_type === 'video'
+  const videoRef = useRef(null)
+  const [hovered, setHovered] = useState(false)
+
+  useEffect(() => {
+    if (!isVideo || !videoRef.current) return
+    if (hovered) {
+      videoRef.current.play().catch(() => {})
+    } else {
+      videoRef.current.pause()
+      videoRef.current.currentTime = 0
+    }
+  }, [hovered, isVideo])
+
+  // Derive aspect ratio from post metadata if available, else default to 1/1
+  const aspectRatio = post.aspect_ratio || '1 / 1'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl overflow-hidden relative cursor-pointer"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', aspectRatio }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Media */}
+      {isVideo ? (
+        <video
+          ref={videoRef}
+          src={post.output_url}
+          loop
+          playsInline
+          muted
+          poster={post.thumbnail_url}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <img
+          src={post.thumbnail_url || post.output_url}
+          alt={`Creation by @${post.profiles?.username}`}
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+        />
+      )}
+
+      {/* Hover overlay */}
+      <AnimatePresence>
+        {hovered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex flex-col justify-end p-3"
+            style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.75) 100%)' }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{ background: 'var(--brand)', color: 'white' }}
+                >
+                  {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                </div>
+                <span className="text-xs font-semibold text-white">
+                  @{post.profiles?.username || 'user'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onShare(post) }}
+                  aria-label="Share"
+                  className="w-7 h-7 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.15)' }}
+                >
+                  <Share2 size={13} color="white" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onLike(post.id) }}
+                  aria-label={liked ? 'Unlike' : 'Like'}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full"
+                  style={{ background: liked ? 'rgba(249,115,22,0.25)' : 'rgba(255,255,255,0.15)' }}
+                >
+                  <Heart
+                    size={13}
+                    fill={liked ? 'var(--brand)' : 'none'}
+                    style={{ color: liked ? 'var(--brand)' : 'white' }}
+                  />
+                  <span className="text-xs font-bold text-white">{post.likes_count || 0}</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Always-visible like count on non-hovered (mobile grid) */}
+      <div
+        className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full lg:hidden"
+        style={{ background: 'rgba(0,0,0,0.45)' }}
+      >
+        <Heart size={11} fill={liked ? 'var(--brand)' : 'none'} style={{ color: liked ? 'var(--brand)' : 'white' }} />
+        <span className="text-xs font-bold text-white">{post.likes_count || 0}</span>
+      </div>
     </motion.div>
+  )
+}
+
+// ─── Mobile Full-Screen Feed ──────────────────────────────
+
+const MobileFeed = ({ posts, likedPosts, onLike, onShare, onLoadMore, hasMore, loadingMore }) => {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const index = Number(entry.target.dataset.index)
+            setActiveIndex(index)
+            // Load more when near end
+            if (index >= posts.length - 3 && hasMore && !loadingMore) {
+              onLoadMore()
+            }
+          }
+        })
+      },
+      { root: container, threshold: 0.6 }
+    )
+
+    const slides = container.querySelectorAll('[data-index]')
+    slides.forEach((s) => observer.observe(s))
+    return () => observer.disconnect()
+  }, [posts.length, hasMore, loadingMore, onLoadMore])
+
+  return (
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-20 overflow-y-scroll"
+      style={{
+        scrollSnapType: 'y mandatory',
+        background: '#000',
+        WebkitOverflowScrolling: 'touch',
+      }}
+    >
+      {posts.map((post, i) => (
+        <div key={post.id} data-index={i} style={{ height: '100svh', scrollSnapAlign: 'start' }}>
+          <FullScreenCard
+            post={post}
+            liked={likedPosts.has(post.id)}
+            onLike={onLike}
+            onShare={onShare}
+            isActive={activeIndex === i}
+          />
+        </div>
+      ))}
+      {loadingMore && (
+        <div
+          className="flex items-center justify-center"
+          style={{ height: '100svh', scrollSnapAlign: 'start', background: '#000' }}
+        >
+          <p className="text-sm text-white opacity-50">Loading more…</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -279,16 +404,24 @@ const CommunityCard = ({ post, liked, onLike, onPlayVideo, onShare }) => {
 export default function CommunityFeedPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const [isMobile, setIsMobile] = useState(false)
 
-  const [posts,        setPosts]        = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [loadingMore,  setLoadingMore]  = useState(false)
-  const [hasMore,      setHasMore]      = useState(true)
-  const [totalCount,   setTotalCount]   = useState(0)
-  const [likedPosts,   setLikedPosts]   = useState(new Set())
-  const [activeVideo,  setActiveVideo]  = useState(null)
-  const [sharePost,    setSharePost]    = useState(null)
-  const [page,         setPage]         = useState(0)
+  const [posts,       setPosts]       = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore,     setHasMore]     = useState(true)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [likedPosts,  setLikedPosts]  = useState(new Set())
+  const [sharePost,   setSharePost]   = useState(null)
+  const [page,        setPage]        = useState(0)
+
+  // Detect mobile once on mount
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const loadPosts = useCallback(async (offset = 0, reset = false) => {
     if (offset === 0) setLoading(true)
@@ -351,18 +484,62 @@ export default function CommunityFeedPage() {
     }
   }
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     const next = page + 1
     setPage(next)
     loadPosts(next * PAGE_SIZE)
+  }, [page, loadPosts])
+
+  // ── Mobile: full-screen snap scroll ──
+  if (!loading && isMobile) {
+    return (
+      <>
+        {/* Floating back button */}
+        <button
+          onClick={() => navigate('/feed')}
+          className="fixed top-4 left-4 z-30 flex items-center gap-1.5 px-3 py-2 rounded-full"
+          style={{
+            background: 'rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(8px)',
+            color: 'white',
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+          }}
+          aria-label="Back to Discover"
+        >
+          <ArrowLeft size={16} />
+          <span className="text-xs font-semibold">Community</span>
+        </button>
+
+        {posts.length === 0 ? (
+          <div className="fixed inset-0 flex items-center justify-center" style={{ background: '#000' }}>
+            <p className="text-white opacity-50 text-sm">No posts yet</p>
+          </div>
+        ) : (
+          <MobileFeed
+            posts={posts}
+            likedPosts={likedPosts}
+            onLike={handleLike}
+            onShare={(p) => setSharePost(p)}
+            onLoadMore={handleLoadMore}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+          />
+        )}
+
+        <AnimatePresence>
+          {sharePost && (
+            <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
+          )}
+        </AnimatePresence>
+      </>
+    )
   }
 
+  // ── Desktop: grid layout ──
   return (
     <>
       <TopBar showLogo showCredits />
       <PageWrapper>
-
-        {/* Header */}
         <div className="pt-2 pb-5">
           <button
             onClick={() => navigate('/feed')}
@@ -372,7 +549,6 @@ export default function CommunityFeedPage() {
             <ArrowLeft size={16} />
             <span className="text-sm font-semibold">Back to Discover</span>
           </button>
-
           <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
             Community
           </h1>
@@ -381,16 +557,15 @@ export default function CommunityFeedPage() {
           </p>
         </div>
 
-        {/* Grid */}
         {loading ? (
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-[9/16] max-h-64 rounded-3xl" />
+              <Skeleton key={i} className="aspect-square rounded-3xl" />
             ))}
           </div>
         ) : posts.length === 0 ? (
           <EmptyState
-            icon={Film}
+            icon={Heart}
             title="No posts yet"
             description="Be the first to share your creation with the community!"
           />
@@ -404,24 +579,22 @@ export default function CommunityFeedPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
                 >
-                  <CommunityCard
+                  <GridCard
                     post={post}
                     liked={likedPosts.has(post.id)}
                     onLike={handleLike}
-                    onPlayVideo={(url) => setActiveVideo(url)}
                     onShare={(p) => setSharePost(p)}
                   />
                 </motion.div>
               ))}
             </div>
 
-            {/* Load more */}
             {hasMore && (
               <div className="mt-6 flex justify-center">
                 <button
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="px-6 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+                  className="px-6 py-3 rounded-2xl text-sm font-semibold"
                   style={{
                     background: 'var(--bg-elevated)',
                     color: 'var(--text-secondary)',
@@ -433,28 +606,11 @@ export default function CommunityFeedPage() {
                 </button>
               </div>
             )}
-
-            {loadingMore && (
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <Skeleton key={i} className="aspect-[9/16] max-h-64 rounded-3xl" />
-                ))}
-              </div>
-            )}
           </>
         )}
-
         <div className="h-6" />
       </PageWrapper>
 
-      {/* Video modal */}
-      <AnimatePresence>
-        {activeVideo && (
-          <VideoModal url={activeVideo} onClose={() => setActiveVideo(null)} />
-        )}
-      </AnimatePresence>
-
-      {/* Share sheet */}
       <AnimatePresence>
         {sharePost && (
           <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
