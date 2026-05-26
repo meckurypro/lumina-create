@@ -12,9 +12,9 @@ import toast                                        from 'react-hot-toast'
 
 // ── Constants ──────────────────────────────────────────────
 
-const PAGE_SIZE    = 20
-const POLL_MS      = 4000   // poll every 4s for pending/processing items
-const FILTERS      = ['all', 'completed', 'failed']
+const PAGE_SIZE = 20
+const POLL_MS   = 4000
+const FILTERS   = ['all', 'completed', 'failed']
 
 // Estimated generation time per type (ms) — used for fake progress bar
 const EST_DURATION = {
@@ -35,7 +35,7 @@ function getFakeProgress(gen) {
   if (gen.status === 'failed')    return 0
   const est     = EST_DURATION[gen.generation_type] || EST_DURATION.default
   const elapsed = Date.now() - new Date(gen.created_at).getTime()
-  return Math.min(Math.floor((elapsed / est) * 92), 92) // cap at 92 until truly done
+  return Math.min(Math.floor((elapsed / est) * 92), 92)
 }
 
 function formatDate(iso) {
@@ -43,6 +43,28 @@ function formatDate(iso) {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+// Returns the best display title for a generation — priority order:
+// 1. Template name (if from a template)
+// 2. AI-generated title stored in gen.title
+// 3. First 45 chars of the raw prompt
+// 4. Generic fallback
+function getCardTitle(gen) {
+  if (gen.templates?.name)                          return gen.templates.name
+  if (gen.title)                                    return gen.title
+  if (gen.prompt)                                   return gen.prompt.slice(0, 45) + (gen.prompt.length > 45 ? '…' : '')
+  return 'Generation'
+}
+
+// User-friendly error messages — never show raw API errors
+function getFriendlyError(raw) {
+  if (!raw) return null
+  if (/content|policy|blocked|nsfw|moderat/i.test(raw)) return '⚠️ Content blocked'
+  if (/model.*not.*found|unsupported model/i.test(raw)) return 'Model unavailable — try another'
+  if (/timed? ?out/i.test(raw))                         return 'Timed out — please try again'
+  if (/insufficient|not enough|credit/i.test(raw))      return 'Insufficient credits'
+  return 'Generation failed — please try again'
 }
 
 // ── Status pill ────────────────────────────────────────────
@@ -117,6 +139,18 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
         <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
       </div>
 
+      {/* Title + prompt in sheet */}
+      <div className="px-4 pb-3">
+        <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+          {getCardTitle(gen)}
+        </p>
+        {gen.prompt && (
+          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+            {gen.prompt}
+          </p>
+        )}
+      </div>
+
       {/* Preview */}
       {gen.output_url && (
         <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
@@ -167,8 +201,10 @@ const MediaCard = ({ gen, onClick, onMore }) => {
   const isVideo    = gen.output_type === 'video'
   const isComplete = gen.status === 'completed'
   const isPending  = gen.status === 'pending' || gen.status === 'processing'
-  const typeLabel  = gen.generation_type?.replace(/_/g, ' ')
   const thumbUrl   = gen.output_thumbnail_url || gen.output_url
+  const cardTitle  = getCardTitle(gen)
+  const friendlyError = gen.status === 'failed' ? getFriendlyError(gen.error_message) : null
+  const isPolicy   = friendlyError?.startsWith('⚠️')
 
   return (
     <motion.div
@@ -184,7 +220,7 @@ const MediaCard = ({ gen, onClick, onMore }) => {
         {thumbUrl ? (
           isVideo
             ? <video src={thumbUrl} className="w-full h-full object-cover" muted preload="metadata" />
-            : <img   src={thumbUrl} alt={typeLabel} className="w-full h-full object-cover" />
+            : <img   src={thumbUrl} alt={cardTitle} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo
@@ -194,10 +230,8 @@ const MediaCard = ({ gen, onClick, onMore }) => {
           </div>
         )}
 
-        {/* Progress overlay */}
         {isPending && <ProgressOverlay gen={gen} />}
 
-        {/* Type badge */}
         {!isPending && (
           <div
             className="absolute bottom-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
@@ -217,30 +251,31 @@ const MediaCard = ({ gen, onClick, onMore }) => {
         style={{ cursor: isComplete ? 'pointer' : 'default' }}
         onClick={isComplete ? onClick : undefined}
       >
-        <p className="text-sm font-semibold truncate capitalize" style={{ color: 'var(--text-primary)' }}>
-          {gen.templates?.name || typeLabel || 'Generation'}
+        {/* Title — AI-generated or prompt fallback */}
+        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+          {cardTitle}
         </p>
+
         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
           {formatDate(gen.created_at)}
         </p>
+
         <div className="flex items-center gap-2 mt-1.5">
           <StatusPill status={gen.status} />
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             ⚡ {gen.credits_charged} cr
           </span>
         </div>
-        {gen.status === 'failed' && gen.error_message && (() => {
-          const isPolicy = /content|policy|blocked|nsfw|moderat/i.test(gen.error_message)
-          return (
-            <p
-              className="text-xs mt-1 truncate"
-              style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}
-              title={gen.error_message}
-            >
-              {gen.error_message}
-            </p>
-          )
-        })()}
+
+        {/* Friendly error — never raw API message */}
+        {friendlyError && (
+          <p
+            className="text-xs mt-1 truncate"
+            style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}
+          >
+            {friendlyError}
+          </p>
+        )}
       </div>
 
       {/* More button */}
@@ -258,8 +293,8 @@ const MediaCard = ({ gen, onClick, onMore }) => {
 // ── Media Page ─────────────────────────────────────────────
 
 export default function MediaPage() {
-  const navigate        = useNavigate()
-  const { user }        = useAuth()
+  const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [items,       setItems]       = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -268,7 +303,7 @@ export default function MediaPage() {
   const [page,        setPage]        = useState(0)
   const [hasMore,     setHasMore]     = useState(true)
   const [totalCount,  setTotalCount]  = useState(0)
-  const [activeGen,   setActiveGen]   = useState(null) // action sheet target
+  const [activeGen,   setActiveGen]   = useState(null)
 
   const pollRef = useRef(null)
 
@@ -302,7 +337,6 @@ export default function MediaPage() {
         const { data } = await generationsDb.getUserGenerations(user.id, { limit: PAGE_SIZE, offset: 0 })
         if (data) {
           setItems((prev) => {
-            // Merge: update existing items with fresh data, keep order
             const map = new Map(data.map(g => [g.id, g]))
             return prev.map(g => map.get(g.id) || g)
           })
@@ -330,7 +364,6 @@ export default function MediaPage() {
 
   const handleRegenerate = (gen) => {
     setActiveGen(null)
-    // Route to the appropriate create page with prefilled state
     const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text'].includes(gen.generation_type)
     navigate(isVideo ? '/create/video' : '/create/image', {
       state: {
@@ -348,7 +381,7 @@ export default function MediaPage() {
     try {
       const res  = await fetch(gen.output_url)
       const blob = await res.blob()
-      const ext  = gen.output_type === 'video' ? 'mp4' : 'jpg'
+      const ext  = gen.output_type === 'video' ? 'mp4' : 'png'
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
@@ -413,7 +446,7 @@ export default function MediaPage() {
           <EmptyState
             icon={Film}
             title={filter === 'all' ? 'No creations yet' : `No ${filter} items`}
-            description={filter === 'all' ? 'Start creating something.' : `Nothing here yet`}
+            description={filter === 'all' ? 'Start creating something.' : 'Nothing here yet'}
             action={
               filter === 'all' && (
                 <button
