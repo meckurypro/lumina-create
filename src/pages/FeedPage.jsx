@@ -73,7 +73,7 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <div
-        className="h-24 w-full relative flex items-center justify-center"
+        className="h-24 w-full relative flex items-center justify-center overflow-hidden"
         style={{
           background: template.thumbnail_url
             ? undefined
@@ -81,14 +81,35 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
         }}
       >
         {template.thumbnail_url ? (
-          <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover" />
+          <>
+            {/* Blurred background fill */}
+            <img
+              src={template.thumbnail_url}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full"
+              style={{
+                objectFit: 'cover',
+                filter: 'blur(14px)',
+                transform: 'scale(1.2)',
+                opacity: 0.7,
+              }}
+            />
+            {/* Actual thumbnail — contained */}
+            <img
+              src={template.thumbnail_url}
+              alt={template.name}
+              className="absolute inset-0 w-full h-full"
+              style={{ objectFit: 'contain' }}
+            />
+          </>
         ) : (
           <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
         )}
 
         {template.is_featured && (
           <div
-            className="absolute top-2 left-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
+            className="absolute top-2 left-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold z-10"
             style={{ background: 'var(--brand)', color: 'white', fontSize: '9px' }}
           >
             <Star size={8} fill="white" />
@@ -97,7 +118,7 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
         )}
 
         <div
-          className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-full font-bold"
+          className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-full font-bold z-10"
           style={{ background: 'rgba(0,0,0,0.55)', color: 'white', backdropFilter: 'blur(4px)', fontSize: '9px' }}
         >
           ⚡ {creditLabel}
@@ -118,14 +139,6 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
 
 const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo, onClick }) => {
   const isVideo = post.output_type === 'video'
-  const [aspectRatio, setAspectRatio] = useState('9 / 16')
-
-  const handleImageLoad = (e) => {
-    const { naturalWidth, naturalHeight } = e.target
-    if (naturalWidth && naturalHeight) {
-      setAspectRatio(`${naturalWidth} / ${naturalHeight}`)
-    }
-  }
 
   return (
     <motion.div
@@ -135,19 +148,38 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo, onClick }) => {
       className="rounded-3xl overflow-hidden"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
-      {/* Thumbnail */}
-      <div className="relative bg-black overflow-hidden cursor-pointer" style={{ aspectRatio }} onClick={onClick}>
+      {/* Thumbnail — fixed 1:1 shell with blurred background fill */}
+      <div
+        className="relative overflow-hidden cursor-pointer bg-black"
+        style={{ aspectRatio: '1 / 1' }}
+        onClick={onClick}
+      >
+        {/* Blurred background layer — covers the full card */}
+        <img
+          src={post.thumbnail_url}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{
+            objectFit: 'cover',
+            filter: 'blur(20px)',
+            transform: 'scale(1.15)', // prevents glow bleed at edges
+            opacity: 0.72,
+          }}
+        />
+
+        {/* Actual image — centered, natural ratio preserved */}
         <img
           src={post.thumbnail_url}
           alt={post.title || `Creation by @${post.profiles?.username}`}
-          className="w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full"
+          style={{ objectFit: 'contain' }}
           loading="lazy"
-          onLoad={handleImageLoad}
         />
 
         {/* Type badge */}
         <div
-          className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs"
+          className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs z-10"
           style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
         >
           {isVideo ? <Film size={10} /> : <Image size={10} />}
@@ -156,8 +188,11 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo, onClick }) => {
         {/* Play button for video */}
         {isVideo && (
           <button
-            onClick={() => onPlayVideo(post.output_url || post.thumbnail_url)}
-            className="absolute inset-0 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPlayVideo(post.output_url || post.thumbnail_url)
+            }}
+            className="absolute inset-0 flex items-center justify-center z-10"
             aria-label={`Play video by @${post.profiles?.username}`}
           >
             <div
@@ -169,7 +204,6 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo, onClick }) => {
           </button>
         )}
       </div>
-
     </motion.div>
   )
 }
@@ -326,7 +360,7 @@ export default function FeedPage() {
         {trendingLoading ? (
           <div className="grid grid-cols-2 gap-3 mb-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-[9/16] max-h-64 rounded-3xl" />
+              <Skeleton key={i} className="aspect-square rounded-3xl" />
             ))}
           </div>
         ) : trending.length === 0 ? (
@@ -336,23 +370,19 @@ export default function FeedPage() {
             description="Be the first to share your creation with the community!"
           />
         ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-{trending.map((post, i) => (
-  <TrendingCard
-    key={post.id}
-    post={post}
-    rank={i}
-    liked={likedPosts.has(post.id)}
-    onLike={handleLike}
-    onPlayVideo={(url) => setActiveVideo(url)}
-    onClick={() => navigate('/feed/community', { state: { selectedPostId: post.id } })}
-  />
-))}
-            </div>
-
-
-          </>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {trending.map((post, i) => (
+              <TrendingCard
+                key={post.id}
+                post={post}
+                rank={i}
+                liked={likedPosts.has(post.id)}
+                onLike={handleLike}
+                onPlayVideo={(url) => setActiveVideo(url)}
+                onClick={() => navigate('/feed/community', { state: { selectedPostId: post.id } })}
+              />
+            ))}
+          </div>
         )}
 
         {/* Bottom padding for BottomNav */}
