@@ -171,6 +171,14 @@ const ShareSheet = ({ post, onClose }) => {
 
 const CommunityCard = ({ post, liked, onLike, onPlayVideo, onShare }) => {
   const isVideo = post.output_type === 'video'
+  const [aspectRatio, setAspectRatio] = useState('9 / 16')
+
+  const handleImageLoad = (e) => {
+    const { naturalWidth, naturalHeight } = e.target
+    if (naturalWidth && naturalHeight) {
+      setAspectRatio(`${naturalWidth} / ${naturalHeight}`)
+    }
+  }
 
   return (
     <motion.div
@@ -180,12 +188,13 @@ const CommunityCard = ({ post, liked, onLike, onPlayVideo, onShare }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       {/* Thumbnail */}
-      <div className="relative aspect-[9/16] max-h-96 bg-black overflow-hidden">
-        <img
+     <div className="relative bg-black overflow-hidden" style={{ aspectRatio }}>
+     <img
           src={post.thumbnail_url}
           alt={post.title || `Creation by @${post.profiles?.username}`}
           className="w-full h-full object-cover"
           loading="lazy"
+          onLoad={handleImageLoad}
         />
         {isVideo && (
           <button
