@@ -18,6 +18,7 @@ import SettingsPage        from '@/pages/SettingsPage'
 import AdminPage           from '@/pages/AdminPage'
 import TemplateRunnerPage  from '@/pages/TemplateRunnerPage'
 import AuthCallbackPage    from '@/pages/AuthCallbackPage'
+import CommunityFeedPage   from '@/pages/CommunityFeedPage'
 
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -74,7 +75,8 @@ export default function App() {
             element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
-          <Route path="/feed"    element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
+         <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
+<Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
           <Route path="/create"  element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
           <Route path="/create/image" element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
           <Route path="/create/video" element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
