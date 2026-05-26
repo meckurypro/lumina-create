@@ -124,7 +124,7 @@ export const feed = {
     if (templateId) q = q.eq('template_id', templateId)
     return q
   },
-  submit: (data) => supabase.from('feed_posts').insert({ ...data, status: 'pending' }),
+  submit: (data) => supabase.from('feed_posts').insert({ ...data, status: 'pending' }).select().single(),
   toggleLike: (userId, postId) =>
     supabase.rpc('toggle_feed_like', { p_user_id: userId, p_post_id: postId }),
   getUserLikes: async (userId) => {
