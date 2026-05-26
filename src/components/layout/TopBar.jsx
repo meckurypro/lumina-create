@@ -10,7 +10,7 @@ import PromptIQPage from '@/pages/PromptIQPage'
 const NAV_ITEMS = [
   { path: '/feed',    icon: Home,     label: 'Home'    },
   { path: '/create',  icon: Sparkles, label: 'Create'  },
-  { path: '/history', icon: Film,     label: 'History' },
+  { path: '/history', icon: Film,     label: 'Media' },
   { path: '/profile', icon: User,     label: 'Profile' },
 ]
 
