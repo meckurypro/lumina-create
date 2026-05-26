@@ -1,11 +1,8 @@
 // src/pages/CommunityFeedPage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Heart, X, ArrowLeft,
-  Share2, Copy, Check,
-} from 'lucide-react'
+import { Heart, X, ArrowLeft, Share2, Copy, Check } from 'lucide-react'
 import { feed as feedDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -134,7 +131,7 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
       className="relative w-full flex-shrink-0"
       style={{ height: '100svh', scrollSnapAlign: 'start', background: '#000' }}
     >
-      {/* ── Ambient blur layer (always an img for perf) ── */}
+      {/* Ambient blur layer */}
       <img
         src={post.thumbnail_url || post.output_url}
         aria-hidden="true"
@@ -147,7 +144,7 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
         }}
       />
 
-      {/* ── Crisp media (letterboxed with object-contain) ── */}
+      {/* Crisp media */}
       {isVideo ? (
         <video
           ref={videoRef}
@@ -200,7 +197,6 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
 
         {/* Action buttons */}
         <div className="flex flex-col items-center gap-5">
-          {/* Like */}
           <button
             onClick={() => onLike(post.id)}
             aria-label={liked ? 'Unlike' : 'Like'}
@@ -221,7 +217,6 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
             </span>
           </button>
 
-          {/* Share */}
           <button
             onClick={() => onShare(post)}
             aria-label="Share"
@@ -260,7 +255,6 @@ const GridCard = ({ post, liked, onLike, onShare }) => {
     }
   }, [hovered, isVideo])
 
-  // Derive aspect ratio from post metadata if available, else default to 1/1
   const aspectRatio = post.aspect_ratio || '1 / 1'
 
   return (
@@ -272,7 +266,6 @@ const GridCard = ({ post, liked, onLike, onShare }) => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Media */}
       {isVideo ? (
         <video
           ref={videoRef}
@@ -292,7 +285,6 @@ const GridCard = ({ post, liked, onLike, onShare }) => {
         />
       )}
 
-      {/* Hover overlay */}
       <AnimatePresence>
         {hovered && (
           <motion.div
@@ -342,7 +334,7 @@ const GridCard = ({ post, liked, onLike, onShare }) => {
         )}
       </AnimatePresence>
 
-      {/* Always-visible like count on non-hovered (mobile grid) */}
+      {/* Always-visible like count on mobile grid */}
       <div
         className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full lg:hidden"
         style={{ background: 'rgba(0,0,0,0.45)' }}
@@ -370,7 +362,6 @@ const MobileFeed = ({ posts, likedPosts, onLike, onShare, onLoadMore, hasMore, l
           if (entry.isIntersecting) {
             const index = Number(entry.target.dataset.index)
             setActiveIndex(index)
-            // Load more when near end
             if (index >= posts.length - 3 && hasMore && !loadingMore) {
               onLoadMore()
             }
@@ -388,6 +379,7 @@ const MobileFeed = ({ posts, likedPosts, onLike, onShare, onLoadMore, hasMore, l
   return (
     <div
       ref={containerRef}
+      data-mobile-feed
       className="fixed inset-0 z-20 overflow-y-scroll"
       style={{
         scrollSnapType: 'y mandatory',
@@ -421,10 +413,13 @@ const MobileFeed = ({ posts, likedPosts, onLike, onShare, onLoadMore, hasMore, l
 // ─── Community Feed Page ──────────────────────────────────
 
 export default function CommunityFeedPage() {
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const [isMobile, setIsMobile] = useState(false)
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const { user }   = useAuth()
 
+  const selectedPostId = location.state?.selectedPostId ?? null
+
+  const [isMobile,    setIsMobile]    = useState(false)
   const [posts,       setPosts]       = useState([])
   const [loading,     setLoading]     = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -468,6 +463,17 @@ export default function CommunityFeedPage() {
     loadPosts(0, true)
     loadUserLikes()
   }, [loadPosts, loadUserLikes])
+
+  // Scroll mobile feed to the selected post once posts are loaded
+  useEffect(() => {
+    if (!selectedPostId || !isMobile || posts.length === 0) return
+    const index = posts.findIndex((p) => p.id === selectedPostId)
+    if (index < 0) return
+    const container = document.querySelector('[data-mobile-feed]')
+    if (container) {
+      container.scrollTo({ top: index * window.innerHeight, behavior: 'instant' })
+    }
+  }, [selectedPostId, posts, isMobile])
 
   const handleLike = async (postId) => {
     if (!user) return toast.error('Sign in to like posts')
@@ -513,15 +519,15 @@ export default function CommunityFeedPage() {
   if (!loading && isMobile) {
     return (
       <>
-        {/* Floating back button */}
         <button
           onClick={() => navigate('/feed')}
-          className="fixed top-4 left-4 z-30 flex items-center gap-1.5 px-3 py-2 rounded-full"
+          className="fixed z-30 flex items-center gap-1.5 px-3 py-2 rounded-full"
           style={{
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+            left: '16px',
             background: 'rgba(0,0,0,0.5)',
             backdropFilter: 'blur(8px)',
             color: 'white',
-            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
           }}
           aria-label="Back to Discover"
         >
