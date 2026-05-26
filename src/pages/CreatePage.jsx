@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ImageIcon, VideoIcon, Sparkles, ArrowRight } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Skeleton } from '@/components/ui/Modal'
@@ -37,31 +38,30 @@ const TOOLS = [
 
 export default function CreatePage() {
   const navigate                  = useNavigate()
+  const { isStaff, isAdmin }      = useAuth()
   const [activeTab, setActiveTab] = useState('tools')
   const [templates, setTemplates] = useState([])
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
-    templatesDb.getAll().then(({ data }) => {
+    const fetchTemplates = async () => {
+      setLoading(true)
+
+      // Staff and admin see promptiq-visibility templates too
+      const { data } = (isStaff || isAdmin)
+        ? await templatesDb.getAll()
+        : await templatesDb.getPublic()
+
       setTemplates(data || [])
       setLoading(false)
-    })
-  }, [])
+    }
 
+    fetchTemplates()
+  }, [isStaff, isAdmin])
+
+  // ── Navigate to TemplateRunnerPage, not GeneratePage ──
   const handleTemplateSelect = (template) => {
-    navigate('/generate', {
-      state: {
-        type:                'template',
-        templateId:          template.id,
-        templateSlug:        template.slug,
-        templateName:        template.name,
-        templateDescription: template.description,
-        minImages:           template.min_images,
-        maxImages:           template.max_images,
-        creditCost:          template.credit_cost,
-        creditCostPerImage:  template.credit_cost_per_image,
-      },
-    })
+    navigate(`/create/${template.slug}`)
   }
 
   return (
@@ -122,7 +122,6 @@ export default function CreatePage() {
                         padding:     '20px',
                       }}
                     >
-                      {/* Icon */}
                       <div className="flex flex-1 items-center justify-center w-full">
                         <div
                           className="rounded-2xl flex items-center justify-center"
@@ -139,8 +138,6 @@ export default function CreatePage() {
                           />
                         </div>
                       </div>
-
-                      {/* Text */}
                       <div className="w-full flex flex-col gap-0.5 items-center text-center flex-shrink-0">
                         <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
                         <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
@@ -164,7 +161,9 @@ export default function CreatePage() {
                     <Skeleton className="h-36 w-full rounded-2xl" />
                   </>
                 ) : templates.length === 0 ? (
-                  <p className="text-sm text-center py-16" style={{ color: 'var(--text-muted)' }}>No templates yet</p>
+                  <p className="text-sm text-center py-16" style={{ color: 'var(--text-muted)' }}>
+                    No templates yet
+                  </p>
                 ) : (
                   templates.map((template, i) => (
                     <motion.button
@@ -197,11 +196,25 @@ export default function CreatePage() {
                             ? `${template.credit_cost_per_image}/img`
                             : `${template.credit_cost} cr`}
                         </div>
+
+                        {/* Staff-only badge */}
+                        {template.visibility === 'promptiq' && (
+                          <div
+                            className="absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-semibold"
+                            style={{ background: 'rgba(249,115,22,0.85)', color: 'white', backdropFilter: 'blur(8px)' }}
+                          >
+                            Staff
+                          </div>
+                        )}
                       </div>
                       <div className="px-4 py-3 flex items-center justify-between">
                         <div>
-                          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{template.name}</h3>
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{template.description}</p>
+                          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+                            {template.name}
+                          </h3>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                            {template.description}
+                          </p>
                         </div>
                         <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginLeft: 12 }} />
                       </div>
