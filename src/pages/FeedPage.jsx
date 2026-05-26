@@ -1,8 +1,8 @@
 // src/pages/FeedPage.jsx
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Heart, Play, Film, Image, X, Sparkles, ArrowRight, Star, TrendingUp, Users, ChevronRight } from 'lucide-react'
+import { Play, Film, Image, X, Sparkles, ArrowRight, Star, TrendingUp } from 'lucide-react'
 import { feed as feedDb, templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -13,70 +13,70 @@ import toast from 'react-hot-toast'
 // ─── Aspect Ratio Helpers ─────────────────────────────────
 
 /**
- * Returns one of: 'tall' (9:16), 'square' (1:1), 'wide' (16:9)
- * Falls back to 'square' if unknown.
+ * Classify a width/height pair into 'tall' | 'square' | 'wide'.
  */
-const classifyAspectRatio = (post) => {
-  const ar = post.output_aspect_ratio
-  if (!ar) return 'square'
-  if (ar === '9:16' || ar === '9/16') return 'tall'
-  if (ar === '16:9' || ar === '16/9') return 'wide'
-  if (ar === '1:1' || ar === '1/1') return 'square'
-  // Numeric fallback
-  const parsed = parseFloat(ar)
-  if (!isNaN(parsed)) {
-    if (parsed < 0.75) return 'tall'
-    if (parsed > 1.4)  return 'wide'
-    return 'square'
-  }
+const classify = (w, h) => {
+  if (!w || !h) return 'square'
+  const ratio = w / h
+  if (ratio < 0.8)  return 'tall'   // 9:16 and anything taller than ~4:5
+  if (ratio > 1.25) return 'wide'   // 16:9 and anything wider than ~5:4
   return 'square'
 }
 
 /**
- * Pack posts into rows for the two-column masonry layout.
- *
- * Rules:
- *  - 'tall' card → occupies left OR right column for its full height.
- *    The opposite column gets two stacked cards to match.
- *  - 'square' / 'wide' → paired side by side in a standard row.
- *
- * Returns an array of row descriptors:
- *   { type: 'pair',   left: post, right: post }
- *   { type: 'tall-left',  tall: post, stack: [post, post?] }
- *   { type: 'tall-right', tall: post, stack: [post, post?] }
+ * Also check post.output_aspect_ratio string if present,
+ * as a cheap first-pass before the image loads.
  */
-const packIntoRows = (posts) => {
+const classifyFromMeta = (post) => {
+  const ar = post.output_aspect_ratio
+  if (!ar) return null
+  if (ar === '9:16' || ar === '9/16') return 'tall'
+  if (ar === '16:9' || ar === '16/9') return 'wide'
+  if (ar === '1:1'  || ar === '1/1')  return 'square'
+  const parsed = parseFloat(ar)
+  if (!isNaN(parsed)) return classify(parsed, 1)
+  return null
+}
+
+// ─── Layout Engine ────────────────────────────────────────
+
+/**
+ * Pack posts (each with a known arClass) into row descriptors.
+ *
+ * Row types:
+ *   { type: 'pair',       left: post,  right: post | null }
+ *   { type: 'tall-left',  tall: post,  stack: post[] }   ← 1-2 companions on the right
+ *   { type: 'tall-right', tall: post,  stack: post[] }   ← 1-2 companions on the left
+ *
+ * A tall card consumes itself + up to 2 companions (the stacked column).
+ * Non-tall posts are paired side-by-side.
+ */
+const packIntoRows = (posts, arMap) => {
   const rows = []
   let i = 0
+  let tallLeftCount = 0
+  let tallRightCount = 0
 
   while (i < posts.length) {
     const post = posts[i]
-    const ar   = classifyAspectRatio(post)
+    const ar   = arMap[post.id] || 'square'
 
     if (ar === 'tall') {
-      // Consume up to 2 companions for the stacked column
       const companions = []
       let j = i + 1
       while (companions.length < 2 && j < posts.length) {
         companions.push(posts[j++])
       }
-      // Alternate tall side to keep grid visually balanced
-      const side = rows.filter(r => r.type === 'tall-left').length <=
-                   rows.filter(r => r.type === 'tall-right').length
-                   ? 'tall-left' : 'tall-right'
+      // Alternate sides
+      const side = tallLeftCount <= tallRightCount ? 'tall-left' : 'tall-right'
+      if (side === 'tall-left') tallLeftCount++
+      else tallRightCount++
       rows.push({ type: side, tall: post, stack: companions })
       i = j
     } else {
-      // Pair with next non-tall post if available
       const next = posts[i + 1]
-      if (next) {
-        rows.push({ type: 'pair', left: post, right: next })
-        i += 2
-      } else {
-        // Lone card — render full-width pair with only left filled
-        rows.push({ type: 'pair', left: post, right: null })
-        i += 1
-      }
+      rows.push({ type: 'pair', left: post, right: next || null })
+      i += next ? 2 : 1
     }
   }
 
@@ -154,21 +154,12 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
         }}
       >
         {template.thumbnail_url ? (
-          <>
-            <img
-              src={template.thumbnail_url}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 w-full h-full"
-              style={{ objectFit: 'cover', filter: 'blur(14px)', transform: 'scale(1.2)', opacity: 0.7 }}
-            />
-            <img
-              src={template.thumbnail_url}
-              alt={template.name}
-              className="absolute inset-0 w-full h-full"
-              style={{ objectFit: 'contain' }}
-            />
-          </>
+          <img
+            src={template.thumbnail_url}
+            alt={template.name}
+            className="absolute inset-0 w-full h-full"
+            style={{ objectFit: 'cover' }}
+          />
         ) : (
           <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
         )}
@@ -204,71 +195,44 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
 // ─── Media Card ───────────────────────────────────────────
 
 /**
- * Renders a single post thumbnail.
+ * Single post card. Probes image dimensions on first load to determine
+ * its true aspect ratio class, then reports it upward via onAspectRatio.
  *
- * @param {object}  post
- * @param {number}  rank          - animation stagger index
- * @param {boolean} liked
- * @param {string}  arClass       - 'tall' | 'square' | 'wide'
- * @param {boolean} fullWidth     - true when card spans both columns
+ * Rendering rules (NO blur anywhere):
+ *  - tall   → 9/16 shell, object-fit: cover  → portrait fills the card
+ *  - square → 1/1  shell, object-fit: cover  → square fills the card
+ *  - wide   → 1/1  shell, object-fit: cover  → wide image zoomed/cropped to fill square
  */
-const MediaCard = ({ post, rank, liked, arClass, fullWidth = false, onLike, onPlayVideo, onClick }) => {
-  const isVideo = post.output_type === 'video'
+const MediaCard = ({ post, rank, arClass, onAspectRatio, onPlayVideo, onClick }) => {
+  const isVideo      = post.output_type === 'video'
+  const shellRatio   = arClass === 'tall' ? '9 / 16' : '1 / 1'
 
-  /**
-   * Image display strategy per aspect ratio:
-   *  - tall   → natural height, full image visible (object-fit: contain with blurred bg)
-   *  - square → 1:1 shell, full image visible (object-fit: contain with blurred bg)
-   *  - wide   → square shell, zoomed to fill center (object-fit: cover) — clean crop
-   */
-  const imageStyle = arClass === 'wide'
-    ? { objectFit: 'cover' }
-    : { objectFit: 'contain' }
-
-  /**
-   * Card shell aspect ratio:
-   *  - tall   → 9/16
-   *  - square → 1/1
-   *  - wide   → 1/1  (square shell for wide media, zoomed to fill)
-   */
-  const shellAspectRatio = arClass === 'tall' ? '9 / 16' : '1 / 1'
+  const handleImgLoad = useCallback((e) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+    if (w && h) onAspectRatio(post.id, classify(w, h))
+  }, [post.id, onAspectRatio])
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: rank * 0.06 }}
-      className={`rounded-3xl overflow-hidden${fullWidth ? ' w-full' : ''}`}
+      transition={{ delay: rank * 0.055, duration: 0.32 }}
+      className="rounded-3xl overflow-hidden"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <div
-        className="relative overflow-hidden cursor-pointer bg-black"
-        style={{ aspectRatio: shellAspectRatio }}
+        className="relative overflow-hidden cursor-pointer"
+        style={{ aspectRatio: shellRatio, background: '#111' }}
         onClick={onClick}
       >
-        {/* Blurred background — only for non-wide (contain-mode) cards */}
-        {arClass !== 'wide' && (
-          <img
-            src={post.thumbnail_url}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{
-              objectFit: 'cover',
-              filter: 'blur(20px)',
-              transform: 'scale(1.15)',
-              opacity: 0.72,
-            }}
-          />
-        )}
-
-        {/* Main image */}
+        {/* Main image — always cover, no blur */}
         <img
           src={post.thumbnail_url}
           alt={post.title || `Creation by @${post.profiles?.username}`}
           className="absolute inset-0 w-full h-full"
-          style={imageStyle}
+          style={{ objectFit: 'cover', objectPosition: 'center' }}
           loading="lazy"
+          onLoad={handleImgLoad}
         />
 
         {/* Type badge */}
@@ -304,8 +268,38 @@ const MediaCard = ({ post, rank, liked, arClass, fullWidth = false, onLike, onPl
 
 // ─── Masonry Grid ─────────────────────────────────────────
 
-const MasonryGrid = ({ posts, likedPosts, onLike, onPlayVideo, onNavigate }) => {
-  const rows = packIntoRows(posts)
+const MasonryGrid = ({ posts, onPlayVideo, onNavigate }) => {
+  // arMap: { [postId]: 'tall' | 'square' | 'wide' }
+  // Seeded with metadata-derived values where available.
+  const [arMap, setArMap] = useState(() => {
+    const seed = {}
+    posts.forEach((p) => {
+      const meta = classifyFromMeta(p)
+      if (meta) seed[p.id] = meta
+    })
+    return seed
+  })
+
+  const handleAspectRatio = useCallback((id, arClass) => {
+    setArMap((prev) => {
+      if (prev[id] === arClass) return prev   // no-op if unchanged
+      return { ...prev, [id]: arClass }
+    })
+  }, [])
+
+  const rows = packIntoRows(posts, arMap)
+
+  const renderCard = (post, rank) => (
+    <MediaCard
+      key={post.id}
+      post={post}
+      rank={rank}
+      arClass={arMap[post.id] || 'square'}
+      onAspectRatio={handleAspectRatio}
+      onPlayVideo={onPlayVideo}
+      onClick={() => onNavigate(post.id)}
+    />
+  )
 
   return (
     <div className="flex flex-col gap-3">
@@ -313,66 +307,27 @@ const MasonryGrid = ({ posts, likedPosts, onLike, onPlayVideo, onNavigate }) => 
         if (row.type === 'pair') {
           return (
             <div key={rowIdx} className="grid grid-cols-2 gap-3">
-              {[row.left, row.right].map((post, colIdx) => {
-                if (!post) return <div key={colIdx} /> // empty slot
-                const arClass = classifyAspectRatio(post)
-                return (
-                  <MediaCard
-                    key={post.id}
-                    post={post}
-                    rank={rowIdx * 2 + colIdx}
-                    liked={likedPosts.has(post.id)}
-                    arClass={arClass}
-                    onLike={onLike}
-                    onPlayVideo={onPlayVideo}
-                    onClick={() => onNavigate(post.id)}
-                  />
-                )
-              })}
+              {row.left  && renderCard(row.left,  rowIdx * 3)}
+              {row.right ? renderCard(row.right, rowIdx * 3 + 1) : <div />}
             </div>
           )
         }
 
         // tall-left or tall-right
-        const tallOnLeft  = row.type === 'tall-left'
-        const tallArClass = 'tall'
-        const tallCard = (
-          <MediaCard
-            key={row.tall.id}
-            post={row.tall}
-            rank={rowIdx * 2}
-            liked={likedPosts.has(row.tall.id)}
-            arClass={tallArClass}
-            onLike={onLike}
-            onPlayVideo={onPlayVideo}
-            onClick={() => onNavigate(row.tall.id)}
-          />
-        )
+        const tallOnLeft = row.type === 'tall-left'
 
-        const stackCards = (
-          <div key="stack" className="flex flex-col gap-3">
-            {row.stack.map((post, si) => {
-              const arClass = classifyAspectRatio(post)
-              return (
-                <MediaCard
-                  key={post.id}
-                  post={post}
-                  rank={rowIdx * 2 + si + 1}
-                  liked={likedPosts.has(post.id)}
-                  arClass={arClass}
-                  onLike={onLike}
-                  onPlayVideo={onPlayVideo}
-                  onClick={() => onNavigate(post.id)}
-                />
-              )
-            })}
+        const tallCol = renderCard(row.tall, rowIdx * 3)
+
+        const stackCol = (
+          <div className="flex flex-col gap-3" style={{ minWidth: 0 }}>
+            {row.stack.map((post, si) => renderCard(post, rowIdx * 3 + si + 1))}
           </div>
         )
 
         return (
           <div key={rowIdx} className="grid grid-cols-2 gap-3 items-start">
-            {tallOnLeft ? tallCard   : stackCards}
-            {tallOnLeft ? stackCards : tallCard}
+            {tallOnLeft ? tallCol  : stackCol}
+            {tallOnLeft ? stackCol : tallCol}
           </div>
         )
       })}
@@ -393,27 +348,20 @@ export default function FeedPage() {
   const [likedPosts,       setLikedPosts]       = useState(new Set())
   const [activeVideo,      setActiveVideo]      = useState(null)
 
-  // Load templates
   useEffect(() => {
-    const loadTemplates = async () => {
-      const { data } = await templatesDb.getPublic()
+    templatesDb.getPublic().then(({ data }) => {
       setPublicTemplates(data || [])
       setTemplatesLoading(false)
-    }
-    loadTemplates()
+    })
   }, [])
 
-  // Load trending
   useEffect(() => {
-    const loadTrending = async () => {
-      const { data } = await feedDb.getTrending({ limit: 8 })
+    feedDb.getTrending({ limit: 8 }).then(({ data }) => {
       setTrending(data || [])
       setTrendingLoading(false)
-    }
-    loadTrending()
+    })
   }, [])
 
-  // Load user likes
   const loadUserLikes = useCallback(async () => {
     if (!user) return
     const { data } = await feedDb.getUserLikes(user.id)
@@ -432,11 +380,9 @@ export default function FeedPage() {
       return next
     })
     setTrending((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? { ...p, likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1 }
-          : p
-      )
+      prev.map((p) => p.id === postId
+        ? { ...p, likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1 }
+        : p)
     )
 
     const { data } = await feedDb.toggleLike(user.id, postId)
@@ -447,11 +393,9 @@ export default function FeedPage() {
         return next
       })
       setTrending((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, likes_count: wasLiked ? p.likes_count + 1 : p.likes_count - 1 }
-            : p
-        )
+        prev.map((p) => p.id === postId
+          ? { ...p, likes_count: wasLiked ? p.likes_count + 1 : p.likes_count - 1 }
+          : p)
       )
     }
   }
@@ -543,17 +487,13 @@ export default function FeedPage() {
           <div className="mb-4">
             <MasonryGrid
               posts={trending}
-              likedPosts={likedPosts}
-              onLike={handleLike}
               onPlayVideo={(url) => setActiveVideo(url)}
               onNavigate={(id) => navigate('/feed/community', { state: { selectedPostId: id } })}
             />
           </div>
         )}
 
-        {/* Bottom padding for BottomNav */}
         <div className="h-6" />
-
       </PageWrapper>
 
       {activeVideo && (
