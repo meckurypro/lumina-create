@@ -1,4 +1,4 @@
-// src/pages/AdminPage.js
+// src/pages/AdminPage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
