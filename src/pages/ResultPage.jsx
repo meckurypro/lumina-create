@@ -81,7 +81,6 @@ export default function ResultPage() {
       generation_id: id,
       template_id:   generation.template_id,
       thumbnail_url: generation.thumbnail_url || displayUrl,
-      output_url:    displayUrl,
       output_type:   displayType,
     })
     setPublishing(false)

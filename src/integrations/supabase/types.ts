@@ -316,6 +316,7 @@ export type Database = {
           start_frame_url: string | null
           status: Database["public"]["Enums"]["generation_status"] | null
           template_id: string | null
+          title: string | null
           updated_at: string | null
           user_id: string
         }
@@ -343,6 +344,7 @@ export type Database = {
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
           template_id?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -370,6 +372,7 @@ export type Database = {
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
           template_id?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -969,7 +972,7 @@ export type Database = {
         | "ernie_image_turbo"
       app_role: "admin" | "moderator" | "staff" | "user"
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
-      feed_status: "pending" | "approved" | "rejected"
+      feed_status: "pending" | "approved" | "rejected" | "published"
       generation_status: "pending" | "processing" | "completed" | "failed"
       generation_type:
         | "text_to_image"
@@ -1145,7 +1148,7 @@ export const Constants = {
       ],
       app_role: ["admin", "moderator", "staff", "user"],
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
-      feed_status: ["pending", "approved", "rejected"],
+      feed_status: ["pending", "approved", "rejected", "published"],
       generation_status: ["pending", "processing", "completed", "failed"],
       generation_type: [
         "text_to_image",
