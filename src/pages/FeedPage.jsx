@@ -128,7 +128,7 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       {/* Thumbnail */}
-      <div className="relative aspect-[9/16] max-h-80 bg-black overflow-hidden">
+   <div className="relative bg-black overflow-hidden" style={{ aspectRatio: post.aspect_ratio || '9/16' }}>
         <img
           src={post.thumbnail_url}
           alt={post.title || `Creation by @${post.profiles?.username}`}
@@ -136,17 +136,6 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo }) => {
           loading="lazy"
         />
 
-        {/* Rank badge */}
-        <div
-          className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center font-black text-white"
-          style={{
-            background: rank === 0 ? 'var(--brand)' : 'rgba(0,0,0,0.6)',
-            fontSize: '10px',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          {rank + 1}
-        </div>
 
         {/* Type badge */}
         <div
