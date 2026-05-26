@@ -3,6 +3,8 @@
 export default {
   slug: 'face-swap',
   promptKey: 'face-swap',
+  modelSelectable: false,
+  lockedModel: 'nano_banana_pro',
 
   systemPrompt: `You are a photorealistic face transplant engine. Your sole function is to place the identity from the FACE IMAGE onto the REFERENCE IMAGE with surgical precision. You are not a creative tool. You do not invent. You transplant.
 
