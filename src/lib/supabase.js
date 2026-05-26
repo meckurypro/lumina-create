@@ -94,13 +94,39 @@ export const generations = {
 }
 
 export const feed = {
+  // Trending posts — decay-weighted by likes + views + recency
+  // Used on the main FeedPage (limited, no pagination)
+  getTrending: ({ limit = 8 } = {}) =>
+    supabase
+      .from('feed_posts')
+      .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)')
+      .eq('status', 'published')
+      .order('likes_count', { ascending: false })
+      .order('published_at', { ascending: false })
+      .limit(limit),
+  // All community posts — chronological, paginated
+  // Used on CommunityFeedPage (infinite scroll)
+  getAllCommunity: ({ limit = 20, offset = 0 } = {}) =>
+    supabase
+      .from('feed_posts')
+      .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' })
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .range(offset, offset + limit - 1),
+  // Keep getPosts for backward compat (ResultPage etc. may use it)
   getPosts: ({ limit = 20, offset = 0, templateId = null } = {}) => {
-    let q = supabase.from('feed_posts').select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' }).eq('status', 'approved').order('published_at', { ascending: false }).range(offset, offset + limit - 1)
+    let q = supabase
+      .from('feed_posts')
+      .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' })
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (templateId) q = q.eq('template_id', templateId)
     return q
   },
   submit: (data) => supabase.from('feed_posts').insert(data).select().single(),
-  toggleLike: (userId, postId) => supabase.rpc('toggle_feed_like', { p_user_id: userId, p_post_id: postId }),
+  toggleLike: (userId, postId) =>
+    supabase.rpc('toggle_feed_like', { p_user_id: userId, p_post_id: postId }),
   getUserLikes: async (userId) => {
     const { data, error } = await supabase.from('feed_likes').select('post_id').eq('user_id', userId)
     return { data: data?.map((l) => l.post_id) || [], error }
