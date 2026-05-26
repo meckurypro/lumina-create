@@ -116,7 +116,7 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => {
 
 // ─── Trending Feed Card ───────────────────────────────────
 
-const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo }) => {
+const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo, onClick }) => {
   const isVideo = post.output_type === 'video'
   const [aspectRatio, setAspectRatio] = useState('9 / 16')
 
@@ -136,7 +136,7 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       {/* Thumbnail */}
-      <div className="relative bg-black overflow-hidden" style={{ aspectRatio }}>
+      <div className="relative bg-black overflow-hidden cursor-pointer" style={{ aspectRatio }} onClick={onClick}>
         <img
           src={post.thumbnail_url}
           alt={post.title || `Creation by @${post.profiles?.username}`}
@@ -170,66 +170,9 @@ const TrendingCard = ({ post, rank, liked, onLike, onPlayVideo }) => {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-3 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <div
-            className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-            style={{ background: 'var(--brand)', color: 'white' }}
-          >
-            {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-          </div>
-          <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-            @{post.profiles?.username || 'user'}
-          </p>
-        </div>
-
-        <button
-          onClick={() => onLike(post.id)}
-          aria-label={liked ? 'Unlike' : 'Like'}
-          className="flex items-center gap-1 px-2 py-1 rounded-xl flex-shrink-0"
-          style={{
-            background: liked ? 'rgba(249,115,22,0.12)' : 'var(--bg-elevated)',
-            color: liked ? 'var(--brand)' : 'var(--text-muted)',
-          }}
-        >
-          <Heart size={12} fill={liked ? 'currentColor' : 'none'} />
-          <span style={{ fontSize: '11px', fontWeight: 700 }}>{post.likes_count || 0}</span>
-        </button>
-      </div>
     </motion.div>
   )
 }
-// ─── See All Banner ───────────────────────────────────────
-
-const SeeAllBanner = ({ count, onClick }) => (
-  <motion.button
-    initial={{ opacity: 0, y: 8 }}
-    animate={{ opacity: 1, y: 0 }}
-    whileTap={{ scale: 0.98 }}
-    onClick={onClick}
-    className="w-full flex items-center justify-between px-4 py-4 rounded-2xl mt-1"
-    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-  >
-    <div className="flex items-center gap-3">
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center"
-        style={{ background: 'rgba(249,115,22,0.1)' }}
-      >
-        <Users size={16} style={{ color: 'var(--brand)' }} />
-      </div>
-      <div className="text-left">
-        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-          All community posts
-        </p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Browse everything the community has made
-        </p>
-      </div>
-    </div>
-    <ChevronRight size={18} style={{ color: 'var(--text-muted)' }} />
-  </motion.button>
-)
 
 // ─── Feed Page ────────────────────────────────────────────
 
@@ -395,23 +338,20 @@ export default function FeedPage() {
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 mb-4">
-              {trending.map((post, i) => (
-                <TrendingCard
-                  key={post.id}
-                  post={post}
-                  rank={i}
-                  liked={likedPosts.has(post.id)}
-                  onLike={handleLike}
-                  onPlayVideo={(url) => setActiveVideo(url)}
-                />
-              ))}
+{trending.map((post, i) => (
+  <TrendingCard
+    key={post.id}
+    post={post}
+    rank={i}
+    liked={likedPosts.has(post.id)}
+    onLike={handleLike}
+    onPlayVideo={(url) => setActiveVideo(url)}
+    onClick={() => navigate('/feed/community', { state: { selectedPostId: post.id } })}
+  />
+))}
             </div>
 
-            {/* See all community posts CTA */}
-            <SeeAllBanner
-              count={trending.length}
-              onClick={() => navigate('/feed/community')}
-            />
+
           </>
         )}
 
