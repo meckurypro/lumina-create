@@ -751,12 +751,6 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     const [statsRes, templatesRes, feedRes, usersRes] = await Promise.all([
-
-// ADD THESE 3 LINES:
-console.log('feed data:', feedRes.data)
-console.log('feed error:', feedRes.error)
-console.log('feed status:', feedRes.status)
-      
       supabase.rpc('get_admin_stats'),
       supabase.from('templates').select('*').order('sort_order'),
       supabase
@@ -771,6 +765,11 @@ console.log('feed status:', feedRes.status)
         .order('created_at', { ascending: false })
         .limit(20),
     ])
+if (feedRes.error) {
+      console.error('Feed query error:', feedRes.error)
+      toast.error(`Feed error: ${feedRes.error.message}`)
+    }
+
     setStats(statsRes.data)
     setTemplates(templatesRes.data || [])
     setPendingPosts(feedRes.data   || [])
