@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal }                             from 'react-dom'
 import { useNavigate }                              from 'react-router-dom'
 import { motion, AnimatePresence }                  from 'framer-motion'
-import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, ChevronDown } from 'lucide-react'
+import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, ChevronDown, Copy, Check } from 'lucide-react'
 import { generations as generationsDb, supabase }  from '@/lib/supabase'
 import { useAuth }                                  from '@/context/AuthContext'
 import { TopBar }                                   from '@/components/layout/TopBar'
@@ -115,9 +115,58 @@ const ProgressOverlay = ({ gen }) => {
   )
 }
 
+// ── Copy Prompt Button ─────────────────────────────────────
+
+const CopyPromptButton = ({ prompt }) => {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async (e) => {
+    e.stopPropagation()
+    if (!prompt) return
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Could not copy')
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90"
+      style={{ background: 'var(--bg-elevated)' }}
+      title="Copy prompt"
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        {copied ? (
+          <motion.span
+            key="check"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1,   opacity: 1 }}
+            exit={{    scale: 0.5, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <Check size={13} style={{ color: '#10b981' }} />
+          </motion.span>
+        ) : (
+          <motion.span
+            key="copy"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1,   opacity: 1 }}
+            exit={{    scale: 0.5, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <Copy size={13} style={{ color: 'var(--text-muted)' }} />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  )
+}
+
 // ── Portal Dropup ──────────────────────────────────────────
-// Renders the model list via a portal at the top of <body>
-// so it is never clipped by any parent stacking context.
 
 const PortalDropup = ({ triggerRef, open, models, value, originalModel, onSelect, onClose }) => {
   const [rect, setRect] = useState(null)
@@ -130,14 +179,12 @@ const PortalDropup = ({ triggerRef, open, models, value, originalModel, onSelect
 
   if (!open || !rect) return null
 
-  // List sits ABOVE the trigger: bottom = viewport height - trigger top + gap
-  const bottomPx  = window.innerHeight - rect.top + 8
-  const leftPx    = rect.left
-  const widthPx   = rect.width
+  const bottomPx = window.innerHeight - rect.top + 8
+  const leftPx   = rect.left
+  const widthPx  = rect.width
 
   return createPortal(
     <>
-      {/* invisible full-screen tap-away */}
       <div
         className="fixed inset-0"
         style={{ zIndex: 9998 }}
@@ -150,17 +197,17 @@ const PortalDropup = ({ triggerRef, open, models, value, originalModel, onSelect
         exit={{    opacity: 0, y: 8, scale: 0.97 }}
         transition={{ duration: 0.15 }}
         style={{
-          position:   'fixed',
-          bottom:     bottomPx,
-          left:       leftPx,
-          width:      widthPx,
-          zIndex:     9999,
-          background: 'var(--bg-card)',
-          border:     '1px solid var(--border-color)',
+          position:  'fixed',
+          bottom:    bottomPx,
+          left:      leftPx,
+          width:     widthPx,
+          zIndex:    9999,
+          background:   'var(--bg-card)',
+          border:       '1px solid var(--border-color)',
           borderRadius: 16,
-          boxShadow:  '0 -8px 32px rgba(0,0,0,0.4)',
-          maxHeight:  260,
-          overflowY:  'auto',
+          boxShadow:    '0 -8px 32px rgba(0,0,0,0.4)',
+          maxHeight:    260,
+          overflowY:    'auto',
           WebkitOverflowScrolling: 'touch',
         }}
         onClick={(e) => e.stopPropagation()}
@@ -245,12 +292,18 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
           <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
 
-        {/* Title + prompt */}
+        {/* Title + prompt + copy button */}
         <div className="px-4 pb-4">
           <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Regenerate</p>
-          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
-            {gen.prompt || 'No prompt'}
-          </p>
+
+          {/* Prompt row */}
+          <div className="flex items-start gap-2 mt-0.5">
+            <p className="text-xs flex-1 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+              {gen.prompt || 'No prompt'}
+            </p>
+            {gen.prompt && <CopyPromptButton prompt={gen.prompt} />}
+          </div>
+
           {gen.start_frame_url && (
             <div className="mt-2 flex items-center gap-1.5">
               <Image size={11} style={{ color: 'var(--text-muted)' }} />
@@ -265,7 +318,6 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
             Model
           </p>
 
-          {/* Trigger button — ref'd so PortalDropup can measure it */}
           <button
             ref={triggerRef}
             onClick={(e) => { e.stopPropagation(); setDropOpen((v) => !v) }}
@@ -300,7 +352,6 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
             </div>
           </button>
 
-          {/* Portal dropup — escapes all stacking contexts */}
           <AnimatePresence>
             {dropOpen && (
               <PortalDropup
@@ -774,4 +825,4 @@ export default function MediaPage() {
       </AnimatePresence>
     </>
   )
-}
+            }
