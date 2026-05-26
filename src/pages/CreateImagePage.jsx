@@ -97,6 +97,9 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
+                      {!model.supports_image && (
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>Text only</p>
+                      )}
                     </div>
                     {model.value === value && (
                       <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
@@ -198,14 +201,24 @@ export default function CreateImagePage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  const type          = referenceImg ? 'image_to_image' : 'text_to_image'
-  const selectedModel = models.find((m) => m.value === model)
+  const selectedModel     = models.find((m) => m.value === model)
+  const modelSupportsImage = selectedModel?.supports_image !== false
+
+  const type          = referenceImg && modelSupportsImage ? 'image_to_image' : 'text_to_image'
   const creditCost    = selectedModel
-    ? (referenceImg ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    ? (referenceImg && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
+
+  // ── When model changes to one that doesn't support images,
+  //    clear any attached reference image ────────────────────
+  useEffect(() => {
+    if (!modelSupportsImage && referenceImg) {
+      handleRemoveImage()
+    }
+  }, [model])
 
   // ── Persist preferred model when user changes it ──────────
   const handleModelChange = async (value) => {
@@ -215,7 +228,7 @@ export default function CreateImagePage() {
     }
   }
 
-  // ── Image upload — persist to sessionStorage as base64 ────
+  // ── Image upload ──────────────────────────────────────────
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -241,7 +254,7 @@ export default function CreateImagePage() {
     } catch { /* noop */ }
   }
 
-  // ── Remove image — clear sessionStorage ───────────────────
+  // ── Remove image ──────────────────────────────────────────
   const handleRemoveImage = () => {
     setReferenceImg(null)
     setImgDimensions(null)
@@ -258,19 +271,36 @@ export default function CreateImagePage() {
     if (!user)          return toast.error('Please sign in')
 
     setSubmitting(true)
-    let createdGenId = null
 
     try {
       // 1. Upload reference image (if any) to generation-uploads bucket
       let startFrameUrl = null
-      if (referenceImg?.file) {
-        const ext  = (referenceImg.file.name.split('.').pop() || 'jpg').toLowerCase()
+      if (referenceImg?.file && modelSupportsImage) {
+        const file = referenceImg.file
+
+        const contentType =
+          (file.type && file.type !== '') ? file.type
+          : file.name?.match(/\.png$/i)   ? 'image/png'
+          : file.name?.match(/\.webp$/i)  ? 'image/webp'
+          : 'image/jpeg'
+
+        const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-        const { error: upErr } = await supabase.storage
+
+        const { data: uploadData, error: upErr } = await supabase.storage
           .from('generation-uploads')
-          .upload(path, referenceImg.file, { upsert: false, cacheControl: '3600', contentType: referenceImg.file.type })
+          .upload(path, file, {
+            upsert:       false,
+            cacheControl: '3600',
+            contentType,
+          })
+
         if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-        const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('generation-uploads')
+          .getPublicUrl(uploadData.path)
+
         startFrameUrl = publicUrl
       }
 
@@ -287,20 +317,19 @@ export default function CreateImagePage() {
         start_frame_url: startFrameUrl,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
-      createdGenId = genRow.id
 
-      // 3. Deduct credits atomically (RPC also writes credit_transactions)
+      // 3. Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // 4. Kick off the generation pipeline (fire-and-forget; do NOT await)
+      // 4. Kick off generation pipeline (fire-and-forget)
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
-      // 5. Reset, clear persisted state, notify
+      // 5. Reset state
       refreshProfile()
       toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
@@ -312,6 +341,7 @@ export default function CreateImagePage() {
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
+      console.error('Generate error:', err)
     } finally {
       setSubmitting(false)
     }
@@ -421,15 +451,37 @@ export default function CreateImagePage() {
                 </div>
               ) : (
                 <label
-                  className="flex flex-col items-center justify-center cursor-pointer rounded-2xl transition-all"
-                  style={{ width: '140px', aspectRatio: '1 / 1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
+                  className="flex flex-col items-center justify-center rounded-2xl transition-all"
+                  style={{
+                    width:       '140px',
+                    aspectRatio: '1 / 1',
+                    border:      '1.5px dashed var(--border-color)',
+                    background:  'var(--bg-card)',
+                    cursor:      modelSupportsImage ? 'pointer' : 'not-allowed',
+                    opacity:     modelSupportsImage ? 1 : 0.4,
+                  }}
                 >
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={!modelSupportsImage}
+                  />
                   <ImagePlus size={22} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Add reference</span>
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    {modelSupportsImage ? 'Add reference' : 'Not supported'}
+                  </span>
                 </label>
               )}
             </div>
+
+            {/* Tooltip when model doesn't support image */}
+            {!modelSupportsImage && (
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                This model is text-only. Switch models to use a reference image.
+              </p>
+            )}
           </div>
 
           {/* Prompt */}
@@ -439,7 +491,7 @@ export default function CreateImagePage() {
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="What are we creating today?"
             rows={4}
-                     />
+          />
 
           {/* Aspect ratio */}
           <div className="pt-1">
