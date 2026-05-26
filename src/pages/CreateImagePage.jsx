@@ -79,11 +79,13 @@ const ModelDropdown = ({ models, value, onChange }) => {
               exit={{    opacity: 0, y: -6, scale: 0.97 }}
               transition={{ duration: 0.13 }}
               className="absolute right-0 top-9 z-50 w-52 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-              }}
+      style={{
+  background: 'var(--bg-card)',
+  border:     '1px solid var(--border-color)',
+  boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
+  maxHeight:  '60vh',
+  overflowY:  'auto',
+}}
             >
               {/* Unlocked models */}
               <div className="py-1">
