@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
 import { motion, AnimatePresence }                  from 'framer-motion'
-import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, X } from 'lucide-react'
-import { generations as generationsDb }             from '@/lib/supabase'
+import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, X, Zap, ChevronDown } from 'lucide-react'
+import { generations as generationsDb, supabase, profiles as profilesApi } from '@/lib/supabase'
 import { useAuth }                                  from '@/context/AuthContext'
 import { TopBar }                                   from '@/components/layout/TopBar'
 import { PageWrapper }                              from '@/components/layout/PageWrapper'
@@ -16,7 +16,6 @@ const PAGE_SIZE = 20
 const POLL_MS   = 4000
 const FILTERS   = ['all', 'completed', 'failed']
 
-// Estimated generation time per type (ms) — used for fake progress bar
 const EST_DURATION = {
   text_to_image:   12000,
   image_to_image:  15000,
@@ -45,11 +44,6 @@ function formatDate(iso) {
   })
 }
 
-// Returns the best display title for a generation — priority order:
-// 1. Template name (if from a template)
-// 2. AI-generated title stored in gen.title
-// 3. First 45 chars of the raw prompt
-// 4. Generic fallback
 function getCardTitle(gen) {
   if (gen.templates?.name)                          return gen.templates.name
   if (gen.title)                                    return gen.title
@@ -57,7 +51,6 @@ function getCardTitle(gen) {
   return 'Generation'
 }
 
-// User-friendly error messages — never show raw API errors
 function getFriendlyError(raw) {
   if (!raw) return null
   if (/content|policy|blocked|nsfw|moderat/i.test(raw)) return '⚠️ Content blocked'
@@ -65,6 +58,17 @@ function getFriendlyError(raw) {
   if (/timed? ?out/i.test(raw))                         return 'Timed out — please try again'
   if (/insufficient|not enough|credit/i.test(raw))      return 'Insufficient credits'
   return 'Generation failed — please try again'
+}
+
+// Strips vendor prefixes to give a clean display label
+// e.g. "fal-ai/flux/schnell" → "flux/schnell", "runway-gen3" → "runway-gen3"
+function getModelDisplayLabel(modelValue, modelsList) {
+  if (!modelValue) return null
+  // If we have the full models list, use the label from there
+  const found = modelsList?.find((m) => m.value === modelValue)
+  if (found) return found.label
+  // Fallback: strip common vendor prefixes
+  return modelValue.replace(/^(fal-ai\/|fal\/|replicate\/|runway-)/i, '')
 }
 
 // ── Status pill ────────────────────────────────────────────
@@ -114,6 +118,157 @@ const ProgressOverlay = ({ gen }) => {
   )
 }
 
+// ── Regenerate Sheet ───────────────────────────────────────
+
+const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
+  const originalModel   = gen.model || ''
+  const [model, setModel] = useState(originalModel)
+  const [dropOpen, setDropOpen] = useState(false)
+
+  const isVideo       = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
+  const relevantModels = models.filter((m) => !m.is_locked && m.type === (isVideo ? 'video' : 'image'))
+  const selectedModel  = relevantModels.find((m) => m.value === model) || relevantModels[0]
+  const creditCost     = selectedModel
+    ? (gen.start_frame_url ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    : 0
+  const canAfford = credits >= creditCost
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 80, opacity: 0 }}
+        animate={{ y: 0,  opacity: 1 }}
+        exit={{    y: 80, opacity: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+        className="w-full rounded-t-3xl overflow-visible pb-8"
+        style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
+        </div>
+
+        <div className="px-4 pb-4">
+          <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Regenerate</p>
+          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+            {gen.prompt || 'No prompt'}
+          </p>
+          {gen.start_frame_url && (
+            <div className="mt-2 flex items-center gap-1.5">
+              <Image size={11} style={{ color: 'var(--text-muted)' }} />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Reference image will be reused</span>
+            </div>
+          )}
+        </div>
+
+        {/* Model selector */}
+        <div className="px-4 mb-4">
+          <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Model</p>
+          <div className="relative">
+            <button
+              onClick={() => setDropOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+            >
+              <div className="text-left">
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {selectedModel?.label ?? model}
+                </p>
+                {selectedModel?.sublabel && (
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {model === originalModel && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: 'rgba(var(--brand-rgb),0.12)', color: 'var(--brand)' }}>
+                    original
+                  </span>
+                )}
+                <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: dropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {dropOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setDropOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0,  scale: 1    }}
+                    exit={{    opacity: 0, y: -6, scale: 0.97 }}
+                    transition={{ duration: 0.13 }}
+                    className="absolute left-0 right-0 top-14 z-50 rounded-2xl overflow-hidden"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border:     '1px solid var(--border-color)',
+                      boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
+                    }}
+                  >
+                    {relevantModels.map((m) => (
+                      <button
+                        key={m.value}
+                        onClick={() => { setModel(m.value); setDropOpen(false) }}
+                        className="w-full flex items-center justify-between px-4 py-3 transition-colors text-left"
+                        style={{ background: m.value === model ? 'var(--bg-elevated)' : 'transparent' }}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+                          {m.sublabel && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {m.value === originalModel && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(var(--brand-rgb),0.1)', color: 'var(--brand)', fontSize: 10 }}>original</span>
+                          )}
+                          {m.value === model && (
+                            <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Cost + CTA */}
+        <div className="px-4 flex flex-col gap-2">
+          <button
+            onClick={() => canAfford && onConfirm(model, creditCost, selectedModel)}
+            disabled={!canAfford || !selectedModel}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+            style={{
+              background: 'var(--text-primary)',
+              color:      'var(--text-inverse)',
+              opacity:    (!canAfford || !selectedModel) ? 0.5 : 1,
+            }}
+          >
+            <RefreshCw size={15} />
+            {!canAfford ? 'Not enough credits' : `Regenerate · ${creditCost} cr`}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-2xl text-sm font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ── Action sheet ───────────────────────────────────────────
 
 const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
@@ -139,7 +294,6 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
         <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
       </div>
 
-      {/* Title + prompt in sheet */}
       <div className="px-4 pb-3">
         <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>
           {getCardTitle(gen)}
@@ -151,7 +305,6 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
         )}
       </div>
 
-      {/* Preview */}
       {gen.output_url && (
         <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
           {gen.output_type === 'video'
@@ -197,7 +350,7 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
 
 // ── Media Card ─────────────────────────────────────────────
 
-const MediaCard = ({ gen, onClick, onMore }) => {
+const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
   const isVideo    = gen.output_type === 'video'
   const isComplete = gen.status === 'completed'
   const isPending  = gen.status === 'pending' || gen.status === 'processing'
@@ -205,6 +358,7 @@ const MediaCard = ({ gen, onClick, onMore }) => {
   const cardTitle  = getCardTitle(gen)
   const friendlyError = gen.status === 'failed' ? getFriendlyError(gen.error_message) : null
   const isPolicy   = friendlyError?.startsWith('⚠️')
+  const modelLabel = getModelDisplayLabel(gen.model, modelsList)
 
   return (
     <motion.div
@@ -251,7 +405,6 @@ const MediaCard = ({ gen, onClick, onMore }) => {
         style={{ cursor: isComplete ? 'pointer' : 'default' }}
         onClick={isComplete ? onClick : undefined}
       >
-        {/* Title — AI-generated or prompt fallback */}
         <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
           {cardTitle}
         </p>
@@ -260,14 +413,21 @@ const MediaCard = ({ gen, onClick, onMore }) => {
           {formatDate(gen.created_at)}
         </p>
 
-        <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <StatusPill status={gen.status} />
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             ⚡ {gen.credits_charged} cr
           </span>
+          {modelLabel && (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-lg font-medium"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              {modelLabel}
+            </span>
+          )}
         </div>
 
-        {/* Friendly error — never raw API message */}
         {friendlyError && (
           <p
             className="text-xs mt-1 truncate"
@@ -294,20 +454,34 @@ const MediaCard = ({ gen, onClick, onMore }) => {
 
 export default function MediaPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, credits, refreshProfile } = useAuth()
 
-  const [items,       setItems]       = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [filter,      setFilter]      = useState('all')
-  const [page,        setPage]        = useState(0)
-  const [hasMore,     setHasMore]     = useState(true)
-  const [totalCount,  setTotalCount]  = useState(0)
-  const [activeGen,   setActiveGen]   = useState(null)
+  const [items,          setItems]          = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [loadingMore,    setLoadingMore]    = useState(false)
+  const [filter,         setFilter]         = useState('all')
+  const [page,           setPage]           = useState(0)
+  const [hasMore,        setHasMore]        = useState(true)
+  const [totalCount,     setTotalCount]     = useState(0)
+  const [activeGen,      setActiveGen]      = useState(null)
+  // null = closed | 'actions' = action sheet | 'regenerate' = regen sheet
+  const [sheetMode,      setSheetMode]      = useState(null)
+  const [models,         setModels]         = useState([])
+  const [regenLoading,   setRegenLoading]   = useState(false)
 
   const pollRef = useRef(null)
 
-  // ── Load ──
+  // ── Load models once ──
+  useEffect(() => {
+    supabase
+      .from('models')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .then(({ data }) => setModels(data || []))
+  }, [])
+
+  // ── Load generations ──
 
   const load = useCallback(async (offset = 0, reset = false) => {
     if (!user) return
@@ -348,10 +522,16 @@ export default function MediaPage() {
     return () => clearInterval(pollRef.current)
   }, [items, user])
 
+  // ── Sheet helpers ──
+
+  const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions') }
+  const openRegenerate = ()    => setSheetMode('regenerate')
+  const closeSheet     = ()    => { setActiveGen(null); setSheetMode(null) }
+
   // ── Actions ──
 
   const handleDelete = async (gen) => {
-    setActiveGen(null)
+    closeSheet()
     try {
       await generationsDb.delete(gen.id)
       setItems((prev) => prev.filter(g => g.id !== gen.id))
@@ -362,21 +542,8 @@ export default function MediaPage() {
     }
   }
 
-  const handleRegenerate = (gen) => {
-    setActiveGen(null)
-    const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text'].includes(gen.generation_type)
-    navigate(isVideo ? '/create/video' : '/create/image', {
-      state: {
-        prefillPrompt:      gen.prompt,
-        prefillAspectRatio: gen.aspect_ratio,
-        prefillModel:       gen.model,
-        prefillDuration:    gen.duration,
-      },
-    })
-  }
-
   const handleDownload = async (gen) => {
-    setActiveGen(null)
+    closeSheet()
     if (!gen.output_url) return
     try {
       const res  = await fetch(gen.output_url)
@@ -391,6 +558,60 @@ export default function MediaPage() {
       toast.success('Downloaded')
     } catch {
       toast.error('Download failed')
+    }
+  }
+
+  // ── In-place regenerate ──
+
+  const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj) => {
+    if (!activeGen || !user) return
+    const gen = activeGen
+    closeSheet()
+    setRegenLoading(true)
+
+    try {
+      const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
+      const genType = gen.start_frame_url ? 'image_to_image' : (isVideo ? gen.generation_type : 'text_to_image')
+
+      // 1. Create new generation row — reuse prompt + reference image from original
+      const { data: genRow, error: genErr } = await generationsDb.create({
+        user_id:         user.id,
+        generation_type: genType,
+        status:          'pending',
+        prompt:          gen.prompt,
+        model:           chosenModel,
+        aspect_ratio:    gen.aspect_ratio,
+        duration:        gen.duration,
+        credits_charged: creditCost,
+        output_type:     gen.output_type,
+        start_frame_url: gen.start_frame_url || null,   // reuse reference image URL directly
+        end_frame_url:   gen.end_frame_url   || null,
+        template_id:     gen.template_id     || null,
+      })
+      if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+
+      // 2. Deduct credits
+      const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+      if (dErr || !deduct?.success) {
+        await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
+        throw new Error(deduct?.error || 'Not enough credits')
+      }
+
+      // 3. Fire the pipeline (fire-and-forget)
+      const fnName = isVideo ? 'video-generate' : 'image-generate'
+      supabase.functions.invoke(fnName, { body: { generationId: genRow.id } })
+        .catch((e) => console.error(`${fnName} invoke error`, e))
+
+      // 4. Optimistically prepend the new pending row to the list
+      setItems((prev) => [genRow, ...prev])
+      setTotalCount((c) => c + 1)
+      refreshProfile()
+
+      toast.success('Regenerating! Check back in a moment.', { duration: 4000 })
+    } catch (err) {
+      toast.error(err.message || 'Regeneration failed')
+    } finally {
+      setRegenLoading(false)
     }
   }
 
@@ -470,8 +691,9 @@ export default function MediaPage() {
               >
                 <MediaCard
                   gen={gen}
+                  modelsList={models}
                   onClick={() => handleCardClick(gen)}
-                  onMore={() => setActiveGen(gen)}
+                  onMore={() => openActions(gen)}
                 />
               </motion.div>
             ))}
@@ -496,18 +718,33 @@ export default function MediaPage() {
 
       </PageWrapper>
 
-      {/* Action sheet */}
+      {/* Sheets */}
       <AnimatePresence>
-        {activeGen && (
+        {activeGen && sheetMode === 'actions' && (
           <ActionSheet
+            key="actions"
             gen={activeGen}
-            onClose={() => setActiveGen(null)}
+            onClose={closeSheet}
             onDelete={() => handleDelete(activeGen)}
-            onRegenerate={() => handleRegenerate(activeGen)}
+            onRegenerate={openRegenerate}
             onDownload={() => handleDownload(activeGen)}
           />
         )}
+
+        {activeGen && sheetMode === 'regenerate' && (
+          <RegenerateSheet
+            key="regenerate"
+            gen={activeGen}
+            models={models}
+            credits={credits}
+            onClose={closeSheet}
+            onConfirm={handleRegenerateConfirm}
+          />
+        )}
       </AnimatePresence>
+
+      {/* Global regen loading toast is handled by toast.success/error — 
+          optionally add a full-screen spinner overlay here if you prefer */}
     </>
   )
-}
+      }
