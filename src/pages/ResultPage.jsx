@@ -2,10 +2,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Download, Share2, ArrowLeft, Upload, CheckCircle, Film, Image } from 'lucide-react'
+import { Download, Share2, ArrowLeft, Upload, CheckCircle, Film, Image, Sparkles } from 'lucide-react'
 import { generations, feed } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
@@ -43,12 +42,11 @@ export default function ResultPage() {
       const url      = URL.createObjectURL(blob)
       const a        = document.createElement('a')
       a.href         = url
-      a.download     = `meckury-${id}.${displayType === 'video' ? 'mp4' : 'jpg'}`
+      a.download     = `meckury-${id}.${displayType === 'video' ? 'mp4' : 'png'}`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('Downloaded!')
     } catch {
-      // CORS fallback — fal.ai CDN may not allow fetch; open in new tab instead
       window.open(displayUrl, '_blank')
     }
   }
@@ -71,114 +69,80 @@ export default function ResultPage() {
 
   const handlePublishToFeed = async () => {
     if (!generation || !displayUrl) return
-
-    // NOTE: for video posts, thumbnail_url should ideally be a separate
-    // static image. If your schema requires it, generate/store a thumbnail
-    // during generation and use generation.thumbnail_url here instead.
     setPublishing(true)
-const { error } = await feed.submit({
-  user_id:       user.id,
-  generation_id: id,
-  template_id:   generation.template_id,
-  thumbnail_url: generation.thumbnail_url || displayUrl,
-  output_url:    displayUrl,
-  output_type:   displayType,
-})
+    const { error } = await feed.submit({
+      user_id:       user.id,
+      generation_id: id,
+      template_id:   generation.template_id,
+      thumbnail_url: generation.thumbnail_url || displayUrl,
+      output_url:    displayUrl,
+      output_type:   displayType,
+    })
     setPublishing(false)
-
-    if (error) { toast.error('Failed to submit to feed'); return }
-
+    if (error) { toast.error('Failed to publish'); return }
     setPublished(true)
-    toast.success('Submitted for review!')
+    toast.success('Published!')
   }
 
   return (
-    <div className="page-container min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
-      {/* Header */}
+    <div
+      className="h-dvh flex flex-col overflow-hidden"
+      style={{ background: 'var(--bg-primary)' }}
+    >
+      {/* ── Header ── */}
       <div
-        className="sticky top-0 z-40 flex items-center justify-between px-4 h-14"
-        style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}
+        className="flex-shrink-0 flex items-center justify-between px-4 h-14 z-10"
+        style={{ borderBottom: '1px solid var(--border-color)' }}
       >
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 p-2 -ml-2 rounded-xl"
+          className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
-          aria-label="Back to create"
         >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-base font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-primary)' }}>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
           Your creation
         </h1>
-        <div className="w-10" aria-hidden="true" />
+        <div className="w-10" />
       </div>
 
-      <div className="px-4 py-5 pb-32">
+      {/* ── Media — takes all remaining space ── */}
+      <div className="flex-1 overflow-hidden flex items-center justify-center p-4">
         {loading && !displayUrl ? (
-          <Loader size="lg" text="Loading your creation..." />
+          <Loader size="lg" text="Loading..." />
         ) : displayUrl ? (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
-            {/* Preview */}
-            <div
-              className="rounded-3xl overflow-hidden mb-6"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-            >
-              {displayType === 'video' ? (
-                <video
-                  src={displayUrl} controls autoPlay loop playsInline
-                  className="w-full max-h-[70vh] object-contain"
-                  style={{ background: '#000' }}
-                />
-              ) : (
-                <img src={displayUrl} alt="Generated content" className="w-full max-h-[70vh] object-contain" />
-              )}
-            </div>
-
-            <div
-              className="flex items-center gap-2 mb-6 p-3 rounded-2xl"
-              style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}
-            >
-              <CheckCircle size={18} style={{ color: 'var(--brand)' }} />
-              <p className="text-sm font-medium" style={{ color: 'var(--brand)' }}>
-                Creation complete! Download or share it.
-              </p>
-            </div>
-
-            <div className="flex gap-3 mb-4">
-              <Button onClick={handleDownload} variant="primary" size="lg" fullWidth icon={Download}>
-                Download
-              </Button>
-              <Button onClick={handleShare} variant="secondary" size="lg" icon={Share2}>
-                Share
-              </Button>
-            </div>
-
-            {!published ? (
-              <Button onClick={handlePublishToFeed} loading={publishing} variant="outline" size="md" fullWidth icon={Upload}>
-                Submit to community feed
-              </Button>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.25 }}
+            className="w-full h-full flex items-center justify-center"
+          >
+            {displayType === 'video' ? (
+              <video
+                src={displayUrl}
+                controls
+                autoPlay
+                loop
+                playsInline
+                className="rounded-2xl object-contain"
+                style={{
+                  maxWidth:  '100%',
+                  maxHeight: '100%',
+                  background: '#000',
+                }}
+              />
             ) : (
-              <div
-                className="flex items-center justify-center gap-2 py-3 rounded-2xl"
-                style={{ background: 'rgba(249,115,22,0.08)' }}
-              >
-                <CheckCircle size={16} style={{ color: 'var(--brand)' }} />
-                <p className="text-sm font-medium" style={{ color: 'var(--brand)' }}>Submitted for review!</p>
-              </div>
+              <img
+                src={displayUrl}
+                alt="Generated"
+                className="rounded-2xl object-contain"
+                style={{ maxWidth: '100%', maxHeight: '100%' }}
+              />
             )}
-
-            <div className="mt-4 text-center">
-              <button
-                onClick={() => navigate('/create')}
-                className="text-sm font-semibold"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                Create something else →
-              </button>
-            </div>
           </motion.div>
         ) : (
-          <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-center" style={{ color: 'var(--text-muted)' }}>
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
               style={{ background: 'var(--bg-elevated)' }}
@@ -188,11 +152,77 @@ const { error } = await feed.submit({
                 : <Image size={28} style={{ color: 'var(--text-muted)' }} />
               }
             </div>
-            <p>Content not available</p>
+            <p className="text-sm">Content not available</p>
             <p className="text-xs mt-1">The generation may have failed or expired</p>
           </div>
         )}
       </div>
+
+      {/* ── Actions bar ── */}
+      {displayUrl && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.25 }}
+          className="flex-shrink-0 px-4 pb-6 pt-3"
+          style={{ borderTop: '1px solid var(--border-color)' }}
+        >
+          {/* Primary row — Download + Share */}
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={handleDownload}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.97]"
+              style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+            >
+              <Download size={15} />
+              Download
+            </button>
+            <button
+              onClick={handleShare}
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.97]"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+            >
+              <Share2 size={15} />
+              Share
+            </button>
+          </div>
+
+          {/* Secondary row — Publish */}
+          {!published ? (
+            <button
+              onClick={handlePublishToFeed}
+              disabled={publishing}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium transition-all active:scale-[0.97]"
+              style={{
+                background: 'transparent',
+                color:      'var(--text-muted)',
+                border:     '1px solid var(--border-color)',
+                opacity:    publishing ? 0.6 : 1,
+              }}
+            >
+              <Sparkles size={14} />
+              {publishing ? 'Publishing…' : 'Publish'}
+            </button>
+          ) : (
+            <div
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              <CheckCircle size={14} style={{ color: '#10b981' }} />
+              Published
+            </div>
+          )}
+
+          {/* Tertiary — Create something else */}
+          <button
+            onClick={() => navigate('/create')}
+            className="w-full text-center text-xs mt-3"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Create something else →
+          </button>
+        </motion.div>
+      )}
     </div>
   )
 }
