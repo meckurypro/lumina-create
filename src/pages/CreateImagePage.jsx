@@ -269,7 +269,7 @@ export default function CreateImagePage() {
         const { error: upErr } = await supabase.storage
           .from('generation-uploads')
           .upload(path, referenceImg.file, { upsert: false, cacheControl: '3600', contentType: referenceImg.file.type })
-        if (upErr) throw new Error('Reference upload failed')
+        if (upErr) throw new Error('Reference upload failed: ${upErr.message}')
         const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
         startFrameUrl = publicUrl
       }
