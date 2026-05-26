@@ -100,7 +100,7 @@ export const feed = {
     supabase
       .from('feed_posts')
       .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)')
-      .eq('status', 'published')
+      .eq('status', 'approved')
       .order('likes_count', { ascending: false })
       .order('published_at', { ascending: false })
       .limit(limit),
@@ -110,7 +110,7 @@ export const feed = {
     supabase
       .from('feed_posts')
       .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' })
-      .eq('status', 'published')
+      .eq('status', 'approved')
       .order('published_at', { ascending: false })
       .range(offset, offset + limit - 1),
   // Keep getPosts for backward compat (ResultPage etc. may use it)
@@ -118,13 +118,13 @@ export const feed = {
     let q = supabase
       .from('feed_posts')
       .select('*, profiles!feed_posts_user_id_fkey(username, display_name, avatar_url), templates(name, slug)', { count: 'exact' })
-      .eq('status', 'published')
+      .eq('status', 'approved')
       .order('published_at', { ascending: false })
       .range(offset, offset + limit - 1)
     if (templateId) q = q.eq('template_id', templateId)
     return q
   },
-  submit: (data) => supabase.from('feed_posts').insert(data).select().single(),
+  submit: (data) => supabase.from('feed_posts').insert({ ...data, status: 'pending' }),
   toggleLike: (userId, postId) =>
     supabase.rpc('toggle_feed_like', { p_user_id: userId, p_post_id: postId }),
   getUserLikes: async (userId) => {
