@@ -1,12 +1,13 @@
 // src/pages/AdminPage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Users, Film, DollarSign,
   Edit3, Save, X, CheckCircle, XCircle,
   RotateCcw, TrendingUp, Clock, AlertTriangle,
   Zap, Lock, Unlock, Upload, Trash2, Image,
+  Eye, EyeOff,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -17,14 +18,14 @@ import toast from 'react-hot-toast'
 // ─── Stat Card ────────────────────────────────────────────
 
 const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => (
-  <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+  <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
     <div className="flex items-center gap-2 mb-2">
       <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${color}20` }}>
         <Icon size={16} style={{ color }} />
       </div>
       <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</span>
     </div>
-    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
+    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value ?? '—'}</p>
     {sub && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
   </div>
 )
@@ -85,8 +86,8 @@ const PromptEditor = ({ template, onSave }) => {
   const activePrompt = prompts.find((p) => p.is_active)
 
   return (
-    <div className="rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-      <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+    <div className="rounded-2xl overflow-hidden mb-4" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+      <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-elevated)' }}>
         <div>
           <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{template.name}</h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -132,12 +133,12 @@ const PromptEditor = ({ template, onSave }) => {
       </div>
 
       {prompts.length > 1 && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
+        <div style={{ borderTop: '1px solid var(--border-color)' }}>
           <p className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
             Version history
           </p>
           {prompts.map((p) => (
-            <div key={p.id} className="flex items-start gap-3 px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
+            <div key={p.id} className="flex items-start gap-3 px-4 py-3" style={{ borderTop: '1px solid var(--border-color)' }}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>v{p.version_number}</span>
@@ -240,8 +241,8 @@ const TemplateManager = ({ templates, onRefresh }) => {
         const isPromptIQ     = template.visibility === 'promptiq'
         const templateAssets = assets[template.id] || []
         return (
-          <div key={template.id} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-            <div className="flex items-center gap-3 p-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+          <div key={template.id} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+            <div className="flex items-center gap-3 p-4" style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-elevated)' }}>
               <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ background: 'rgba(249,115,22,0.1)' }}>
                 {template.thumbnail_url
                   ? <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover" />
@@ -299,7 +300,7 @@ const TemplateManager = ({ templates, onRefresh }) => {
               )}
               <label
                 className="flex items-center gap-2 w-full py-2.5 px-3 rounded-xl cursor-pointer transition-colors"
-                style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--border)' }}
+                style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--border-color)' }}
               >
                 <Upload size={14} style={{ color: 'var(--brand)' }} />
                 <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Upload asset (thumbnail, audio, overlay…)</span>
@@ -367,18 +368,13 @@ const ModelsManager = () => {
         Unlock models to make them available to users. Locked models appear in the dropdown as "Coming Soon."
       </p>
 
-      {/* Unlocked */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
           Available to users ({unlocked.length})
         </p>
         <div className="flex flex-col gap-2">
           {unlocked.map((model) => (
-            <div
-              key={model.id}
-              className="flex items-center gap-3 p-3 rounded-2xl"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-            >
+            <div key={model.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
@@ -397,18 +393,13 @@ const ModelsManager = () => {
         </div>
       </div>
 
-      {/* Locked */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
           Locked / Coming Soon ({locked.length})
         </p>
         <div className="flex flex-col gap-2">
           {locked.map((model) => (
-            <div
-              key={model.id}
-              className="flex items-center gap-3 p-3 rounded-2xl"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', opacity: 0.7 }}
-            >
+            <div key={model.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: 0.7 }}>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
@@ -432,39 +423,141 @@ const ModelsManager = () => {
 
 // ─── Feed Moderation Item ─────────────────────────────────
 
-const FeedModerationItem = ({ post, onApprove, onReject }) => (
-  <div className="rounded-2xl overflow-hidden mb-3" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-    <div className="flex gap-3 p-3">
-      <div className="w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-black">
-        <img src={post.thumbnail_url} alt={`Post by @${post.profiles?.username}`} className="w-full h-full object-cover" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{post.profiles?.username}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{post.templates?.name || post.output_type}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{new Date(post.created_at).toLocaleDateString()}</p>
-        <div className="flex gap-2 mt-3">
-          <button onClick={() => onApprove(post.id)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl font-semibold" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>
-            <CheckCircle size={12} /> Approve
+const FeedModerationItem = ({ post, onApprove, onReject }) => {
+  const [rejectMode, setRejectMode] = useState(false)
+  const [notes,      setNotes]      = useState('')
+  const [expanded,   setExpanded]   = useState(false)
+  const isVideo  = post.output_type === 'video'
+  const preview  = post.output_url || post.thumbnail_url
+
+  return (
+    <motion.div
+      layout
+      className="rounded-2xl overflow-hidden mb-3"
+      style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}
+    >
+      {/* Collapsed header row */}
+      <div className="flex gap-3 p-3 items-center">
+        {/* Thumbnail */}
+        <div
+          className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-black cursor-pointer relative"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {post.thumbnail_url
+            ? <img src={post.thumbnail_url} alt="" className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--bg-elevated)' }}>
+                {isVideo ? <Film size={18} style={{ color: 'var(--text-muted)' }} /> : <Image size={18} style={{ color: 'var(--text-muted)' }} />}
+              </div>
+          }
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.3)' }}>
+            {expanded ? <EyeOff size={13} color="white" /> : <Eye size={13} color="white" />}
+          </div>
+        </div>
+
+        {/* Meta */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+            @{post.profiles?.username}
+          </p>
+          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+            {post.templates?.name || post.output_type} · {new Date(post.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
+
+        {/* Quick action buttons */}
+        <div className="flex gap-1.5 flex-shrink-0">
+          <button
+            onClick={() => onApprove(post.id)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
+            title="Approve"
+          >
+            <CheckCircle size={16} />
           </button>
-          <button onClick={() => onReject(post.id)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-            <XCircle size={12} /> Reject
+          <button
+            onClick={() => setRejectMode((v) => !v)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: rejectMode ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+            title="Reject"
+          >
+            <XCircle size={16} />
           </button>
         </div>
       </div>
-    </div>
-  </div>
-)
+
+      {/* Expanded preview */}
+      <AnimatePresence>
+        {expanded && preview && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="mx-3 mb-3 rounded-xl overflow-hidden bg-black" style={{ maxHeight: 400 }}>
+              {isVideo
+                ? <video src={preview} className="w-full object-contain" style={{ maxHeight: 400 }} controls autoPlay loop playsInline />
+                : <img   src={preview} alt="full preview" className="w-full object-contain" style={{ maxHeight: 400 }} />
+              }
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reject notes */}
+      <AnimatePresence>
+        {rejectMode && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="px-3 pb-3 flex flex-col gap-2">
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Reason for rejection (optional)…"
+                rows={2}
+                className="w-full text-sm rounded-xl px-3 py-2 resize-none"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { onReject(post.id, notes); setRejectMode(false); setNotes('') }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
+                >
+                  <XCircle size={14} /> Confirm Reject
+                </button>
+                <button
+                  onClick={() => { setRejectMode(false); setNotes('') }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
 
 // ─── Staff Manager ────────────────────────────────────────
 
 const StaffManager = () => {
-  const { user }                       = useAuth()
-  const [staffList,   setStaffList]    = useState([])
-  const [allUsers,    setAllUsers]     = useState([])
-  const [poolBalance, setPoolBalance]  = useState(null)
-  const [loading,     setLoading]      = useState(true)
-  const [searchQuery, setSearchQuery]  = useState('')
-  const [promoting,   setPromoting]    = useState(null)
+  const { user }                      = useAuth()
+  const [staffList,  setStaffList]    = useState([])
+  const [allUsers,   setAllUsers]     = useState([])
+  const [poolBalance,setPoolBalance]  = useState(null)
+  const [loading,    setLoading]      = useState(true)
+  const [searchQuery,setSearchQuery]  = useState('')
+  const [promoting,  setPromoting]    = useState(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -524,7 +617,7 @@ const StaffManager = () => {
         ) : (
           <div className="flex flex-col gap-2">
             {staffList.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: 'var(--brand)', color: 'white' }}>
                   {s.username?.[0]?.toUpperCase()}
                 </div>
@@ -546,7 +639,7 @@ const StaffManager = () => {
         <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by username…" className="input-base text-sm w-full mb-3" />
         <div className="flex flex-col gap-2 max-h-60 overflow-y-auto no-scrollbar">
           {filteredUsers.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs flex-shrink-0" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
                 {u.username?.[0]?.toUpperCase()}
               </div>
@@ -595,7 +688,7 @@ const ProviderSettings = () => {
   if (loading) return <Skeleton className="h-64 w-full" />
 
   const ToggleGroup = ({ label, settingKey, options, description }) => (
-    <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+    <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
       <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-primary)' }}>{label}</p>
       {description && <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>{description}</p>}
       <div className="flex gap-2">
@@ -623,9 +716,9 @@ const ProviderSettings = () => {
         Changes apply instantly to all new generations. Failed generations automatically fall back to the other provider.
       </p>
       <ToggleGroup label="Active Provider" settingKey="active_provider" description="Primary AI provider for all generation requests." options={[{ value: 'fal', label: 'fal.ai' }, { value: 'wavespeed', label: 'WaveSpeed' }]} />
-      <ToggleGroup label="Kling Model"     settingKey="model_kling"     options={[{ value: 'kling_2_5',    label: 'Kling 2.5'     }, { value: 'kling_3_0',    label: 'Kling 3.0'     }]} />
-      <ToggleGroup label="Seedance Model"  settingKey="model_seedance"  options={[{ value: 'seedance_1_5', label: 'Seedance 1.5'  }, { value: 'seedance_2_0', label: 'Seedance 2.0'  }]} />
-      <ToggleGroup label="Image Model"     settingKey="model_image"     options={[{ value: 'imagen_3_fast', label: 'Imagen 3 Fast'}, { value: 'imagen_3',     label: 'Imagen 3'      }]} />
+      <ToggleGroup label="Kling Model"     settingKey="model_kling"     options={[{ value: 'kling_2_5',     label: 'Kling 2.5'    }, { value: 'kling_3_0',    label: 'Kling 3.0'    }]} />
+      <ToggleGroup label="Seedance Model"  settingKey="model_seedance"  options={[{ value: 'seedance_1_5',  label: 'Seedance 1.5' }, { value: 'seedance_2_0', label: 'Seedance 2.0' }]} />
+      <ToggleGroup label="Image Model"     settingKey="model_image"     options={[{ value: 'imagen_3_fast', label: 'Imagen 3 Fast'}, { value: 'imagen_3',     label: 'Imagen 3'     }]} />
     </div>
   )
 }
@@ -633,14 +726,14 @@ const ProviderSettings = () => {
 // ─── Tabs ─────────────────────────────────────────────────
 
 const TABS = (pendingCount) => [
-  { id: 'dashboard', label: 'Dashboard'              },
-  { id: 'prompts',   label: 'Prompts'                },
-  { id: 'templates', label: 'Templates'              },
-  { id: 'models',    label: 'Models'                 },
-  { id: 'staff',     label: 'Staff'                  },
-  { id: 'feed',      label: `Feed (${pendingCount})` },
-  { id: 'users',     label: 'Users'                  },
-  { id: 'settings',  label: 'Settings'               },
+  { id: 'dashboard', label: 'Dashboard'                                            },
+  { id: 'prompts',   label: 'Prompts'                                              },
+  { id: 'templates', label: 'Templates'                                            },
+  { id: 'models',    label: 'Models'                                               },
+  { id: 'staff',     label: 'Staff'                                                },
+  { id: 'feed',      label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed'  },
+  { id: 'users',     label: 'Users'                                                },
+  { id: 'settings',  label: 'Settings'                                             },
 ]
 
 // ─── Admin Page ───────────────────────────────────────────
@@ -660,8 +753,17 @@ export default function AdminPage() {
     const [statsRes, templatesRes, feedRes, usersRes] = await Promise.all([
       supabase.rpc('get_admin_stats'),
       supabase.from('templates').select('*').order('sort_order'),
-      supabase.from('feed_posts').select('*, profiles(username), templates(name)').eq('status', 'pending').order('created_at', { ascending: false }).limit(20),
-      supabase.from('profiles').select('id, username, display_name, credits, total_generations, tier, created_at').order('created_at', { ascending: false }).limit(20),
+      supabase
+        .from('feed_posts')
+        .select('*, profiles(username, avatar_url), templates(name)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('profiles')
+        .select('id, username, display_name, credits, total_generations, tier, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20),
     ])
     setStats(statsRes.data)
     setTemplates(templatesRes.data || [])
@@ -672,15 +774,24 @@ export default function AdminPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // ── Feed moderation actions ──
+
   const handleApprove = async (postId) => {
-    const { data, error } = await supabase.rpc('approve_feed_post', { p_post_id: postId, p_admin_id: user.id })
+    const { data, error } = await supabase.rpc('approve_feed_post', {
+      p_post_id:  postId,
+      p_admin_id: user.id,
+    })
     if (error || !data?.success) { toast.error('Failed to approve post'); return }
     setPendingPosts((prev) => prev.filter((p) => p.id !== postId))
     toast.success('Post approved!')
   }
 
-  const handleReject = async (postId) => {
-    const { data, error } = await supabase.rpc('reject_feed_post', { p_post_id: postId, p_admin_id: user.id, p_notes: 'Does not meet community guidelines' })
+  const handleReject = async (postId, notes = '') => {
+    const { data, error } = await supabase.rpc('reject_feed_post', {
+      p_post_id:  postId,
+      p_admin_id: user.id,
+      p_notes:    notes || 'Does not meet community guidelines',
+    })
     if (error || !data?.success) { toast.error('Failed to reject post'); return }
     setPendingPosts((prev) => prev.filter((p) => p.id !== postId))
     toast.success('Post rejected')
@@ -691,7 +802,11 @@ export default function AdminPage() {
   return (
     <div className="page-container min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
 
-      <div className="sticky top-0 z-40 flex items-center gap-3 px-4 h-14" style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}>
+      {/* Header */}
+      <div
+        className="sticky top-0 z-40 flex items-center gap-3 px-4 h-14"
+        style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)' }}
+      >
         <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
@@ -701,7 +816,11 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto px-4 py-3 no-scrollbar" style={{ borderBottom: '1px solid var(--border)' }}>
+      {/* Tab bar */}
+      <div
+        className="flex gap-1 overflow-x-auto px-4 py-3 no-scrollbar"
+        style={{ borderBottom: '1px solid var(--border-color)' }}
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -717,21 +836,25 @@ export default function AdminPage() {
         ))}
       </div>
 
+      {/* Tab content */}
       <div className="px-4 py-5 pb-24">
 
+        {/* ── Dashboard ── */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {loading ? (
-              <div className="grid grid-cols-2 gap-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+              </div>
             ) : stats ? (
               <>
                 <div className="grid grid-cols-2 gap-3 mb-4">
-                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}              sub={`+${stats.new_users_today} today`}                           />
-                  <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}         sub={`${stats.generations_today} today`}    color="#8b5cf6"       />
-                  <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                   sub="Today"                                 color="#10b981"       />
-                  <StatCard icon={AlertTriangle} label="Failed today"      value={stats.failed_today}                               sub="Auto-refunded"                         color="#ef4444"       />
-                  <StatCard icon={DollarSign}    label="Revenue (NGN)"     value={`₦${stats.total_revenue_ngn?.toLocaleString()}`}  sub={`₦${stats.revenue_today_ngn?.toLocaleString()} today`} color="#10b981" />
-                  <StatCard icon={Clock}         label="Pending feed"      value={stats.pending_feed_posts}                         sub="Awaiting review"                       color="#eab308"       />
+                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}             sub={`+${stats.new_users_today} today`}                            />
+                  <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}        sub={`${stats.generations_today} today`}    color="#8b5cf6"        />
+                  <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                  sub="Today"                                 color="#10b981"        />
+                  <StatCard icon={AlertTriangle} label="Failed today"      value={stats.failed_today}                              sub="Auto-refunded"                         color="#ef4444"        />
+                  <StatCard icon={DollarSign}    label="Revenue (NGN)"     value={`₦${stats.total_revenue_ngn?.toLocaleString()}`} sub={`₦${stats.revenue_today_ngn?.toLocaleString()} today`} color="#10b981" />
+                  <StatCard icon={Clock}         label="Pending feed"      value={stats.pending_feed_posts}                        sub="Awaiting review"                       color="#eab308"        />
                 </div>
                 <StatCard icon={Users} label="Active users today" value={stats.active_users_today} color="#06b6d4" />
               </>
@@ -741,61 +864,92 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+        {/* ── Prompts ── */}
         {activeTab === 'prompts' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Edit template prompts. Changes apply instantly to all new generations.</p>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+              Edit template prompts. Changes apply instantly to all new generations.
+            </p>
             {templates.map((template) => (
               <PromptEditor key={template.id} template={template} onSave={loadData} />
             ))}
           </motion.div>
         )}
 
+        {/* ── Templates ── */}
         {activeTab === 'templates' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <TemplateManager templates={templates} onRefresh={loadData} />
           </motion.div>
         )}
 
+        {/* ── Models ── */}
         {activeTab === 'models' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ModelsManager />
           </motion.div>
         )}
 
+        {/* ── Staff ── */}
         {activeTab === 'staff' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <StaffManager />
           </motion.div>
         )}
 
+        {/* ── Feed moderation ── */}
         {activeTab === 'feed' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {pendingPosts.length === 0 ? (
               <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
                 <CheckCircle size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">All caught up! No pending posts.</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>All caught up!</p>
+                <p className="text-xs mt-1">No posts pending review.</p>
               </div>
             ) : (
-              pendingPosts.map((post) => (
-                <FeedModerationItem key={post.id} post={post} onApprove={handleApprove} onReject={handleReject} />
-              ))
+              <>
+                <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: 'var(--text-muted)' }}>
+                  {pendingPosts.length} post{pendingPosts.length !== 1 ? 's' : ''} awaiting review
+                </p>
+                {pendingPosts.map((post) => (
+                  <FeedModerationItem
+                    key={post.id}
+                    post={post}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                  />
+                ))}
+              </>
             )}
           </motion.div>
         )}
 
+        {/* ── Users ── */}
         {activeTab === 'users' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex flex-col gap-2">
               {recentUsers.map((u) => (
-                <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: 'var(--brand)', color: 'white' }}>
+                <div
+                  key={u.id}
+                  className="flex items-center gap-3 p-3 rounded-2xl"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0"
+                    style={{ background: 'var(--brand)', color: 'white' }}
+                  >
                     {u.username?.[0]?.toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{u.username}</p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{u.total_generations} generations · ⚡{u.credits?.toFixed(1)} credits</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {u.total_generations} generations · ⚡{u.credits?.toFixed(1)} credits
+                    </p>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full capitalize"
+                    style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
+                  >
                     {u.tier}
                   </span>
                 </div>
@@ -804,6 +958,7 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+        {/* ── Settings ── */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ProviderSettings />
