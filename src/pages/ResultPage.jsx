@@ -76,19 +76,20 @@ export default function ResultPage() {
     // static image. If your schema requires it, generate/store a thumbnail
     // during generation and use generation.thumbnail_url here instead.
     setPublishing(true)
-    const { error } = await feed.submit({
-      user_id:       user.id,
-      generation_id: id,
-      template_id:   generation.template_id,
-      thumbnail_url: generation.thumbnail_url || displayUrl,
-      output_type:   displayType,
-    })
+const { error } = await feed.submit({
+  user_id:       user.id,
+  generation_id: id,
+  template_id:   generation.template_id,
+  thumbnail_url: generation.thumbnail_url || displayUrl,
+  output_url:    displayUrl,
+  output_type:   displayType,
+})
     setPublishing(false)
 
     if (error) { toast.error('Failed to submit to feed'); return }
 
     setPublished(true)
-    toast.success('Submitted for review! 🎉')
+    toast.success('Submitted for review!')
   }
 
   return (
