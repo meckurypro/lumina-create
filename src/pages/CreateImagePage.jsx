@@ -409,16 +409,18 @@ export default function CreateImagePage() {
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
-            disabled={isLoading || !canAfford}
+            disabled={buttonDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
-              opacity:    (isLoading || !canAfford) ? 0.5 : 1,
+              opacity:    buttonDisabled ? 0.5 : 1,
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {isLoading ? 'Generating…' : 'Generate'}
+            {!canAfford && !promptEmpty
+              ? 'Not enough credits'
+              : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
