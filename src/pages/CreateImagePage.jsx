@@ -6,11 +6,13 @@ import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
-
 import toast from 'react-hot-toast'
 
-// ── Setting Chips ──────────────────────────────────────────
+// ── Session storage keys ───────────────────────────────────
+const SS_PROMPT = 'meckury_create_prompt'
+const SS_IMAGE  = 'meckury_create_image'
 
+// ── Setting Chips ──────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -35,7 +37,6 @@ const SettingChips = ({ label, options, value, onChange }) => (
 )
 
 // ── Helpers ────────────────────────────────────────────────
-
 function detectAspectRatio(width, height) {
   const ratio = width / height
   if (ratio > 1.6)  return '16:9'
@@ -44,7 +45,6 @@ function detectAspectRatio(width, height) {
 }
 
 // ── Model Dropdown ─────────────────────────────────────────
-
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
 
@@ -127,9 +127,8 @@ const ModelDropdown = ({ models, value, onChange }) => {
 }
 
 // ── Main Page ──────────────────────────────────────────────
-
 export default function CreateImagePage() {
-  const navigate                        = useNavigate()
+  const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
 
   const [models,        setModels]        = useState([])
@@ -143,6 +142,43 @@ export default function CreateImagePage() {
   const [fullscreen,    setFullscreen]    = useState(false)
   const [submitting,    setSubmitting]    = useState(false)
 
+  // ── Restore persisted state on mount ──────────────────────
+  useEffect(() => {
+    try {
+      const savedPrompt = sessionStorage.getItem(SS_PROMPT)
+      if (savedPrompt) setPrompt(savedPrompt)
+
+      const savedImage = sessionStorage.getItem(SS_IMAGE)
+      if (savedImage) {
+        const { base64, name, type } = JSON.parse(savedImage)
+        const byteString = atob(base64.split(',')[1])
+        const ab = new ArrayBuffer(byteString.length)
+        const ia = new Uint8Array(ab)
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+        const blob = new Blob([ab], { type })
+        const url  = URL.createObjectURL(blob)
+        const file = new File([blob], name, { type })
+        const img  = new Image()
+        img.onload = () => {
+          setAspectRatio(detectAspectRatio(img.width, img.height))
+          setAutoRatio(true)
+          setImgDimensions({ width: img.width, height: img.height })
+        }
+        img.src = url
+        setReferenceImg({ file, url })
+      }
+    } catch { /* corrupt storage — silently ignore */ }
+  }, [])
+
+  // ── Persist prompt on every change ────────────────────────
+  useEffect(() => {
+    try {
+      if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
+      else        sessionStorage.removeItem(SS_PROMPT)
+    } catch { /* noop */ }
+  }, [prompt])
+
+  // ── Load models ───────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -153,26 +189,25 @@ export default function CreateImagePage() {
       .order('sort_order')
     const list = data || []
     setModels(list)
-    // Default to user's preferred model if it's still active+unlocked, else first unlocked
-    const unlocked = list.filter((m) => !m.is_locked)
+    const unlocked  = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
-    const match = preferred && unlocked.find((m) => m.value === preferred)
+    const match     = preferred && unlocked.find((m) => m.value === preferred)
     setModel((match || unlocked[0])?.value || '')
     setModelsLoading(false)
   }, [profile?.preferred_model])
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  const type           = referenceImg ? 'image_to_image' : 'text_to_image'
-  const selectedModel  = models.find((m) => m.value === model)
-  const creditCost     = selectedModel
+  const type          = referenceImg ? 'image_to_image' : 'text_to_image'
+  const selectedModel = models.find((m) => m.value === model)
+  const creditCost    = selectedModel
     ? (referenceImg ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
 
-  // Persist preferred model when user changes it
+  // ── Persist preferred model when user changes it ──────────
   const handleModelChange = async (value) => {
     setModel(value)
     if (user && value && value !== profile?.preferred_model) {
@@ -180,7 +215,7 @@ export default function CreateImagePage() {
     }
   }
 
-
+  // ── Image upload — persist to sessionStorage as base64 ────
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -193,20 +228,34 @@ export default function CreateImagePage() {
     }
     img.src = url
     setReferenceImg({ file, url })
+    try {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        sessionStorage.setItem(SS_IMAGE, JSON.stringify({
+          base64: ev.target.result,
+          name:   file.name,
+          type:   file.type,
+        }))
+      }
+      reader.readAsDataURL(file)
+    } catch { /* noop */ }
   }
 
+  // ── Remove image — clear sessionStorage ───────────────────
   const handleRemoveImage = () => {
     setReferenceImg(null)
     setImgDimensions(null)
     setAutoRatio(false)
     setAspectRatio('9:16')
+    try { sessionStorage.removeItem(SS_IMAGE) } catch { /* noop */ }
   }
 
+  // ── Generate ──────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (promptEmpty)     return toast.error('Enter a prompt')
-    if (!selectedModel)  return toast.error('Pick a model')
-    if (!canAfford)      return toast.error('Not enough credits')
-    if (!user)           return toast.error('Please sign in')
+    if (promptEmpty)    return toast.error('Enter a prompt')
+    if (!selectedModel) return toast.error('Pick a model')
+    if (!canAfford)     return toast.error('Not enough credits')
+    if (!user)          return toast.error('Please sign in')
 
     setSubmitting(true)
     let createdGenId = null
@@ -243,7 +292,6 @@ export default function CreateImagePage() {
       // 3. Deduct credits atomically (RPC also writes credit_transactions)
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
-        // Roll the row to failed so it doesn't sit pending forever
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
@@ -252,11 +300,16 @@ export default function CreateImagePage() {
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
-      // 5. Reset & notify
+      // 5. Reset, clear persisted state, notify
       refreshProfile()
       toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
       handleRemoveImage()
+      try {
+        sessionStorage.removeItem(SS_PROMPT)
+        sessionStorage.removeItem(SS_IMAGE)
+      } catch { /* noop */ }
+
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
     } finally {
@@ -288,9 +341,7 @@ export default function CreateImagePage() {
 
         <div className="flex items-center gap-2">
           {!modelsLoading && (
-
             <ModelDropdown models={models} value={model} onChange={handleModelChange} />
-
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
