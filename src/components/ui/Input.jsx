@@ -156,7 +156,6 @@ export const Textarea = ({
   error,
   hint,
   rows = 4,
-  maxLength,
   disabled = false,
   className = '',
 }) => {
@@ -176,25 +175,19 @@ export const Textarea = ({
         onChange={onChange}
         placeholder={placeholder}
         rows={rows}
-        maxLength={maxLength}
         disabled={disabled}
         className={`input-base resize-none ${error ? 'border-red-500' : ''}`}
         style={{ minHeight: `${rows * 24 + 28}px` }}
       />
 
-      <div className="flex justify-between mt-1.5">
-        {error ? (
-          <p className="text-sm text-red-500">{error}</p>
-        ) : hint ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{hint}</p>
-        ) : <span />}
-
-        {maxLength && (
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {value?.length || 0}/{maxLength}
-          </p>
-        )}
-      </div>
+      {(error || hint) && (
+        <div className="mt-1.5">
+          {error
+            ? <p className="text-sm text-red-500">{error}</p>
+            : <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{hint}</p>
+          }
+        </div>
+      )}
     </div>
   )
 }
