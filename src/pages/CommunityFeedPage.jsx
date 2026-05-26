@@ -132,9 +132,22 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
   return (
     <div
       className="relative w-full flex-shrink-0"
-      style={{ height: '100svh', scrollSnapAlign: 'start' }}
+      style={{ height: '100svh', scrollSnapAlign: 'start', background: '#000' }}
     >
-      {/* Media */}
+      {/* ── Ambient blur layer (always an img for perf) ── */}
+      <img
+        src={post.thumbnail_url || post.output_url}
+        aria-hidden="true"
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{
+          filter: 'blur(40px) brightness(0.5)',
+          transform: 'scale(1.1)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+
+      {/* ── Crisp media (letterboxed with object-contain) ── */}
       {isVideo ? (
         <video
           ref={videoRef}
@@ -142,14 +155,15 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
           loop
           playsInline
           muted={false}
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ background: '#000' }}
+          className="absolute inset-0 w-full h-full object-contain"
+          style={{ zIndex: 1 }}
         />
       ) : (
         <img
           src={post.thumbnail_url || post.output_url}
           alt={`Creation by @${post.profiles?.username}`}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-contain"
+          style={{ zIndex: 1 }}
         />
       )}
 
@@ -159,12 +173,17 @@ const FullScreenCard = ({ post, liked, onLike, onShare, isActive }) => {
         style={{
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.7) 100%)',
           pointerEvents: 'none',
+          zIndex: 2,
         }}
       />
 
       {/* Bottom overlay — author + actions */}
-      <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-4 pb-6"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 8px) + 80px)' }}
+      <div
+        className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-4 pb-6"
+        style={{
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 8px) + 80px)',
+          zIndex: 3,
+        }}
       >
         {/* Author */}
         <div className="flex items-center gap-2">
