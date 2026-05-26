@@ -755,7 +755,7 @@ export default function AdminPage() {
       supabase.from('templates').select('*').order('sort_order'),
       supabase
         .from('feed_posts')
-        .select('*, profiles(username, avatar_url), templates(name)')
+        .select('*, profiles!feed_posts_user_id_fkey(username, avatar_url), templates(name)')
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(20),
