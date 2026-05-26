@@ -6,6 +6,7 @@ import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
+
 import toast from 'react-hot-toast'
 
 // ── Setting Chips ──────────────────────────────────────────
@@ -179,6 +180,7 @@ export default function CreateImagePage() {
     }
   }
 
+
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -286,7 +288,9 @@ export default function CreateImagePage() {
 
         <div className="flex items-center gap-2">
           {!modelsLoading && (
+
             <ModelDropdown models={models} value={model} onChange={handleModelChange} />
+
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
