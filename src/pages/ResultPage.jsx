@@ -100,7 +100,7 @@ const { error } = await feed.submit({
         style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}
       >
         <button
-          onClick={() => navigate('/create')}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-2 p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
           aria-label="Back to create"
