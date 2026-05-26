@@ -286,7 +286,7 @@ export default function CreateImagePage() {
 
         <div className="flex items-center gap-2">
           {!modelsLoading && (
-            <ModelDropdown models={models} value={model} onChange={setModel} />
+            <ModelDropdown models={models} value={model} onChange={handleModelChange} />
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -297,33 +297,6 @@ export default function CreateImagePage() {
           </div>
         </div>
       </div>
-
-      {/* ── Loading overlay ── */}
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
-          >
-            <div className="text-center px-8">
-              <Loader size="lg" status={status} />
-              <div className="mt-5 flex gap-1.5 justify-center">
-                {['uploading', 'enhancing', 'generating'].map((s) => (
-                  <div
-                    key={s}
-                    className="h-0.5 rounded-full transition-all duration-500"
-                    style={{
-                      width:      status === s ? 28 : 8,
-                      background: status === s ? 'var(--brand)' : 'rgba(255,255,255,0.15)',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── Fullscreen viewer ── */}
       <AnimatePresence>
