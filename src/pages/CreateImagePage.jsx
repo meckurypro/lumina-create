@@ -3,12 +3,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
-import { useGenerate } from '@/hooks/useGenerate'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
-import { Loader } from '@/components/ui/Modal'
-import { calculateCreditCost } from '@/lib/creditUtils'
-import { supabase } from '@/lib/supabase'
+import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
+
 import toast from 'react-hot-toast'
 
 // ── Setting Chips ──────────────────────────────────────────
@@ -132,8 +130,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
 
 export default function CreateImagePage() {
   const navigate                        = useNavigate()
-  const { credits }                     = useAuth()
-  const { generate, status, isLoading } = useGenerate()
+  const { user, profile, credits, refreshProfile } = useAuth()
 
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
@@ -144,6 +141,7 @@ export default function CreateImagePage() {
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [model,         setModel]         = useState('')
   const [fullscreen,    setFullscreen]    = useState(false)
+  const [submitting,    setSubmitting]    = useState(false)
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -155,17 +153,33 @@ export default function CreateImagePage() {
       .order('sort_order')
     const list = data || []
     setModels(list)
-    // Default to first unlocked model
-    const firstUnlocked = list.find((m) => !m.is_locked)
-    if (firstUnlocked) setModel(firstUnlocked.value)
+    // Default to user's preferred model if it's still active+unlocked, else first unlocked
+    const unlocked = list.filter((m) => !m.is_locked)
+    const preferred = profile?.preferred_model
+    const match = preferred && unlocked.find((m) => m.value === preferred)
+    setModel((match || unlocked[0])?.value || '')
     setModelsLoading(false)
-  }, [])
+  }, [profile?.preferred_model])
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  const type             = referenceImg ? 'image_to_image' : 'text_to_image'
-  const estimatedCredits = calculateCreditCost(type, { imageCount: 1 })
-  const canAfford        = credits >= parseFloat(estimatedCredits)
+  const type           = referenceImg ? 'image_to_image' : 'text_to_image'
+  const selectedModel  = models.find((m) => m.value === model)
+  const creditCost     = selectedModel
+    ? (referenceImg ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    : 0
+  const canAfford      = credits >= creditCost
+  const promptEmpty    = !prompt.trim()
+  const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
+
+  // Persist preferred model when user changes it
+  const handleModelChange = async (value) => {
+    setModel(value)
+    if (user && value && value !== profile?.preferred_model) {
+      try { await profilesApi.update(user.id, { preferred_model: value }) } catch { /* noop */ }
+    }
+  }
+
 
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0]
@@ -189,18 +203,64 @@ export default function CreateImagePage() {
   }
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return toast.error('Enter a prompt')
-    if (!canAfford)     return toast.error('Not enough credits')
-    const result = await generate({
-      type, prompt,
-      startFrame:  referenceImg?.file || null,
-      aspectRatio, duration: null, model,
-    })
-    if (result) {
-      toast.success('On its way! Check your Media page.', { duration: 4000 })
-      navigate(`/result/${result.generationId}`, {
-        state: { outputUrl: result.outputUrl, outputType: result.outputType },
+    if (promptEmpty)     return toast.error('Enter a prompt')
+    if (!selectedModel)  return toast.error('Pick a model')
+    if (!canAfford)      return toast.error('Not enough credits')
+    if (!user)           return toast.error('Please sign in')
+
+    setSubmitting(true)
+    let createdGenId = null
+
+    try {
+      // 1. Upload reference image (if any) to generation-uploads bucket
+      let startFrameUrl = null
+      if (referenceImg?.file) {
+        const ext  = (referenceImg.file.name.split('.').pop() || 'jpg').toLowerCase()
+        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(path, referenceImg.file, { upsert: false, cacheControl: '3600', contentType: referenceImg.file.type })
+        if (upErr) throw new Error('Reference upload failed')
+        const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+        startFrameUrl = publicUrl
+      }
+
+      // 2. Create the generation row
+      const { data: genRow, error: genErr } = await generationsDb.create({
+        user_id:         user.id,
+        generation_type: type,
+        status:          'pending',
+        prompt,
+        model,
+        aspect_ratio:    aspectRatio,
+        credits_charged: creditCost,
+        output_type:     'image',
+        start_frame_url: startFrameUrl,
       })
+      if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+      createdGenId = genRow.id
+
+      // 3. Deduct credits atomically (RPC also writes credit_transactions)
+      const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+      if (dErr || !deduct?.success) {
+        // Roll the row to failed so it doesn't sit pending forever
+        await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
+        throw new Error(deduct?.error || 'Not enough credits')
+      }
+
+      // 4. Kick off the generation pipeline (fire-and-forget; do NOT await)
+      supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
+        .catch((e) => console.error('image-generate invoke error', e))
+
+      // 5. Reset & notify
+      refreshProfile()
+      toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
+      setPrompt('')
+      handleRemoveImage()
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -228,7 +288,9 @@ export default function CreateImagePage() {
 
         <div className="flex items-center gap-2">
           {!modelsLoading && (
-            <ModelDropdown models={models} value={model} onChange={setModel} />
+
+            <ModelDropdown models={models} value={model} onChange={handleModelChange} />
+
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -239,33 +301,6 @@ export default function CreateImagePage() {
           </div>
         </div>
       </div>
-
-      {/* ── Loading overlay ── */}
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
-          >
-            <div className="text-center px-8">
-              <Loader size="lg" status={status} />
-              <div className="mt-5 flex gap-1.5 justify-center">
-                {['uploading', 'enhancing', 'generating'].map((s) => (
-                  <div
-                    key={s}
-                    className="h-0.5 rounded-full transition-all duration-500"
-                    style={{
-                      width:      status === s ? 28 : 8,
-                      background: status === s ? 'var(--brand)' : 'rgba(255,255,255,0.15)',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── Fullscreen viewer ── */}
       <AnimatePresence>
@@ -378,16 +413,18 @@ export default function CreateImagePage() {
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
-            disabled={isLoading || !canAfford}
+            disabled={buttonDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
-              opacity:    (isLoading || !canAfford) ? 0.5 : 1,
+              opacity:    buttonDisabled ? 0.5 : 1,
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {isLoading ? 'Generating…' : 'Generate'}
+            {!canAfford && !promptEmpty
+              ? 'Not enough credits'
+              : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>

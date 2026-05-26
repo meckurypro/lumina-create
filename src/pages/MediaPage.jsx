@@ -229,6 +229,18 @@ const MediaCard = ({ gen, onClick, onMore }) => {
             ⚡ {gen.credits_charged} cr
           </span>
         </div>
+        {gen.status === 'failed' && gen.error_message && (() => {
+          const isPolicy = /content|policy|blocked|nsfw|moderat/i.test(gen.error_message)
+          return (
+            <p
+              className="text-xs mt-1 truncate"
+              style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}
+              title={gen.error_message}
+            >
+              {gen.error_message}
+            </p>
+          )
+        })()}
       </div>
 
       {/* More button */}
