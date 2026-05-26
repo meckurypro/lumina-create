@@ -1,9 +1,10 @@
 // src/pages/MediaPage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal }                             from 'react-dom'
 import { useNavigate }                              from 'react-router-dom'
 import { motion, AnimatePresence }                  from 'framer-motion'
-import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, X, Zap, ChevronDown } from 'lucide-react'
-import { generations as generationsDb, supabase, profiles as profilesApi } from '@/lib/supabase'
+import { Film, Image, Download, RefreshCw, Trash2, MoreHorizontal, ChevronDown } from 'lucide-react'
+import { generations as generationsDb, supabase }  from '@/lib/supabase'
 import { useAuth }                                  from '@/context/AuthContext'
 import { TopBar }                                   from '@/components/layout/TopBar'
 import { PageWrapper }                              from '@/components/layout/PageWrapper'
@@ -45,9 +46,9 @@ function formatDate(iso) {
 }
 
 function getCardTitle(gen) {
-  if (gen.templates?.name)                          return gen.templates.name
-  if (gen.title)                                    return gen.title
-  if (gen.prompt)                                   return gen.prompt.slice(0, 45) + (gen.prompt.length > 45 ? '…' : '')
+  if (gen.templates?.name) return gen.templates.name
+  if (gen.title)           return gen.title
+  if (gen.prompt)          return gen.prompt.slice(0, 45) + (gen.prompt.length > 45 ? '…' : '')
   return 'Generation'
 }
 
@@ -114,12 +115,101 @@ const ProgressOverlay = ({ gen }) => {
   )
 }
 
+// ── Portal Dropup ──────────────────────────────────────────
+// Renders the model list via a portal at the top of <body>
+// so it is never clipped by any parent stacking context.
+
+const PortalDropup = ({ triggerRef, open, models, value, originalModel, onSelect, onClose }) => {
+  const [rect, setRect] = useState(null)
+
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      setRect(triggerRef.current.getBoundingClientRect())
+    }
+  }, [open, triggerRef])
+
+  if (!open || !rect) return null
+
+  // List sits ABOVE the trigger: bottom = viewport height - trigger top + gap
+  const bottomPx  = window.innerHeight - rect.top + 8
+  const leftPx    = rect.left
+  const widthPx   = rect.width
+
+  return createPortal(
+    <>
+      {/* invisible full-screen tap-away */}
+      <div
+        className="fixed inset-0"
+        style={{ zIndex: 9998 }}
+        onClick={onClose}
+        onTouchStart={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1    }}
+        exit={{    opacity: 0, y: 8, scale: 0.97 }}
+        transition={{ duration: 0.15 }}
+        style={{
+          position:   'fixed',
+          bottom:     bottomPx,
+          left:       leftPx,
+          width:      widthPx,
+          zIndex:     9999,
+          background: 'var(--bg-card)',
+          border:     '1px solid var(--border-color)',
+          borderRadius: 16,
+          boxShadow:  '0 -8px 32px rgba(0,0,0,0.4)',
+          maxHeight:  260,
+          overflowY:  'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        {models.map((m, i) => (
+          <button
+            key={m.value}
+            onClick={() => { onSelect(m.value); onClose() }}
+            className="w-full flex items-center justify-between px-4 py-3 text-left transition-colors"
+            style={{
+              background:   m.value === value ? 'var(--bg-elevated)' : 'transparent',
+              borderBottom: i < models.length - 1 ? '1px solid var(--border-color)' : 'none',
+            }}
+          >
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+              {m.sublabel && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+              {m.value === originalModel && (
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(234,179,8,0.12)', color: '#eab308', fontSize: 10, whiteSpace: 'nowrap' }}
+                >
+                  original
+                </span>
+              )}
+              {m.value === value && (
+                <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
+              )}
+            </div>
+          </button>
+        ))}
+      </motion.div>
+    </>,
+    document.body
+  )
+}
+
 // ── Regenerate Sheet ───────────────────────────────────────
 
 const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
-  const originalModel    = gen.model || ''
+  const originalModel           = gen.model || ''
   const [model, setModel]       = useState(originalModel)
   const [dropOpen, setDropOpen] = useState(false)
+  const triggerRef              = useRef(null)
 
   const isVideo        = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
   const relevantModels = models.filter((m) => !m.is_locked && m.type === (isVideo ? 'video' : 'image'))
@@ -147,12 +237,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
         exit={{    y: 80, opacity: 0 }}
         transition={{ type: 'spring', damping: 28, stiffness: 340 }}
         className="w-full rounded-t-3xl pb-8"
-        style={{
-          background: 'var(--bg-card)',
-          maxWidth: 480,
-          border: '1px solid var(--border-color)',
-          // no overflow:hidden here — lets the dropup escape the sheet boundary
-        }}
+        style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle */}
@@ -176,10 +261,13 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
 
         {/* Model selector */}
         <div className="px-4 mb-4">
-          <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Model</p>
+          <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+            Model
+          </p>
 
-          {/* Trigger button */}
+          {/* Trigger button — ref'd so PortalDropup can measure it */}
           <button
+            ref={triggerRef}
             onClick={(e) => { e.stopPropagation(); setDropOpen((v) => !v) }}
             className="w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
@@ -192,7 +280,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {model === originalModel && (
                 <span
                   className="text-xs px-2 py-0.5 rounded-full font-medium"
@@ -204,74 +292,26 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
               <ChevronDown
                 size={16}
                 style={{
-                  color: 'var(--text-muted)',
-                  transform: dropOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  color:      'var(--text-muted)',
+                  transform:  dropOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s',
                 }}
               />
             </div>
           </button>
 
-          {/* Drop-UP list — rendered inline, slides upward via absolute bottom positioning */}
+          {/* Portal dropup — escapes all stacking contexts */}
           <AnimatePresence>
             {dropOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1    }}
-                exit={{    opacity: 0, y: 8, scale: 0.97 }}
-                transition={{ duration: 0.15 }}
-                // position absolute, anchored to BOTTOM of the trigger (drop-UP)
-                style={{
-                  position:        'absolute',
-                  left:            16,
-                  right:           16,
-                  bottom:          '100%',   // sits above the trigger
-                  marginBottom:    8,
-                  zIndex:          60,
-                  background:      'var(--bg-card)',
-                  border:          '1px solid var(--border-color)',
-                  borderRadius:    16,
-                  boxShadow:       '0 -8px 32px rgba(0,0,0,0.32)',
-                  maxHeight:       240,
-                  overflowY:       'auto',
-                  WebkitOverflowScrolling: 'touch',
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onTouchMove={(e) => e.stopPropagation()}  // prevent backdrop scroll
-                onWheel={(e) => e.stopPropagation()}
-              >
-                {relevantModels.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { setModel(m.value); setDropOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-3 transition-colors text-left"
-                    style={{
-                      background: m.value === model ? 'var(--bg-elevated)' : 'transparent',
-                      borderBottom: '1px solid var(--border-color)',
-                    }}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      {m.sublabel && (
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {m.value === originalModel && (
-                        <span
-                          className="text-xs px-1.5 py-0.5 rounded-full"
-                          style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', fontSize: 10 }}
-                        >
-                          original
-                        </span>
-                      )}
-                      {m.value === model && (
-                        <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </motion.div>
+              <PortalDropup
+                triggerRef={triggerRef}
+                open={dropOpen}
+                models={relevantModels}
+                value={model}
+                originalModel={originalModel}
+                onSelect={(v) => setModel(v)}
+                onClose={() => setDropOpen(false)}
+              />
             )}
           </AnimatePresence>
         </div>
@@ -399,7 +439,6 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
       className="flex items-center gap-3 p-3 rounded-2xl"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
-      {/* Thumbnail */}
       <div
         className="relative flex-shrink-0 rounded-xl overflow-hidden"
         style={{ width: 56, height: 56, background: 'var(--bg-elevated)', cursor: isComplete ? 'pointer' : 'default' }}
@@ -411,29 +450,21 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
             : <img   src={thumbUrl} alt={cardTitle} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            {isVideo
-              ? <Film  size={20} style={{ color: 'var(--text-muted)' }} />
-              : <Image size={20} style={{ color: 'var(--text-muted)' }} />
-            }
+            {isVideo ? <Film size={20} style={{ color: 'var(--text-muted)' }} />
+                     : <Image size={20} style={{ color: 'var(--text-muted)' }} />}
           </div>
         )}
-
         {isPending && <ProgressOverlay gen={gen} />}
-
         {!isPending && (
           <div
             className="absolute bottom-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.55)' }}
           >
-            {isVideo
-              ? <Film  size={8} className="text-white" />
-              : <Image size={8} className="text-white" />
-            }
+            {isVideo ? <Film size={8} className="text-white" /> : <Image size={8} className="text-white" />}
           </div>
         )}
       </div>
 
-      {/* Info */}
       <div
         className="flex-1 min-w-0"
         style={{ cursor: isComplete ? 'pointer' : 'default' }}
@@ -442,11 +473,9 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
         <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
           {cardTitle}
         </p>
-
         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
           {formatDate(gen.created_at)}
         </p>
-
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <StatusPill status={gen.status} />
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -461,18 +490,13 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
             </span>
           )}
         </div>
-
         {friendlyError && (
-          <p
-            className="text-xs mt-1 truncate"
-            style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}
-          >
+          <p className="text-xs mt-1 truncate" style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}>
             {friendlyError}
           </p>
         )}
       </div>
 
-      {/* More button */}
       <button
         onClick={onMore}
         className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
@@ -498,13 +522,12 @@ export default function MediaPage() {
   const [hasMore,      setHasMore]      = useState(true)
   const [totalCount,   setTotalCount]   = useState(0)
   const [activeGen,    setActiveGen]    = useState(null)
-  const [sheetMode,    setSheetMode]    = useState(null)   // 'actions' | 'regenerate' | null
+  const [sheetMode,    setSheetMode]    = useState(null)
   const [models,       setModels]       = useState([])
   const [regenLoading, setRegenLoading] = useState(false)
 
   const pollRef = useRef(null)
 
-  // ── Load models once ──
   useEffect(() => {
     supabase
       .from('models')
@@ -514,16 +537,12 @@ export default function MediaPage() {
       .then(({ data }) => setModels(data || []))
   }, [])
 
-  // ── Load generations ──
-
   const load = useCallback(async (offset = 0, reset = false) => {
     if (!user) return
     if (offset === 0) setLoading(true)
     else              setLoadingMore(true)
 
-    const { data, count } = await generationsDb.getUserGenerations(user.id, {
-      limit: PAGE_SIZE, offset,
-    })
+    const { data, count } = await generationsDb.getUserGenerations(user.id, { limit: PAGE_SIZE, offset })
 
     setTotalCount(count || 0)
     setItems((prev) => reset ? (data || []) : [...prev, ...(data || [])])
@@ -533,8 +552,6 @@ export default function MediaPage() {
   }, [user])
 
   useEffect(() => { load(0, true) }, [load])
-
-  // ── Poll for pending/processing ──
 
   useEffect(() => {
     const hasPending = items.some(g => g.status === 'pending' || g.status === 'processing')
@@ -555,13 +572,9 @@ export default function MediaPage() {
     return () => clearInterval(pollRef.current)
   }, [items, user])
 
-  // ── Sheet helpers ──
-
   const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions') }
   const openRegenerate = ()    => setSheetMode('regenerate')
   const closeSheet     = ()    => { setActiveGen(null); setSheetMode(null) }
-
-  // ── Actions ──
 
   const handleDelete = async (gen) => {
     closeSheet()
@@ -593,8 +606,6 @@ export default function MediaPage() {
       toast.error('Download failed')
     }
   }
-
-  // ── In-place regenerate ──
 
   const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj) => {
     if (!activeGen || !user) return
@@ -635,7 +646,6 @@ export default function MediaPage() {
       setItems((prev) => [genRow, ...prev])
       setTotalCount((c) => c + 1)
       refreshProfile()
-
       toast.success('Regenerating! Check back in a moment.', { duration: 4000 })
     } catch (err) {
       toast.error(err.message || 'Regeneration failed')
@@ -649,11 +659,7 @@ export default function MediaPage() {
     navigate(`/result/${gen.id}`)
   }
 
-  // ── Filter ──
-
-  const filtered = filter === 'all'
-    ? items
-    : items.filter(g => g.status === filter)
+  const filtered = filter === 'all' ? items : items.filter(g => g.status === filter)
 
   return (
     <>
@@ -755,7 +761,6 @@ export default function MediaPage() {
             onDownload={() => handleDownload(activeGen)}
           />
         )}
-
         {activeGen && sheetMode === 'regenerate' && (
           <RegenerateSheet
             key="regenerate"
@@ -769,4 +774,4 @@ export default function MediaPage() {
       </AnimatePresence>
     </>
   )
-        }
+}
