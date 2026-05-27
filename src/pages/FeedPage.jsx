@@ -8,22 +8,18 @@ import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Skeleton, EmptyState } from '@/components/ui/Modal'
-import toast from 'react-hot-toast'
 
 // ─── Aspect Ratio Helpers ─────────────────────────────────
 
 const classify = (w, h) => {
   if (!w || !h) return 'square'
-  const ratio = w / h
-  if (ratio < 0.8) return 'tall'
-  return 'square'
+  return w / h < 0.8 ? 'tall' : 'square'
 }
 
 const classifyFromMeta = (post) => {
   const ar = post.output_aspect_ratio
   if (!ar) return null
-  if (ar === '9:16' || ar === '9/16') return 'tall'
-  return 'square'
+  return (ar === '9:16' || ar === '9/16') ? 'tall' : 'square'
 }
 
 // ─── Slide Builder ────────────────────────────────────────
@@ -53,9 +49,7 @@ const VideoModal = ({ url, onClose }) => {
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ background: 'rgba(0,0,0,0.9)' }}
         onClick={onClose}
@@ -67,16 +61,11 @@ const VideoModal = ({ url, onClose }) => {
           className="relative max-w-sm w-full"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={onClose}
-            className="absolute -top-10 right-0 p-2 rounded-xl text-white"
-            aria-label="Close video"
-          >
+          <button onClick={onClose} className="absolute -top-10 right-0 p-2 rounded-xl text-white">
             <X size={20} />
           </button>
           <video
-            src={url}
-            controls autoPlay playsInline loop
+            src={url} controls autoPlay playsInline loop
             className="w-full rounded-3xl"
             style={{ background: '#000', maxHeight: '80vh', objectFit: 'contain' }}
           />
@@ -86,8 +75,7 @@ const VideoModal = ({ url, onClose }) => {
   )
 }
 
-// ─── Template Discover Card ───────────────────────────────
-// No credit badge — price is shown only inside the template interface
+// ─── Template Discover Card — square, video-aware ─────────
 
 const TemplateDiscoverCard = ({ template, index, onUse }) => (
   <motion.button
@@ -96,26 +84,40 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => (
     transition={{ delay: index * 0.07 }}
     whileTap={{ scale: 0.96 }}
     onClick={() => onUse(template)}
-    className="flex-shrink-0 w-40 rounded-3xl overflow-hidden text-left"
-    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    className="flex-shrink-0 rounded-3xl overflow-hidden text-left flex flex-col"
+    style={{
+      width:      '140px',
+      background: 'var(--bg-card)',
+      border:     '1px solid var(--border-color)',
+    }}
   >
+    {/* Square media area */}
     <div
-      className="h-24 w-full relative flex items-center justify-center overflow-hidden"
+      className="w-full relative overflow-hidden"
       style={{
-        background: template.thumbnail_url
+        aspectRatio: '1 / 1',
+        background: template.thumbnail_url || template.demo_video_url
           ? undefined
           : 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.08))',
       }}
     >
-      {template.thumbnail_url ? (
+      {template.demo_video_url ? (
+        <video
+          src={template.demo_video_url}
+          autoPlay muted loop playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          poster={template.thumbnail_url || undefined}
+        />
+      ) : template.thumbnail_url ? (
         <img
           src={template.thumbnail_url}
           alt={template.name}
-          className="absolute inset-0 w-full h-full"
-          style={{ objectFit: 'cover' }}
+          className="absolute inset-0 w-full h-full object-cover"
         />
       ) : (
-        <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
+        </div>
       )}
 
       {template.is_featured && (
@@ -129,6 +131,7 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => (
       )}
     </div>
 
+    {/* Label */}
     <div className="px-3 py-2.5 flex items-center justify-between">
       <p className="text-xs font-bold leading-tight flex-1 mr-1" style={{ color: 'var(--text-primary)' }}>
         {template.name}
@@ -147,9 +150,7 @@ const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', ...style }}
     />
   )
-
   const isVideo = post.output_type === 'video'
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -174,17 +175,10 @@ const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
       </div>
       {isVideo && (
         <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlayVideo(post.output_url || post.thumbnail_url)
-          }}
+          onClick={(e) => { e.stopPropagation(); onPlayVideo(post.output_url || post.thumbnail_url) }}
           className="absolute inset-0 flex items-center justify-center z-10"
-          aria-label="Play video"
         >
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-          >
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
             <Play size={16} fill="white" className="text-white ml-0.5" />
           </div>
         </button>
@@ -239,37 +233,26 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
 
   const resetTimer = useCallback(() => {
     clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setActiveSlide((prev) => (prev + 1) % total)
-    }, 4000)
+    timerRef.current = setInterval(() => setActiveSlide((prev) => (prev + 1) % total), 4000)
   }, [total])
 
-  useEffect(() => {
-    resetTimer()
-    return () => clearInterval(timerRef.current)
-  }, [resetTimer])
+  useEffect(() => { resetTimer(); return () => clearInterval(timerRef.current) }, [resetTimer])
 
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX
-    touchStartY.current = e.touches[0].clientY
-  }
-  const handleTouchEnd = (e) => {
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; touchStartY.current = e.touches[0].clientY }
+  const handleTouchEnd   = (e) => {
     if (touchStartX.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartX.current
     const dy = e.changedTouches[0].clientY - touchStartY.current
     if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return
-    goTo(dx < 0 ? activeSlide + 1 : activeSlide - 1)
-    resetTimer()
-    touchStartX.current = null
-    touchStartY.current = null
+    goTo(dx < 0 ? activeSlide + 1 : activeSlide - 1); resetTimer()
+    touchStartX.current = null; touchStartY.current = null
   }
   const handleMouseDown = (e) => { mouseStartX.current = e.clientX }
   const handleMouseUp   = (e) => {
     if (mouseStartX.current === null) return
     const dx = e.clientX - mouseStartX.current
     if (Math.abs(dx) < 40) return
-    goTo(dx < 0 ? activeSlide + 1 : activeSlide - 1)
-    resetTimer()
+    goTo(dx < 0 ? activeSlide + 1 : activeSlide - 1); resetTimer()
     mouseStartX.current = null
   }
 
@@ -277,27 +260,14 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
   if (!slide) return null
 
   return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      style={{ userSelect: 'none' }}
-    >
+    <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} style={{ userSelect: 'none' }}>
       <AnimatePresence mode="wait">
         <motion.div
           key={activeSlide}
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -40 }}
+          initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}
           transition={{ duration: 0.28 }}
         >
-          <TallSlide
-            hero={slide.hero}
-            pair={slide.pair}
-            onPlayVideo={onPlayVideo}
-            onNavigate={onNavigate}
-          />
+          <TallSlide hero={slide.hero} pair={slide.pair} onPlayVideo={onPlayVideo} onNavigate={onNavigate} />
         </motion.div>
       </AnimatePresence>
       <div className="flex items-center justify-center gap-1.5 mt-3">
@@ -306,12 +276,9 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
             key={i}
             onClick={() => { goTo(i); resetTimer() }}
             style={{
-              width:        i === activeSlide ? 18 : 6,
-              height:       6,
-              borderRadius: 99,
-              background:   i === activeSlide ? 'var(--brand)' : 'var(--border-color)',
-              transition:   'width 0.25s, background 0.25s',
-              cursor:       'pointer',
+              width: i === activeSlide ? 18 : 6, height: 6, borderRadius: 99,
+              background: i === activeSlide ? 'var(--brand)' : 'var(--border-color)',
+              transition: 'width 0.25s, background 0.25s', cursor: 'pointer',
             }}
           />
         ))}
@@ -345,10 +312,7 @@ export default function FeedPage() {
       const posts = data || []
       setTrending(posts)
       const seed = {}
-      posts.forEach((p) => {
-        const meta = classifyFromMeta(p)
-        if (meta) seed[p.id] = meta
-      })
+      posts.forEach((p) => { const meta = classifyFromMeta(p); if (meta) seed[p.id] = meta })
       setArMap(seed)
       setTrendingLoading(false)
     })
@@ -375,10 +339,7 @@ export default function FeedPage() {
 
   const slides = trending.length === 0 ? [] : buildSlides(trending, arMap)
 
-  // ── Navigate to TemplateRunnerPage, not GeneratePage ──
-  const handleTemplateUse = (template) => {
-    navigate(`/create/${template.slug}`)
-  }
+  const handleTemplateUse = (template) => navigate(`/create/${template.slug}`)
 
   return (
     <>
@@ -397,56 +358,38 @@ export default function FeedPage() {
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
                 ✦ Templates
               </p>
-              <button
-                onClick={() => navigate('/create')}
-                className="text-xs font-semibold flex items-center gap-1"
-                style={{ color: 'var(--brand)' }}
-              >
+              <button onClick={() => navigate('/create')} className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--brand)' }}>
                 See all <ArrowRight size={12} />
               </button>
             </div>
-
             {templatesLoading ? (
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
                 {[...Array(3)].map((_, i) => (
-                  <div key={i} className="flex-shrink-0 w-40 h-40 rounded-3xl" style={{ background: 'var(--bg-card)' }} />
+                  <div key={i} className="flex-shrink-0 rounded-3xl" style={{ width: 140, aspectRatio: '1/1', background: 'var(--bg-card)' }} />
                 ))}
               </div>
             ) : (
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
                 {publicTemplates.map((template, i) => (
-                  <TemplateDiscoverCard
-                    key={template.id}
-                    template={template}
-                    index={i}
-                    onUse={handleTemplateUse}
-                  />
+                  <TemplateDiscoverCard key={template.id} template={template} index={i} onUse={handleTemplateUse} />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Trending section */}
+        {/* Trending */}
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp size={14} style={{ color: 'var(--brand)' }} />
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
-            Trending
-          </p>
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Trending</p>
         </div>
 
         {trendingLoading ? (
           <div className="grid grid-cols-2 gap-3 mb-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-square rounded-3xl" />
-            ))}
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
           </div>
         ) : trending.length === 0 ? (
-          <EmptyState
-            icon={Film}
-            title="No posts yet"
-            description="Be the first to share your creation with the community!"
-          />
+          <EmptyState icon={Film} title="No posts yet" description="Be the first to share your creation with the community!" />
         ) : (
           <div className="mb-4">
             {trending.map((p) => <AspectProbe key={p.id} post={p} />)}
@@ -463,9 +406,7 @@ export default function FeedPage() {
         <div className="h-6" />
       </PageWrapper>
 
-      {activeVideo && (
-        <VideoModal url={activeVideo} onClose={() => setActiveVideo(null)} />
-      )}
+      {activeVideo && <VideoModal url={activeVideo} onClose={() => setActiveVideo(null)} />}
     </>
   )
 }
