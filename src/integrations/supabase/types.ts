@@ -1004,6 +1004,17 @@ export type Database = {
         | "half_moon_face_swap"
         | "face_swap"
         | "head_swap"
+        | "kling_v3_pro"
+        | "kling_v3_std"
+        | "kling_v2_6_pro"
+        | "veo3_1_fast"
+        | "veo3_1_lite"
+        | "seedance_2_fast"
+        | "seedance_1_5_pro"
+        | "wan_2_6"
+        | "wan_2_5"
+        | "hailuo_02_pro"
+        | "pixverse_v6"
       app_role: "admin" | "moderator" | "staff" | "user"
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
       feed_status: "pending" | "approved" | "rejected" | "published"
@@ -1183,6 +1194,17 @@ export const Constants = {
         "half_moon_face_swap",
         "face_swap",
         "head_swap",
+        "kling_v3_pro",
+        "kling_v3_std",
+        "kling_v2_6_pro",
+        "veo3_1_fast",
+        "veo3_1_lite",
+        "seedance_2_fast",
+        "seedance_1_5_pro",
+        "wan_2_6",
+        "wan_2_5",
+        "hailuo_02_pro",
+        "pixverse_v6",
       ],
       app_role: ["admin", "moderator", "staff", "user"],
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
