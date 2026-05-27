@@ -188,14 +188,7 @@ export default function CreatePage() {
                           ? <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover" />
                           : <Sparkles size={32} style={{ color: 'var(--brand)', opacity: 0.35 }} />
                         }
-                        <div
-                          className="absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold"
-                          style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(8px)' }}
-                        >
-                          ⚡ {template.credit_cost_per_image
-                            ? `${template.credit_cost_per_image}/img`
-                            : `${template.credit_cost} cr`}
-                        </div>
+                        
 
                         {/* Staff-only badge */}
                         {template.visibility === 'promptiq' && (
