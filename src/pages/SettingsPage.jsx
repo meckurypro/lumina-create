@@ -1,15 +1,12 @@
-// src/pages/SettingsPage.jsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Moon, Sun, Monitor, Lock, User, ChevronRight, Shield } from 'lucide-react'
+import { ArrowLeft, Moon, Sun, Monitor, Lock, User, ChevronRight, Shield, Sparkles } from 'lucide-react'
 import { auth, profiles } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
-
-// ─── Row ──────────────────────────────────────────────────
 
 const Row = ({ icon: Icon, label, value, onClick, last = false }) => (
   <button
@@ -33,7 +30,39 @@ const Row = ({ icon: Icon, label, value, onClick, last = false }) => (
   </button>
 )
 
-// ─── Settings Page ────────────────────────────────────────
+// Toggle row — no chevron, just a pill switch
+const ToggleRow = ({ icon: Icon, label, sublabel, checked, onChange, last = false }) => (
+  <div
+    className="w-full flex items-center gap-3 px-4 py-4"
+    style={{
+      background:   'var(--bg-card)',
+      borderBottom: last ? 'none' : '1px solid var(--border-color)',
+    }}
+  >
+    <Icon size={17} strokeWidth={1.5} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</p>
+      {sublabel && (
+        <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{sublabel}</p>
+      )}
+    </div>
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200"
+      style={{ background: checked ? 'var(--text-primary)' : 'var(--bg-elevated)' }}
+    >
+      <span
+        className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200"
+        style={{
+          background: checked ? 'var(--text-inverse)' : 'var(--text-muted)',
+          transform:  checked ? 'translateX(20px)' : 'translateX(0)',
+        }}
+      />
+    </button>
+  </div>
+)
 
 export default function SettingsPage() {
   const navigate                              = useNavigate()
@@ -51,6 +80,20 @@ export default function SettingsPage() {
   const [displayName,    setDisplayName]    = useState(profile?.display_name || '')
   const [bio,            setBio]            = useState(profile?.bio || '')
   const [profileLoading, setProfileLoading] = useState(false)
+
+  // ai_prompt_refinement defaults to true if not yet in DB
+  const promptRefinement = profile?.ai_prompt_refinement ?? true
+
+  const handleToggleRefinement = async (next) => {
+    // Optimistic update
+    updateProfileLocal({ ai_prompt_refinement: next })
+    const { data, error } = await profiles.update(user.id, { ai_prompt_refinement: next })
+    if (error) {
+      // Roll back
+      updateProfileLocal({ ai_prompt_refinement: !next })
+      toast.error('Could not save preference')
+    }
+  }
 
   const handleChangePassword = async () => {
     const errors = {}
@@ -88,7 +131,7 @@ export default function SettingsPage() {
   return (
     <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
         style={{ borderBottom: '1px solid var(--border-color)' }}
@@ -101,12 +144,10 @@ export default function SettingsPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Settings
-        </h1>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Settings</h1>
       </div>
 
-      {/* ── Scrollable content ── */}
+      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
@@ -136,6 +177,27 @@ export default function SettingsPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Generation */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-3 px-1"
+               style={{ color: 'var(--text-muted)' }}>
+              Generation
+            </p>
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ border: '1px solid var(--border-color)' }}
+            >
+              <ToggleRow
+                icon={Sparkles}
+                label="AI prompt refinement"
+                sublabel="Claude enhances your prompt before sending it to the video model."
+                checked={promptRefinement}
+                onChange={handleToggleRefinement}
+                last
+              />
             </div>
           </div>
 
@@ -188,7 +250,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ── Change Password Modal ── */}
+      {/* Change Password Modal */}
       <Modal
         isOpen={showChangePassword}
         onClose={() => { setShowChangePassword(false); setPassErrors({}) }}
@@ -222,7 +284,7 @@ export default function SettingsPage() {
         </div>
       </Modal>
 
-      {/* ── Edit Profile Modal ── */}
+      {/* Edit Profile Modal */}
       <Modal isOpen={showEditProfile} onClose={() => setShowEditProfile(false)} title="Edit profile">
         <div className="flex flex-col gap-4">
           <Input
