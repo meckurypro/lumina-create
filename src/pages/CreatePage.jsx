@@ -36,6 +36,70 @@ const TOOLS = [
   },
 ]
 
+// ── Template Card — square, video-aware ───────────────────
+const TemplateCard = ({ template, index, onClick }) => (
+  <motion.button
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: index * 0.06 }}
+    whileTap={{ scale: 0.97 }}
+    onClick={onClick}
+    className="w-full rounded-2xl overflow-hidden text-left flex flex-col"
+    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+  >
+    {/* Square media area */}
+    <div
+      className="w-full relative flex items-center justify-center overflow-hidden"
+      style={{
+        aspectRatio: '1 / 1',
+        background: template.thumbnail_url || template.demo_video_url
+          ? undefined
+          : 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(234,88,12,0.06))',
+      }}
+    >
+      {template.demo_video_url ? (
+        <video
+          src={template.demo_video_url}
+          autoPlay muted loop playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          poster={template.thumbnail_url || undefined}
+        />
+      ) : template.thumbnail_url ? (
+        <img
+          src={template.thumbnail_url}
+          alt={template.name}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.35 }} />
+      )}
+
+      {/* Staff badge */}
+      {template.visibility === 'promptiq' && (
+        <div
+          className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold z-10"
+          style={{ background: 'rgba(249,115,22,0.85)', color: 'white', backdropFilter: 'blur(8px)' }}
+        >
+          Staff
+        </div>
+      )}
+    </div>
+
+    {/* Label row */}
+    <div className="px-3 py-2.5 flex items-center justify-between">
+      <div className="min-w-0 flex-1 mr-2">
+        <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+          {template.name}
+        </p>
+        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+          {template.description}
+        </p>
+      </div>
+      <ArrowRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    </div>
+  </motion.button>
+)
+
 export default function CreatePage() {
   const navigate                  = useNavigate()
   const { isStaff, isAdmin }      = useAuth()
@@ -46,20 +110,15 @@ export default function CreatePage() {
   useEffect(() => {
     const fetchTemplates = async () => {
       setLoading(true)
-
-      // Staff and admin see promptiq-visibility templates too
       const { data } = (isStaff || isAdmin)
         ? await templatesDb.getAll()
         : await templatesDb.getPublic()
-
       setTemplates(data || [])
       setLoading(false)
     }
-
     fetchTemplates()
   }, [isStaff, isAdmin])
 
-  // ── Navigate to TemplateRunnerPage, not GeneratePage ──
   const handleTemplateSelect = (template) => {
     navigate(`/create/${template.slug}`)
   }
@@ -148,71 +207,38 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Templates Tab */}
+            {/* Templates Tab — 2-column square grid */}
             {activeTab === 'templates' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col gap-3 overflow-y-auto"
+                className="overflow-y-auto"
               >
                 {loading ? (
-                  <>
-                    <Skeleton className="h-36 w-full rounded-2xl" />
-                    <Skeleton className="h-36 w-full rounded-2xl" />
-                  </>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[...Array(4)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-full rounded-2xl"
+                        style={{ aspectRatio: '1/1', background: 'var(--bg-card)' }}
+                      />
+                    ))}
+                  </div>
                 ) : templates.length === 0 ? (
                   <p className="text-sm text-center py-16" style={{ color: 'var(--text-muted)' }}>
                     No templates yet
                   </p>
                 ) : (
-                  templates.map((template, i) => (
-                    <motion.button
-                      key={template.id}
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.06 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleTemplateSelect(template)}
-                      className="w-full rounded-2xl overflow-hidden text-left flex-shrink-0"
-                      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-                    >
-                      <div
-                        className="h-32 w-full relative flex items-center justify-center"
-                        style={{
-                          background: template.thumbnail_url
-                            ? undefined
-                            : 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(234,88,12,0.06))',
-                        }}
-                      >
-                        {template.thumbnail_url
-                          ? <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover" />
-                          : <Sparkles size={32} style={{ color: 'var(--brand)', opacity: 0.35 }} />
-                        }
-                        
-
-                        {/* Staff-only badge */}
-                        {template.visibility === 'promptiq' && (
-                          <div
-                            className="absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-semibold"
-                            style={{ background: 'rgba(249,115,22,0.85)', color: 'white', backdropFilter: 'blur(8px)' }}
-                          >
-                            Staff
-                          </div>
-                        )}
-                      </div>
-                      <div className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                            {template.name}
-                          </h3>
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {template.description}
-                          </p>
-                        </div>
-                        <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginLeft: 12 }} />
-                      </div>
-                    </motion.button>
-                  ))
+                  <div className="grid grid-cols-2 gap-3">
+                    {templates.map((template, i) => (
+                      <TemplateCard
+                        key={template.id}
+                        template={template}
+                        index={i}
+                        onClick={() => handleTemplateSelect(template)}
+                      />
+                    ))}
+                  </div>
                 )}
               </motion.div>
             )}
