@@ -8,13 +8,13 @@ import toast from 'react-hot-toast'
 // ─── Credit Adjuster ──────────────────────────────────────
 
 const CreditAdjuster = ({ user, onClose, onUpdated }) => {
-  const { user: admin }         = useAuth()
-  const [amount,  setAmount]    = useState('')
-  const [note,    setNote]      = useState('')
-  const [saving,  setSaving]    = useState(false)
-  const isNegative              = amount.startsWith('-')
-  const parsed                  = parseFloat(amount)
-  const isValid                 = !isNaN(parsed) && parsed !== 0
+  const { user: admin }      = useAuth()
+  const [amount,  setAmount] = useState('')
+  const [note,    setNote]   = useState('')
+  const [saving,  setSaving] = useState(false)
+  const isNegative           = amount.startsWith('-')
+  const parsed               = parseFloat(amount)
+  const isValid              = !isNaN(parsed) && parsed !== 0
 
   const handleAdjust = async () => {
     if (!isValid) return
@@ -26,10 +26,18 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
       p_note:     note.trim() || (parsed > 0 ? 'Credits added by admin' : 'Credits deducted by admin'),
     })
     setSaving(false)
-    if (error || !data?.success) {
-      toast.error(data?.error || 'Failed to adjust credits')
+
+    if (error) {
+      toast.error(`RPC error: ${error.message}`)
+      console.error('admin_adjust_credits error:', error)
       return
     }
+    if (!data?.success) {
+      toast.error(`Failed: ${data?.error || 'Unknown error'}`)
+      console.error('admin_adjust_credits result:', data)
+      return
+    }
+
     toast.success(
       parsed > 0
         ? `+${parsed} credits added to @${user.username}`
@@ -84,8 +92,8 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
                 onClick={() => setAmount(String(v))}
                 className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
                 style={{
-                  background: amount === String(v) ? 'var(--brand)' : 'var(--bg-elevated)',
-                  color:      amount === String(v) ? 'white' : 'var(--text-secondary)',
+                  background: amount === String(v)  ? 'var(--brand)' : 'var(--bg-elevated)',
+                  color:      amount === String(v)  ? 'white' : 'var(--text-secondary)',
                 }}
               >
                 +{v}
@@ -116,7 +124,10 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
             <button
               onClick={() => setAmount((v) => v.startsWith('-') ? v.slice(1) : v ? `-${v}` : '-')}
               className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: isNegative ? 'rgba(239,68,68,0.15)' : 'var(--bg-elevated)', color: isNegative ? '#ef4444' : 'var(--text-muted)' }}
+              style={{
+                background: isNegative ? 'rgba(239,68,68,0.15)' : 'var(--bg-elevated)',
+                color:      isNegative ? '#ef4444' : 'var(--text-muted)',
+              }}
             >
               {isNegative ? <Minus size={16} /> : <Plus size={16} />}
             </button>
@@ -142,11 +153,14 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
           className="input-base text-sm"
         />
 
-        {/* Preview + confirm */}
+        {/* Preview */}
         {isValid && (
           <div
             className="rounded-2xl px-4 py-3 flex items-center justify-between"
-            style={{ background: parsed > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${parsed > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}` }}
+            style={{
+              background: parsed > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+              border:     `1px solid ${parsed > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+            }}
           >
             <div>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>New balance</p>
@@ -160,6 +174,7 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
           </div>
         )}
 
+        {/* Confirm button */}
         <button
           onClick={handleAdjust}
           disabled={!isValid || saving}
@@ -170,7 +185,13 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
             opacity:    saving ? 0.7 : 1,
           }}
         >
-          {saving ? 'Saving…' : !isValid ? 'Enter an amount' : parsed > 0 ? `Add ${parsed} credits` : `Deduct ${Math.abs(parsed)} credits`}
+          {saving
+            ? 'Saving…'
+            : !isValid
+            ? 'Enter an amount'
+            : parsed > 0
+            ? `Add ${parsed} credits`
+            : `Deduct ${Math.abs(parsed)} credits`}
         </button>
       </motion.div>
     </motion.div>
@@ -195,14 +216,10 @@ const UserRow = ({ user, onAdjust }) => (
     </div>
     <div className="flex-1 min-w-0">
       <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>@{user.username}</p>
-      <div className="flex items-center gap-2 mt-0.5">
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          ⚡ {user.credits?.toFixed(1)} cr
-        </span>
+      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ {user.credits?.toFixed(1)} cr</span>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {user.total_generations} gens
-        </span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{user.total_generations} gens</span>
         <span
           className="text-xs px-1.5 py-0.5 rounded-full capitalize"
           style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
@@ -262,7 +279,6 @@ export default function UsersManager() {
     setSearched(false)
   }
 
-  // Update local credit balance after adjustment without re-fetching
   const handleUpdated = useCallback((userId, newBalance) => {
     setUsers((prev) =>
       prev.map((u) => u.id === userId ? { ...u, credits: newBalance } : u)
@@ -301,7 +317,11 @@ export default function UsersManager() {
         {loading ? (
           <div className="flex flex-col gap-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-16 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: 0.5 }} />
+              <div
+                key={i}
+                className="h-16 rounded-2xl"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: 0.5 }}
+              />
             ))}
           </div>
         ) : searched && users.length === 0 ? (
