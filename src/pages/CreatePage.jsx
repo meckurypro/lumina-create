@@ -1,6 +1,6 @@
 // src/pages/CreatePage.jsx
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ImageIcon, VideoIcon, Sparkles, ArrowRight } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
@@ -47,7 +47,6 @@ const TemplateCard = ({ template, index, onClick }) => (
     className="w-full rounded-2xl overflow-hidden text-left flex flex-col"
     style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
   >
-    {/* Square media area */}
     <div
       className="w-full relative flex items-center justify-center overflow-hidden"
       style={{
@@ -74,7 +73,6 @@ const TemplateCard = ({ template, index, onClick }) => (
         <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.35 }} />
       )}
 
-      {/* Staff badge */}
       {template.visibility === 'promptiq' && (
         <div
           className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold z-10"
@@ -85,7 +83,6 @@ const TemplateCard = ({ template, index, onClick }) => (
       )}
     </div>
 
-    {/* Label row */}
     <div className="px-3 py-2.5 flex items-center justify-between">
       <div className="min-w-0 flex-1 mr-2">
         <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
@@ -102,8 +99,9 @@ const TemplateCard = ({ template, index, onClick }) => (
 
 export default function CreatePage() {
   const navigate                  = useNavigate()
+  const location                  = useLocation()
   const { isStaff, isAdmin }      = useAuth()
-  const [activeTab, setActiveTab] = useState('tools')
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'tools')
   const [templates, setTemplates] = useState([])
   const [loading,   setLoading]   = useState(true)
 
@@ -207,7 +205,7 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Templates Tab — 2-column square grid */}
+            {/* Templates Tab */}
             {activeTab === 'templates' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
