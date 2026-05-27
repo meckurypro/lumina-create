@@ -193,7 +193,7 @@ export default function SettingsPage() {
               <ToggleRow
                 icon={Sparkles}
                 label="AI prompt refinement"
-                sublabel="Claude enhances your prompt before sending it to the video model."
+                sublabel="Meckury AI enhances your prompt before generating your content."
                 checked={promptRefinement}
                 onChange={handleToggleRefinement}
                 last
