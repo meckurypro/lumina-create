@@ -218,28 +218,7 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          {/* What credits are for */}
-          <div className="mt-5">
-            <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-muted)' }}>
-              What credits pay for
-            </p>
-            <div className="flex flex-col gap-2">
-              {[
-                ['Image · FLUX Schnell',    '2 cr'],
-                ['Image · Nano Banana Pro', '11 cr'],
-                ['Image · GPT Image 2',     '37 cr'],
-                ['Video · 5s',              '2–3 cr'],
-                ['Video · 8s',              '4 cr'],
-                ['Video · 10s',             '5 cr'],
-                ['Face Swap',               '22 cr'],
-              ].map(([label, cost]) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span>
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{cost}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+
 
         </div>
       </Modal>
