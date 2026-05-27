@@ -196,14 +196,15 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // 7. Invoke generation pipeline
+      // 7. Invoke generation pipeline (fire-and-forget)
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
-      // 8. Done
+      // 8. Reset form, refresh credits, notify — stays on page (matches CreateImagePage)
       refreshProfile()
-      toast.success('Generating — check your Media page shortly.', { duration: 4000 })
-      navigate('/media')
+      toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
+      setImageValues({})
+      setSelectedMode(modes[0]?.key || null)
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -236,7 +237,6 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
             {dbTemplate?.description}
           </p>
         </div>
-        {/* Credit cost — visible here, not on listing cards */}
         <div
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
@@ -246,9 +246,9 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
         </div>
       </div>
 
-      {/* ── Scrollable content ──
-          pb accounts for: generate button height (~64px) + its padding (32px) + bottom nav (~56px) + safe area */}
-      <div className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
+      {/* ── Scrollable content ── */}
+      <div
+        className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
         style={{ paddingBottom: 'calc(64px + 32px + 56px + env(safe-area-inset-bottom, 0px))' }}
       >
 
@@ -304,14 +304,13 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
 
       </div>
 
-      {/* ── Generate button ──
-          Sits above BottomNav. Uses env(safe-area-inset-bottom) for notched phones. */}
+      {/* ── Generate button ── */}
       <div
         className="fixed left-0 right-0 px-4 pt-3"
         style={{
-          bottom:     'calc(56px + env(safe-area-inset-bottom, 0px))', // 56px = BottomNav height
-          background: 'var(--bg-primary)',
-          borderTop:  '1px solid var(--border-color)',
+          bottom:        'calc(56px + env(safe-area-inset-bottom, 0px))',
+          background:    'var(--bg-primary)',
+          borderTop:     '1px solid var(--border-color)',
           paddingBottom: '12px',
         }}
       >
