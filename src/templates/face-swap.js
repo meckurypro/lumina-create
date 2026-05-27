@@ -5,7 +5,7 @@ export default {
   promptKey:       'face-swap',
   modelSelectable: false,
   lockedModel:     'nano_banana_pro',
-  creditCost:      525, // 3× nano_banana_pro i2i (175 × 3) — authoritative value is DB templates.credit_cost
+  creditCost: 22, // 2× nano_banana_pro i2i (11 × 2)
 
   systemPrompt: `You are a photorealistic face transplant engine. Your sole function is to place the identity from the FACE IMAGE onto the REFERENCE IMAGE with surgical precision. You are not a creative tool. You do not invent. You transplant.
 
