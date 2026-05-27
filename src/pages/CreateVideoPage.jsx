@@ -31,7 +31,6 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Model Dropdown (mirrors CreateImagePage) ──
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
@@ -106,7 +105,6 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// Derive video type from what frames are uploaded
 function deriveVideoType(startFrame, endFrame) {
   if (startFrame && endFrame) return 'start_end_frame'
   if (startFrame)             return 'image_to_video'
@@ -131,11 +129,7 @@ const FrameUpload = ({ label, value, onChange, onRemove }) => (
     ) : (
       <label
         className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-        style={{
-          aspectRatio: '1/1',
-          border:      '1.5px dashed var(--border-color)',
-          background:  'var(--bg-card)',
-        }}
+        style={{ aspectRatio: '1/1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
       >
         <input type="file" accept="image/*" className="hidden" onChange={onChange} />
         <ImagePlus size={20} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
@@ -146,7 +140,7 @@ const FrameUpload = ({ label, value, onChange, onRemove }) => (
 )
 
 export default function CreateVideoPage() {
-  const navigate                        = useNavigate()
+  const navigate                          = useNavigate()
   const { user, credits, refreshProfile } = useAuth()
 
   const [prompt,      setPrompt]      = useState('')
@@ -155,12 +149,12 @@ export default function CreateVideoPage() {
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [autoRatio,   setAutoRatio]   = useState(false)
   const [duration,    setDuration]    = useState('5')
+  const [withSound,   setWithSound]   = useState(false)
   const [model,       setModel]       = useState('')
   const [models,      setModels]      = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
   const [submitting,  setSubmitting]  = useState(false)
 
-  // Load video models
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -175,23 +169,34 @@ export default function CreateVideoPage() {
     setModel(unlocked[0]?.value || '')
     setModelsLoading(false)
   }, [])
+
   useEffect(() => { loadModels() }, [loadModels])
 
-  const type             = deriveVideoType(startFrame, endFrame)
-  const selectedModel    = models.find((m) => m.value === model)
-  const isI2V            = !!(startFrame || endFrame)
-  const creditCost       = selectedModel
+  const type          = deriveVideoType(startFrame, endFrame)
+  const selectedModel = models.find((m) => m.value === model)
+  const isI2V         = !!(startFrame || endFrame)
+  const supportsSound = !!selectedModel?.supports_sound
+
+  // Reset sound toggle when switching to a model that doesn't support it
+  useEffect(() => {
+    if (!supportsSound) setWithSound(false)
+  }, [supportsSound])
+
+  const baseCredits = selectedModel
     ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
-  const canAfford        = credits >= creditCost
-  const promptEmpty      = !prompt.trim()
-  const isLoading        = submitting
+  const creditCost = withSound && supportsSound
+    ? Math.ceil(baseCredits * (selectedModel?.sound_cost_multiplier ?? 1.5))
+    : baseCredits
+
+  const canAfford   = credits >= creditCost
+  const promptEmpty = !prompt.trim()
+  const isLoading   = submitting
 
   const handleFrameUpload = (setter) => (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     const url = URL.createObjectURL(file)
-    // Auto-detect aspect ratio from first uploaded frame
     if (!startFrame && !endFrame) {
       const img = new Image()
       img.onload = () => {
@@ -203,7 +208,6 @@ export default function CreateVideoPage() {
     setter({ file, url })
   }
 
-  // Mode label shown to user
   const modeLabel = {
     text_to_video:   'Text to Video',
     image_to_video:  'Image to Video',
@@ -258,6 +262,7 @@ export default function CreateVideoPage() {
         output_type:     'video',
         start_frame_url: startFrameUrl,
         end_frame_url:   endFrameUrl,
+        with_sound:      withSound,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -279,6 +284,7 @@ export default function CreateVideoPage() {
       setEndFrame(null)
       setAutoRatio(false)
       setAspectRatio('9:16')
+      setWithSound(false)
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
     } finally {
@@ -355,7 +361,7 @@ export default function CreateVideoPage() {
             maxLength={500}
           />
 
-          {/* Settings — all inline, no accordion */}
+          {/* Settings */}
           <div>
             <SettingChips
               label="Aspect Ratio"
@@ -377,6 +383,17 @@ export default function CreateVideoPage() {
               value={duration}
               onChange={setDuration}
             />
+            {supportsSound && (
+              <SettingChips
+                label="Sound"
+                options={[
+                  { label: '🔇 Silent',     value: 'false' },
+                  { label: '🔊 With Sound', value: 'true'  },
+                ]}
+                value={String(withSound)}
+                onChange={(v) => setWithSound(v === 'true')}
+              />
+            )}
           </div>
 
         </div>
@@ -411,4 +428,4 @@ export default function CreateVideoPage() {
 
     </div>
   )
-              }
+}
