@@ -75,7 +75,7 @@ const VideoModal = ({ url, onClose }) => {
   )
 }
 
-// ─── Template Discover Card — square, video-aware ─────────
+// ─── Template Discover Card ───────────────────────────────
 
 const TemplateDiscoverCard = ({ template, index, onUse }) => (
   <motion.button
@@ -91,7 +91,6 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => (
       border:     '1px solid var(--border-color)',
     }}
   >
-    {/* Square media area */}
     <div
       className="w-full relative overflow-hidden"
       style={{
@@ -131,7 +130,6 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => (
       )}
     </div>
 
-    {/* Label */}
     <div className="px-3 py-2.5 flex items-center justify-between">
       <p className="text-xs font-bold leading-tight flex-1 mr-1" style={{ color: 'var(--text-primary)' }}>
         {template.name}
@@ -358,7 +356,12 @@ export default function FeedPage() {
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
                 ✦ Templates
               </p>
-              <button onClick={() => navigate('/create')} className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--brand)' }}>
+              {/* ← passes state so CreatePage opens on the Templates tab */}
+              <button
+                onClick={() => navigate('/create', { state: { tab: 'templates' } })}
+                className="text-xs font-semibold flex items-center gap-1"
+                style={{ color: 'var(--brand)' }}
+              >
                 See all <ArrowRight size={12} />
               </button>
             </div>
@@ -409,4 +412,4 @@ export default function FeedPage() {
       {activeVideo && <VideoModal url={activeVideo} onClose={() => setActiveVideo(null)} />}
     </>
   )
-}
+                                 }
