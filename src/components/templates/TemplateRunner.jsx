@@ -1,7 +1,7 @@
 // src/components/templates/TemplateRunner.jsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb, templatePrompts } from '@/lib/supabase'
@@ -200,7 +200,7 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
-      // 8. Reset form, refresh credits, notify — stays on page (matches CreateImagePage)
+      // 8. Reset form, refresh credits, notify
       refreshProfile()
       toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
       setImageValues({})
@@ -215,7 +215,35 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
   }
 
   return (
-    <div className="min-h-full" style={{ background: 'var(--bg-primary)' }}>
+    <div className="relative min-h-full" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* ── Generating overlay ── */}
+      <AnimatePresence>
+        {submitting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{
+              backdropFilter:         'blur(12px)',
+              WebkitBackdropFilter:   'blur(12px)',
+              background:             'rgba(0,0,0,0.4)',
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+            />
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+              Generating…
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Header ── */}
       <div
