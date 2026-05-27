@@ -101,6 +101,7 @@ export type Database = {
           balance_before: number
           created_at: string | null
           description: string | null
+          expires_at: string | null
           generation_id: string | null
           id: string
           metadata: Json | null
@@ -120,6 +121,7 @@ export type Database = {
           balance_before: number
           created_at?: string | null
           description?: string | null
+          expires_at?: string | null
           generation_id?: string | null
           id?: string
           metadata?: Json | null
@@ -139,6 +141,7 @@ export type Database = {
           balance_before?: number
           created_at?: string | null
           description?: string | null
+          expires_at?: string | null
           generation_id?: string | null
           id?: string
           metadata?: Json | null
@@ -213,6 +216,7 @@ export type Database = {
           id: string
           likes_count: number | null
           output_type: string
+          output_url: string | null
           published_at: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -231,6 +235,7 @@ export type Database = {
           id?: string
           likes_count?: number | null
           output_type: string
+          output_url?: string | null
           published_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -249,6 +254,7 @@ export type Database = {
           id?: string
           likes_count?: number | null
           output_type?: string
+          output_url?: string | null
           published_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -412,6 +418,7 @@ export type Database = {
           label: string
           sort_order: number | null
           sublabel: string | null
+          supports_image: boolean
           type: string
           updated_at: string | null
           value: string
@@ -427,6 +434,7 @@ export type Database = {
           label: string
           sort_order?: number | null
           sublabel?: string | null
+          supports_image?: boolean
           type: string
           updated_at?: string | null
           value: string
@@ -442,6 +450,7 @@ export type Database = {
           label?: string
           sort_order?: number | null
           sublabel?: string | null
+          supports_image?: boolean
           type?: string
           updated_at?: string | null
           value?: string
@@ -517,6 +526,7 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"] | null
           staff_note: string | null
           staff_since: string | null
+          subscription_count: number | null
           team_role: string | null
           tier: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased: number | null
@@ -549,6 +559,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
+          subscription_count?: number | null
           team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased?: number | null
@@ -581,6 +592,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
+          subscription_count?: number | null
           team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
           total_credits_purchased?: number | null
@@ -738,6 +750,8 @@ export type Database = {
           created_at: string | null
           credit_cost: number
           credit_cost_per_image: number | null
+          default_model: string | null
+          demo_video_url: string | null
           description: string | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id: string
@@ -763,6 +777,8 @@ export type Database = {
           created_at?: string | null
           credit_cost?: number
           credit_cost_per_image?: number | null
+          default_model?: string | null
+          demo_video_url?: string | null
           description?: string | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id?: string
@@ -788,6 +804,8 @@ export type Database = {
           created_at?: string | null
           credit_cost?: number
           credit_cost_per_image?: number | null
+          default_model?: string | null
+          demo_video_url?: string | null
           description?: string | null
           generation_type?: Database["public"]["Enums"]["generation_type"]
           id?: string
@@ -845,6 +863,15 @@ export type Database = {
           p_description?: string
           p_payment_provider?: Database["public"]["Enums"]["payment_provider"]
           p_payment_reference?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      admin_adjust_credits: {
+        Args: {
+          p_admin_id: string
+          p_amount: number
+          p_note?: string
           p_user_id: string
         }
         Returns: Json
@@ -930,6 +957,10 @@ export type Database = {
         Args: { p_admin_id: string; p_notes?: string; p_post_id: string }
         Returns: Json
       }
+      remove_feed_post: {
+        Args: { p_admin_id: string; p_post_id: string }
+        Returns: Json
+      }
       rollback_prompt_version: {
         Args: { p_admin_id: string; p_prompt_id: string }
         Returns: Json
@@ -970,6 +1001,20 @@ export type Database = {
         | "z_image_turbo"
         | "z_image_base"
         | "ernie_image_turbo"
+        | "half_moon_face_swap"
+        | "face_swap"
+        | "head_swap"
+        | "kling_v3_pro"
+        | "kling_v3_std"
+        | "kling_v2_6_pro"
+        | "veo3_1_fast"
+        | "veo3_1_lite"
+        | "seedance_2_fast"
+        | "seedance_1_5_pro"
+        | "wan_2_6"
+        | "wan_2_5"
+        | "hailuo_02_pro"
+        | "pixverse_v6"
       app_role: "admin" | "moderator" | "staff" | "user"
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
       feed_status: "pending" | "approved" | "rejected" | "published"
@@ -990,6 +1035,7 @@ export type Database = {
         | "motion"
         | "lipsync"
         | "custom"
+        | "transform"
       template_visibility: "promptiq" | "public"
       transaction_status: "pending" | "completed" | "failed"
       transaction_type:
@@ -1145,6 +1191,20 @@ export const Constants = {
         "z_image_turbo",
         "z_image_base",
         "ernie_image_turbo",
+        "half_moon_face_swap",
+        "face_swap",
+        "head_swap",
+        "kling_v3_pro",
+        "kling_v3_std",
+        "kling_v2_6_pro",
+        "veo3_1_fast",
+        "veo3_1_lite",
+        "seedance_2_fast",
+        "seedance_1_5_pro",
+        "wan_2_6",
+        "wan_2_5",
+        "hailuo_02_pro",
+        "pixverse_v6",
       ],
       app_role: ["admin", "moderator", "staff", "user"],
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
@@ -1167,6 +1227,7 @@ export const Constants = {
         "motion",
         "lipsync",
         "custom",
+        "transform",
       ],
       template_visibility: ["promptiq", "public"],
       transaction_status: ["pending", "completed", "failed"],

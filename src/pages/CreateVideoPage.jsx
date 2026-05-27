@@ -1,13 +1,11 @@
 // src/pages/CreateVideoPage.jsx
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus } from 'lucide-react'
-import { useGenerate } from '@/hooks/useGenerate'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
-import { Loader } from '@/components/ui/Modal'
-import { calculateCreditCost } from '@/lib/creditUtils'
+import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 const SettingChips = ({ label, options, value, onChange }) => (
@@ -32,6 +30,74 @@ const SettingChips = ({ label, options, value, onChange }) => (
     </div>
   </div>
 )
+
+// ── Model Dropdown (mirrors CreateImagePage) ──
+const ModelDropdown = ({ models, value, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const unlocked = models.filter((m) => !m.is_locked)
+  const locked   = models.filter((m) =>  m.is_locked)
+  const selected = models.find((m) => m.value === value) || unlocked[0]
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+      >
+        <span>{selected?.label ?? 'Model'}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0,  scale: 1    }}
+              exit={{    opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.13 }}
+              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}
+            >
+              <div className="py-1">
+                {unlocked.map((model) => (
+                  <button
+                    key={model.value}
+                    onClick={() => { onChange(model.value); setOpen(false) }}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
+                    style={{ background: model.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
+                    </div>
+                    {model.value === value && <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+              {locked.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
+                  <div className="py-1">
+                    {locked.map((model) => (
+                      <div key={model.value} className="flex items-center justify-between px-4 py-2">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{model.label}</p>
+                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 function detectAspectRatio(width, height) {
   const ratio = width / height
@@ -81,8 +147,7 @@ const FrameUpload = ({ label, value, onChange, onRemove }) => (
 
 export default function CreateVideoPage() {
   const navigate                        = useNavigate()
-  const { credits }                     = useAuth()
-  const { generate, status, isLoading } = useGenerate()
+  const { user, credits, refreshProfile } = useAuth()
 
   const [prompt,      setPrompt]      = useState('')
   const [startFrame,  setStartFrame]  = useState(null)
@@ -90,11 +155,37 @@ export default function CreateVideoPage() {
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [autoRatio,   setAutoRatio]   = useState(false)
   const [duration,    setDuration]    = useState('5')
-  const [model,       setModel]       = useState('kling_2_5')
+  const [model,       setModel]       = useState('')
+  const [models,      setModels]      = useState([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [submitting,  setSubmitting]  = useState(false)
+
+  // Load video models
+  const loadModels = useCallback(async () => {
+    setModelsLoading(true)
+    const { data } = await supabase
+      .from('models')
+      .select('*')
+      .eq('type', 'video')
+      .eq('is_active', true)
+      .order('sort_order')
+    const list = data || []
+    setModels(list)
+    const unlocked = list.filter((m) => !m.is_locked)
+    setModel(unlocked[0]?.value || '')
+    setModelsLoading(false)
+  }, [])
+  useEffect(() => { loadModels() }, [loadModels])
 
   const type             = deriveVideoType(startFrame, endFrame)
-  const estimatedCredits = calculateCreditCost(type, { duration })
-  const canAfford        = credits >= parseFloat(estimatedCredits)
+  const selectedModel    = models.find((m) => m.value === model)
+  const isI2V            = !!(startFrame || endFrame)
+  const creditCost       = selectedModel
+    ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    : 0
+  const canAfford        = credits >= creditCost
+  const promptEmpty      = !prompt.trim()
+  const isLoading        = submitting
 
   const handleFrameUpload = (setter) => (e) => {
     const file = e.target.files?.[0]
@@ -121,23 +212,77 @@ export default function CreateVideoPage() {
   }[type]
 
   const handleGenerate = async () => {
-    if (!prompt.trim() && type === 'text_to_video') return toast.error('Enter a prompt')
-    if (!canAfford) return toast.error('Not enough credits')
+    if (promptEmpty)    return toast.error('Enter a prompt')
+    if (!selectedModel) return toast.error('Pick a model')
+    if (!canAfford)     return toast.error('Not enough credits')
+    if (!user)          return toast.error('Please sign in')
 
-    const result = await generate({
-      type,
-      prompt,
-      startFrame:  startFrame?.file || null,
-      endFrame:    endFrame?.file   || null,
-      aspectRatio,
-      duration,
-      model,
-    })
+    setSubmitting(true)
+    try {
+      // 1. Upload start frame
+      let startFrameUrl = null
+      if (startFrame?.file) {
+        const ext  = (startFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
+        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(path, startFrame.file, { upsert: false, cacheControl: '3600', contentType: startFrame.file.type })
+        if (upErr) throw new Error('Start frame upload failed')
+        const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+        startFrameUrl = publicUrl
+      }
 
-    if (result) {
-      navigate(`/result/${result.generationId}`, {
-        state: { outputUrl: result.outputUrl, outputType: result.outputType },
+      // 2. Upload end frame
+      let endFrameUrl = null
+      if (endFrame?.file) {
+        const ext  = (endFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
+        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(path, endFrame.file, { upsert: false, cacheControl: '3600', contentType: endFrame.file.type })
+        if (upErr) throw new Error('End frame upload failed')
+        const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+        endFrameUrl = publicUrl
+      }
+
+      // 3. Create generation row
+      const { data: genRow, error: genErr } = await generationsDb.create({
+        user_id:         user.id,
+        generation_type: type,
+        status:          'pending',
+        prompt,
+        model,
+        aspect_ratio:    aspectRatio,
+        duration,
+        credits_charged: creditCost,
+        output_type:     'video',
+        start_frame_url: startFrameUrl,
+        end_frame_url:   endFrameUrl,
       })
+      if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+
+      // 4. Deduct credits
+      const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+      if (dErr || !deduct?.success) {
+        await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
+        throw new Error(deduct?.error || 'Not enough credits')
+      }
+
+      // 5. Fire-and-forget pipeline
+      supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
+        .catch((e) => console.error('video-generate invoke error', e))
+
+      refreshProfile()
+      toast.success('Your video is being generated. Check your Media page.', { duration: 4000 })
+      setPrompt('')
+      setStartFrame(null)
+      setEndFrame(null)
+      setAutoRatio(false)
+      setAspectRatio('9:16')
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -156,41 +301,19 @@ export default function CreateVideoPage() {
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Video</h1>
           <span className="text-xs" style={{ color: 'var(--brand)' }}>{modeLabel}</span>
         </div>
-        <div
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-          {Math.floor(credits)}
+        <div className="flex items-center gap-2">
+          {!modelsLoading && (
+            <ModelDropdown models={models} value={model} onChange={setModel} />
+          )}
+          <div
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
+            {Math.floor(credits)}
+          </div>
         </div>
       </div>
-
-      {/* Loading overlay */}
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
-          >
-            <div className="text-center px-8">
-              <Loader size="lg" status={status} />
-              <div className="mt-5 flex gap-1.5 justify-center">
-                {['uploading', 'enhancing', 'generating'].map((s) => (
-                  <div
-                    key={s}
-                    className="h-0.5 rounded-full transition-all duration-500"
-                    style={{
-                      width:      status === s ? 28 : 8,
-                      background: status === s ? 'var(--brand)' : 'rgba(255,255,255,0.15)',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
@@ -254,15 +377,6 @@ export default function CreateVideoPage() {
               value={duration}
               onChange={setDuration}
             />
-            <SettingChips
-              label="Model"
-              options={[
-                { label: 'Kling 2.5', value: 'kling_2_5'    },
-                { label: 'Seedance',  value: 'seedance_1_5' },
-              ]}
-              value={model}
-              onChange={setModel}
-            />
           </div>
 
         </div>
@@ -273,16 +387,16 @@ export default function CreateVideoPage() {
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
-            disabled={isLoading || !canAfford}
+            disabled={isLoading || !canAfford || promptEmpty || !selectedModel}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
-              opacity:    (isLoading || !canAfford) ? 0.5 : 1,
+              opacity:    (isLoading || !canAfford || promptEmpty || !selectedModel) ? 0.5 : 1,
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {isLoading ? 'Generating…' : 'Generate'}
+            {isLoading ? 'Generating…' : `Generate · ${creditCost} cr`}
           </button>
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
