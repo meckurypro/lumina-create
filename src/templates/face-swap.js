@@ -2,9 +2,8 @@ export default {
   slug:            'face-swap',
   promptKey:       'face-swap',
   modelSelectable: false,
-  lockedModel:     'half_moon_face_swap',
-  creditCost:      10,
-
+  lockedModel:     'face_swap',
+  creditCost:      22,
   inputs: [
     {
       key:      'reference_image',
