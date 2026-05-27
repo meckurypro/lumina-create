@@ -14,38 +14,27 @@ import toast from 'react-hot-toast'
 
 const PackageCard = ({ pkg, onSelect, loading }) => (
   <motion.button
-    whileTap={{ scale: 0.97 }}
+    whileTap={{ scale: 0.98 }}
     onClick={() => onSelect(pkg)}
     disabled={loading}
-    className="w-full rounded-2xl p-4 text-left relative overflow-hidden"
+    className="w-full text-left"
     style={{
-      background: 'var(--bg-elevated)',
-      border:     pkg.is_featured
-        ? '1.5px solid var(--text-primary)'
-        : '1px solid var(--border-color)',
+      background:   'none',
+      border:       'none',
+      borderBottom: '1px solid var(--border-color)',
+      padding:      '16px 0',
     }}
   >
-    {pkg.is_featured && (
-      <div
-        className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-xs font-bold"
-        style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
-      >
-        Best value
-      </div>
-    )}
     <div className="flex items-center justify-between">
       <div>
-        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
           {pkg.name}
         </p>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {pkg.credits} credits
-          {pkg.bonus_credits > 0 && (
-            <span style={{ color: 'var(--text-secondary)' }}> + {pkg.bonus_credits} bonus</span>
-          )}
+          {pkg.credits}{pkg.bonus_credits > 0 ? ` + ${pkg.bonus_credits} bonus` : ''} credits
         </p>
       </div>
-      <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
+      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
         ₦{pkg.price_ngn?.toLocaleString()}
       </p>
     </div>
@@ -214,40 +203,44 @@ export default function ProfilePage() {
       </PageWrapper>
 
       {/* ── Credits modal ── */}
-      <Modal isOpen={showCreditsModal} onClose={() => setShowCreditsModal(false)} title="Buy credits">
-        <div className="flex flex-col gap-3">
-          {/* Cost reference */}
-          <div
-            className="rounded-xl p-3"
-            style={{ background: 'var(--bg-elevated)' }}
-          >
-            <p className="text-xs font-semibold uppercase tracking-widest mb-2.5" style={{ color: 'var(--text-muted)' }}>
-              Credit costs
+      <Modal isOpen={showCreditsModal} onClose={() => setShowCreditsModal(false)} title="Credits">
+        <div style={{ padding: '0 2px' }}>
+
+          {/* Plans list — no cards, just clean rows */}
+          <div style={{ borderTop: '1px solid var(--border-color)' }}>
+            {packages.map((pkg) => (
+              <PackageCard
+                key={pkg.id}
+                pkg={pkg}
+                onSelect={handlePurchase}
+                loading={purchaseLoading}
+              />
+            ))}
+          </div>
+
+          {/* What credits are for */}
+          <div className="mt-5">
+            <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-muted)' }}>
+              What credits pay for
             </p>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               {[
-                ['Image generation',  '1 cr'],
-                ['Video 5s',          '2–3 cr'],
-                ['Video 8s',          '4 cr'],
-                ['Video 10s',         '5 cr'],
-                ['Office Handover',   '2 cr'],
-                ['Memory Lane',       '1 cr / photo'],
+                ['Image · FLUX Schnell',    '2 cr'],
+                ['Image · Nano Banana Pro', '11 cr'],
+                ['Image · GPT Image 2',     '37 cr'],
+                ['Video · 5s',              '2–3 cr'],
+                ['Video · 8s',              '4 cr'],
+                ['Video · 10s',             '5 cr'],
+                ['Face Swap',               '22 cr'],
               ].map(([label, cost]) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span>
-                  <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{cost}</span>
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{cost}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Credits never expire · No subscription required
-          </p>
-
-          {packages.map((pkg) => (
-            <PackageCard key={pkg.id} pkg={pkg} onSelect={handlePurchase} loading={purchaseLoading} />
-          ))}
         </div>
       </Modal>
     </>
