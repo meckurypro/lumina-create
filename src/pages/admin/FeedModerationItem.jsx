@@ -15,6 +15,7 @@ export default function FeedModerationItem({ post, onApprove, onReject }) {
       className="rounded-2xl overflow-hidden mb-3"
       style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}
     >
+      {/* Collapsed header row */}
       <div className="flex gap-3 p-3 items-center">
         <div
           className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-black cursor-pointer relative"
@@ -60,6 +61,7 @@ export default function FeedModerationItem({ post, onApprove, onReject }) {
         </div>
       </div>
 
+      {/* Expanded preview */}
       <AnimatePresence>
         {expanded && preview && (
           <motion.div
@@ -79,6 +81,7 @@ export default function FeedModerationItem({ post, onApprove, onReject }) {
         )}
       </AnimatePresence>
 
+      {/* Reject notes */}
       <AnimatePresence>
         {rejectMode && (
           <motion.div
