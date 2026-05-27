@@ -18,7 +18,10 @@ const ImageSlot = ({ label, hint, value, onChange, onRemove }) => (
       <p className="text-xs" style={{ color: 'var(--text-muted)', marginTop: -4 }}>{hint}</p>
     )}
     {value ? (
-      <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
+      <div
+        className="relative rounded-2xl overflow-hidden"
+        style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
+      >
         <img src={value.url} alt={label} className="w-full h-full object-cover" />
         <button
           onClick={onRemove}
@@ -33,8 +36,8 @@ const ImageSlot = ({ label, hint, value, onChange, onRemove }) => (
         className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
         style={{
           aspectRatio: '1/1',
-          border: '1.5px dashed var(--border-color)',
-          background: 'var(--bg-card)',
+          border:      '1.5px dashed var(--border-color)',
+          background:  'var(--bg-card)',
         }}
       >
         <input
@@ -47,7 +50,7 @@ const ImageSlot = ({ label, hint, value, onChange, onRemove }) => (
             onChange({ file, url: URL.createObjectURL(file) })
           }}
         />
-        <span className="text-2xl mb-2">＋</span>
+        <span className="text-2xl mb-2" style={{ color: 'var(--text-muted)' }}>＋</span>
         <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Upload</span>
       </label>
     )}
@@ -61,61 +64,60 @@ const ModeSelector = ({ modes, value, onChange }) => (
       Mode
     </p>
     <div className="grid grid-cols-2 gap-2">
-      {modes.map((mode) => (
-        <button
-          key={mode.key}
-          onClick={() => onChange(mode.key)}
-          className="flex flex-col gap-1 p-4 rounded-2xl text-left transition-all"
-          style={{
-            background: value === mode.key ? 'var(--text-primary)' : 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-          }}
-        >
-          <span
-            className="text-sm font-bold"
-            style={{ color: value === mode.key ? 'var(--text-inverse)' : 'var(--text-primary)' }}
+      {modes.map((mode) => {
+        const isSelected = value === mode.key
+        return (
+          <button
+            key={mode.key}
+            onClick={() => onChange(mode.key)}
+            className="flex flex-col gap-1 p-4 rounded-2xl text-left transition-all"
+            style={{
+              background: isSelected ? 'var(--brand)' : 'var(--bg-card)',
+              border:     `1px solid ${isSelected ? 'var(--brand)' : 'var(--border-color)'}`,
+            }}
           >
-            {mode.label}
-          </span>
-          <span
-            className="text-xs leading-snug"
-            style={{ color: value === mode.key ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}
-          >
-            {mode.description}
-          </span>
-        </button>
-      ))}
+            <span
+              className="text-sm font-bold"
+              style={{ color: isSelected ? '#ffffff' : 'var(--text-primary)' }}
+            >
+              {mode.label}
+            </span>
+            <span
+              className="text-xs leading-snug"
+              style={{ color: isSelected ? 'rgba(255,255,255,0.75)' : 'var(--text-muted)' }}
+            >
+              {mode.description}
+            </span>
+          </button>
+        )
+      })}
     </div>
   </div>
 )
 
 // ── Main Component ────────────────────────────────────────
 export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
-  const navigate                              = useNavigate()
-  const { user, credits, refreshProfile }     = useAuth()
+  const navigate                          = useNavigate()
+  const { user, credits, refreshProfile } = useAuth()
 
-  // Merge DB template with file definition
-  const fileTemplate  = getTemplate(dbTemplate?.prompt_key)
-  const inputs        = fileTemplate?.inputs        || []
-  const modes         = fileTemplate?.modes         || []
-  const systemPrompt  = fileTemplate?.systemPrompt  || ''
-  const lockedModel   = fileTemplate?.lockedModel   || dbTemplate?.default_model || 'auto'
-  const creditCost    = dbTemplate?.credit_cost     || 0
-  const canAfford     = credits >= creditCost
+  const fileTemplate = getTemplate(dbTemplate?.prompt_key)
+  const inputs       = fileTemplate?.inputs       || []
+  const modes        = fileTemplate?.modes        || []
+  const systemPrompt = fileTemplate?.systemPrompt || ''
+  const lockedModel  = fileTemplate?.lockedModel  || dbTemplate?.default_model || 'auto'
+  const creditCost   = dbTemplate?.credit_cost    || 0
+  const canAfford    = credits >= creditCost
 
-  // ── State ─────────────────────────────────────────────
-  const [imageValues,  setImageValues]  = useState({})   // { [input.key]: { file, url } }
+  const [imageValues,  setImageValues]  = useState({})
   const [selectedMode, setSelectedMode] = useState(modes[0]?.key || null)
   const [submitting,   setSubmitting]   = useState(false)
 
-  // All required image inputs filled
   const allInputsFilled = inputs
     .filter((i) => i.required && i.type === 'image')
     .every((i) => !!imageValues[i.key])
 
   const canGenerate = allInputsFilled && canAfford && !submitting
 
-  // ── Upload a single image to Supabase storage ──────────
   const uploadImage = async (inputKey) => {
     const img  = imageValues[inputKey]
     if (!img?.file) return null
@@ -143,7 +145,6 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
     return publicUrl
   }
 
-  // ── Generate ──────────────────────────────────────────
   const handleGenerate = async () => {
     if (!canGenerate) return
     if (!user) return toast.error('Please sign in')
@@ -166,26 +167,25 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
       const finalPrompt = buildPrompt(activePrompt, fileTemplate, selectedMode)
 
       // 4. Map inputs to generation fields
-      // face-swap: reference_image → start_frame_url, face_image → end_frame_url
-      const inputUrls       = Object.values(uploadedUrls).filter(Boolean)
-      const startFrameUrl   = uploadedUrls['reference_image'] || uploadedUrls[inputs[0]?.key] || null
-      const endFrameUrl     = uploadedUrls['face_image']      || uploadedUrls[inputs[1]?.key] || null
+      const inputUrls     = Object.values(uploadedUrls).filter(Boolean)
+      const startFrameUrl = uploadedUrls['reference_image'] || uploadedUrls[inputs[0]?.key] || null
+      const endFrameUrl   = uploadedUrls['face_image']      || uploadedUrls[inputs[1]?.key] || null
 
       // 5. Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:           user.id,
-        template_id:       dbTemplate.id,
-        generation_type:   'image_to_image',
-        status:            'pending',
-        prompt:            finalPrompt,
-        enhanced_prompt:   systemPrompt,
-        model:             lockedModel,
-        aspect_ratio:      '1:1',
-        credits_charged:   creditCost,
-        output_type:       'image',
-        start_frame_url:   startFrameUrl,
-        end_frame_url:     endFrameUrl,
-        input_image_urls:  inputUrls,
+        user_id:          user.id,
+        template_id:      dbTemplate.id,
+        generation_type:  'image_to_image',
+        status:           'pending',
+        prompt:           finalPrompt,
+        enhanced_prompt:  systemPrompt,
+        model:            lockedModel,
+        aspect_ratio:     '1:1',
+        credits_charged:  creditCost,
+        output_type:      'image',
+        start_frame_url:  startFrameUrl,
+        end_frame_url:    endFrameUrl,
+        input_image_urls: inputUrls,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -236,7 +236,7 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
             {dbTemplate?.description}
           </p>
         </div>
-        {/* Credit cost badge */}
+        {/* Credit cost — visible here, not on listing cards */}
         <div
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
@@ -246,8 +246,11 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
         </div>
       </div>
 
-      {/* ── Content ── */}
-      <div className="mx-auto max-w-xl px-4 py-6 pb-32 flex flex-col gap-6">
+      {/* ── Scrollable content ──
+          pb accounts for: generate button height (~64px) + its padding (32px) + bottom nav (~56px) + safe area */}
+      <div className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
+        style={{ paddingBottom: 'calc(64px + 32px + 56px + env(safe-area-inset-bottom, 0px))' }}
+      >
 
         {/* Instructions */}
         {dbTemplate?.instructions && (
@@ -301,10 +304,16 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
 
       </div>
 
-      {/* ── Generate button ── */}
+      {/* ── Generate button ──
+          Sits above BottomNav. Uses env(safe-area-inset-bottom) for notched phones. */}
       <div
-        className="fixed bottom-0 left-0 right-0 px-4 py-4"
-        style={{ background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}
+        className="fixed left-0 right-0 px-4 pt-3"
+        style={{
+          bottom:     'calc(56px + env(safe-area-inset-bottom, 0px))', // 56px = BottomNav height
+          background: 'var(--bg-primary)',
+          borderTop:  '1px solid var(--border-color)',
+          paddingBottom: '12px',
+        }}
       >
         <div className="mx-auto max-w-xl">
           <button
