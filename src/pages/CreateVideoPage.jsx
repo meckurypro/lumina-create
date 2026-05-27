@@ -1,4 +1,3 @@
-// src/pages/CreateVideoPage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -141,7 +140,7 @@ const FrameUpload = ({ label, value, onChange, onRemove }) => (
 
 export default function CreateVideoPage() {
   const navigate                          = useNavigate()
-  const { user, credits, refreshProfile } = useAuth()
+  const { user, profile, credits, refreshProfile } = useAuth()
 
   const [prompt,      setPrompt]      = useState('')
   const [startFrame,  setStartFrame]  = useState(null)
@@ -177,7 +176,10 @@ export default function CreateVideoPage() {
   const isI2V         = !!(startFrame || endFrame)
   const supportsSound = !!selectedModel?.supports_sound
 
-  // Reset sound toggle when switching to a model that doesn't support it
+  // Derive from profile — defaults to true (refinement on) if column not yet set
+  const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+
+  // Reset sound when switching to a model that doesn't support it
   useEffect(() => {
     if (!supportsSound) setWithSound(false)
   }, [supportsSound])
@@ -251,18 +253,19 @@ export default function CreateVideoPage() {
 
       // 3. Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:         user.id,
-        generation_type: type,
-        status:          'pending',
+        user_id:                user.id,
+        generation_type:        type,
+        status:                 'pending',
         prompt,
         model,
-        aspect_ratio:    aspectRatio,
+        aspect_ratio:           aspectRatio,
         duration,
-        credits_charged: creditCost,
-        output_type:     'video',
-        start_frame_url: startFrameUrl,
-        end_frame_url:   endFrameUrl,
-        with_sound:      withSound,
+        credits_charged:        creditCost,
+        output_type:            'video',
+        start_frame_url:        startFrameUrl,
+        end_frame_url:          endFrameUrl,
+        with_sound:             withSound,
+        skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
