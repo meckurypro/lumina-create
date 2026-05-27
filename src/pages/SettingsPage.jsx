@@ -193,7 +193,7 @@ export default function SettingsPage() {
               <ToggleRow
                 icon={Sparkles}
                 label="AI prompt refinement"
-                sublabel="Meckury AI enhances your prompt before generating your content."
+                sublabel="Meckury enhances your prompt before generating your content."
                 checked={promptRefinement}
                 onChange={handleToggleRefinement}
                 last
