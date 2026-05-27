@@ -16,35 +16,25 @@ const classify = (w, h) => {
   if (!w || !h) return 'square'
   const ratio = w / h
   if (ratio < 0.8) return 'tall'
-  return 'square' // wide and square both render in 1:1 cards
+  return 'square'
 }
 
 const classifyFromMeta = (post) => {
   const ar = post.output_aspect_ratio
   if (!ar) return null
   if (ar === '9:16' || ar === '9/16') return 'tall'
-  // everything else — 16:9, 1:1, anything — falls back to square
   return 'square'
 }
 
 // ─── Slide Builder ────────────────────────────────────────
 
-/**
- * Sort all 6 posts by likes desc.
- * Pick the two most popular 9:16 posts as heroes (one per slide).
- * Everything else fills the 1:1 slots.
- * If there aren't two 9:16 posts, the next most popular post fills the hero slot.
- */
 const buildSlides = (posts, arMap) => {
-  const scored = [...posts].sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0))
-
+  const scored  = [...posts].sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0))
   const talls   = scored.filter((p) => (arMap[p.id] || 'square') === 'tall')
   const nonTall = scored.filter((p) => (arMap[p.id] || 'square') !== 'tall')
-
   const hero1   = talls[0] || nonTall[0] || null
   const hero2   = talls[1] || scored.find((p) => p !== hero1) || null
   const fillers = scored.filter((p) => p !== hero1 && p !== hero2)
-
   return [
     { hero: hero1, pair: [fillers[0] || null, fillers[1] || null] },
     { hero: hero2, pair: [fillers[2] || null, fillers[3] || null] },
@@ -97,68 +87,56 @@ const VideoModal = ({ url, onClose }) => {
 }
 
 // ─── Template Discover Card ───────────────────────────────
+// No credit badge — price is shown only inside the template interface
 
-const TemplateDiscoverCard = ({ template, index, onUse }) => {
-  const creditLabel = template.credit_cost_per_image
-    ? `${template.credit_cost_per_image} cr/photo`
-    : `${template.credit_cost ?? 2} credits`
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.07 }}
-      whileTap={{ scale: 0.96 }}
-      onClick={() => onUse(template)}
-      className="flex-shrink-0 w-40 rounded-3xl overflow-hidden text-left"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+const TemplateDiscoverCard = ({ template, index, onUse }) => (
+  <motion.button
+    initial={{ opacity: 0, x: 20 }}
+    animate={{ opacity: 1, x: 0 }}
+    transition={{ delay: index * 0.07 }}
+    whileTap={{ scale: 0.96 }}
+    onClick={() => onUse(template)}
+    className="flex-shrink-0 w-40 rounded-3xl overflow-hidden text-left"
+    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+  >
+    <div
+      className="h-24 w-full relative flex items-center justify-center overflow-hidden"
+      style={{
+        background: template.thumbnail_url
+          ? undefined
+          : 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.08))',
+      }}
     >
-      <div
-        className="h-24 w-full relative flex items-center justify-center overflow-hidden"
-        style={{
-          background: template.thumbnail_url
-            ? undefined
-            : 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.08))',
-        }}
-      >
-        {template.thumbnail_url ? (
-          <img
-            src={template.thumbnail_url}
-            alt={template.name}
-            className="absolute inset-0 w-full h-full"
-            style={{ objectFit: 'cover' }}
-          />
-        ) : (
-          <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
-        )}
+      {template.thumbnail_url ? (
+        <img
+          src={template.thumbnail_url}
+          alt={template.name}
+          className="absolute inset-0 w-full h-full"
+          style={{ objectFit: 'cover' }}
+        />
+      ) : (
+        <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.5 }} />
+      )}
 
-        {template.is_featured && (
-          <div
-            className="absolute top-2 left-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold z-10"
-            style={{ background: 'var(--brand)', color: 'white', fontSize: '9px' }}
-          >
-            <Star size={8} fill="white" />
-            Hot
-          </div>
-        )}
-
+      {template.is_featured && (
         <div
-          className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-full font-bold z-10"
-          style={{ background: 'rgba(0,0,0,0.55)', color: 'white', backdropFilter: 'blur(4px)', fontSize: '9px' }}
+          className="absolute top-2 left-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold z-10"
+          style={{ background: 'var(--brand)', color: 'white', fontSize: '9px' }}
         >
-          ⚡ {creditLabel}
+          <Star size={8} fill="white" />
+          Hot
         </div>
-      </div>
+      )}
+    </div>
 
-      <div className="px-3 py-2.5 flex items-center justify-between">
-        <p className="text-xs font-bold leading-tight flex-1 mr-1" style={{ color: 'var(--text-primary)' }}>
-          {template.name}
-        </p>
-        <ArrowRight size={13} style={{ color: 'var(--brand)', flexShrink: 0 }} />
-      </div>
-    </motion.button>
-  )
-}
+    <div className="px-3 py-2.5 flex items-center justify-between">
+      <p className="text-xs font-bold leading-tight flex-1 mr-1" style={{ color: 'var(--text-primary)' }}>
+        {template.name}
+      </p>
+      <ArrowRight size={13} style={{ color: 'var(--brand)', flexShrink: 0 }} />
+    </div>
+  </motion.button>
+)
 
 // ─── Media Card ───────────────────────────────────────────
 
@@ -188,14 +166,12 @@ const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
         style={{ objectFit: 'cover', objectPosition: 'center' }}
         loading="lazy"
       />
-
       <div
         className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs z-10"
         style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
       >
         {isVideo ? <Film size={10} /> : <Image size={10} />}
       </div>
-
       {isVideo && (
         <button
           onClick={(e) => {
@@ -219,17 +195,10 @@ const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
 
 // ─── Tall Slide Layout ────────────────────────────────────
 
-/**
- * 9:16 hero on the left.
- * Two 1:1 cards stacked on the right.
- * The right column's total height (both cards + gap) matches the left hero's height exactly.
- */
 const TallSlide = ({ hero, pair, onPlayVideo, onNavigate }) => {
   const gap = 12
-
   return (
     <div className="w-full" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap }}>
-      {/* Left — 9:16 hero */}
       <div style={{ aspectRatio: '9 / 16', position: 'relative' }}>
         <MediaCard
           post={hero}
@@ -238,8 +207,6 @@ const TallSlide = ({ hero, pair, onPlayVideo, onNavigate }) => {
           onClick={() => hero && onNavigate(hero.id)}
         />
       </div>
-
-      {/* Right — two 1:1 cards sharing the exact height of the left col */}
       <div style={{ display: 'flex', flexDirection: 'column', gap }}>
         {[pair[0], pair[1]].map((post, i) => (
           <div key={i} style={{ flex: 1, position: 'relative' }}>
@@ -277,7 +244,6 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
     }, 4000)
   }, [total])
 
-  // Auto-swipe every 4 seconds
   useEffect(() => {
     resetTimer()
     return () => clearInterval(timerRef.current)
@@ -287,7 +253,6 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
     touchStartX.current = e.touches[0].clientX
     touchStartY.current = e.touches[0].clientY
   }
-
   const handleTouchEnd = (e) => {
     if (touchStartX.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartX.current
@@ -298,7 +263,6 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
     touchStartX.current = null
     touchStartY.current = null
   }
-
   const handleMouseDown = (e) => { mouseStartX.current = e.clientX }
   const handleMouseUp   = (e) => {
     if (mouseStartX.current === null) return
@@ -336,8 +300,6 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
           />
         </motion.div>
       </AnimatePresence>
-
-      {/* Dot indicators */}
       <div className="flex items-center justify-center gap-1.5 mt-3">
         {slides.map((_, i) => (
           <div
@@ -382,7 +344,6 @@ export default function FeedPage() {
     feedDb.getTrending({ limit: 6 }).then(({ data }) => {
       const posts = data || []
       setTrending(posts)
-
       const seed = {}
       posts.forEach((p) => {
         const meta = classifyFromMeta(p)
@@ -397,7 +358,6 @@ export default function FeedPage() {
     setArMap((prev) => prev[id] === arClass ? prev : { ...prev, [id]: arClass })
   }, [])
 
-  // Invisible image probes for posts whose arClass isn't in metadata
   const AspectProbe = ({ post }) => {
     if (arMap[post.id]) return null
     return (
@@ -415,20 +375,9 @@ export default function FeedPage() {
 
   const slides = trending.length === 0 ? [] : buildSlides(trending, arMap)
 
+  // ── Navigate to TemplateRunnerPage, not GeneratePage ──
   const handleTemplateUse = (template) => {
-    navigate('/generate', {
-      state: {
-        type:                'template',
-        templateId:          template.id,
-        templateSlug:        template.slug,
-        templateName:        template.name,
-        templateDescription: template.description,
-        minImages:           template.min_images,
-        maxImages:           template.max_images,
-        creditCost:          template.credit_cost,
-        creditCostPerImage:  template.credit_cost_per_image,
-      },
-    })
+    navigate(`/create/${template.slug}`)
   }
 
   return (
@@ -436,14 +385,9 @@ export default function FeedPage() {
       <TopBar showLogo showCredits />
       <PageWrapper>
 
-        {/* Header */}
         <div className="pt-2 pb-5">
-          <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-            Discover
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Templates + community creations
-          </p>
+          <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Discover</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Templates + community creations</p>
         </div>
 
         {/* Templates strip */}
@@ -471,7 +415,12 @@ export default function FeedPage() {
             ) : (
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
                 {publicTemplates.map((template, i) => (
-                  <TemplateDiscoverCard key={template.id} template={template} index={i} onUse={handleTemplateUse} />
+                  <TemplateDiscoverCard
+                    key={template.id}
+                    template={template}
+                    index={i}
+                    onUse={handleTemplateUse}
+                  />
                 ))}
               </div>
             )}
@@ -501,7 +450,6 @@ export default function FeedPage() {
         ) : (
           <div className="mb-4">
             {trending.map((p) => <AspectProbe key={p.id} post={p} />)}
-
             {slides.length > 0 && (
               <TrendingSection
                 slides={slides}
