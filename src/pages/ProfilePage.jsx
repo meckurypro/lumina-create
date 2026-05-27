@@ -19,10 +19,13 @@ const PackageCard = ({ pkg, onSelect, loading }) => (
     disabled={loading}
     className="w-full text-left"
     style={{
-      background:   'none',
-      border:       'none',
-      borderBottom: '1px solid var(--border-color)',
-      padding:      '16px 0',
+      background:    'none',
+      border:        'none',
+      borderBottom:  '1px solid var(--border-color)',
+      padding:       '16px 0',
+      cursor:        loading ? 'not-allowed' : 'pointer',
+      opacity:       loading ? 0.5 : 1,
+      WebkitTapHighlightColor: 'transparent',
     }}
   >
     <div className="flex items-center justify-between">
@@ -56,23 +59,30 @@ export default function ProfilePage() {
   }, [])
 
   const handlePurchase = async (pkg) => {
+    if (!user?.email) { toast.error('Please log in to purchase credits'); return }
     setPurchaseLoading(true)
-    const { initializePayment } = await import('@/lib/paystack')
-    initializePayment({
-      email:        user.email,
-      amountNgn:    pkg.price_ngn,
-      credits:      pkg.credits,
-      bonusCredits: pkg.bonus_credits,
-      packageSlug:  pkg.slug,
-      userId:       user.id,
-      onSuccess: async () => {
-        await refreshProfile()
-        setShowCreditsModal(false)
-        toast.success(`${pkg.credits + (pkg.bonus_credits || 0)} credits added!`)
-        setPurchaseLoading(false)
-      },
-      onClose: () => setPurchaseLoading(false),
-    })
+    try {
+      const { initializePayment } = await import('@/lib/paystack')
+      await initializePayment({
+        email:        user.email,
+        amountNgn:    pkg.price_ngn,
+        credits:      pkg.credits,
+        bonusCredits: pkg.bonus_credits || 0,
+        packageSlug:  pkg.slug,
+        userId:       user.id,
+        onSuccess: async () => {
+          await refreshProfile()
+          setShowCreditsModal(false)
+          toast.success(`${pkg.credits + (pkg.bonus_credits || 0)} credits added!`)
+          setPurchaseLoading(false)
+        },
+        onClose: () => setPurchaseLoading(false),
+      })
+    } catch (err) {
+      console.error('Paystack error:', err)
+      toast.error(err.message || 'Could not launch payment. Try again.')
+      setPurchaseLoading(false)
+    }
   }
 
   const handleSignOut = async () => {
