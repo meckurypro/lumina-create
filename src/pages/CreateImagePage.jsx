@@ -1,4 +1,3 @@
-// src/pages/CreateImagePage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -8,11 +7,9 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-// ── Session storage keys ───────────────────────────────────
 const SS_PROMPT = 'meckury_create_prompt'
 const SS_IMAGE  = 'meckury_create_image'
 
-// ── Setting Chips ──────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -36,7 +33,6 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Helpers ────────────────────────────────────────────────
 function detectAspectRatio(width, height) {
   const ratio = width / height
   if (ratio > 1.6)  return '16:9'
@@ -44,10 +40,8 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// ── Model Dropdown ─────────────────────────────────────────
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
-
   const unlocked = models.filter((m) => !m.is_locked)
   const locked   = models.filter((m) =>  m.is_locked)
   const selected = models.find((m) => m.value === value) || unlocked[0]
@@ -79,15 +73,14 @@ const ModelDropdown = ({ models, value, onChange }) => {
               exit={{    opacity: 0, y: -6, scale: 0.97 }}
               transition={{ duration: 0.13 }}
               className="absolute right-0 top-9 z-50 w-52 rounded-2xl overflow-hidden"
-      style={{
-  background: 'var(--bg-card)',
-  border:     '1px solid var(--border-color)',
-  boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-  maxHeight:  '60vh',
-  overflowY:  'auto',
-}}
+              style={{
+                background: 'var(--bg-card)',
+                border:     '1px solid var(--border-color)',
+                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
+                maxHeight:  '60vh',
+                overflowY:  'auto',
+              }}
             >
-              {/* Unlocked models */}
               <div className="py-1">
                 {unlocked.map((model) => (
                   <button
@@ -109,7 +102,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   </button>
                 ))}
               </div>
-
               {locked.length > 0 && (
                 <>
                   <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
@@ -131,7 +123,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Main Page ──────────────────────────────────────────────
 export default function CreateImagePage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
@@ -147,7 +138,10 @@ export default function CreateImagePage() {
   const [fullscreen,    setFullscreen]    = useState(false)
   const [submitting,    setSubmitting]    = useState(false)
 
-  // ── Restore persisted state on mount ──────────────────────
+  // Derive from profile — defaults to true (refinement on) if column not yet set
+  const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+
+  // Restore persisted state on mount
   useEffect(() => {
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
@@ -175,7 +169,7 @@ export default function CreateImagePage() {
     } catch { /* corrupt storage — silently ignore */ }
   }, [])
 
-  // ── Persist prompt on every change ────────────────────────
+  // Persist prompt on every change
   useEffect(() => {
     try {
       if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
@@ -183,7 +177,7 @@ export default function CreateImagePage() {
     } catch { /* noop */ }
   }, [prompt])
 
-  // ── Load models ───────────────────────────────────────────
+  // Load models
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -192,7 +186,7 @@ export default function CreateImagePage() {
       .eq('type', 'image')
       .eq('is_active', true)
       .order('sort_order')
-    const list = data || []
+    const list     = data || []
     setModels(list)
     const unlocked  = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
@@ -203,26 +197,22 @@ export default function CreateImagePage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  const selectedModel     = models.find((m) => m.value === model)
+  const selectedModel      = models.find((m) => m.value === model)
   const modelSupportsImage = selectedModel?.supports_image !== false
-
-  const type          = referenceImg && modelSupportsImage ? 'image_to_image' : 'text_to_image'
-  const creditCost    = selectedModel
+  const type               = referenceImg && modelSupportsImage ? 'image_to_image' : 'text_to_image'
+  const creditCost         = selectedModel
     ? (referenceImg && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
 
-  // ── When model changes to one that doesn't support images,
-  //    clear any attached reference image ────────────────────
+  // When model changes to one that doesn't support images, clear reference
   useEffect(() => {
-    if (!modelSupportsImage && referenceImg) {
-      handleRemoveImage()
-    }
+    if (!modelSupportsImage && referenceImg) handleRemoveImage()
   }, [model])
 
-  // ── Persist preferred model when user changes it ──────────
+  // Persist preferred model when user changes it
   const handleModelChange = async (value) => {
     setModel(value)
     if (user && value && value !== profile?.preferred_model) {
@@ -230,7 +220,6 @@ export default function CreateImagePage() {
     }
   }
 
-  // ── Image upload ──────────────────────────────────────────
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -256,7 +245,6 @@ export default function CreateImagePage() {
     } catch { /* noop */ }
   }
 
-  // ── Remove image ──────────────────────────────────────────
   const handleRemoveImage = () => {
     setReferenceImg(null)
     setImgDimensions(null)
@@ -265,7 +253,6 @@ export default function CreateImagePage() {
     try { sessionStorage.removeItem(SS_IMAGE) } catch { /* noop */ }
   }
 
-  // ── Generate ──────────────────────────────────────────────
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
@@ -273,50 +260,40 @@ export default function CreateImagePage() {
     if (!user)          return toast.error('Please sign in')
 
     setSubmitting(true)
-
     try {
-      // 1. Upload reference image (if any) to generation-uploads bucket
+      // 1. Upload reference image if any
       let startFrameUrl = null
       if (referenceImg?.file && modelSupportsImage) {
         const file = referenceImg.file
-
         const contentType =
           (file.type && file.type !== '') ? file.type
           : file.name?.match(/\.png$/i)   ? 'image/png'
           : file.name?.match(/\.webp$/i)  ? 'image/webp'
           : 'image/jpeg'
-
         const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-
         const { data: uploadData, error: upErr } = await supabase.storage
           .from('generation-uploads')
-          .upload(path, file, {
-            upsert:       false,
-            cacheControl: '3600',
-            contentType,
-          })
-
+          .upload(path, file, { upsert: false, cacheControl: '3600', contentType })
         if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-
         const { data: { publicUrl } } = supabase.storage
           .from('generation-uploads')
           .getPublicUrl(uploadData.path)
-
         startFrameUrl = publicUrl
       }
 
-      // 2. Create the generation row
+      // 2. Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:         user.id,
-        generation_type: type,
-        status:          'pending',
+        user_id:                user.id,
+        generation_type:        type,
+        status:                 'pending',
         prompt,
         model,
-        aspect_ratio:    aspectRatio,
-        credits_charged: creditCost,
-        output_type:     'image',
-        start_frame_url: startFrameUrl,
+        aspect_ratio:           aspectRatio,
+        credits_charged:        creditCost,
+        output_type:            'image',
+        start_frame_url:        startFrameUrl,
+        skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -327,7 +304,7 @@ export default function CreateImagePage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // 4. Kick off generation pipeline (fire-and-forget)
+      // 4. Fire-and-forget pipeline
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
@@ -352,7 +329,6 @@ export default function CreateImagePage() {
   const cardAspectRatio = imgDimensions
     ? `${imgDimensions.width} / ${imgDimensions.height}`
     : '1 / 1'
-
   const cardMaxWidth = imgDimensions
     ? imgDimensions.width > imgDimensions.height ? '100%' : '200px'
     : '140px'
@@ -360,7 +336,7 @@ export default function CreateImagePage() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)' }}
@@ -368,9 +344,7 @@ export default function CreateImagePage() {
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
-
         <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Image</h1>
-
         <div className="flex items-center gap-2">
           {!modelsLoading && (
             <ModelDropdown models={models} value={model} onChange={handleModelChange} />
@@ -385,7 +359,7 @@ export default function CreateImagePage() {
         </div>
       </div>
 
-      {/* ── Fullscreen viewer ── */}
+      {/* Fullscreen viewer */}
       <AnimatePresence>
         {fullscreen && referenceImg && (
           <motion.div
@@ -415,7 +389,7 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* ── Scrollable content ── */}
+      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-5">
 
@@ -477,8 +451,6 @@ export default function CreateImagePage() {
                 </label>
               )}
             </div>
-
-            {/* Tooltip when model doesn't support image */}
             {!modelSupportsImage && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 This model is text-only. Switch models to use a reference image.
@@ -512,7 +484,7 @@ export default function CreateImagePage() {
         </div>
       </div>
 
-      {/* ── Generate button ── */}
+      {/* Generate button */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
         <div className="mx-auto w-full max-w-xl">
           <button
