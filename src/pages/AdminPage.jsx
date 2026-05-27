@@ -10,12 +10,13 @@ import { useAuth } from '@/context/AuthContext'
 import { Skeleton } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
-import PromptEditor       from '@/pages/admin/PromptEditor'
-import TemplateManager    from '@/pages/admin/TemplateManager'
-import ModelsManager      from '@/pages/admin/ModelsManager'
-import StaffManager       from '@/pages/admin/StaffManager'
-import FeedModerationItem from '@/pages/admin/FeedModerationItem'
-import ProviderSettings   from '@/pages/admin/ProviderSettings'
+import PromptEditor         from '@/pages/admin/PromptEditor'
+import TemplateManager      from '@/pages/admin/TemplateManager'
+import ModelsManager        from '@/pages/admin/ModelsManager'
+import StaffManager         from '@/pages/admin/StaffManager'
+import FeedModerationItem   from '@/pages/admin/FeedModerationItem'
+import FeedPublishedManager from '@/pages/admin/FeedPublishedManager'
+import ProviderSettings     from '@/pages/admin/ProviderSettings'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ export default function AdminPage() {
   const navigate       = useNavigate()
   const { user }       = useAuth()
   const [activeTab,    setActiveTab]    = useState('dashboard')
+  const [feedSubTab,   setFeedSubTab]   = useState('pending')
   const [stats,        setStats]        = useState(null)
   const [templates,    setTemplates]    = useState([])
   const [pendingPosts, setPendingPosts] = useState([])
@@ -86,6 +88,8 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // ── Feed moderation actions ──
 
   const handleApprove = async (postId) => {
     const { data, error } = await supabase.rpc('approve_feed_post', {
@@ -147,7 +151,7 @@ export default function AdminPage() {
       {/* Tab content */}
       <div className="px-4 py-5 pb-24">
 
-        {/* Dashboard */}
+        {/* ── Dashboard ── */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {loading ? (
@@ -172,7 +176,7 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Prompts */}
+        {/* ── Prompts ── */}
         {activeTab === 'prompts' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
@@ -184,55 +188,83 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Templates */}
+        {/* ── Templates ── */}
         {activeTab === 'templates' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <TemplateManager templates={templates} onRefresh={loadData} />
           </motion.div>
         )}
 
-        {/* Models */}
+        {/* ── Models ── */}
         {activeTab === 'models' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ModelsManager />
           </motion.div>
         )}
 
-        {/* Staff */}
+        {/* ── Staff ── */}
         {activeTab === 'staff' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <StaffManager />
           </motion.div>
         )}
 
-        {/* Feed moderation */}
+        {/* ── Feed ── */}
         {activeTab === 'feed' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            {pendingPosts.length === 0 ? (
-              <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
-                <CheckCircle size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>All caught up!</p>
-                <p className="text-xs mt-1">No posts pending review.</p>
-              </div>
-            ) : (
-              <>
-                <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: 'var(--text-muted)' }}>
-                  {pendingPosts.length} post{pendingPosts.length !== 1 ? 's' : ''} awaiting review
-                </p>
-                {pendingPosts.map((post) => (
-                  <FeedModerationItem
-                    key={post.id}
-                    post={post}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                  />
-                ))}
-              </>
+
+            {/* Sub-tabs */}
+            <div className="flex gap-2 mb-4">
+              {['pending', 'published'].map((sub) => (
+                <button
+                  key={sub}
+                  onClick={() => setFeedSubTab(sub)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all"
+                  style={{
+                    background: feedSubTab === sub ? 'var(--brand)' : 'var(--bg-elevated)',
+                    color:      feedSubTab === sub ? 'white' : 'var(--text-muted)',
+                  }}
+                >
+                  {sub === 'pending' && pendingPosts.length > 0
+                    ? `Pending · ${pendingPosts.length}`
+                    : sub.charAt(0).toUpperCase() + sub.slice(1)
+                  }
+                </button>
+              ))}
+            </div>
+
+            {/* Pending */}
+            {feedSubTab === 'pending' && (
+              pendingPosts.length === 0 ? (
+                <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
+                  <CheckCircle size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>All caught up!</p>
+                  <p className="text-xs mt-1">No posts pending review.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: 'var(--text-muted)' }}>
+                    {pendingPosts.length} post{pendingPosts.length !== 1 ? 's' : ''} awaiting review
+                  </p>
+                  {pendingPosts.map((post) => (
+                    <FeedModerationItem
+                      key={post.id}
+                      post={post}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                    />
+                  ))}
+                </>
+              )
             )}
+
+            {/* Published */}
+            {feedSubTab === 'published' && <FeedPublishedManager />}
+
           </motion.div>
         )}
 
-        {/* Users */}
+        {/* ── Users ── */}
         {activeTab === 'users' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex flex-col gap-2">
@@ -266,7 +298,7 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* Settings */}
+        {/* ── Settings ── */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ProviderSettings />
