@@ -17,6 +17,7 @@ import StaffManager         from '@/pages/admin/StaffManager'
 import FeedModerationItem   from '@/pages/admin/FeedModerationItem'
 import FeedPublishedManager from '@/pages/admin/FeedPublishedManager'
 import ProviderSettings     from '@/pages/admin/ProviderSettings'
+import UsersManager         from '@/pages/admin/UsersManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -264,39 +265,12 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* ── Users ── */}
-        {activeTab === 'users' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="flex flex-col gap-2">
-              {recentUsers.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center gap-3 p-3 rounded-2xl"
-                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-                >
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0"
-                    style={{ background: 'var(--brand)', color: 'white' }}
-                  >
-                    {u.username?.[0]?.toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{u.username}</p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {u.total_generations} generations · ⚡{u.credits?.toFixed(1)} credits
-                    </p>
-                  </div>
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full capitalize"
-                    style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
-                  >
-                    {u.tier}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
+{/* ── Users ── */}
+{activeTab === 'users' && (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <UsersManager />
+  </motion.div>
+)}
 
         {/* ── Settings ── */}
         {activeTab === 'settings' && (
