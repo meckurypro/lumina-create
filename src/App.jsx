@@ -21,6 +21,7 @@ import AdminPage                from '@/pages/AdminPage'
 import TemplateRunnerPage       from '@/pages/TemplateRunnerPage'
 import AuthCallbackPage         from '@/pages/AuthCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
+import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="/create"       element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
           <Route path="/create/image" element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
           <Route path="/create/video" element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
 
           {/* Cinematic routes — must come BEFORE the generic /:templateSlug catch-all */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
