@@ -57,43 +57,101 @@ const detectAspectRatio = (file) =>
 
 // ── Sub-components ────────────────────────────────────────
 
-const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
-  <div className="flex flex-col items-center gap-1.5">
-    <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
-      Frame {index + 1}
-    </p>
-    {frame?.url ? (
-      <div
-        className="relative rounded-2xl overflow-hidden"
-        style={{ width: 80, height: 80, background: 'var(--bg-elevated)', flexShrink: 0 }}
-      >
-        <img src={frame.url} alt={`frame ${index + 1}`} className="w-full h-full object-cover" />
-        <button
-          onClick={onRemove}
-          className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-          style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
+const FrameSlot = ({ index, frame, onUpload, onRemove }) => {
+  const [showActions, setShowActions] = useState(false)
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+        Frame {index + 1}
+      </p>
+      {frame?.url ? (
+        <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+          {/* Thumbnail */}
+          <div className="rounded-2xl overflow-hidden w-full h-full">
+            <img src={frame.url} alt={`frame ${index + 1}`} className="w-full h-full object-cover" />
+          </div>
+
+          {/* Tap to reveal action buttons */}
+          {!showActions ? (
+            <button
+              onClick={() => setShowActions(true)}
+              className="absolute inset-0 rounded-2xl flex items-center justify-center"
+              style={{ background: 'rgba(0,0,0,0.35)' }}
+            >
+              {/* Swap arrows icon */}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 16V4m0 0L3 8m4-4l4 4" />
+                <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+            </button>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-1.5"
+              style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
+            >
+              {/* Swap / reupload */}
+              <label
+                className="flex items-center justify-center gap-1 px-2 py-1 rounded-lg cursor-pointer text-white font-bold"
+                style={{ background: 'rgba(255,255,255,0.15)', fontSize: 10 }}
+              >
+                <input
+                  type="file" accept="image/*" className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) { onUpload(f); setShowActions(false) }
+                  }}
+                />
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                  <path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                </svg>
+                Swap
+              </label>
+
+              {/* Remove */}
+              <button
+                onClick={() => { onRemove(); setShowActions(false) }}
+                className="flex items-center justify-center gap-1 px-2 py-1 rounded-lg font-bold"
+                style={{ background: 'rgba(239,68,68,0.25)', color: '#f87171', fontSize: 10 }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+                Remove
+              </button>
+
+              {/* Dismiss */}
+              <button
+                onClick={() => setShowActions(false)}
+                style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, marginTop: 1 }}
+              >
+                cancel
+              </button>
+            </motion.div>
+          )}
+        </div>
+      ) : (
+        <label
+          className="flex flex-col items-center justify-center rounded-2xl cursor-pointer"
+          style={{
+            width: 80, height: 80, flexShrink: 0,
+            border:     '1.5px dashed var(--border-color)',
+            background: 'var(--bg-card)',
+          }}
         >
-          ✕
-        </button>
-      </div>
-    ) : (
-      <label
-        className="flex flex-col items-center justify-center rounded-2xl cursor-pointer"
-        style={{
-          width: 80, height: 80, flexShrink: 0,
-          border:     '1.5px dashed var(--border-color)',
-          background: 'var(--bg-card)',
-        }}
-      >
-        <input
-          type="file" accept="image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f) }}
-        />
-        <Plus size={20} style={{ color: 'var(--text-muted)' }} />
-      </label>
-    )}
-  </div>
-)
+          <input
+            type="file" accept="image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f) }}
+          />
+          <Plus size={20} style={{ color: 'var(--text-muted)' }} />
+        </label>
+      )}
+    </div>
+  )
+}
 
 const TransitionPicker = ({ value, transitions, onChange }) => {
   const [open, setOpen] = useState(false)
