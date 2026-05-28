@@ -185,7 +185,6 @@ export default function CreateImagePage() {
     } catch { /* noop */ }
   }, [prompt])
 
-  // Load all active image models on mount — stable, no dynamic dependencies
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -218,7 +217,6 @@ export default function CreateImagePage() {
   const promptEmpty    = !prompt.trim()
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
 
-  // Auto-correct aspect ratio when model changes (only if not set from uploaded image)
   useEffect(() => {
     if (!selectedModel) return
     if (!autoRatio && !supportedRatios.includes(aspectRatio)) {
@@ -226,7 +224,6 @@ export default function CreateImagePage() {
     }
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear reference image if new model doesn't support it
   useEffect(() => {
     if (!modelSupportsImage && referenceImg) handleRemoveImage()
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -348,6 +345,34 @@ export default function CreateImagePage() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* Generating overlay */}
+      <AnimatePresence>
+        {submitting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{
+              backdropFilter:       'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              background:           'rgba(0,0,0,0.4)',
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+            />
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+              Generating…
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div
