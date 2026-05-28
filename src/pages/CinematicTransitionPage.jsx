@@ -100,56 +100,97 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
   const selected = transitions.find(t => t.id === value)
 
   return (
-    <div className="relative flex-1 mx-2" style={{ minWidth: 0 }}>
+    <>
+      {/* Trigger button */}
       <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-xl text-xs font-semibold"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+        onClick={() => setOpen(true)}
+        className="flex-1 flex items-center justify-between gap-1 px-3 py-2 rounded-xl text-xs font-semibold"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', minWidth: 0 }}
       >
         <span className="truncate">{selected?.name || 'Select transition'}</span>
-        <ChevronDown size={12} style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        <ChevronDown size={12} style={{ flexShrink: 0 }} />
       </button>
 
+      {/* Full-screen bottom sheet */}
       <AnimatePresence>
         {open && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setOpen(false)}
+          >
             <motion.div
-              initial={{ opacity: 0, y: -4, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -4, scale: 0.97 }}
-              transition={{ duration: 0.15 }}
-              className="absolute top-full left-0 right-0 mt-1 rounded-2xl overflow-hidden z-40"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 32, stiffness: 360 }}
+              className="w-full rounded-t-3xl flex flex-col"
               style={{
                 background: 'var(--bg-card)',
                 border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.4)',
-                maxHeight:  200,
-                overflowY:  'auto',
+                maxHeight:  '75dvh',
+                paddingBottom: 'env(safe-area-inset-bottom, 16px)',
               }}
+              onClick={e => e.stopPropagation()}
             >
-              {transitions.map((t, i) => (
-                <button
-                  key={t.id}
-                  onClick={() => { onChange(t.id); setOpen(false) }}
-                  className="w-full text-left px-4 py-3 text-xs font-semibold"
-                  style={{
-                    background:   t.id === value ? 'var(--bg-elevated)' : 'transparent',
-                    borderBottom: i < transitions.length - 1 ? '1px solid var(--border-color)' : 'none',
-                    color:        t.id === value ? 'var(--brand)' : 'var(--text-primary)',
-                  }}
-                >
-                  {t.name}
-                </button>
-              ))}
+              {/* Handle + header */}
+              <div className="flex flex-col items-center px-4 pt-3 pb-2 flex-shrink-0">
+                <div className="w-10 h-1 rounded-full mb-3" style={{ background: 'var(--border-color)' }} />
+                <div className="flex items-center justify-between w-full">
+                  <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>Select Transition</p>
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full text-xs font-bold"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable list */}
+              <div className="overflow-y-auto flex flex-col gap-2 px-4 pb-4 pt-2">
+                {transitions.map((t) => {
+                  const isSelected = t.id === value
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => { onChange(t.id); setOpen(false) }}
+                      className="w-full text-left px-4 py-4 rounded-2xl flex items-center justify-between gap-3"
+                      style={{
+                        background: isSelected ? 'var(--bg-elevated)' : 'var(--bg-primary)',
+                        border:     `1px solid ${isSelected ? 'var(--brand)' : 'var(--border-color)'}`,
+                      }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold truncate" style={{ color: isSelected ? 'var(--brand)' : 'var(--text-primary)' }}>
+                          {t.name}
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <div
+                          className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'var(--brand)' }}
+                        >
+                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   )
 }
-
 const DurationPicker = ({ value, onChange }) => (
   <div className="flex gap-1.5 flex-wrap">
     {DURATIONS.map(d => (
