@@ -72,15 +72,6 @@ const TemplateCard = ({ template, index, onClick }) => (
       ) : (
         <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.35 }} />
       )}
-
-      {template.visibility === 'promptiq' && (
-        <div
-          className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold z-10"
-          style={{ background: 'rgba(249,115,22,0.85)', color: 'white', backdropFilter: 'blur(8px)' }}
-        >
-          Staff
-        </div>
-      )}
     </div>
 
     <div className="px-3 py-2.5 flex items-center justify-between">
@@ -108,14 +99,15 @@ export default function CreatePage() {
   useEffect(() => {
     const fetchTemplates = async () => {
       setLoading(true)
-      const { data } = (isStaff || isAdmin)
-        ? await templatesDb.getAll()
-        : await templatesDb.getPublic()
+      // Always fetch public templates only for the Templates tab.
+      // PromptIQ (promptiq visibility) templates are exclusively
+      // accessible via the PromptIQ panel — never shown here.
+      const { data } = await templatesDb.getPublic()
       setTemplates(data || [])
       setLoading(false)
     }
     fetchTemplates()
-  }, [isStaff, isAdmin])
+  }, [])
 
   const handleTemplateSelect = (template) => {
     navigate(`/create/${template.slug}`)
