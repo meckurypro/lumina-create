@@ -734,12 +734,12 @@ export default function CinematicTransitionPage() {
     if (!proj) return
     try {
       await cinematicProjects.update(proj.id, {
-        draft_state: { frameUrls, slots: slotsVal, aspectRatio: ar, withSound: ws },
+        draft_state: { frameUrls, slots: slotsVal, aspectRatio: ar, withSound: ws, model },
       })
     } catch (e) {
       console.warn('Draft save failed:', e)
     }
-  }, [])
+  }, [model])
 
   const debouncedPersist = useDebounce(persistDraft, 800)
 
