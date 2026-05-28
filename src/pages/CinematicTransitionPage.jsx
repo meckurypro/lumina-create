@@ -20,6 +20,11 @@ import toast from 'react-hot-toast'
 const SLUG        = 'cinematic-transition'
 const DURATIONS   = ['3', '5', '8', '10']
 const ASPECT_OPTS = ['9:16', '16:9', '1:1']
+const MODEL_OPTS  = [
+  { id: 'kling_v3_pro',   label: 'Kling 3.0 Pro' },
+  { id: 'kling_v3_std',   label: 'Kling 3.0 Std' },
+  { id: 'kling_v2_6_pro', label: 'Kling 2.6 Pro' },
+]
 
 // ── Helpers ───────────────────────────────────────────────
 const uploadFile = async (file, userId) => {
