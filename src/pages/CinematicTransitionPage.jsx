@@ -550,6 +550,26 @@ const EditorView = ({
               />
             </button>
           </div>
+
+          {/* Model */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Model</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {MODEL_OPTS.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setModel(m.id)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                  style={{
+                    background: model === m.id ? 'var(--brand)' : 'var(--bg-elevated)',
+                    color:      model === m.id ? '#fff'         : 'var(--text-muted)',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Frame + Transition chain */}
