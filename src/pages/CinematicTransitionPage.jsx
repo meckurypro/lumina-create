@@ -51,107 +51,54 @@ const detectAspectRatio = (file) =>
       else                   resolve('1:1')
       URL.revokeObjectURL(img.src)
     }
-    img.onerror = () => resolve('9:16') // safe fallback
+    img.onerror = () => resolve('9:16')
     img.src = URL.createObjectURL(file)
   })
 
 // ── Sub-components ────────────────────────────────────────
 
-const FrameSlot = ({ index, frame, onUpload, onRemove }) => {
-  const [showActions, setShowActions] = useState(false)
-
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
-        Frame {index + 1}
-      </p>
-      {frame?.url ? (
-        <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-          {/* Thumbnail */}
-          <div className="rounded-2xl overflow-hidden w-full h-full">
-            <img src={frame.url} alt={`frame ${index + 1}`} className="w-full h-full object-cover" />
-          </div>
-
-          {/* Tap to reveal action buttons */}
-          {!showActions ? (
-            <button
-              onClick={() => setShowActions(true)}
-              className="absolute inset-0 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.35)' }}
-            >
-              {/* Swap arrows icon */}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 16V4m0 0L3 8m4-4l4 4" />
-                <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            </button>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-1.5"
-              style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
-            >
-              {/* Swap / reupload */}
-              <label
-                className="flex items-center justify-center gap-1 px-2 py-1 rounded-lg cursor-pointer text-white font-bold"
-                style={{ background: 'rgba(255,255,255,0.15)', fontSize: 10 }}
-              >
-                <input
-                  type="file" accept="image/*" className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) { onUpload(f); setShowActions(false) }
-                  }}
-                />
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-                  <path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-                </svg>
-                Swap
-              </label>
-
-              {/* Remove */}
-              <button
-                onClick={() => { onRemove(); setShowActions(false) }}
-                className="flex items-center justify-center gap-1 px-2 py-1 rounded-lg font-bold"
-                style={{ background: 'rgba(239,68,68,0.25)', color: '#f87171', fontSize: 10 }}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                </svg>
-                Remove
-              </button>
-
-              {/* Dismiss */}
-              <button
-                onClick={() => setShowActions(false)}
-                style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10, marginTop: 1 }}
-              >
-                cancel
-              </button>
-            </motion.div>
-          )}
-        </div>
-      ) : (
-        <label
-          className="flex flex-col items-center justify-center rounded-2xl cursor-pointer"
-          style={{
-            width: 80, height: 80, flexShrink: 0,
-            border:     '1.5px dashed var(--border-color)',
-            background: 'var(--bg-card)',
-          }}
+/**
+ * FrameSlot — thumbnail or empty upload zone.
+ * The ✕ clear button is kept here only for quickly clearing an
+ * accidentally uploaded image. Swap + delete live in the frame row.
+ */
+const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
+  <div className="flex flex-col items-center gap-1.5">
+    <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+      Frame {index + 1}
+    </p>
+    {frame?.url ? (
+      <div
+        className="relative rounded-2xl overflow-hidden"
+        style={{ width: 80, height: 80, background: 'var(--bg-elevated)', flexShrink: 0 }}
+      >
+        <img src={frame.url} alt={`frame ${index + 1}`} className="w-full h-full object-cover" />
+        <button
+          onClick={onRemove}
+          className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+          style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
         >
-          <input
-            type="file" accept="image/*" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f) }}
-          />
-          <Plus size={20} style={{ color: 'var(--text-muted)' }} />
-        </label>
-      )}
-    </div>
-  )
-}
+          ✕
+        </button>
+      </div>
+    ) : (
+      <label
+        className="flex flex-col items-center justify-center rounded-2xl cursor-pointer"
+        style={{
+          width: 80, height: 80, flexShrink: 0,
+          border:     '1.5px dashed var(--border-color)',
+          background: 'var(--bg-card)',
+        }}
+      >
+        <input
+          type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f) }}
+        />
+        <Plus size={20} style={{ color: 'var(--text-muted)' }} />
+      </label>
+    )}
+  </div>
+)
 
 const TransitionPicker = ({ value, transitions, onChange }) => {
   const [open, setOpen] = useState(false)
@@ -159,7 +106,6 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
 
   return (
     <>
-      {/* Trigger button */}
       <button
         onClick={() => setOpen(true)}
         className="flex-1 flex items-center justify-between gap-1 px-3 py-2 rounded-xl text-xs font-semibold"
@@ -169,7 +115,6 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
         <ChevronDown size={12} style={{ flexShrink: 0 }} />
       </button>
 
-      {/* Full-screen bottom sheet */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -194,7 +139,6 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
               }}
               onClick={e => e.stopPropagation()}
             >
-              {/* Handle + header */}
               <div className="flex flex-col items-center px-4 pt-3 pb-2 flex-shrink-0">
                 <div className="w-10 h-1 rounded-full mb-3" style={{ background: 'var(--border-color)' }} />
                 <div className="flex items-center justify-between w-full">
@@ -209,7 +153,6 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
                 </div>
               </div>
 
-              {/* Scrollable list */}
               <div className="overflow-y-auto flex flex-col gap-2 px-4 pb-4 pt-2">
                 {transitions.map((t) => {
                   const isSelected = t.id === value
@@ -249,6 +192,7 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
     </>
   )
 }
+
 const DurationPicker = ({ value, onChange }) => (
   <div className="flex gap-1.5 flex-wrap">
     {DURATIONS.map(d => (
@@ -391,6 +335,16 @@ const NewProjectModal = ({ onConfirm, onClose, loading }) => {
   )
 }
 
+// ── Swap Icon SVG ─────────────────────────────────────────
+const SwapIcon = ({ size = 14, color = 'var(--text-muted)' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 2v6h-6" />
+    <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+    <path d="M3 22v-6h6" />
+    <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+  </svg>
+)
+
 // ── Editor View ───────────────────────────────────────────
 const EditorView = ({
   project, frames, setFrames,
@@ -507,7 +461,7 @@ const EditorView = ({
             <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Settings</p>
           </div>
 
-          {/* Aspect ratio — auto-detected from frame 1, locked once set */}
+          {/* Aspect ratio */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
@@ -587,15 +541,36 @@ const EditorView = ({
                     {frame?.url ? 'Uploaded' : idx === 0 ? 'Sets aspect ratio' : 'Tap to upload image'}
                   </p>
                 </div>
-                {idx > 1 && (
-                  <button
-                    onClick={() => removeFrame(idx)}
-                    className="w-8 h-8 flex items-center justify-center rounded-xl"
-                    style={{ background: 'rgba(239,68,68,0.08)' }}
+
+                {/* Action buttons — swap always visible, delete only on frame 3+ */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* Swap / reupload */}
+                  <label
+                    className="w-8 h-8 flex items-center justify-center rounded-xl cursor-pointer"
+                    style={{ background: 'rgba(255,255,255,0.06)' }}
+                    title="Swap image"
                   >
-                    <Trash2 size={14} style={{ color: '#ef4444' }} />
-                  </button>
-                )}
+                    <input
+                      type="file" accept="image/*" className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleFrameUpload(f, idx)
+                      }}
+                    />
+                    <SwapIcon />
+                  </label>
+
+                  {/* Delete — frame 3 and above only */}
+                  {idx > 1 && (
+                    <button
+                      onClick={() => removeFrame(idx)}
+                      className="w-8 h-8 flex items-center justify-center rounded-xl"
+                      style={{ background: 'rgba(239,68,68,0.08)' }}
+                    >
+                      <Trash2 size={14} style={{ color: '#ef4444' }} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Transition row between this frame and next */}
@@ -675,7 +650,7 @@ export default function CinematicTransitionPage() {
   const navigate              = useNavigate()
   const { user, credits, profile, isStaff, isAdmin, refreshProfile } = useAuth()
 
-  const [view,          setView]          = useState('list')   // 'list' | 'editor'
+  const [view,          setView]          = useState('list')
   const [projects,      setProjects]      = useState([])
   const [activeProject, setActiveProject] = useState(null)
   const [transitions,   setTransitions]   = useState([])
@@ -794,7 +769,6 @@ export default function CinematicTransitionPage() {
         savedClips.map(async (clip, idx) => {
           const transitionPrompt = transitionMap[slots[idx].transitionId] || ''
 
-          // Create generation row
           const { data: genRow, error: genErr } = await generationsDb.create({
             user_id:             user.id,
             template_id:         dbTemplate.id,
@@ -814,7 +788,6 @@ export default function CinematicTransitionPage() {
           })
           if (genErr || !genRow) throw new Error(`Clip ${idx + 1}: failed to create generation`)
 
-          // Deduct credits
           if (isPromptIQ) {
             const { data: poolResult } = await supabase.rpc('deduct_staff_pool', {
               p_staff_id:      user.id,
@@ -828,14 +801,10 @@ export default function CinematicTransitionPage() {
             if (!deduct?.success) throw new Error(`Clip ${idx + 1}: ${deduct?.error || 'Insufficient credits'}`)
           }
 
-          // Save version record
           const prevVersions = (savedClips[idx]?.cinematic_clip_versions?.length || 0)
           await cinematicClips.addVersion(clip.id, genRow.id, prevVersions + 1)
-
-          // Update clip with generation linkage
           await cinematicClips.update(clip.id, { status: 'processing' })
 
-          // Fire edge function (fire-and-forget)
           supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
             .catch(e => console.error(`video-generate clip ${idx + 1} error`, e))
         })
