@@ -891,7 +891,7 @@ export default function CinematicTransitionPage() {
             generation_type:     'start_end_frame',
             status:              'pending',
             prompt:              transitionPrompt,
-            model:               dbTemplate.default_model || 'kling_2_5',
+            model:               model || dbTemplate.default_model || 'kling_v3_pro',
             aspect_ratio:        aspectRatio,
             duration:            slots[idx].duration,
             credits_charged:     isPromptIQ ? 0 : clipCreditCost,
@@ -948,6 +948,7 @@ export default function CinematicTransitionPage() {
         slots={slots}             setSlots={setSlots}
         aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
         withSound={withSound}     setWithSound={setWithSound}
+        model={model}             setModel={setModel}
         creditCost={dbTemplate?.credit_cost || 10}
         credits={credits}
         isPromptIQ={isPromptIQ}
