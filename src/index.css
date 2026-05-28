@@ -57,8 +57,8 @@
   --shadow-brand:    0 12px 30px -18px rgba(249,115,22,0.6);
   --shadow-brand-lg: 0 18px 42px -18px rgba(249,115,22,0.68);
 
-  --nav-height:    64px;
-  --topbar-height: 56px;
+  --topbar-height:     56px;
+  --bottom-nav-height: 0px;
 }
 
 [data-theme='dark'], .dark {
@@ -106,6 +106,12 @@
   --shadow:    0 1px 2px rgba(0,0,0,0.5);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
   --shadow-lg: 0 10px 30px rgba(0,0,0,0.6);
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --bottom-nav-height: calc(60px + env(safe-area-inset-bottom, 8px));
+  }
 }
 
 /* ============================================================
