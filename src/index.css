@@ -40,8 +40,8 @@
   --bg:           var(--bg-primary);
 
   --text-primary:   #09090b;
-  --text-secondary: #52525b;
-  --text-muted:     #a1a1aa;
+  --text-secondary: #3f3f46;
+  --text-muted:     #71717a;
   --text-inverse:   #ffffff;
 
   --border-color: #e4e4e7;
@@ -92,8 +92,8 @@
   --bg:           var(--bg-primary);
 
   --text-primary:   #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted:     #3f3f46;
+  --text-secondary: #d4d4d8;
+  --text-muted:     #71717a;
   --text-inverse:   #000000;
 
   --border-color: #27272a;
