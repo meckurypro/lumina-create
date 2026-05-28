@@ -383,6 +383,7 @@ const EditorView = ({
   transitions, slots, setSlots,
   aspectRatio, setAspectRatio,
   withSound, setWithSound,
+  model, setModel,
   creditCost, credits, isPromptIQ,
   onGenerate, onFrameUpload, submitting, onBack,
 }) => {
