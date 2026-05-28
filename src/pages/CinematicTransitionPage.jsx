@@ -451,7 +451,7 @@ const EditorView = ({
       {/* Content */}
       <div
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
-        style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
+        style={{ paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}
       >
 
         {/* Settings row */}
