@@ -39,12 +39,32 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
+// Types that produce video output
 const VIDEO_TYPES = new Set([
   'text_to_video',
   'image_to_video',
   'start_end_frame',
   'end_frame_text',
   'template',
+])
+
+// Types that require a start/first image
+const START_FRAME_TYPES = new Set([
+  'image_to_video',
+  'start_end_frame',
+  'image_to_image',
+  'image_to_video',
+])
+
+// Types that require an end/second image
+const END_FRAME_TYPES = new Set([
+  'start_end_frame',
+  'end_frame_text',
+])
+
+// Types that use multi-image upload instead of single frames
+const MULTI_IMAGE_TYPES = new Set([
+  'multi_image',
 ])
 
 // ─── Generate Page ────────────────────────────────────────
@@ -63,16 +83,16 @@ export default function GeneratePage() {
     templateName,
     templateDescription,
     toolLabel,
-    minImages          = 2,
-    maxImages          = 2,
+    minImages          = 1,
+    maxImages          = 10,
     creditCostPerImage,
+    isPromptIQ         = false,
   } = state
 
-  const isTemplate      = type === 'template'
-  const isMemoryLane    = templateSlug === 'memory-lane'
-  const isHandover      = templateSlug === 'office-handover'
-  const needsStartFrame = ['image_to_video', 'start_end_frame', 'image_to_image'].includes(type) || isHandover
-  const needsEndFrame   = ['start_end_frame', 'end_frame_text'].includes(type) || isHandover
+  const isTemplate    = type === 'template'
+  const isMultiImage  = MULTI_IMAGE_TYPES.has(type)
+  const needsStartFrame = START_FRAME_TYPES.has(type)
+  const needsEndFrame   = END_FRAME_TYPES.has(type)
   const needsPrompt     = !isTemplate && type !== 'start_end_frame'
   const isVideoType     = VIDEO_TYPES.has(type)
   const showModelPicker = isVideoType && !isTemplate
@@ -93,22 +113,24 @@ export default function GeneratePage() {
         { duration, imageCount: imageFrames.length || 1 }
       )
 
-  const canAfford = credits >= parseFloat(estimatedCredits)
+  // PromptIQ templates are always affordable — pool absorbs cost
+  const canAfford = isPromptIQ ? true : credits >= parseFloat(estimatedCredits)
 
   if (!type) return <Navigate to="/create" replace />
 
   const handleGenerate = async () => {
-    if (needsStartFrame && !startFrame)                 return toast.error('Upload the first image')
-    if (needsEndFrame && !endFrame)                     return toast.error('Upload the second image')
-    if (isMemoryLane && imageFrames.length < minImages) return toast.error(`Upload at least ${minImages} photos`)
-    if (needsPrompt && !prompt.trim())                  return toast.error('Enter a prompt')
-    if (!canAfford)                                     return toast.error('Not enough credits')
+    if (needsStartFrame && !startFrame)                    return toast.error('Upload the first image')
+    if (needsEndFrame   && !endFrame)                      return toast.error('Upload the second image')
+    if (isMultiImage    && imageFrames.length < minImages) return toast.error(`Upload at least ${minImages} photos`)
+    if (needsPrompt     && !prompt.trim())                 return toast.error('Enter a prompt')
+    if (!canAfford)                                        return toast.error('Not enough credits')
 
     const result = await generate({
       type, templateId, templateSlug,
       prompt, startFrame, endFrame,
-      imageFrames: isMemoryLane ? imageFrames : null,
+      imageFrames: isMultiImage ? imageFrames : null,
       aspectRatio, duration, model,
+      isPromptIQ,
     })
 
     if (result) {
@@ -138,9 +160,17 @@ export default function GeneratePage() {
           <ArrowLeft size={20} />
         </button>
 
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-          {isTemplate ? templateName : toolLabel}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {isTemplate ? templateName : toolLabel}
+          </h1>
+          {isPromptIQ && (
+            <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-white brand-gradient">
+              <Zap size={10} />
+              PromptIQ
+            </span>
+          )}
+        </div>
 
         <div
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -191,8 +221,8 @@ export default function GeneratePage() {
             </p>
           )}
 
-          {/* Memory Lane multi-upload */}
-          {isMemoryLane && (
+          {/* Multi-image upload — driven by generation_type */}
+          {isMultiImage && (
             <MultiImageUpload
               values={imageFrames}
               onChange={setImageFrames}
@@ -201,8 +231,8 @@ export default function GeneratePage() {
             />
           )}
 
-          {/* Start / End frame uploads */}
-          {!isMemoryLane && (needsStartFrame || needsEndFrame) && (
+          {/* Start / End frame uploads — driven by generation_type */}
+          {!isMultiImage && (needsStartFrame || needsEndFrame) && (
             <div className={needsStartFrame && needsEndFrame ? 'grid grid-cols-2 gap-3' : ''}>
               {needsStartFrame && (
                 <ImageUpload
@@ -260,9 +290,9 @@ export default function GeneratePage() {
                     <SettingChips
                       label="Aspect Ratio"
                       options={[
-                        { label: '9:16',  value: '9:16'  },
-                        { label: '16:9',  value: '16:9'  },
-                        { label: '1:1',   value: '1:1'   },
+                        { label: '9:16', value: '9:16' },
+                        { label: '16:9', value: '16:9' },
+                        { label: '1:1',  value: '1:1'  },
                       ]}
                       value={aspectRatio}
                       onChange={setAspectRatio}
@@ -316,7 +346,12 @@ export default function GeneratePage() {
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {isLoading ? 'Generating…' : `Generate  ·  ${estimatedCredits} cr`}
+            {isLoading
+              ? 'Generating…'
+              : isPromptIQ
+                ? 'Generate  ·  Free'
+                : `Generate  ·  ${estimatedCredits} cr`
+            }
           </button>
 
           {!canAfford && (
