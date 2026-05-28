@@ -7,6 +7,10 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+const SS_PROMPT      = 'meckury_video_prompt'
+const SS_START_FRAME = 'meckury_video_start_frame'
+const SS_END_FRAME   = 'meckury_video_end_frame'
+
 const ALL_DURATIONS = [
   { label: '5s',  value: '5'  },
   { label: '8s',  value: '8'  },
@@ -145,6 +149,39 @@ function deriveVideoType(startFrame, endFrame) {
   return 'text_to_video'
 }
 
+// Persist a frame to sessionStorage as base64
+const persistFrame = (key, file) => {
+  if (!file) { try { sessionStorage.removeItem(key) } catch { /* noop */ }; return }
+  try {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      sessionStorage.setItem(key, JSON.stringify({
+        base64: ev.target.result,
+        name:   file.name,
+        type:   file.type,
+      }))
+    }
+    reader.readAsDataURL(file)
+  } catch { /* noop */ }
+}
+
+// Restore a frame from sessionStorage
+const restoreFrame = (key) => new Promise((resolve) => {
+  try {
+    const saved = sessionStorage.getItem(key)
+    if (!saved) return resolve(null)
+    const { base64, name, type } = JSON.parse(saved)
+    const byteString = atob(base64.split(',')[1])
+    const ab = new ArrayBuffer(byteString.length)
+    const ia = new Uint8Array(ab)
+    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+    const blob = new Blob([ab], { type })
+    const file = new File([blob], name, { type })
+    const url  = URL.createObjectURL(blob)
+    resolve({ file, url })
+  } catch { resolve(null) }
+})
+
 const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inactive = false }) => (
   <div className="flex flex-col gap-2">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
@@ -216,6 +253,34 @@ export default function CreateVideoPage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
+  // Restore persisted state on mount
+  useEffect(() => {
+    try {
+      const savedPrompt = sessionStorage.getItem(SS_PROMPT)
+      if (savedPrompt) setPrompt(savedPrompt)
+    } catch { /* noop */ }
+
+    restoreFrame(SS_START_FRAME).then((frame) => {
+      if (!frame) return
+      setStartFrame(frame)
+      const img = new Image()
+      img.onload = () => { setAspectRatio(detectAspectRatio(img.width, img.height)); setAutoRatio(true) }
+      img.src = frame.url
+    })
+
+    restoreFrame(SS_END_FRAME).then((frame) => {
+      if (frame) setEndFrame(frame)
+    })
+  }, [])
+
+  // Persist prompt
+  useEffect(() => {
+    try {
+      if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
+      else        sessionStorage.removeItem(SS_PROMPT)
+    } catch { /* noop */ }
+  }, [prompt])
+
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
@@ -225,7 +290,6 @@ export default function CreateVideoPage() {
   const type  = deriveVideoType(activeStartFrame, activeEndFrame)
   const isI2V = !!(activeStartFrame || activeEndFrame)
 
-  // Load all active video models on mount — model caps drive UI, not frame state
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -244,7 +308,6 @@ export default function CreateVideoPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // Auto-correct duration when model changes
   useEffect(() => {
     if (!selectedModel) return
     if (!caps.supportedDurations.includes(duration)) {
@@ -255,7 +318,6 @@ export default function CreateVideoPage() {
     }
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset sound when model doesn't support it
   useEffect(() => {
     if (!caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound])
@@ -270,7 +332,7 @@ export default function CreateVideoPage() {
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
 
-  const handleFrameUpload = (setter) => (e) => {
+  const handleFrameUpload = (setter, ssKey) => (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     const url = URL.createObjectURL(file)
@@ -283,6 +345,14 @@ export default function CreateVideoPage() {
       img.src = url
     }
     setter({ file, url })
+    persistFrame(ssKey, file)
+  }
+
+  const handleRemoveFrame = (setter, ssKey, isStart) => {
+    setter(null)
+    try { sessionStorage.removeItem(ssKey) } catch { /* noop */ }
+    const otherFrame = isStart ? endFrame : startFrame
+    if (!otherFrame) { setAutoRatio(false); setAspectRatio('9:16') }
   }
 
   const modeLabel = {
@@ -358,6 +428,12 @@ export default function CreateVideoPage() {
       setAutoRatio(false)
       setAspectRatio('9:16')
       setWithSound(false)
+      try {
+        sessionStorage.removeItem(SS_PROMPT)
+        sessionStorage.removeItem(SS_START_FRAME)
+        sessionStorage.removeItem(SS_END_FRAME)
+      } catch { /* noop */ }
+
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
     } finally {
@@ -367,6 +443,34 @@ export default function CreateVideoPage() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* Generating overlay */}
+      <AnimatePresence>
+        {submitting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{
+              backdropFilter:       'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              background:           'rgba(0,0,0,0.4)',
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+            />
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+              Generating…
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div
@@ -407,16 +511,16 @@ export default function CreateVideoPage() {
               <FrameUpload
                 label="Start Frame"
                 value={startFrame}
-                onChange={handleFrameUpload(setStartFrame)}
-                onRemove={() => { setStartFrame(null); if (!endFrame) { setAutoRatio(false); setAspectRatio('9:16') } }}
+                onChange={handleFrameUpload(setStartFrame, SS_START_FRAME)}
+                onRemove={() => handleRemoveFrame(setStartFrame, SS_START_FRAME, true)}
                 disabled={!caps.supportsStartFrame && !startFrame}
                 inactive={!!startFrame && !caps.supportsStartFrame}
               />
               <FrameUpload
                 label="End Frame"
                 value={endFrame}
-                onChange={handleFrameUpload(setEndFrame)}
-                onRemove={() => { setEndFrame(null); if (!startFrame) { setAutoRatio(false); setAspectRatio('9:16') } }}
+                onChange={handleFrameUpload(setEndFrame, SS_END_FRAME)}
+                onRemove={() => handleRemoveFrame(setEndFrame, SS_END_FRAME, false)}
                 disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
                 inactive={!!endFrame && !(caps.supportsEndFrame || caps.supportsFrameToFrame)}
               />
