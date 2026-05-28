@@ -10,6 +10,13 @@ import toast from 'react-hot-toast'
 const SS_PROMPT = 'meckury_create_prompt'
 const SS_IMAGE  = 'meckury_create_image'
 
+const ALL_ASPECT_RATIOS = [
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
+  { label: '1:1',  value: '1:1'  },
+]
+
+// SettingChips supports per-option disabled state
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -19,11 +26,14 @@ const SettingChips = ({ label, options, value, onChange }) => (
       {options.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => !opt.disabled && onChange(opt.value)}
+          disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
             background: value === opt.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
             color:      value === opt.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+            opacity:    opt.disabled ? 0.3 : 1,
+            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
         >
           {opt.label}
@@ -82,21 +92,21 @@ const ModelDropdown = ({ models, value, onChange }) => {
               }}
             >
               <div className="py-1">
-                {unlocked.map((model) => (
+                {unlocked.map((m) => (
                   <button
-                    key={model.value}
-                    onClick={() => { onChange(model.value); setOpen(false) }}
+                    key={m.value}
+                    onClick={() => { onChange(m.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: model.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
-                      {!model.supports_image && (
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      {!m.supports_image && (
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>Text only</p>
                       )}
                     </div>
-                    {model.value === value && (
+                    {m.value === value && (
                       <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
                     )}
                   </button>
@@ -106,9 +116,9 @@ const ModelDropdown = ({ models, value, onChange }) => {
                 <>
                   <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
                   <div className="py-1">
-                    {locked.map((model) => (
-                      <div key={model.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{model.label}</p>
+                    {locked.map((m) => (
+                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
                         <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                       </div>
                     ))}
@@ -138,7 +148,6 @@ export default function CreateImagePage() {
   const [fullscreen,    setFullscreen]    = useState(false)
   const [submitting,    setSubmitting]    = useState(false)
 
-  // Derive from profile — defaults to true (refinement on) if column not yet set
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // Restore persisted state on mount
@@ -169,7 +178,7 @@ export default function CreateImagePage() {
     } catch { /* corrupt storage — silently ignore */ }
   }, [])
 
-  // Persist prompt on every change
+  // Persist prompt
   useEffect(() => {
     try {
       if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
@@ -185,8 +194,9 @@ export default function CreateImagePage() {
       .select('*')
       .eq('type', 'image')
       .eq('is_active', true)
+      .eq('is_user_facing', true)
       .order('sort_order')
-    const list     = data || []
+    const list      = data || []
     setModels(list)
     const unlocked  = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
@@ -199,18 +209,28 @@ export default function CreateImagePage() {
 
   const selectedModel      = models.find((m) => m.value === model)
   const modelSupportsImage = selectedModel?.supports_image !== false
-  const type               = referenceImg && modelSupportsImage ? 'image_to_image' : 'text_to_image'
-  const creditCost         = selectedModel
+  const supportedRatios    = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
+
+  const type       = referenceImg && modelSupportsImage ? 'image_to_image' : 'text_to_image'
+  const creditCost = selectedModel
     ? (referenceImg && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
 
-  // When model changes to one that doesn't support images, clear reference
+  // Auto-correct aspect ratio when model changes (only if not set from uploaded image)
+  useEffect(() => {
+    if (!selectedModel) return
+    if (!autoRatio && !supportedRatios.includes(aspectRatio)) {
+      setAspectRatio(supportedRatios[0] || '9:16')
+    }
+  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear reference image if new model doesn't support it
   useEffect(() => {
     if (!modelSupportsImage && referenceImg) handleRemoveImage()
-  }, [model])
+  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist preferred model when user changes it
   const handleModelChange = async (value) => {
@@ -261,7 +281,6 @@ export default function CreateImagePage() {
 
     setSubmitting(true)
     try {
-      // 1. Upload reference image if any
       let startFrameUrl = null
       if (referenceImg?.file && modelSupportsImage) {
         const file = referenceImg.file
@@ -282,7 +301,6 @@ export default function CreateImagePage() {
         startFrameUrl = publicUrl
       }
 
-      // 2. Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        type,
@@ -297,18 +315,15 @@ export default function CreateImagePage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // 3. Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // 4. Fire-and-forget pipeline
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
-      // 5. Reset state
       refreshProfile()
       toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
@@ -467,15 +482,14 @@ export default function CreateImagePage() {
             rows={4}
           />
 
-          {/* Aspect ratio */}
+          {/* Aspect ratio — disabled options come from model's supported_aspect_ratios */}
           <div className="pt-1">
             <SettingChips
               label="Aspect Ratio"
-              options={[
-                { label: '9:16', value: '9:16' },
-                { label: '16:9', value: '16:9' },
-                { label: '1:1',  value: '1:1'  },
-              ]}
+              options={ALL_ASPECT_RATIOS.map((o) => ({
+                ...o,
+                disabled: !supportedRatios.includes(o.value),
+              }))}
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
