@@ -157,3 +157,120 @@ export const notifications = {
   markRead: (id) => supabase.from('notifications').update({ is_read: true }).eq('id', id),
   markAllRead: (userId) => supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false),
 }
+
+// ─── Cinematic Transitions ────────────────────────────────────────────────────
+
+export const cinematicTransitions = {
+  getActive: () =>
+    supabase
+      .from('cinematic_transitions')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order'),
+
+  getAll: () =>
+    supabase
+      .from('cinematic_transitions')
+      .select('*')
+      .order('sort_order'),
+
+  create: (data) =>
+    supabase.from('cinematic_transitions').insert(data).select().single(),
+
+  update: (id, updates) =>
+    supabase
+      .from('cinematic_transitions')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
+
+  delete: (id) =>
+    supabase.from('cinematic_transitions').delete().eq('id', id),
+}
+
+// ─── Cinematic Projects ───────────────────────────────────────────────────────
+
+export const cinematicProjects = {
+  getForUser: (userId) =>
+    supabase
+      .from('cinematic_projects')
+      .select('*, cinematic_clips(count)')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false }),
+
+  getById: (id) =>
+    supabase
+      .from('cinematic_projects')
+      .select(`
+        *,
+        cinematic_clips (
+          *,
+          cinematic_transitions ( id, name, prompt_text ),
+          cinematic_clip_versions (
+            *,
+            generations ( id, status, output_url, output_type, error_message, credits_charged )
+          )
+        )
+      `)
+      .eq('id', id)
+      .single(),
+
+  create: (data) =>
+    supabase.from('cinematic_projects').insert(data).select().single(),
+
+  update: (id, updates) =>
+    supabase
+      .from('cinematic_projects')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
+
+  delete: (id) =>
+    supabase.from('cinematic_projects').delete().eq('id', id),
+}
+
+// ─── Cinematic Clips ──────────────────────────────────────────────────────────
+
+export const cinematicClips = {
+  upsertForProject: (clips) =>
+    supabase
+      .from('cinematic_clips')
+      .upsert(clips, { onConflict: 'project_id,slot_index' })
+      .select(),
+
+  update: (id, updates) =>
+    supabase
+      .from('cinematic_clips')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
+
+  addVersion: (clipId, generationId, versionNumber) =>
+    supabase
+      .from('cinematic_clip_versions')
+      .insert({
+        clip_id:        clipId,
+        generation_id:  generationId,
+        version_number: versionNumber,
+        is_active:      true,
+      })
+      .select()
+      .single(),
+
+  setActiveVersion: async (clipId, versionId) => {
+    await supabase
+      .from('cinematic_clip_versions')
+      .update({ is_active: false })
+      .eq('clip_id', clipId)
+
+    return supabase
+      .from('cinematic_clip_versions')
+      .update({ is_active: true })
+      .eq('id', versionId)
+      .select()
+      .single()
+  },
+}
