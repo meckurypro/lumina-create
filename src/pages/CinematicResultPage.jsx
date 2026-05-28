@@ -1,11 +1,11 @@
 // src/pages/CinematicResultPage.jsx
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams }      from 'react-router-dom'
-import { motion, AnimatePresence }     from 'framer-motion'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate, useParams }                   from 'react-router-dom'
+import { motion, AnimatePresence }                  from 'framer-motion'
 import {
   ArrowLeft, Download, RefreshCw,
   ChevronDown, Film, CheckCircle, Loader2,
-  AlertCircle, Play,
+  AlertCircle, Clapperboard,
 } from 'lucide-react'
 import {
   supabase,
@@ -95,11 +95,8 @@ const VersionDropdown = ({ versions, activeId, onSelect }) => {
 }
 
 // ── Clip Card ─────────────────────────────────────────────
-const ClipCard = ({ clip, slotIndex, onRegenerate, onDownload }) => {
-  const versions    = clip.cinematic_clip_versions || []
-  const [activeVersionId, setActiveVersionId] = useState(
-    versions.find(v => v.is_active)?.id || versions[0]?.id || null
-  )
+const ClipCard = ({ clip, slotIndex, activeVersionId, onVersionChange, onRegenerate, onDownloadClip }) => {
+  const versions      = clip.cinematic_clip_versions || []
   const activeVersion = versions.find(v => v.id === activeVersionId)
   const gen           = activeVersion?.generations
   const status        = gen?.status || clip.status || 'pending'
@@ -156,12 +153,12 @@ const ClipCard = ({ clip, slotIndex, onRegenerate, onDownload }) => {
         <VersionDropdown
           versions={versions}
           activeId={activeVersionId}
-          onSelect={setActiveVersionId}
+          onSelect={(id) => onVersionChange(clip.id, id)}
         />
         <div className="flex-1" />
         {outputUrl && (
           <button
-            onClick={() => onDownload(outputUrl, slotIndex)}
+            onClick={() => onDownloadClip(outputUrl, slotIndex)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
           >
@@ -182,42 +179,114 @@ const ClipCard = ({ clip, slotIndex, onRegenerate, onDownload }) => {
   )
 }
 
+// ── Full Download Progress Overlay ────────────────────────
+const DownloadOverlay = ({ stage, progress, clipCount }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{    opacity: 0 }}
+    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 px-8"
+    style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
+  >
+    {/* Animated film strip icon */}
+    <motion.div
+      animate={{ scale: [1, 1.08, 1] }}
+      transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+      className="flex h-16 w-16 items-center justify-center rounded-3xl"
+      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+    >
+      <Clapperboard size={28} style={{ color: '#fff' }} />
+    </motion.div>
+
+    <div className="flex flex-col items-center gap-1.5 text-center">
+      <p className="text-base font-black text-white">
+        {stage === 'fetching'  && `Fetching clips…`}
+        {stage === 'stitching' && `Stitching video…`}
+        {stage === 'exporting' && `Exporting…`}
+      </p>
+      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
+        {stage === 'fetching'  && `Downloading ${clipCount} clip${clipCount !== 1 ? 's' : ''} from storage`}
+        {stage === 'stitching' && 'Concatenating with FFmpeg — this may take a moment'}
+        {stage === 'exporting' && 'Almost there, preparing your file'}
+      </p>
+    </div>
+
+    {/* Progress bar */}
+    <div className="w-full max-w-xs rounded-full overflow-hidden" style={{ height: 4, background: 'rgba(255,255,255,0.1)' }}>
+      <motion.div
+        className="h-full rounded-full"
+        style={{ background: 'var(--brand, #6366f1)' }}
+        animate={{ width: `${progress}%` }}
+        transition={{ ease: 'easeOut', duration: 0.4 }}
+      />
+    </div>
+    <p className="text-xs font-bold tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>
+      {Math.round(progress)}%
+    </p>
+  </motion.div>
+)
+
 // ── Main Page ─────────────────────────────────────────────
 export default function CinematicResultPage() {
   const navigate         = useNavigate()
   const { projectId }    = useParams()
   const { user, credits, profile, isStaff, isAdmin, refreshProfile } = useAuth()
 
-  const [project,     setProject]     = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [regenTarget, setRegenTarget] = useState(null)
-  const pollRef = useRef(null)
+  const [project,        setProject]        = useState(null)
+  const [loading,        setLoading]        = useState(true)
+  // Map of clipId → activeVersionId (lifted from ClipCard)
+  const [activeVersions, setActiveVersions] = useState({})
+  // Full-video download state
+  const [downloading,    setDownloading]    = useState(false)
+  const [dlStage,        setDlStage]        = useState('fetching')   // 'fetching' | 'stitching' | 'exporting'
+  const [dlProgress,     setDlProgress]     = useState(0)
+
+  const pollRef  = useRef(null)
+  const ffmpegRef = useRef(null)
 
   const isPromptIQ = (isStaff || isAdmin) && project?.templates?.visibility === 'promptiq'
 
-  const loadProject = async () => {
+  // ── Load project ────────────────────────────────────────
+  const loadProject = useCallback(async () => {
     const { data, error } = await cinematicProjects.getById(projectId)
     if (error || !data) { toast.error('Project not found'); navigate(-1); return }
     setProject(data)
     setLoading(false)
-  }
 
-  useEffect(() => { loadProject() }, [projectId])
+    // Initialise activeVersions map from DB is_active flags (only on first load)
+    setActiveVersions(prev => {
+      const next = { ...prev }
+      for (const clip of (data.cinematic_clips || [])) {
+        if (next[clip.id]) continue  // already set — user may have changed it
+        const versions = clip.cinematic_clip_versions || []
+        const active   = versions.find(v => v.is_active) || versions[0]
+        if (active) next[clip.id] = active.id
+      }
+      return next
+    })
+  }, [projectId, navigate])
 
-  // Poll while any clip is still processing
+  useEffect(() => { loadProject() }, [loadProject])
+
+  // ── Polling while clips are pending ─────────────────────
   useEffect(() => {
-    const clips = project?.cinematic_clips || []
+    const clips      = project?.cinematic_clips || []
     const hasPending = clips.some(c => c.status === 'pending' || c.status === 'processing')
-
     if (hasPending) {
       pollRef.current = setInterval(loadProject, POLL_MS)
     } else {
       clearInterval(pollRef.current)
     }
     return () => clearInterval(pollRef.current)
-  }, [project])
+  }, [project, loadProject])
 
-  const handleDownload = async (url, slotIndex) => {
+  // ── Version change (lifted from ClipCard) ───────────────
+  const handleVersionChange = (clipId, versionId) => {
+    setActiveVersions(prev => ({ ...prev, [clipId]: versionId }))
+  }
+
+  // ── Single clip download ─────────────────────────────────
+  const handleDownloadClip = async (url, slotIndex) => {
     try {
       const res  = await fetch(url)
       const blob = await res.blob()
@@ -232,6 +301,114 @@ export default function CinematicResultPage() {
     }
   }
 
+  // ── Full video download via ffmpeg.wasm ──────────────────
+  const handleDownloadFull = async () => {
+    const clips = [...(project?.cinematic_clips || [])].sort((a, b) => a.slot_index - b.slot_index)
+
+    // Collect the chosen output URL for each clip
+    const urls = clips.map(clip => {
+      const versions    = clip.cinematic_clip_versions || []
+      const activeId    = activeVersions[clip.id]
+      const activeVer   = versions.find(v => v.id === activeId) || versions.find(v => v.is_active) || versions[0]
+      return activeVer?.generations?.output_url || null
+    })
+
+    const missing = urls.filter(u => !u).length
+    if (missing > 0) {
+      toast.error(`${missing} clip${missing !== 1 ? 's are' : ' is'} not ready yet`)
+      return
+    }
+
+    setDownloading(true)
+    setDlStage('fetching')
+    setDlProgress(0)
+
+    try {
+      // ── Lazy-load ffmpeg.wasm ──────────────────────────
+      // We import dynamically so the ~30 MB wasm bundle is only
+      // fetched when the user actually clicks "Download Full Video"
+      const { FFmpeg }     = await import('@ffmpeg/ffmpeg')
+      const { fetchFile }  = await import('@ffmpeg/util')
+
+      if (!ffmpegRef.current) {
+        const ff = new FFmpeg()
+        // Wire ffmpeg log to console for debugging
+        ff.on('log', ({ message }) => console.debug('[ffmpeg]', message))
+        // Wire ffmpeg progress to our UI progress bar
+        ff.on('progress', ({ progress }) => {
+          // ffmpeg progress is 0-1 during the stitch phase
+          setDlProgress(60 + progress * 35)   // 60–95 range for stitching phase
+        })
+        await ff.load()
+        ffmpegRef.current = ff
+      }
+
+      const ff = ffmpegRef.current
+
+      // ── Phase 1: Fetch all clips ───────────────────────
+      const clipNames = []
+      for (let i = 0; i < urls.length; i++) {
+        setDlProgress(Math.round((i / urls.length) * 55))   // 0–55 range for fetch phase
+        const fileName = `clip_${i}.mp4`
+        const fileData = await fetchFile(urls[i])
+        await ff.writeFile(fileName, fileData)
+        clipNames.push(fileName)
+      }
+
+      setDlStage('stitching')
+      setDlProgress(60)
+
+      // ── Phase 2: Write concat manifest ────────────────
+      const manifest = clipNames.map(n => `file '${n}'`).join('\n')
+      await ff.writeFile('manifest.txt', manifest)
+
+      // ── Phase 3: Concatenate ──────────────────────────
+      // -f concat          : use the concat demuxer
+      // -safe 0            : allow relative paths in manifest
+      // -c copy            : stream copy — no re-encode, fast & lossless
+      await ff.exec([
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', 'manifest.txt',
+        '-c', 'copy',
+        'output.mp4',
+      ])
+
+      setDlStage('exporting')
+      setDlProgress(96)
+
+      // ── Phase 4: Read output & trigger download ────────
+      const data = await ff.readFile('output.mp4')
+      const blob = new Blob([data.buffer], { type: 'video/mp4' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `${project.name} — Full Video.mp4`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      // ── Cleanup ffmpeg virtual FS ──────────────────────
+      for (const name of clipNames) {
+        try { await ff.deleteFile(name) } catch {}
+      }
+      try { await ff.deleteFile('manifest.txt') } catch {}
+      try { await ff.deleteFile('output.mp4')   } catch {}
+
+      setDlProgress(100)
+      toast.success('Full video downloaded!', { duration: 4000 })
+
+    } catch (err) {
+      console.error('Full download error:', err)
+      toast.error(err.message || 'Download failed — check console for details')
+    } finally {
+      setTimeout(() => {
+        setDownloading(false)
+        setDlProgress(0)
+      }, 600)
+    }
+  }
+
+  // ── Regenerate a single clip ─────────────────────────────
   const handleRegenerate = async (clip, slotIndex) => {
     if (!project || !user) return
     const dbTemplate = project.templates
@@ -242,31 +419,28 @@ export default function CinematicResultPage() {
     if (!canAfford) return toast.error('Not enough credits')
 
     try {
-      // Get transition prompt
       const transition = clip.cinematic_transitions
       const prompt     = transition?.prompt_text || ''
 
-      // Create new generation
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:          user.id,
-        template_id:      dbTemplate.id,
-        generation_type:  'start_end_frame',
-        status:           'pending',
+        user_id:             user.id,
+        template_id:         dbTemplate.id,
+        generation_type:     'start_end_frame',
+        status:              'pending',
         prompt,
-        model:            dbTemplate.default_model || 'kling_2_5',
-        aspect_ratio:     project.aspect_ratio,
-        duration:         clip.duration,
-        credits_charged:  isPromptIQ ? 0 : clipCreditCost,
+        model:               dbTemplate.default_model || 'kling_2_5',
+        aspect_ratio:        project.aspect_ratio,
+        duration:            clip.duration,
+        credits_charged:     isPromptIQ ? 0 : clipCreditCost,
         is_staff_generation: isPromptIQ,
-        with_sound:       project.with_sound,
-        start_frame_url:  clip.start_frame_url,
-        end_frame_url:    clip.end_frame_url,
-        output_type:      'video',
-        title:            `${project.name} — Clip ${slotIndex + 1} (redo)`,
+        with_sound:          project.with_sound,
+        start_frame_url:     clip.start_frame_url,
+        end_frame_url:       clip.end_frame_url,
+        output_type:         'video',
+        title:               `${project.name} — Clip ${slotIndex + 1} (redo)`,
       })
       if (genErr || !genRow) throw new Error('Failed to create generation')
 
-      // Deduct credits
       if (isPromptIQ) {
         const { data: pool } = await supabase.rpc('deduct_staff_pool', {
           p_staff_id:      user.id,
@@ -280,13 +454,11 @@ export default function CinematicResultPage() {
         if (!deduct?.success) throw new Error(deduct?.error || 'Insufficient credits')
       }
 
-      // Deactivate previous versions
-      const versions = clip.cinematic_clip_versions || []
+      const versions    = clip.cinematic_clip_versions || []
       const nextVersion = (versions.length || 0) + 1
       await cinematicClips.addVersion(clip.id, genRow.id, nextVersion)
       await cinematicClips.update(clip.id, { status: 'processing' })
 
-      // Fire
       supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
         .catch(e => console.error('regen invoke error', e))
 
@@ -299,6 +471,7 @@ export default function CinematicResultPage() {
     }
   }
 
+  // ── Render ───────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
       <motion.div
@@ -314,20 +487,43 @@ export default function CinematicResultPage() {
   const allDone    = clips.length > 0 && clips.every(c => c.status === 'completed')
   const anyPending = clips.some(c => c.status === 'pending' || c.status === 'processing')
 
+  // Full download is available only when every clip has a completed output
+  const canDownloadFull = allDone && clips.every(clip => {
+    const versions  = clip.cinematic_clip_versions || []
+    const activeId  = activeVersions[clip.id]
+    const activeVer = versions.find(v => v.id === activeId) || versions.find(v => v.is_active) || versions[0]
+    return !!activeVer?.generations?.output_url
+  })
+
   return (
     <div className="min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* Full-video download overlay */}
+      <AnimatePresence>
+        {downloading && (
+          <DownloadOverlay
+            stage={dlStage}
+            progress={dlProgress}
+            clipCount={clips.length}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div
         className="sticky top-0 z-10 flex items-center gap-3 px-4 h-14"
         style={{
-          background:         'color-mix(in srgb, var(--bg-primary) 90%, transparent)',
-          backdropFilter:     'blur(14px)',
+          background:           'color-mix(in srgb, var(--bg-primary) 90%, transparent)',
+          backdropFilter:       'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
-          borderBottom:       '1px solid var(--border-color)',
+          borderBottom:         '1px solid var(--border-color)',
         }}
       >
-        <button onClick={() => navigate('/create/cinematic-transition')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+        <button
+          onClick={() => navigate('/create/cinematic-transition')}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
@@ -335,20 +531,28 @@ export default function CinematicResultPage() {
             {project?.name}
           </h1>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {anyPending ? `Processing ${clips.filter(c => c.status !== 'completed').length} clip(s)…`
-             : allDone   ? `${clips.length} clip${clips.length !== 1 ? 's' : ''} ready`
-             : `${clips.length} clip${clips.length !== 1 ? 's' : ''}`}
+            {anyPending
+              ? `Processing ${clips.filter(c => c.status !== 'completed').length} clip(s)…`
+              : allDone
+              ? `${clips.length} clip${clips.length !== 1 ? 's' : ''} ready`
+              : `${clips.length} clip${clips.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         {allDone && (
-          <span className="text-xs px-2 py-1 rounded-full font-bold" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}>
+          <span
+            className="text-xs px-2 py-1 rounded-full font-bold"
+            style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
+          >
             Complete
           </span>
         )}
       </div>
 
-      {/* Clips grid */}
-      <div className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-5" style={{ paddingBottom: 'calc(56px + 32px)' }}>
+      {/* Clips */}
+      <div
+        className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-5"
+        style={{ paddingBottom: 'calc(56px + 96px)' }}
+      >
         {clips.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Film size={32} style={{ color: 'var(--text-muted)' }} />
@@ -360,13 +564,14 @@ export default function CinematicResultPage() {
               key={clip.id}
               clip={clip}
               slotIndex={i}
+              activeVersionId={activeVersions[clip.id]}
+              onVersionChange={handleVersionChange}
               onRegenerate={handleRegenerate}
-              onDownload={handleDownload}
+              onDownloadClip={handleDownloadClip}
             />
           ))
         )}
 
-        {/* Back to editor */}
         <button
           onClick={() => navigate('/create/cinematic-transition')}
           className="w-full text-center text-xs py-3"
@@ -375,6 +580,45 @@ export default function CinematicResultPage() {
           ← Back to projects
         </button>
       </div>
+
+      {/* ── Download Full Video CTA ── */}
+      <AnimatePresence>
+        {canDownloadFull && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0  }}
+            exit={{    opacity: 0, y: 24 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className="fixed left-0 right-0 px-4 pt-3"
+            style={{
+              bottom:        'calc(56px + env(safe-area-inset-bottom, 0px))',
+              background:    'var(--bg-primary)',
+              borderTop:     '1px solid var(--border-color)',
+              paddingBottom: '12px',
+              zIndex:        20,
+            }}
+          >
+            <div className="mx-auto max-w-xl">
+              <button
+                onClick={handleDownloadFull}
+                disabled={downloading}
+                className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
+                style={{
+                  background: 'var(--text-primary)',
+                  color:      'var(--text-inverse)',
+                  opacity:    downloading ? 0.5 : 1,
+                }}
+              >
+                <Clapperboard size={15} />
+                Download Full Video · {clips.length} clip{clips.length !== 1 ? 's' : ''}
+              </button>
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                Clips stitched locally in your browser via FFmpeg
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
