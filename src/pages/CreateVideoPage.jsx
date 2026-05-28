@@ -7,6 +7,48 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// All possible duration and aspect ratio options — model caps filter which are enabled
+const ALL_DURATIONS = [
+  { label: '5s',  value: '5'  },
+  { label: '8s',  value: '8'  },
+  { label: '10s', value: '10' },
+  { label: '15s', value: '15' },
+]
+const ALL_ASPECT_RATIOS = [
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
+  { label: '1:1',  value: '1:1'  },
+]
+
+// Maps video type → DB feature values for model loading
+const FEATURE_MAP = {
+  text_to_video:   ['text_to_video', 'image_text_to_video'],
+  image_to_video:  ['image_to_video', 'image_text_to_video'],
+  end_frame_text:  ['frame_to_frame'],
+  start_end_frame: ['frame_to_frame'],
+}
+
+// Derive model capabilities with safe fallbacks for old/null DB rows
+function getModelCaps(model) {
+  if (!model) return {
+    supportsStartFrame:    true,
+    supportsEndFrame:      false,
+    supportsFrameToFrame:  false,
+    supportedDurations:    ['5', '8', '10'],
+    supportedAspectRatios: ['9:16', '16:9', '1:1'],
+    supportsSound:         false,
+  }
+  return {
+    supportsStartFrame:    model.supports_start_frame    ?? true,
+    supportsEndFrame:      model.supports_end_frame      ?? false,
+    supportsFrameToFrame:  model.supports_frame_to_frame ?? false,
+    supportedDurations:    model.supported_durations     ?? ['5', '8', '10'],
+    supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
+    supportsSound:         model.supports_sound          ?? false,
+  }
+}
+
+// SettingChips supports per-option disabled state
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -16,11 +58,14 @@ const SettingChips = ({ label, options, value, onChange }) => (
       {options.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => !opt.disabled && onChange(opt.value)}
+          disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
             background: value === opt.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
             color:      value === opt.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+            opacity:    opt.disabled ? 0.3 : 1,
+            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
         >
           {opt.label}
@@ -61,18 +106,18 @@ const ModelDropdown = ({ models, value, onChange }) => {
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}
             >
               <div className="py-1">
-                {unlocked.map((model) => (
+                {unlocked.map((m) => (
                   <button
-                    key={model.value}
-                    onClick={() => { onChange(model.value); setOpen(false) }}
+                    key={m.value}
+                    onClick={() => { onChange(m.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: model.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{model.sublabel}</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                     </div>
-                    {model.value === value && <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>}
+                    {m.value === value && <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>}
                   </button>
                 ))}
               </div>
@@ -80,9 +125,9 @@ const ModelDropdown = ({ models, value, onChange }) => {
                 <>
                   <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
                   <div className="py-1">
-                    {locked.map((model) => (
-                      <div key={model.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{model.label}</p>
+                    {locked.map((m) => (
+                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
                         <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                       </div>
                     ))}
@@ -111,64 +156,95 @@ function deriveVideoType(startFrame, endFrame) {
   return 'text_to_video'
 }
 
-// Maps each video mode to the DB feature values that support it
-const FEATURE_MAP = {
-  text_to_video:   ['text_to_video', 'image_text_to_video'],
-  image_to_video:  ['image_to_video', 'image_text_to_video'],
-  end_frame_text:  ['frame_to_frame'],
-  start_end_frame: ['frame_to_frame'],
-}
-
-const FrameUpload = ({ label, value, onChange, onRemove }) => (
+// inactive: frame is uploaded but model can't use it — blurred overlay, still removable
+const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inactive = false }) => (
   <div className="flex flex-col gap-2">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
     {value ? (
-      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1' }}>
-        <img src={value.url} alt={label} className="w-full h-full object-cover" />
+      <div
+        className="relative w-full rounded-2xl overflow-hidden"
+        style={{ aspectRatio: '1/1', opacity: inactive ? 0.6 : 1 }}
+      >
+        <img
+          src={value.url}
+          alt={label}
+          className="w-full h-full object-cover"
+          style={{ filter: inactive ? 'blur(4px)' : 'none', pointerEvents: inactive ? 'none' : 'auto' }}
+        />
+        {inactive && (
+          <div
+            className="absolute inset-0 flex items-center justify-center px-3"
+            style={{ background: 'rgba(0,0,0,0.55)' }}
+          >
+            <p className="text-xs font-semibold text-center" style={{ color: 'rgba(255,255,255,0.9)', lineHeight: 1.5 }}>
+              Not supported<br />by this model
+            </p>
+          </div>
+        )}
+        {/* Remove button always accessible even when inactive */}
         <button
           onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
+          style={{ background: 'rgba(0,0,0,0.65)', color: 'white', zIndex: 10 }}
         >
           <X size={13} />
         </button>
       </div>
     ) : (
       <label
-        className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-        style={{ aspectRatio: '1/1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
+        className="flex flex-col items-center justify-center w-full rounded-2xl transition-all"
+        style={{
+          aspectRatio: '1/1',
+          border:      '1.5px dashed var(--border-color)',
+          background:  'var(--bg-card)',
+          cursor:      disabled ? 'not-allowed' : 'pointer',
+          opacity:     disabled ? 0.3 : 1,
+        }}
       >
-        <input type="file" accept="image/*" className="hidden" onChange={onChange} />
+        <input type="file" accept="image/*" className="hidden" onChange={onChange} disabled={disabled} />
         <ImagePlus size={20} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-        <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Upload</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+          {disabled ? 'Not supported' : 'Upload'}
+        </span>
       </label>
     )}
   </div>
 )
 
 export default function CreateVideoPage() {
-  const navigate                          = useNavigate()
+  const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
 
-  const [prompt,      setPrompt]      = useState('')
-  const [startFrame,  setStartFrame]  = useState(null)
-  const [endFrame,    setEndFrame]    = useState(null)
-  const [aspectRatio, setAspectRatio] = useState('9:16')
-  const [autoRatio,   setAutoRatio]   = useState(false)
-  const [duration,    setDuration]    = useState('5')
-  const [withSound,   setWithSound]   = useState(false)
-  const [model,       setModel]       = useState('')
-  const [models,      setModels]      = useState([])
+  const [prompt,        setPrompt]        = useState('')
+  const [startFrame,    setStartFrame]    = useState(null)
+  const [endFrame,      setEndFrame]      = useState(null)
+  const [aspectRatio,   setAspectRatio]   = useState('9:16')
+  const [autoRatio,     setAutoRatio]     = useState(false)
+  const [duration,      setDuration]      = useState('5')
+  const [withSound,     setWithSound]     = useState(false)
+  const [model,         setModel]         = useState('')
+  const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
-  const [submitting,  setSubmitting]  = useState(false)
+  const [submitting,    setSubmitting]    = useState(false)
 
-  const type          = deriveVideoType(startFrame, endFrame)
-  const selectedModel = models.find((m) => m.value === model)
-  const isI2V         = !!(startFrame || endFrame)
-  const supportsSound = !!selectedModel?.supports_sound
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // ✅ Reload models whenever the video type changes — filters by feature from DB
+  // rawType: based on raw frame state — drives which models to load
+  const rawType = deriveVideoType(startFrame, endFrame)
+
+  // Resolve selected model and its capabilities
+  const selectedModel = models.find((m) => m.value === model)
+  const caps          = getModelCaps(selectedModel)
+
+  // activeFrames: only frames the selected model can actually use
+  const activeStartFrame = startFrame && caps.supportsStartFrame                               ? startFrame : null
+  const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame)  ? endFrame   : null
+
+  // type used for API call and modeLabel — derived from active (capability-filtered) frames
+  const type  = deriveVideoType(activeStartFrame, activeEndFrame)
+  const isI2V = !!(activeStartFrame || activeEndFrame)
+
+  // Load models filtered by rawType so dropdown always shows relevant options
   const loadModels = useCallback(async (videoType) => {
     setModelsLoading(true)
     const features = FEATURE_MAP[videoType] || ['image_text_to_video']
@@ -182,29 +258,39 @@ export default function CreateVideoPage() {
       .order('sort_order')
     const list = data || []
     setModels(list)
-    // Auto-select first unlocked model in the new list
     const firstUnlocked = list.find((m) => !m.is_locked)
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
   }, [])
 
-  useEffect(() => { loadModels(type) }, [type, loadModels])
+  useEffect(() => { loadModels(rawType) }, [rawType, loadModels])
 
-  // Reset sound when switching to a model that doesn't support it
+  // Auto-correct duration and aspect ratio when model changes to one with different caps
   useEffect(() => {
-    if (!supportsSound) setWithSound(false)
-  }, [supportsSound])
+    if (!selectedModel) return
+    if (!caps.supportedDurations.includes(duration)) {
+      setDuration(caps.supportedDurations[0] || '5')
+    }
+    // Don't override aspect ratio if it was auto-detected from an uploaded frame
+    if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) {
+      setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
+    }
+  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset sound when model doesn't support it
+  useEffect(() => {
+    if (!caps.supportsSound) setWithSound(false)
+  }, [caps.supportsSound])
 
   const baseCredits = selectedModel
     ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
-  const creditCost = withSound && supportsSound
+  const creditCost = withSound && caps.supportsSound
     ? Math.ceil(baseCredits * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : baseCredits
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
-  const isLoading   = submitting
 
   const handleFrameUpload = (setter) => (e) => {
     const file = e.target.files?.[0]
@@ -236,25 +322,26 @@ export default function CreateVideoPage() {
 
     setSubmitting(true)
     try {
+      // Upload only active frames — inactive ones are never sent
       let startFrameUrl = null
-      if (startFrame?.file) {
-        const ext  = (startFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
+      if (activeStartFrame?.file) {
+        const ext  = (activeStartFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
         const { error: upErr } = await supabase.storage
           .from('generation-uploads')
-          .upload(path, startFrame.file, { upsert: false, cacheControl: '3600', contentType: startFrame.file.type })
+          .upload(path, activeStartFrame.file, { upsert: false, cacheControl: '3600', contentType: activeStartFrame.file.type })
         if (upErr) throw new Error('Start frame upload failed')
         const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
         startFrameUrl = publicUrl
       }
 
       let endFrameUrl = null
-      if (endFrame?.file) {
-        const ext  = (endFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
+      if (activeEndFrame?.file) {
+        const ext  = (activeEndFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
         const { error: upErr } = await supabase.storage
           .from('generation-uploads')
-          .upload(path, endFrame.file, { upsert: false, cacheControl: '3600', contentType: endFrame.file.type })
+          .upload(path, activeEndFrame.file, { upsert: false, cacheControl: '3600', contentType: activeEndFrame.file.type })
         if (upErr) throw new Error('End frame upload failed')
         const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
         endFrameUrl = publicUrl
@@ -345,12 +432,16 @@ export default function CreateVideoPage() {
                 value={startFrame}
                 onChange={handleFrameUpload(setStartFrame)}
                 onRemove={() => { setStartFrame(null); if (!endFrame) { setAutoRatio(false); setAspectRatio('9:16') } }}
+                disabled={!caps.supportsStartFrame && !startFrame}
+                inactive={!!startFrame && !caps.supportsStartFrame}
               />
               <FrameUpload
                 label="End Frame"
                 value={endFrame}
                 onChange={handleFrameUpload(setEndFrame)}
                 onRemove={() => { setEndFrame(null); if (!startFrame) { setAutoRatio(false); setAspectRatio('9:16') } }}
+                disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
+                inactive={!!endFrame && !(caps.supportsEndFrame || caps.supportsFrameToFrame)}
               />
             </div>
             {autoRatio && (
@@ -374,25 +465,23 @@ export default function CreateVideoPage() {
           <div>
             <SettingChips
               label="Aspect Ratio"
-              options={[
-                { label: '9:16', value: '9:16' },
-                { label: '16:9', value: '16:9' },
-                { label: '1:1',  value: '1:1'  },
-              ]}
+              options={ALL_ASPECT_RATIOS.map((o) => ({
+                ...o,
+                disabled: !caps.supportedAspectRatios.includes(o.value),
+              }))}
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
             <SettingChips
               label="Duration"
-              options={[
-                { label: '5s',  value: '5'  },
-                { label: '8s',  value: '8'  },
-                { label: '10s', value: '10' },
-              ]}
+              options={ALL_DURATIONS.map((o) => ({
+                ...o,
+                disabled: !caps.supportedDurations.includes(o.value),
+              }))}
               value={duration}
               onChange={setDuration}
             />
-            {supportsSound && (
+            {caps.supportsSound && (
               <SettingChips
                 label="Sound"
                 options={[
@@ -413,16 +502,16 @@ export default function CreateVideoPage() {
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
-            disabled={isLoading || !canAfford || promptEmpty || !selectedModel}
+            disabled={submitting || !canAfford || promptEmpty || !selectedModel}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: 'var(--text-primary)',
               color:      'var(--text-inverse)',
-              opacity:    (isLoading || !canAfford || promptEmpty || !selectedModel) ? 0.5 : 1,
+              opacity:    (submitting || !canAfford || promptEmpty || !selectedModel) ? 0.5 : 1,
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {isLoading ? 'Generating…' : `Generate · ${creditCost} cr`}
+            {submitting ? 'Generating…' : `Generate · ${creditCost} cr`}
           </button>
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
