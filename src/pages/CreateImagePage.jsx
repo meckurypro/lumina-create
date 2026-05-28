@@ -16,7 +16,6 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// SettingChips supports per-option disabled state
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -186,7 +185,7 @@ export default function CreateImagePage() {
     } catch { /* noop */ }
   }, [prompt])
 
-  // Load models
+  // Load all active image models on mount — stable, no dynamic dependencies
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -196,14 +195,14 @@ export default function CreateImagePage() {
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-    const list      = data || []
+    const list         = data || []
     setModels(list)
-    const unlocked  = list.filter((m) => !m.is_locked)
-    const preferred = profile?.preferred_model
-    const match     = preferred && unlocked.find((m) => m.value === preferred)
+    const unlocked     = list.filter((m) => !m.is_locked)
+    const preferred    = profile?.preferred_model
+    const match        = preferred && unlocked.find((m) => m.value === preferred)
     setModel((match || unlocked[0])?.value || '')
     setModelsLoading(false)
-  }, [profile?.preferred_model])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadModels() }, [loadModels])
 
@@ -232,7 +231,6 @@ export default function CreateImagePage() {
     if (!modelSupportsImage && referenceImg) handleRemoveImage()
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist preferred model when user changes it
   const handleModelChange = async (value) => {
     setModel(value)
     if (user && value && value !== profile?.preferred_model) {
@@ -482,7 +480,7 @@ export default function CreateImagePage() {
             rows={4}
           />
 
-          {/* Aspect ratio — disabled options come from model's supported_aspect_ratios */}
+          {/* Aspect ratio */}
           <div className="pt-1">
             <SettingChips
               label="Aspect Ratio"
