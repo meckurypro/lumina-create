@@ -20,6 +20,11 @@ import toast from 'react-hot-toast'
 const SLUG        = 'cinematic-transition'
 const DURATIONS   = ['3', '5', '8', '10']
 const ASPECT_OPTS = ['9:16', '16:9', '1:1']
+const MODEL_OPTS  = [
+  { id: 'kling_v3_pro',   label: 'Kling 3.0 Pro' },
+  { id: 'kling_v3_std',   label: 'Kling 3.0 Std' },
+  { id: 'kling_v2_6_pro', label: 'Kling 2.6 Pro' },
+]
 
 // ── Helpers ───────────────────────────────────────────────
 const uploadFile = async (file, userId) => {
@@ -378,6 +383,7 @@ const EditorView = ({
   transitions, slots, setSlots,
   aspectRatio, setAspectRatio,
   withSound, setWithSound,
+  model, setModel,
   creditCost, credits, isPromptIQ,
   onGenerate, onFrameUpload, submitting, onBack,
 }) => {
@@ -544,6 +550,26 @@ const EditorView = ({
               />
             </button>
           </div>
+
+          {/* Model */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Model</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {MODEL_OPTS.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setModel(m.id)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                  style={{
+                    background: model === m.id ? 'var(--brand)' : 'var(--bg-elevated)',
+                    color:      model === m.id ? '#fff'         : 'var(--text-muted)',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Frame + Transition chain */}
@@ -706,6 +732,7 @@ export default function CinematicTransitionPage() {
   const [slots,       setSlots]       = useState([{ transitionId: null, duration: '5' }])
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [withSound,   setWithSound]   = useState(false)
+  const [model,       setModel]       = useState('kling_v3_pro')
 
   const isPromptIQ = (isStaff || isAdmin) && dbTemplate?.visibility === 'promptiq'
 
@@ -734,12 +761,12 @@ export default function CinematicTransitionPage() {
     if (!proj) return
     try {
       await cinematicProjects.update(proj.id, {
-        draft_state: { frameUrls, slots: slotsVal, aspectRatio: ar, withSound: ws },
+        draft_state: { frameUrls, slots: slotsVal, aspectRatio: ar, withSound: ws, model },
       })
     } catch (e) {
       console.warn('Draft save failed:', e)
     }
-  }, [])
+  }, [model])
 
   const debouncedPersist = useDebounce(persistDraft, 800)
 
@@ -750,7 +777,7 @@ export default function CinematicTransitionPage() {
     if (view !== 'editor') return
     const frameUrls = frames.map(f => f?.url || null)
     debouncedPersist(frameUrls, slots, aspectRatio, withSound)
-  }, [frames, slots, aspectRatio, withSound]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frames, slots, aspectRatio, withSound, model]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Frame upload — uploads immediately, saves real URL ──
   const handleFrameUpload = useCallback(async (file, idx) => {
@@ -804,11 +831,13 @@ export default function CinematicTransitionPage() {
       setSlots(draft.slots?.length ? draft.slots : [{ transitionId: null, duration: '5' }])
       setAspectRatio(draft.aspectRatio || '9:16')
       setWithSound(draft.withSound ?? false)
+      setModel(draft.model || dbTemplate?.default_model || 'kling_v3_pro')
     } else {
       setFrames([null, null])
       setSlots([{ transitionId: null, duration: '5' }])
       setAspectRatio(project.aspect_ratio || '9:16')
       setWithSound(project.with_sound || false)
+      setModel(dbTemplate?.default_model || 'kling_v3_pro')
     }
 
     setActiveProject(project)
@@ -862,7 +891,7 @@ export default function CinematicTransitionPage() {
             generation_type:     'start_end_frame',
             status:              'pending',
             prompt:              transitionPrompt,
-            model:               dbTemplate.default_model || 'kling_2_5',
+            model:               model || dbTemplate.default_model || 'kling_v3_pro',
             aspect_ratio:        aspectRatio,
             duration:            slots[idx].duration,
             credits_charged:     isPromptIQ ? 0 : clipCreditCost,
@@ -919,6 +948,7 @@ export default function CinematicTransitionPage() {
         slots={slots}             setSlots={setSlots}
         aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
         withSound={withSound}     setWithSound={setWithSound}
+        model={model}             setModel={setModel}
         creditCost={dbTemplate?.credit_cost || 10}
         credits={credits}
         isPromptIQ={isPromptIQ}
