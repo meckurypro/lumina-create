@@ -23,9 +23,24 @@ interface ModelConfig {
 }
 
 const MODEL_CONFIGS: Record<string, ModelConfig> = {
-  kling_v3_pro:     { t2vEndpoint: 'kwaivgi/kling-v3.0-pro/image-to-video', i2vEndpoint: 'kwaivgi/kling-v3.0-pro/image-to-video' },
-  kling_v3_std:     { t2vEndpoint: 'kwaivgi/kling-v3.0-std/image-to-video', i2vEndpoint: 'kwaivgi/kling-v3.0-std/image-to-video' },
-  kling_v2_6_pro:   { t2vEndpoint: 'kwaivgi/kling-v2.6-pro/image-to-video', i2vEndpoint: 'kwaivgi/kling-v2.6-pro/image-to-video' },
+  kling_v3_pro: {
+    t2vEndpoint:      'kwaivgi/kling-v3.0-pro/image-to-video',
+    i2vEndpoint:      'kwaivgi/kling-v3.0-pro/image-to-video',
+    startEndEndpoint: 'kwaivgi/kling-v3.0-pro/image-to-video',
+    startEndKeys:     { start: 'image', end: 'end_image' },
+  },
+  kling_v3_std: {
+    t2vEndpoint:      'kwaivgi/kling-v3.0-std/image-to-video',
+    i2vEndpoint:      'kwaivgi/kling-v3.0-std/image-to-video',
+    startEndEndpoint: 'kwaivgi/kling-v3.0-std/image-to-video',
+    startEndKeys:     { start: 'image', end: 'end_image' },
+  },
+  kling_v2_6_pro: {
+    t2vEndpoint:      'kwaivgi/kling-v2.6-pro/image-to-video',
+    i2vEndpoint:      'kwaivgi/kling-v2.6-pro/image-to-video',
+    startEndEndpoint: 'kwaivgi/kling-v2.6-pro/image-to-video',
+    startEndKeys:     { start: 'image', end: 'end_image' },
+  },
   veo3_1_fast:      { t2vEndpoint: 'google/veo3.1-fast/text-to-video',      i2vEndpoint: 'google/veo3.1-fast/image-to-video' },
   veo3_1_lite:      { t2vEndpoint: 'google/veo3.1-lite/text-to-video',      i2vEndpoint: 'google/veo3.1-lite/image-to-video', startEndEndpoint: 'google/veo3.1-lite/image-to-video' },
   seedance_2_fast:  { t2vEndpoint: 'bytedance/seedance-v2.0/fast/image-to-video', i2vEndpoint: 'bytedance/seedance-v2.0/fast/image-to-video' },
@@ -193,6 +208,7 @@ async function runPipeline(generationId: string) {
 
     // 2. Build + submit
     const { endpoint, body } = buildRequestBody(gen, refined)
+    console.log('video-generate dispatch', { generationId, model: gen.model, mode: gen.generation_type, endpoint })
     const reqId = await submitWaveSpeed(endpoint, body)
     await admin.from('generations').update({ fal_request_id: reqId }).eq('id', generationId)
 
