@@ -10,7 +10,7 @@ import PromptIQPage from '@/pages/PromptIQPage'
 const NAV_ITEMS = [
   { path: '/feed',    icon: Home,     label: 'Home'    },
   { path: '/create',  icon: Sparkles, label: 'Create'  },
-  { path: '/media', icon: Film, label: 'Media' },
+  { path: '/media',   icon: Film,     label: 'Media'   },
   { path: '/profile', icon: User,     label: 'Profile' },
 ]
 
@@ -32,6 +32,16 @@ const DesktopNavItem = ({ path, label }) => {
   )
 }
 
+const DesktopPromptIQButton = ({ onPress }) => (
+  <button
+    onClick={onPress}
+    className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white brand-gradient"
+  >
+    <Zap size={14} />
+    PromptIQ
+  </button>
+)
+
 export const TopBar = ({
   title,
   showLogo    = false,
@@ -50,11 +60,11 @@ export const TopBar = ({
       <header
         className="fixed top-0 left-0 right-0 z-30 px-4 lg:px-8"
         style={{
-          background:         'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
-          borderBottom:       '1px solid var(--border-color)',
-          backdropFilter:     'blur(14px)',
+          background:           'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
+          borderBottom:         '1px solid var(--border-color)',
+          backdropFilter:       'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
-          height:             '56px',
+          height:               '56px',
         }}
       >
         <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between gap-3">
@@ -76,12 +86,12 @@ export const TopBar = ({
                 className="flex items-center gap-2"
                 aria-label="Home"
               >
-<img
-  src="/icon.png"
-  alt="Meckury AI"
-  className="h-7 w-auto rounded-lg object-contain logo-icon"
-/>
-<span className="text-lg font-extrabold">Meckury AI</span>
+                <img
+                  src="/icon.png"
+                  alt="Meckury AI"
+                  className="h-7 w-auto rounded-lg object-contain logo-icon"
+                />
+                <span className="text-lg font-extrabold">Meckury AI</span>
               </button>
             ) : null}
           </div>
@@ -95,19 +105,13 @@ export const TopBar = ({
             {NAV_ITEMS.map(({ path, label }) => (
               <DesktopNavItem key={path} path={path} label={label} />
             ))}
+            {isStaff && (
+              <DesktopPromptIQButton onPress={() => setShowPIQ(true)} />
+            )}
           </nav>
 
-          {/* ── Right: PromptIQ pill + credits ── */}
+          {/* ── Right: credits ── */}
           <div className="flex flex-1 items-center justify-end gap-2">
-            {isStaff && showLogo && (
-              <button
-                onClick={() => setShowPIQ(true)}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-white brand-gradient"
-              >
-                <Zap size={12} />
-                PromptIQ
-              </button>
-            )}
             {showCredits && <CreditBadge credits={credits} size="sm" />}
           </div>
 
