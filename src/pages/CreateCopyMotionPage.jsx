@@ -2,14 +2,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, Upload, Film, Image as ImageIcon, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Zap, X, Film, Image as ImageIcon, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 // ─── SessionStorage keys ──────────────────────────────────────────────────────
-const SS_PROMPT       = 'meckury_copymotion_prompt'
-const SS_SUBJECT_IMG  = 'meckury_copymotion_subject'
+const SS_PROMPT      = 'meckury_copymotion_prompt'
+const SS_SUBJECT_IMG = 'meckury_copymotion_subject'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDuration(secs) {
@@ -28,7 +29,6 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// Persist file → sessionStorage as base64
 const persistFile = (key, file) => {
   if (!file) { try { sessionStorage.removeItem(key) } catch { /* noop */ }; return }
   try {
@@ -54,7 +54,6 @@ const restoreFile = (key) => new Promise((resolve) => {
   } catch { resolve(null) }
 })
 
-// Extract duration from a video file
 const getVideoDuration = (file) => new Promise((resolve) => {
   const url = URL.createObjectURL(file)
   const vid = document.createElement('video')
@@ -93,7 +92,13 @@ const ModelDropdown = ({ models, value, onChange }) => {
               exit={{    opacity: 0, y: -6, scale: 0.97 }}
               transition={{ duration: 0.13 }}
               className="absolute right-0 top-9 z-50 w-60 rounded-2xl overflow-hidden"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', maxHeight: '60vh', overflowY: 'auto' }}
+              style={{
+                background:  'var(--bg-card)',
+                border:      '1px solid var(--border-color)',
+                boxShadow:   '0 8px 32px rgba(0,0,0,0.28)',
+                maxHeight:   '60vh',
+                overflowY:   'auto',
+              }}
             >
               <div className="py-1">
                 {unlocked.map((m) => (
@@ -158,28 +163,26 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Video upload zone ─────────────────────────────────────────────────────────
-const VideoUpload = ({ value, onChange, onRemove }) => {
-  const inputRef = useRef(null)
-
-  if (value) {
-    return (
-      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}>
-        <video
-          src={value.url}
-          className="w-full h-full object-cover"
-          muted
-          loop
-          autoPlay
-          playsInline
-        />
-        {/* Duration badge */}
-        {value.duration != null && (
+// ── Upload zone — shared shape for both video and image ───────────────────────
+const UploadZone = ({ value, onUpload, onRemove, accept, icon: Icon, title, subtitle, badge }) => (
+  <div className="flex flex-col gap-2">
+    {value ? (
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
+        {accept.startsWith('video') ? (
+          <video
+            src={value.url}
+            className="w-full h-full object-cover"
+            muted loop autoPlay playsInline
+          />
+        ) : (
+          <img src={value.url} alt={title} className="w-full h-full object-cover" />
+        )}
+        {badge && (
           <div
             className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-bold"
             style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
           >
-            {formatDuration(value.duration)}
+            {badge}
           </div>
         )}
         <button
@@ -190,51 +193,23 @@ const VideoUpload = ({ value, onChange, onRemove }) => {
           <X size={13} />
         </button>
       </div>
-    )
-  }
-
-  return (
-    <label
-      className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '16/9', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
-    >
-      <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={onChange} />
-      <Film size={24} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
-      <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Upload motion video</span>
-      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>MP4, MOV, WEBM · used as motion reference</span>
-    </label>
-  )
-}
-
-// ── Image upload zone ─────────────────────────────────────────────────────────
-const SubjectUpload = ({ value, onChange, onRemove }) => {
-  if (value) {
-    return (
-      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
-        <img src={value.url} alt="Subject" className="w-full h-full object-cover" />
-        <button
-          onClick={onRemove}
-          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
-        >
-          <X size={13} />
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <label
-      className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '1/1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
-    >
-      <input type="file" accept="image/*" className="hidden" onChange={onChange} />
-      <ImageIcon size={24} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
-      <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Upload subject</span>
-      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>The image that will move</span>
-    </label>
-  )
-}
+    ) : (
+      <label
+        className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
+        style={{
+          aspectRatio: '1/1',
+          border:      '1.5px dashed var(--border-color)',
+          background:  'var(--bg-card)',
+        }}
+      >
+        <input type="file" accept={accept} className="hidden" onChange={onUpload} />
+        <Icon size={24} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
+        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</span>
+        <span className="text-xs mt-1 text-center px-4" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
+      </label>
+    )}
+  </div>
+)
 
 // ── No-models empty state ─────────────────────────────────────────────────────
 const NoModelsState = () => (
@@ -260,21 +235,18 @@ const NoModelsState = () => (
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CreateCopyMotionPage() {
-  const navigate                                    = useNavigate()
-  const { user, profile, credits, refreshProfile }  = useAuth()
+  const navigate                                   = useNavigate()
+  const { user, profile, credits, refreshProfile } = useAuth()
 
-  // uploads
-  const [motionVideo,    setMotionVideo]    = useState(null)   // { file, url, duration }
-  const [subjectImage,   setSubjectImage]   = useState(null)   // { file, url }
-
-  // settings
-  const [prompt,         setPrompt]         = useState('')
-  const [aspectRatio,    setAspectRatio]    = useState('9:16')
-  const [withSound,      setWithSound]      = useState(false)
-  const [model,          setModel]          = useState('')
-  const [models,         setModels]         = useState([])
-  const [modelsLoading,  setModelsLoading]  = useState(true)
-  const [submitting,     setSubmitting]     = useState(false)
+  const [motionVideo,   setMotionVideo]   = useState(null)   // { file, url, duration }
+  const [subjectImage,  setSubjectImage]  = useState(null)   // { file, url }
+  const [prompt,        setPrompt]        = useState('')
+  const [aspectRatio,   setAspectRatio]   = useState('9:16')
+  const [withSound,     setWithSound]     = useState(false)
+  const [model,         setModel]         = useState('')
+  const [models,        setModels]        = useState([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [submitting,    setSubmitting]    = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -284,11 +256,9 @@ export default function CreateCopyMotionPage() {
       const p = sessionStorage.getItem(SS_PROMPT)
       if (p) setPrompt(p)
     } catch { /* noop */ }
-
     restoreFile(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
   }, [])
 
-  // ── Persist prompt ───────────────────────────────────────────────────────
   useEffect(() => {
     try {
       if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
@@ -296,7 +266,7 @@ export default function CreateCopyMotionPage() {
     } catch { /* noop */ }
   }, [prompt])
 
-  // ── Load models — only active motion_transfer models ────────────────────
+  // ── Load models ──────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -317,8 +287,7 @@ export default function CreateCopyMotionPage() {
   useEffect(() => { loadModels() }, [loadModels])
 
   // ── Selected model helpers ───────────────────────────────────────────────
-  const selectedModel = models.find((m) => m.value === model)
-
+  const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
 
@@ -333,8 +302,6 @@ export default function CreateCopyMotionPage() {
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Credit cost ──────────────────────────────────────────────────────────
-  // Motion transfer is always image-to-video style, so use credit_cost_i2i.
-  // Duration multiplier mirrors CreateVideoPage logic, based on detected video duration.
   const detectedDuration = motionVideo?.duration ?? null
 
   const durationMultiplier = (() => {
@@ -344,20 +311,21 @@ export default function CreateCopyMotionPage() {
     if (detectedDuration <= 10) return 2
     if (detectedDuration <= 12) return 2.4
     if (detectedDuration <= 15) return 3
-    if (detectedDuration <= 16) return 3.2
+    if (detectedDuration <= 20) return 4
+    if (detectedDuration <= 30) return 6
     return Math.ceil(detectedDuration / 5)
   })()
 
-  const baseCredits   = selectedModel?.credit_cost_i2i ?? 0
-  const baseWithDur   = baseCredits * durationMultiplier
-  const creditCost    = withSound && supportsSound
+  const baseCredits = selectedModel?.credit_cost_i2i ?? 0
+  const baseWithDur = baseCredits * durationMultiplier
+  const creditCost  = withSound && supportsSound
     ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : Math.ceil(baseWithDur)
 
-  const canAfford    = credits >= creditCost
-  const hasVideo     = !!motionVideo
-  const hasSubject   = !!subjectImage
-  const canGenerate  = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting
+  const canAfford   = credits >= creditCost
+  const hasVideo    = !!motionVideo
+  const hasSubject  = !!subjectImage
+  const canGenerate = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting
 
   // ── Upload handlers ──────────────────────────────────────────────────────
   const handleVideoUpload = async (e) => {
@@ -366,7 +334,7 @@ export default function CreateCopyMotionPage() {
     const url      = URL.createObjectURL(file)
     const duration = await getVideoDuration(file)
     setMotionVideo({ file, url, duration })
-    // auto-detect aspect ratio from first frame via video element
+    // auto-detect aspect ratio from video dimensions
     const vid = document.createElement('video')
     vid.preload = 'metadata'
     vid.onloadedmetadata = () => {
@@ -399,15 +367,14 @@ export default function CreateCopyMotionPage() {
 
   // ── Generate ─────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (!hasVideo)       return toast.error('Upload a motion reference video')
-    if (!hasSubject)     return toast.error('Upload a subject image')
-    if (!selectedModel)  return toast.error('Pick a model')
-    if (!canAfford)      return toast.error('Not enough credits')
-    if (!user)           return toast.error('Please sign in')
+    if (!hasVideo)      return toast.error('Upload a motion reference video')
+    if (!hasSubject)    return toast.error('Upload a subject image')
+    if (!selectedModel) return toast.error('Pick a model')
+    if (!canAfford)     return toast.error('Not enough credits')
+    if (!user)          return toast.error('Please sign in')
 
     setSubmitting(true)
     try {
-      // Upload motion video
       const vidExt  = (motionVideo.file.name.split('.').pop() || 'mp4').toLowerCase()
       const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
       const { error: vidErr } = await supabase.storage
@@ -416,7 +383,6 @@ export default function CreateCopyMotionPage() {
       if (vidErr) throw new Error('Video upload failed')
       const { data: { publicUrl: motionVideoUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(vidPath)
 
-      // Upload subject image
       const imgExt  = (subjectImage.file.name.split('.').pop() || 'jpg').toLowerCase()
       const imgPath = `${user.id}/${crypto.randomUUID()}.${imgExt}`
       const { error: imgErr } = await supabase.storage
@@ -425,9 +391,6 @@ export default function CreateCopyMotionPage() {
       if (imgErr) throw new Error('Image upload failed')
       const { data: { publicUrl: subjectImageUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(imgPath)
 
-      // Create generation row
-      // generation_type = 'motion_transfer'; start_frame_url = subject image;
-      // input_image_urls[0] = motion video url (reuse existing column)
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'motion_transfer',
@@ -439,27 +402,24 @@ export default function CreateCopyMotionPage() {
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
-        input_image_urls:       [motionVideoUrl],   // [0] = motion reference video
+        input_image_urls:       [motionVideoUrl],
         with_sound:             withSound,
         skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Invoke edge function
       supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('video-generate invoke error', e))
 
       refreshProfile()
       toast.success('Copy Motion is being generated. Check your Media page.', { duration: 4000 })
 
-      // Reset state
       handleRemoveVideo()
       handleRemoveSubject()
       setPrompt('')
@@ -531,13 +491,12 @@ export default function CreateCopyMotionPage() {
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
           {modelsLoading ? (
-            // Loading skeleton
             <div className="flex flex-col gap-4">
               {[...Array(3)].map((_, i) => (
                 <div
                   key={i}
                   className="w-full rounded-2xl animate-pulse"
-                  style={{ height: i === 0 ? 180 : 80, background: 'var(--bg-elevated)' }}
+                  style={{ height: i === 0 ? 200 : 80, background: 'var(--bg-elevated)' }}
                 />
               ))}
             </div>
@@ -553,63 +512,62 @@ export default function CreateCopyMotionPage() {
                 <Film size={16} style={{ color: 'var(--brand)', marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                   Upload a <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI will apply the
-                  video's motion to your image — camera moves, dance, gestures, etc.
+                  <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the
+                  motion from the video onto your image — dances, gestures, camera moves.
                 </p>
               </div>
 
-              {/* ── Uploads ── */}
-              <div className="flex flex-col gap-4">
-                <div>
-                  <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                    Motion Reference Video
-                  </p>
-                  <VideoUpload
-                    value={motionVideo}
-                    onChange={handleVideoUpload}
-                    onRemove={handleRemoveVideo}
-                  />
-                  {motionVideo?.duration != null && (
-                    <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
-                      Detected duration:{' '}
-                      <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(motionVideo.duration)}</strong>
-                      {' '}· credit cost adjusted accordingly
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                    Subject Image
-                  </p>
-                  <SubjectUpload
-                    value={subjectImage}
-                    onChange={handleSubjectUpload}
-                    onRemove={handleRemoveSubject}
-                  />
-                </div>
-              </div>
-
-              {/* ── Optional prompt ── */}
+              {/* ── Upload grid — both squares, side by side ── */}
               <div>
-                <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Prompt <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
+                <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Inputs
                 </p>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe any extra details about the scene or motion…"
-                  rows={3}
-                  maxLength={500}
-                  className="w-full rounded-2xl px-4 py-3 text-sm resize-none outline-none transition-all"
-                  style={{
-                    background:  'var(--bg-card)',
-                    border:      '1px solid var(--border-color)',
-                    color:       'var(--text-primary)',
-                    lineHeight:  1.6,
-                  }}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Motion Video</p>
+                    <UploadZone
+                      value={motionVideo}
+                      onUpload={handleVideoUpload}
+                      onRemove={handleRemoveVideo}
+                      accept="video/*"
+                      icon={Film}
+                      title="Upload video"
+                      subtitle="MP4 · MOV · WEBM"
+                      badge={motionVideo?.duration != null ? formatDuration(motionVideo.duration) : null}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Subject Image</p>
+                    <UploadZone
+                      value={subjectImage}
+                      onUpload={handleSubjectUpload}
+                      onRemove={handleRemoveSubject}
+                      accept="image/*"
+                      icon={ImageIcon}
+                      title="Upload image"
+                      subtitle="The image that moves"
+                      badge={null}
+                    />
+                  </div>
+                </div>
+                {motionVideo?.duration != null && (
+                  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                    Detected duration:{' '}
+                    <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(motionVideo.duration)}</strong>
+                    {' '}· credit cost adjusted accordingly
+                  </p>
+                )}
               </div>
+
+              {/* ── Prompt ── */}
+              <Textarea
+                label="Prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Optional — describe style, mood, or details to preserve…"
+                rows={3}
+                maxLength={500}
+              />
 
               {/* ── Settings ── */}
               <div>
@@ -641,7 +599,7 @@ export default function CreateCopyMotionPage() {
         </div>
       </div>
 
-      {/* Generate button — only show when models exist */}
+      {/* Generate button */}
       {models.length > 0 && (
         <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
           <div className="mx-auto w-full max-w-xl">
@@ -664,7 +622,7 @@ export default function CreateCopyMotionPage() {
                   : `Generate · ${creditCost} cr`}
             </button>
 
-            {/* Hint messages */}
+            {/* Contextual hint */}
             {!hasVideo && !hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Upload both a motion video and a subject image to continue
