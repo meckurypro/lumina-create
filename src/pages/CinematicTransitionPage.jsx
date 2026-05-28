@@ -1,9 +1,9 @@
 // src/pages/CinematicTransitionPage.jsx
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate }                 from 'react-router-dom'
-import { motion, AnimatePresence }     from 'framer-motion'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate }                               from 'react-router-dom'
+import { motion, AnimatePresence }                   from 'framer-motion'
 import { ArrowLeft, Plus, Trash2, ChevronDown, Zap, Film, Settings2 } from 'lucide-react'
-import { useAuth }                     from '@/context/AuthContext'
+import { useAuth }                                   from '@/context/AuthContext'
 import {
   supabase,
   templates      as templatesDb,
@@ -37,10 +37,6 @@ const uploadFile = async (file, userId) => {
   return supabase.storage.from('generation-uploads').getPublicUrl(data.path).data.publicUrl
 }
 
-/**
- * Reads the natural dimensions of a File/Blob and snaps to the
- * nearest supported aspect ratio: '9:16' | '16:9' | '1:1'
- */
 const detectAspectRatio = (file) =>
   new Promise((resolve) => {
     const img = new Image()
@@ -55,13 +51,17 @@ const detectAspectRatio = (file) =>
     img.src = URL.createObjectURL(file)
   })
 
+// Simple debounce hook
+const useDebounce = (fn, delay) => {
+  const timer = useRef(null)
+  return useCallback((...args) => {
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => fn(...args), delay)
+  }, [fn, delay])
+}
+
 // ── Sub-components ────────────────────────────────────────
 
-/**
- * FrameSlot — thumbnail or empty upload zone.
- * The ✕ clear button is kept here only for quickly clearing an
- * accidentally uploaded image. Swap + delete live in the frame row.
- */
 const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
   <div className="flex flex-col items-center gap-1.5">
     <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
@@ -72,6 +72,18 @@ const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
         className="relative rounded-2xl overflow-hidden"
         style={{ width: 80, height: 80, background: 'var(--bg-elevated)', flexShrink: 0 }}
       >
+        {/* Show uploading spinner over thumbnail */}
+        {frame.uploading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10"
+               style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+              className="w-5 h-5 rounded-full border-2"
+              style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#fff' }}
+            />
+          </div>
+        )}
         <img src={frame.url} alt={`frame ${index + 1}`} className="w-full h-full object-cover" />
         <button
           onClick={onRemove}
@@ -109,7 +121,12 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
       <button
         onClick={() => setOpen(true)}
         className="flex-1 flex items-center justify-between gap-1 px-3 py-2 rounded-xl text-xs font-semibold"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', minWidth: 0 }}
+        style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-color)',
+          color: 'var(--text-secondary)',
+          minWidth: 0,
+        }}
       >
         <span className="truncate">{selected?.name || 'Select transition'}</span>
         <ChevronDown size={12} style={{ flexShrink: 0 }} />
@@ -167,7 +184,8 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
                       }}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold truncate" style={{ color: isSelected ? 'var(--brand)' : 'var(--text-primary)' }}>
+                        <p className="text-sm font-bold truncate"
+                           style={{ color: isSelected ? 'var(--brand)' : 'var(--text-primary)' }}>
                           {t.name}
                         </p>
                       </div>
@@ -177,7 +195,8 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
                           style={{ background: 'var(--brand)' }}
                         >
                           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5"
+                                  strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </div>
                       )}
@@ -236,7 +255,8 @@ const ProjectList = ({ projects, onNew, onOpen, loading }) => (
       </div>
     ) : projects.length === 0 ? (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: 'var(--bg-elevated)' }}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
+             style={{ background: 'var(--bg-elevated)' }}>
           <Film size={24} style={{ color: 'var(--text-muted)' }} />
         </div>
         <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No projects yet</p>
@@ -263,7 +283,9 @@ const ProjectList = ({ projects, onNew, onOpen, loading }) => (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {p.status === 'draft' ? 'Draft' : p.status === 'processing' ? 'Processing…' : 'Completed'}
+                {p.status === 'draft'      ? 'Draft'
+                : p.status === 'processing' ? 'Processing…'
+                : 'Completed'}
                 {' · '}
                 {new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
               </p>
@@ -271,10 +293,10 @@ const ProjectList = ({ projects, onNew, onOpen, loading }) => (
             <div
               className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
               style={{
-                background: p.status === 'completed' ? 'rgba(16,185,129,0.12)'
+                background: p.status === 'completed'  ? 'rgba(16,185,129,0.12)'
                           : p.status === 'processing' ? 'rgba(234,179,8,0.12)'
                           : 'var(--bg-elevated)',
-                color:      p.status === 'completed' ? '#10b981'
+                color:      p.status === 'completed'  ? '#10b981'
                           : p.status === 'processing' ? '#eab308'
                           : 'var(--text-muted)',
               }}
@@ -320,7 +342,11 @@ const NewProjectModal = ({ onConfirm, onClose, loading }) => {
           onKeyDown={e => e.key === 'Enter' && name.trim() && onConfirm(name.trim())}
           placeholder="Project name…"
           className="w-full rounded-2xl px-4 py-3 text-sm font-semibold outline-none mb-4"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+          style={{
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-color)',
+          }}
         />
         <button
           onClick={() => name.trim() && onConfirm(name.trim())}
@@ -337,7 +363,8 @@ const NewProjectModal = ({ onConfirm, onClose, loading }) => {
 
 // ── Swap Icon SVG ─────────────────────────────────────────
 const SwapIcon = ({ size = 14, color = 'var(--text-muted)' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 2v6h-6" />
     <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
     <path d="M3 22v-6h6" />
@@ -352,41 +379,28 @@ const EditorView = ({
   aspectRatio, setAspectRatio,
   withSound, setWithSound,
   creditCost, credits, isPromptIQ,
-  onGenerate, submitting, onBack,
+  onGenerate, onFrameUpload, submitting, onBack,
 }) => {
   const firstFrameUploaded = !!frames[0]?.url
   const canAfford    = isPromptIQ || credits >= creditCost * slots.length
   const clipCount    = frames.length - 1
+  const anyUploading = frames.some(f => f?.uploading)
   const canGenerate  = frames.length >= 2
     && frames.every(f => f?.url)
     && slots.every(s => s.transitionId && s.duration)
     && canAfford
     && !submitting
+    && !anyUploading
 
   const addFrame = () => {
-    const newFrames = [...frames, null]
-    setFrames(newFrames)
+    setFrames(prev => [...prev, null])
     setSlots(prev => [...prev, { transitionId: prev[0]?.transitionId || null, duration: '5' }])
   }
 
   const removeFrame = (idx) => {
     if (frames.length <= 2) return
-    const newFrames = frames.filter((_, i) => i !== idx)
-    const newSlots  = slots.filter((_, i) => i !== idx - 1 || idx === 0)
-      .slice(0, newFrames.length - 1)
-    setFrames(newFrames)
-    setSlots(newSlots.length ? newSlots : [{ transitionId: null, duration: '5' }])
-  }
-
-  // Upload handler — detects aspect ratio from frame 0
-  const handleFrameUpload = async (file, idx) => {
-    const url = URL.createObjectURL(file)
-    setFrames(prev => prev.map((f, i) => i === idx ? { file, url } : f))
-
-    if (idx === 0) {
-      const detected = await detectAspectRatio(file)
-      setAspectRatio(detected)
-    }
+    setFrames(prev => prev.filter((_, i) => i !== idx))
+    setSlots(prev => prev.filter((_, i) => i !== idx - 1 || idx === 0).slice(0, frames.length - 2))
   }
 
   return (
@@ -401,7 +415,11 @@ const EditorView = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
+            style={{
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              background: 'rgba(0,0,0,0.5)',
+            }}
           >
             <motion.div
               animate={{ rotate: 360 }}
@@ -430,7 +448,9 @@ const EditorView = ({
             {project.name}
           </h2>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {clipCount > 0 ? `${clipCount} clip${clipCount !== 1 ? 's' : ''}` : 'Add frames below'}
+            {anyUploading ? 'Saving frames…'
+              : clipCount > 0 ? `${clipCount} clip${clipCount !== 1 ? 's' : ''}`
+              : 'Add frames below'}
           </p>
         </div>
         {isPromptIQ ? (
@@ -454,11 +474,16 @@ const EditorView = ({
         style={{ paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}
       >
 
-        {/* Settings row */}
-        <div className="flex flex-col gap-3 p-4 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+        {/* Settings */}
+        <div
+          className="flex flex-col gap-3 p-4 rounded-2xl"
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+        >
           <div className="flex items-center gap-2 mb-1">
             <Settings2 size={14} style={{ color: 'var(--text-muted)' }} />
-            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Settings</p>
+            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Settings
+            </p>
           </div>
 
           {/* Aspect ratio */}
@@ -523,28 +548,37 @@ const EditorView = ({
 
         {/* Frame + Transition chain */}
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Frames & Transitions</p>
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+            Frames & Transitions
+          </p>
 
           {frames.map((frame, idx) => (
             <div key={idx}>
-              {/* Frame slot */}
-              <div className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+              {/* Frame row */}
+              <div
+                className="flex items-center gap-3 p-3 rounded-2xl"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+              >
                 <FrameSlot
                   index={idx}
                   frame={frame}
-                  onUpload={(file) => handleFrameUpload(file, idx)}
+                  onUpload={(file) => onFrameUpload(file, idx)}
                   onRemove={() => setFrames(prev => prev.map((f, i) => i === idx ? null : f))}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Frame {idx + 1}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Frame {idx + 1}
+                  </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {frame?.url ? 'Uploaded' : idx === 0 ? 'Sets aspect ratio' : 'Tap to upload image'}
+                    {frame?.uploading ? 'Uploading…'
+                      : frame?.url   ? 'Saved'
+                      : idx === 0    ? 'Sets aspect ratio'
+                      : 'Tap to upload image'}
                   </p>
                 </div>
 
-                {/* Action buttons — swap always visible, delete only on frame 3+ */}
+                {/* Swap / delete */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {/* Swap / reupload */}
                   <label
                     className="w-8 h-8 flex items-center justify-center rounded-xl cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.06)' }}
@@ -554,13 +588,12 @@ const EditorView = ({
                       type="file" accept="image/*" className="hidden"
                       onChange={(e) => {
                         const f = e.target.files?.[0]
-                        if (f) handleFrameUpload(f, idx)
+                        if (f) onFrameUpload(f, idx)
                       }}
                     />
                     <SwapIcon />
                   </label>
 
-                  {/* Delete — frame 3 and above only */}
                   {idx > 1 && (
                     <button
                       onClick={() => removeFrame(idx)}
@@ -573,7 +606,7 @@ const EditorView = ({
                 </div>
               </div>
 
-              {/* Transition row between this frame and next */}
+              {/* Transition row */}
               {idx < frames.length - 1 && (
                 <div
                   className="flex items-center gap-2 px-3 py-2 mx-4 rounded-xl my-1"
@@ -583,31 +616,38 @@ const EditorView = ({
                   <TransitionPicker
                     value={slots[idx]?.transitionId}
                     transitions={transitions}
-                    onChange={(id) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, transitionId: id } : s))}
+                    onChange={(id) =>
+                      setSlots(prev => prev.map((s, i) => i === idx ? { ...s, transitionId: id } : s))
+                    }
                   />
                   <DurationPicker
                     value={slots[idx]?.duration || '5'}
-                    onChange={(d) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, duration: d } : s))}
+                    onChange={(d) =>
+                      setSlots(prev => prev.map((s, i) => i === idx ? { ...s, duration: d } : s))
+                    }
                   />
                 </div>
               )}
             </div>
           ))}
 
-          {/* Add frame button */}
+          {/* Add frame */}
           <button
             onClick={addFrame}
             className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl text-sm font-bold transition-all"
-            style={{ border: '1.5px dashed var(--border-color)', color: 'var(--text-muted)', background: 'transparent' }}
+            style={{
+              border:     '1.5px dashed var(--border-color)',
+              color:      'var(--text-muted)',
+              background: 'transparent',
+            }}
           >
             <Plus size={16} />
             Add Frame
           </button>
         </div>
-
       </div>
 
-      {/* Generate button */}
+      {/* Generate bar */}
       <div
         className="fixed left-0 right-0 px-4 pt-3"
         style={{
@@ -629,8 +669,9 @@ const EditorView = ({
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {submitting ? 'Firing clips…'
-              : isPromptIQ ? `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  Free`
+            {submitting       ? 'Firing clips…'
+              : anyUploading  ? 'Saving frames…'
+              : isPromptIQ    ? `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  Free`
               : `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  ${creditCost * clipCount} cr`}
           </button>
           {!canAfford && (
@@ -647,7 +688,7 @@ const EditorView = ({
 
 // ── Main Page ─────────────────────────────────────────────
 export default function CinematicTransitionPage() {
-  const navigate              = useNavigate()
+  const navigate = useNavigate()
   const { user, credits, profile, isStaff, isAdmin, refreshProfile } = useAuth()
 
   const [view,          setView]          = useState('list')
@@ -668,7 +709,7 @@ export default function CinematicTransitionPage() {
 
   const isPromptIQ = (isStaff || isAdmin) && dbTemplate?.visibility === 'promptiq'
 
-  // Load template + transitions + projects
+  // ── Load template + transitions + projects ──────────────
   useEffect(() => {
     if (!user) return
     ;(async () => {
@@ -684,6 +725,52 @@ export default function CinematicTransitionPage() {
     })()
   }, [user])
 
+  // ── Auto-save draft (debounced, fires whenever editor state changes) ──
+  const activeProjectRef = useRef(null)
+  useEffect(() => { activeProjectRef.current = activeProject }, [activeProject])
+
+  const persistDraft = useCallback(async (frameUrls, slotsVal, ar, ws) => {
+    const proj = activeProjectRef.current
+    if (!proj) return
+    try {
+      await cinematicProjects.update(proj.id, {
+        draft_state: { frameUrls, slots: slotsVal, aspectRatio: ar, withSound: ws },
+      })
+    } catch (e) {
+      console.warn('Draft save failed:', e)
+    }
+  }, [])
+
+  const debouncedPersist = useDebounce(persistDraft, 800)
+
+  // Trigger auto-save whenever editor values change (skip on first mount)
+  const isMounted = useRef(false)
+  useEffect(() => {
+    if (!isMounted.current) { isMounted.current = true; return }
+    if (view !== 'editor') return
+    const frameUrls = frames.map(f => f?.url || null)
+    debouncedPersist(frameUrls, slots, aspectRatio, withSound)
+  }, [frames, slots, aspectRatio, withSound]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Frame upload — uploads immediately, saves real URL ──
+  const handleFrameUpload = useCallback(async (file, idx) => {
+    // 1. Show instant preview + uploading spinner
+    const blobUrl = URL.createObjectURL(file)
+    setFrames(prev => prev.map((f, i) => i === idx ? { url: blobUrl, uploading: true } : f))
+
+    // 2. Detect aspect ratio from frame 0 while upload runs in parallel
+    const [realUrl, detectedAR] = await Promise.all([
+      uploadFile(file, user.id),
+      idx === 0 ? detectAspectRatio(file) : Promise.resolve(null),
+    ])
+
+    // 3. Replace blob URL with permanent Supabase URL
+    URL.revokeObjectURL(blobUrl)
+    setFrames(prev => prev.map((f, i) => i === idx ? { url: realUrl, uploading: false } : f))
+    if (detectedAR) setAspectRatio(detectedAR)
+  }, [user])
+
+  // ── New project ─────────────────────────────────────────
   const handleNewProject = async (name) => {
     if (!user || !dbTemplate) return
     setCreatingProj(true)
@@ -698,13 +785,8 @@ export default function CinematicTransitionPage() {
       })
       if (error || !data) throw new Error(error?.message || 'Failed to create project')
       setProjects(prev => [data, ...prev])
-      setActiveProject(data)
-      setFrames([null, null])
-      setSlots([{ transitionId: null, duration: '5' }])
-      setAspectRatio('9:16')
-      setWithSound(false)
+      openEditor(data)
       setShowNewModal(false)
-      setView('editor')
     } catch (err) {
       toast.error(err.message)
     } finally {
@@ -712,40 +794,45 @@ export default function CinematicTransitionPage() {
     }
   }
 
-  const handleOpenProject = (project) => {
+  // ── Open project — restore draft state if present ───────
+  const openEditor = (project) => {
+    isMounted.current = false // reset so auto-save doesn't fire on restore
+    const draft = project.draft_state
+
+    if (draft?.frameUrls?.length >= 2) {
+      setFrames(draft.frameUrls.map(url => url ? { url, uploading: false } : null))
+      setSlots(draft.slots?.length ? draft.slots : [{ transitionId: null, duration: '5' }])
+      setAspectRatio(draft.aspectRatio || '9:16')
+      setWithSound(draft.withSound ?? false)
+    } else {
+      setFrames([null, null])
+      setSlots([{ transitionId: null, duration: '5' }])
+      setAspectRatio(project.aspect_ratio || '9:16')
+      setWithSound(project.with_sound || false)
+    }
+
     setActiveProject(project)
-    setFrames([null, null])
-    setSlots([{ transitionId: null, duration: '5' }])
-    setAspectRatio(project.aspect_ratio || '9:16')
-    setWithSound(project.with_sound || false)
     setView('editor')
   }
 
+  // ── Generate ────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!activeProject || !user || !dbTemplate) return
     const clipCount = frames.length - 1
     setSubmitting(true)
 
     try {
-      // 1. Upload all frames
-      const uploadedUrls = []
-      for (const frame of frames) {
-        if (!frame?.file) {
-          uploadedUrls.push(frame?.url || null)
-          continue
-        }
-        const url = await uploadFile(frame.file, user.id)
-        uploadedUrls.push(url)
-      }
+      // All frames are already uploaded — just grab the URLs
+      const uploadedUrls = frames.map(f => f?.url || null)
 
-      // 2. Update project status + settings
+      // Update project status + settings
       await cinematicProjects.update(activeProject.id, {
         status:       'processing',
         aspect_ratio: aspectRatio,
         with_sound:   withSound,
       })
 
-      // 3. Upsert clips
+      // Upsert clips
       const clipRows = slots.map((slot, idx) => ({
         project_id:      activeProject.id,
         slot_index:      idx,
@@ -758,13 +845,13 @@ export default function CinematicTransitionPage() {
       const { data: savedClips, error: clipErr } = await cinematicClips.upsertForProject(clipRows)
       if (clipErr || !savedClips) throw new Error('Failed to save clips')
 
-      // 4. Fetch transition prompts
+      // Transition prompt map
       const transitionMap = {}
       transitions.forEach(t => { transitionMap[t.id] = t.prompt_text })
 
-      // 5. Fire all clips in parallel
       const clipCreditCost = dbTemplate.credit_cost || 10
 
+      // Fire all clips in parallel
       await Promise.all(
         savedClips.map(async (clip, idx) => {
           const transitionPrompt = transitionMap[slots[idx].transitionId] || ''
@@ -812,10 +899,7 @@ export default function CinematicTransitionPage() {
 
       refreshProfile()
       toast.success(`${clipCount} clip${clipCount !== 1 ? 's' : ''} fired! Redirecting…`, { duration: 3000 })
-
-      setTimeout(() => {
-        navigate(`/cinematic/${activeProject.id}`)
-      }, 800)
+      setTimeout(() => navigate(`/cinematic/${activeProject.id}`), 800)
 
     } catch (err) {
       toast.error(err.message || 'Generation failed')
@@ -825,6 +909,7 @@ export default function CinematicTransitionPage() {
     }
   }
 
+  // ── Render ───────────────────────────────────────────────
   if (view === 'editor' && activeProject) {
     return (
       <EditorView
@@ -838,6 +923,7 @@ export default function CinematicTransitionPage() {
         credits={credits}
         isPromptIQ={isPromptIQ}
         onGenerate={handleGenerate}
+        onFrameUpload={handleFrameUpload}
         submitting={submitting}
         onBack={() => setView('list')}
       />
@@ -852,7 +938,7 @@ export default function CinematicTransitionPage() {
           projects={projects}
           loading={loadingProj}
           onNew={() => setShowNewModal(true)}
-          onOpen={handleOpenProject}
+          onOpen={openEditor}
         />
       </PageWrapper>
 
