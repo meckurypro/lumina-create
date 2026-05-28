@@ -322,12 +322,14 @@ export default function CreateVideoPage() {
     if (!caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound])
 
-  const baseCredits = selectedModel
+const baseCredits = selectedModel
     ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
-  const creditCost = withSound && caps.supportsSound
-    ? Math.ceil(baseCredits * (selectedModel?.sound_cost_multiplier ?? 1.5))
-    : baseCredits
+const durationMultiplier = duration === '10' ? 2 : 1
+const baseWithDuration = baseCredits * durationMultiplier
+const creditCost = withSound && caps.supportsSound
+    ? Math.ceil(baseWithDuration * (selectedModel?.sound_cost_multiplier ?? 1.5))
+    : baseWithDuration
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
