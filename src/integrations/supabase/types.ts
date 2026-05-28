@@ -46,6 +46,200 @@ export type Database = {
           },
         ]
       }
+      cinematic_clip_versions: {
+        Row: {
+          clip_id: string
+          created_at: string | null
+          generation_id: string
+          id: string
+          is_active: boolean
+          version_number: number
+        }
+        Insert: {
+          clip_id: string
+          created_at?: string | null
+          generation_id: string
+          id?: string
+          is_active?: boolean
+          version_number?: number
+        }
+        Update: {
+          clip_id?: string
+          created_at?: string | null
+          generation_id?: string
+          id?: string
+          is_active?: boolean
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cinematic_clip_versions_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "cinematic_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cinematic_clip_versions_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cinematic_clips: {
+        Row: {
+          created_at: string | null
+          duration: string
+          end_frame_url: string | null
+          id: string
+          project_id: string
+          slot_index: number
+          start_frame_url: string | null
+          status: string
+          transition_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          duration?: string
+          end_frame_url?: string | null
+          id?: string
+          project_id: string
+          slot_index: number
+          start_frame_url?: string | null
+          status?: string
+          transition_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          duration?: string
+          end_frame_url?: string | null
+          id?: string
+          project_id?: string
+          slot_index?: number
+          start_frame_url?: string | null
+          status?: string
+          transition_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cinematic_clips_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "cinematic_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cinematic_clips_transition_id_fkey"
+            columns: ["transition_id"]
+            isOneToOne: false
+            referencedRelation: "cinematic_transitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cinematic_projects: {
+        Row: {
+          aspect_ratio: string
+          created_at: string | null
+          draft_state: Json | null
+          id: string
+          name: string
+          status: string
+          template_id: string | null
+          updated_at: string | null
+          user_id: string
+          with_sound: boolean
+        }
+        Insert: {
+          aspect_ratio?: string
+          created_at?: string | null
+          draft_state?: Json | null
+          id?: string
+          name: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string | null
+          user_id: string
+          with_sound?: boolean
+        }
+        Update: {
+          aspect_ratio?: string
+          created_at?: string | null
+          draft_state?: Json | null
+          id?: string
+          name?: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+          with_sound?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cinematic_projects_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cinematic_projects_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cinematic_transitions: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          prompt_text: string
+          sort_order: number | null
+          template_slug: string | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          prompt_text: string
+          sort_order?: number | null
+          template_slug?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          prompt_text?: string
+          sort_order?: number | null
+          template_slug?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cinematic_transitions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_packages: {
         Row: {
           bonus_credits: number | null
@@ -319,12 +513,14 @@ export type Database = {
           output_url: string | null
           pool_user_id: string | null
           prompt: string | null
+          skip_prompt_refinement: boolean
           start_frame_url: string | null
           status: Database["public"]["Enums"]["generation_status"] | null
           template_id: string | null
           title: string | null
           updated_at: string | null
           user_id: string
+          with_sound: boolean
         }
         Insert: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
@@ -347,12 +543,14 @@ export type Database = {
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
           template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id: string
+          with_sound?: boolean
         }
         Update: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
@@ -375,12 +573,14 @@ export type Database = {
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
           template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string
+          with_sound?: boolean
         }
         Relationships: [
           {
@@ -417,8 +617,10 @@ export type Database = {
           is_locked: boolean | null
           label: string
           sort_order: number | null
+          sound_cost_multiplier: number
           sublabel: string | null
           supports_image: boolean
+          supports_sound: boolean
           type: string
           updated_at: string | null
           value: string
@@ -433,8 +635,10 @@ export type Database = {
           is_locked?: boolean | null
           label: string
           sort_order?: number | null
+          sound_cost_multiplier?: number
           sublabel?: string | null
           supports_image?: boolean
+          supports_sound?: boolean
           type: string
           updated_at?: string | null
           value: string
@@ -449,8 +653,10 @@ export type Database = {
           is_locked?: boolean | null
           label?: string
           sort_order?: number | null
+          sound_cost_multiplier?: number
           sublabel?: string | null
           supports_image?: boolean
+          supports_sound?: boolean
           type?: string
           updated_at?: string | null
           value?: string
@@ -503,6 +709,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          ai_prompt_refinement: boolean
           avatar_url: string | null
           bio: string | null
           created_at: string | null
@@ -536,6 +743,7 @@ export type Database = {
           username: string
         }
         Insert: {
+          ai_prompt_refinement?: boolean
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
@@ -569,6 +777,7 @@ export type Database = {
           username: string
         }
         Update: {
+          ai_prompt_refinement?: boolean
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
