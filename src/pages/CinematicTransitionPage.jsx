@@ -750,7 +750,7 @@ export default function CinematicTransitionPage() {
     if (view !== 'editor') return
     const frameUrls = frames.map(f => f?.url || null)
     debouncedPersist(frameUrls, slots, aspectRatio, withSound)
-  }, [frames, slots, aspectRatio, withSound]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frames, slots, aspectRatio, withSound, model]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Frame upload — uploads immediately, saves real URL ──
   const handleFrameUpload = useCallback(async (file, idx) => {
