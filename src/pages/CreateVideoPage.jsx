@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-// All possible duration and aspect ratio options — model caps filter which are enabled
 const ALL_DURATIONS = [
   { label: '5s',  value: '5'  },
   { label: '8s',  value: '8'  },
@@ -20,15 +19,6 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// Maps video type → DB feature values for model loading
-const FEATURE_MAP = {
-  text_to_video:   ['text_to_video', 'image_text_to_video'],
-  image_to_video:  ['image_to_video', 'image_text_to_video'],
-  end_frame_text:  ['frame_to_frame'],
-  start_end_frame: ['frame_to_frame'],
-}
-
-// Derive model capabilities with safe fallbacks for old/null DB rows
 function getModelCaps(model) {
   if (!model) return {
     supportsStartFrame:    true,
@@ -48,7 +38,6 @@ function getModelCaps(model) {
   }
 }
 
-// SettingChips supports per-option disabled state
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -156,7 +145,6 @@ function deriveVideoType(startFrame, endFrame) {
   return 'text_to_video'
 }
 
-// inactive: frame is uploaded but model can't use it — blurred overlay, still removable
 const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inactive = false }) => (
   <div className="flex flex-col gap-2">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
@@ -181,7 +169,6 @@ const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inact
             </p>
           </div>
         )}
-        {/* Remove button always accessible even when inactive */}
         <button
           onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
@@ -229,32 +216,24 @@ export default function CreateVideoPage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // rawType: based on raw frame state — drives which models to load
-  const rawType = deriveVideoType(startFrame, endFrame)
-
-  // Resolve selected model and its capabilities
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  // activeFrames: only frames the selected model can actually use
-  const activeStartFrame = startFrame && caps.supportsStartFrame                               ? startFrame : null
-  const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame)  ? endFrame   : null
+  const activeStartFrame = startFrame && caps.supportsStartFrame                              ? startFrame : null
+  const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame) ? endFrame   : null
 
-  // type used for API call and modeLabel — derived from active (capability-filtered) frames
   const type  = deriveVideoType(activeStartFrame, activeEndFrame)
   const isI2V = !!(activeStartFrame || activeEndFrame)
 
-  // Load models filtered by rawType so dropdown always shows relevant options
-  const loadModels = useCallback(async (videoType) => {
+  // Load all active video models on mount — model caps drive UI, not frame state
+  const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const features = FEATURE_MAP[videoType] || ['image_text_to_video']
     const { data } = await supabase
       .from('models')
       .select('*')
       .eq('type', 'video')
       .eq('is_active', true)
       .eq('is_user_facing', true)
-      .in('feature', features)
       .order('sort_order')
     const list = data || []
     setModels(list)
@@ -263,15 +242,14 @@ export default function CreateVideoPage() {
     setModelsLoading(false)
   }, [])
 
-  useEffect(() => { loadModels(rawType) }, [rawType, loadModels])
+  useEffect(() => { loadModels() }, [loadModels])
 
-  // Auto-correct duration and aspect ratio when model changes to one with different caps
+  // Auto-correct duration when model changes
   useEffect(() => {
     if (!selectedModel) return
     if (!caps.supportedDurations.includes(duration)) {
       setDuration(caps.supportedDurations[0] || '5')
     }
-    // Don't override aspect ratio if it was auto-detected from an uploaded frame
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
     }
@@ -322,7 +300,6 @@ export default function CreateVideoPage() {
 
     setSubmitting(true)
     try {
-      // Upload only active frames — inactive ones are never sent
       let startFrameUrl = null
       if (activeStartFrame?.file) {
         const ext  = (activeStartFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
