@@ -732,6 +732,7 @@ export default function CinematicTransitionPage() {
   const [slots,       setSlots]       = useState([{ transitionId: null, duration: '5' }])
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [withSound,   setWithSound]   = useState(false)
+  const [model,       setModel]       = useState('kling_v3_pro')
 
   const isPromptIQ = (isStaff || isAdmin) && dbTemplate?.visibility === 'promptiq'
 
