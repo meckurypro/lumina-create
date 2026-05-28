@@ -3,22 +3,24 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 
 // Pages
-import LandingPage         from '@/pages/LandingPage'
-import AuthPage            from '@/pages/AuthPage'
-import ResetPasswordPage   from '@/pages/ResetPasswordPage'
-import FeedPage            from '@/pages/FeedPage'
-import CreatePage          from '@/pages/CreatePage'
-import CreateImagePage     from '@/pages/CreateImagePage'
-import CreateVideoPage     from '@/pages/CreateVideoPage'
-import GeneratePage        from '@/pages/GeneratePage'
-import ResultPage          from '@/pages/ResultPage'
-import MediaPage           from '@/pages/MediaPage'
-import ProfilePage         from '@/pages/ProfilePage'
-import SettingsPage        from '@/pages/SettingsPage'
-import AdminPage           from '@/pages/AdminPage'
-import TemplateRunnerPage  from '@/pages/TemplateRunnerPage'
-import AuthCallbackPage    from '@/pages/AuthCallbackPage'
-import CommunityFeedPage   from '@/pages/CommunityFeedPage'
+import LandingPage              from '@/pages/LandingPage'
+import AuthPage                 from '@/pages/AuthPage'
+import ResetPasswordPage        from '@/pages/ResetPasswordPage'
+import FeedPage                 from '@/pages/FeedPage'
+import CreatePage               from '@/pages/CreatePage'
+import CreateImagePage          from '@/pages/CreateImagePage'
+import CreateVideoPage          from '@/pages/CreateVideoPage'
+import CinematicTransitionPage  from '@/pages/CinematicTransitionPage'
+import CinematicResultPage      from '@/pages/CinematicResultPage'
+import GeneratePage             from '@/pages/GeneratePage'
+import ResultPage               from '@/pages/ResultPage'
+import MediaPage                from '@/pages/MediaPage'
+import ProfilePage              from '@/pages/ProfilePage'
+import SettingsPage             from '@/pages/SettingsPage'
+import AdminPage                from '@/pages/AdminPage'
+import TemplateRunnerPage       from '@/pages/TemplateRunnerPage'
+import AuthCallbackPage         from '@/pages/AuthCallbackPage'
+import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -75,14 +77,22 @@ export default function App() {
             element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
-         <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
-<Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
-          <Route path="/create"  element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
+          <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
+          <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
+
+          <Route path="/create"       element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
           <Route path="/create/image" element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
           <Route path="/create/video" element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+
+          {/* Cinematic routes — must come BEFORE the generic /:templateSlug catch-all */}
+          <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
+          <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
+
+          {/* Generic template runner — keep AFTER all specific /create/* routes */}
           <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
-          <Route path="/generate" element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
-          <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
+
+          <Route path="/generate"    element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
+          <Route path="/result/:id"  element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
 
           {/* Media (was History) */}
           <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
