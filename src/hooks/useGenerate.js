@@ -52,6 +52,7 @@ export const useGenerate = () => {
     model         = 'auto',
     shouldEnhance = true,
     isStaffGeneration = false,  // true → deduct from pool, not user credits
+    isPromptIQ        = false,  // true → PromptIQ template, pool deduction + zero user charge
   }) => {
     if (!user) { toast.error('Please sign in to generate'); return null }
 
@@ -59,6 +60,9 @@ export const useGenerate = () => {
       profile?.is_staff === true     ||
       profile?.role === 'staff'      ||
       profile?.role === 'admin'
+
+    // PromptIQ requires staff — hard guard
+    const usePromptIQPool = isPromptIQ && isStaff
 
     // Local var — avoids stale state in catch block
     let localGenId = null
@@ -68,7 +72,6 @@ export const useGenerate = () => {
       setStatus('uploading')
 
       // ── Resolve uploaded URLs ─────────────────────────
-      // TemplateRunner pre-uploads and passes via _uploadedInputs
       const startFrameUrl = startFrame   || _uploadedInputs?.startFrame  || null
       const endFrameUrl   = endFrame     || _uploadedInputs?.endFrame    || null
       const imageUrls     = imageFrames  || _uploadedInputs?.imageFrames || []
@@ -80,6 +83,9 @@ export const useGenerate = () => {
         { duration, imageCount }
       )
 
+      // PromptIQ: user is charged 0 credits (pool absorbs the cost)
+      const userCreditsCharged = usePromptIQPool ? 0 : creditCost
+
       // ── Create generation record ──────────────────────
       const { data: genRecord, error: genError } = await generationsDb.create({
         user_id:              user.id,
@@ -89,7 +95,7 @@ export const useGenerate = () => {
         model:                model === 'auto' ? null : model,
         aspect_ratio:         aspectRatio,
         duration,
-        credits_charged:      isStaff ? creditCost : creditCost,
+        credits_charged:      userCreditsCharged,
         is_staff_generation:  isStaff,
       })
 
@@ -99,19 +105,19 @@ export const useGenerate = () => {
       setGenerationId(genRecord.id)
 
       // ── Deduct credits ────────────────────────────────
-      if (isStaff && type === 'template') {
-        // Staff PromptIQ template → deduct from pool
+      if (usePromptIQPool) {
+        // PromptIQ template → deduct from staff pool, user pays nothing
         const { data: poolResult } = await supabase.rpc('deduct_staff_pool', {
           p_staff_id:      user.id,
           p_generation_id: genRecord.id,
-          p_amount:        creditCost,
+          p_amount:        creditCost,   // pool still pays the real cost
           p_template_id:   templateId || null,
         })
         if (!poolResult?.success) {
           throw new Error(poolResult?.error || 'Staff pool has insufficient credits')
         }
       } else {
-        // Regular user (or staff using tools/public templates) → own credits
+        // Regular user or staff using public tools/templates → own credits
         const { data: deductResult } = await generationsDb.deductCredits(
           user.id,
           creditCost,
@@ -141,8 +147,6 @@ export const useGenerate = () => {
         // Always pull from DB — never hardcode
         finalPrompt = await getTemplatePrompt(templateSlug)
       } else if (shouldEnhance && prompt) {
-        // Prompt enhancement is handled server-side in api/generate.js
-        // We pass the raw prompt and let the server enhance it
         finalPrompt = prompt
       }
 
@@ -172,7 +176,6 @@ export const useGenerate = () => {
       const action = actionMap[type]
       if (!action) throw new Error(`Unknown generation type: ${type}`)
 
-      // Build payload
       const payload = {
         action,
         prompt:        finalPrompt,
@@ -220,7 +223,6 @@ export const useGenerate = () => {
 
       toast.error(`${err.message || 'Generation failed'} — credits will be refunded automatically.`)
 
-      // Mark failed — DB trigger auto-refunds credits
       if (localGenId) {
         await generationsDb.update(localGenId, {
           status:        'failed',
