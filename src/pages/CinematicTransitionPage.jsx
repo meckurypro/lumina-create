@@ -37,6 +37,24 @@ const uploadFile = async (file, userId) => {
   return supabase.storage.from('generation-uploads').getPublicUrl(data.path).data.publicUrl
 }
 
+/**
+ * Reads the natural dimensions of a File/Blob and snaps to the
+ * nearest supported aspect ratio: '9:16' | '16:9' | '1:1'
+ */
+const detectAspectRatio = (file) =>
+  new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const ratio = img.naturalWidth / img.naturalHeight
+      if (ratio > 1.2)       resolve('16:9')
+      else if (ratio < 0.85) resolve('9:16')
+      else                   resolve('1:1')
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = () => resolve('9:16') // safe fallback
+    img.src = URL.createObjectURL(file)
+  })
+
 // ── Sub-components ────────────────────────────────────────
 
 const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
@@ -283,6 +301,7 @@ const EditorView = ({
   creditCost, credits, isPromptIQ,
   onGenerate, submitting, onBack,
 }) => {
+  const firstFrameUploaded = !!frames[0]?.url
   const canAfford    = isPromptIQ || credits >= creditCost * slots.length
   const clipCount    = frames.length - 1
   const canGenerate  = frames.length >= 2
@@ -304,6 +323,17 @@ const EditorView = ({
       .slice(0, newFrames.length - 1)
     setFrames(newFrames)
     setSlots(newSlots.length ? newSlots : [{ transitionId: null, duration: '5' }])
+  }
+
+  // Upload handler — detects aspect ratio from frame 0
+  const handleFrameUpload = async (file, idx) => {
+    const url = URL.createObjectURL(file)
+    setFrames(prev => prev.map((f, i) => i === idx ? { file, url } : f))
+
+    if (idx === 0) {
+      const detected = await detectAspectRatio(file)
+      setAspectRatio(detected)
+    }
   }
 
   return (
@@ -378,23 +408,46 @@ const EditorView = ({
             <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Settings</p>
           </div>
 
-          {/* Aspect ratio */}
+          {/* Aspect ratio — auto-detected from frame 1, locked once set */}
           <div>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
+              <AnimatePresence>
+                {firstFrameUploaded && (
+                  <motion.span
+                    initial={{ opacity: 0, x: 6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{    opacity: 0, x: 6 }}
+                    className="text-xs font-semibold"
+                    style={{ color: 'var(--brand)' }}
+                  >
+                    auto-detected
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </div>
             <div className="flex gap-2">
               {ASPECT_OPTS.map(a => (
                 <button
-                  key={a} onClick={() => setAspectRatio(a)}
+                  key={a}
+                  onClick={() => !firstFrameUploaded && setAspectRatio(a)}
                   className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
                   style={{
                     background: aspectRatio === a ? 'var(--brand)' : 'var(--bg-elevated)',
-                    color:      aspectRatio === a ? '#fff'          : 'var(--text-muted)',
+                    color:      aspectRatio === a ? '#fff'         : 'var(--text-muted)',
+                    opacity:    firstFrameUploaded && aspectRatio !== a ? 0.35 : 1,
+                    cursor:     firstFrameUploaded ? 'default' : 'pointer',
                   }}
                 >
                   {a}
                 </button>
               ))}
             </div>
+            {!firstFrameUploaded && (
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                Upload frame 1 to auto-detect
+              </p>
+            )}
           </div>
 
           {/* Sound */}
@@ -426,16 +479,13 @@ const EditorView = ({
                 <FrameSlot
                   index={idx}
                   frame={frame}
-                  onUpload={(file) => {
-                    const url = URL.createObjectURL(file)
-                    setFrames(prev => prev.map((f, i) => i === idx ? { file, url } : f))
-                  }}
+                  onUpload={(file) => handleFrameUpload(file, idx)}
                   onRemove={() => setFrames(prev => prev.map((f, i) => i === idx ? null : f))}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Frame {idx + 1}</p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {frame?.url ? 'Uploaded' : 'Tap to upload image'}
+                    {frame?.url ? 'Uploaded' : idx === 0 ? 'Sets aspect ratio' : 'Tap to upload image'}
                   </p>
                 </div>
                 {idx > 1 && (
@@ -526,15 +576,15 @@ export default function CinematicTransitionPage() {
   const navigate              = useNavigate()
   const { user, credits, profile, isStaff, isAdmin, refreshProfile } = useAuth()
 
-  const [view,         setView]         = useState('list')   // 'list' | 'editor'
-  const [projects,     setProjects]     = useState([])
+  const [view,          setView]          = useState('list')   // 'list' | 'editor'
+  const [projects,      setProjects]      = useState([])
   const [activeProject, setActiveProject] = useState(null)
-  const [transitions,  setTransitions]  = useState([])
-  const [dbTemplate,   setDbTemplate]   = useState(null)
-  const [loadingProj,  setLoadingProj]  = useState(true)
-  const [creatingProj, setCreatingProj] = useState(false)
-  const [showNewModal, setShowNewModal] = useState(false)
-  const [submitting,   setSubmitting]   = useState(false)
+  const [transitions,   setTransitions]   = useState([])
+  const [dbTemplate,    setDbTemplate]    = useState(null)
+  const [loadingProj,   setLoadingProj]   = useState(true)
+  const [creatingProj,  setCreatingProj]  = useState(false)
+  const [showNewModal,  setShowNewModal]  = useState(false)
+  const [submitting,    setSubmitting]    = useState(false)
 
   // Editor state
   const [frames,      setFrames]      = useState([null, null])
@@ -565,12 +615,12 @@ export default function CinematicTransitionPage() {
     setCreatingProj(true)
     try {
       const { data, error } = await cinematicProjects.create({
-        user_id:     user.id,
-        template_id: dbTemplate.id,
+        user_id:      user.id,
+        template_id:  dbTemplate.id,
         name,
-        status:      'draft',
+        status:       'draft',
         aspect_ratio: '9:16',
-        with_sound:  false,
+        with_sound:   false,
       })
       if (error || !data) throw new Error(error?.message || 'Failed to create project')
       setProjects(prev => [data, ...prev])
@@ -590,8 +640,6 @@ export default function CinematicTransitionPage() {
 
   const handleOpenProject = (project) => {
     setActiveProject(project)
-    // Reset editor state — existing project may have saved frames
-    // For now open fresh; deep restore can be a v2 feature
     setFrames([null, null])
     setSlots([{ transitionId: null, duration: '5' }])
     setAspectRatio(project.aspect_ratio || '9:16')
@@ -649,21 +697,21 @@ export default function CinematicTransitionPage() {
 
           // Create generation row
           const { data: genRow, error: genErr } = await generationsDb.create({
-            user_id:          user.id,
-            template_id:      dbTemplate.id,
-            generation_type:  'start_end_frame',
-            status:           'pending',
-            prompt:           transitionPrompt,
-            model:            dbTemplate.default_model || 'kling_2_5',
-            aspect_ratio:     aspectRatio,
-            duration:         slots[idx].duration,
-            credits_charged:  isPromptIQ ? 0 : clipCreditCost,
+            user_id:             user.id,
+            template_id:         dbTemplate.id,
+            generation_type:     'start_end_frame',
+            status:              'pending',
+            prompt:              transitionPrompt,
+            model:               dbTemplate.default_model || 'kling_2_5',
+            aspect_ratio:        aspectRatio,
+            duration:            slots[idx].duration,
+            credits_charged:     isPromptIQ ? 0 : clipCreditCost,
             is_staff_generation: isPromptIQ,
-            with_sound:       withSound,
-            start_frame_url:  clip.start_frame_url,
-            end_frame_url:    clip.end_frame_url,
-            output_type:      'video',
-            title:            `${activeProject.name} — Clip ${idx + 1}`,
+            with_sound:          withSound,
+            start_frame_url:     clip.start_frame_url,
+            end_frame_url:       clip.end_frame_url,
+            output_type:         'video',
+            title:               `${activeProject.name} — Clip ${idx + 1}`,
           })
           if (genErr || !genRow) throw new Error(`Clip ${idx + 1}: failed to create generation`)
 
@@ -686,9 +734,7 @@ export default function CinematicTransitionPage() {
           await cinematicClips.addVersion(clip.id, genRow.id, prevVersions + 1)
 
           // Update clip with generation linkage
-          await cinematicClips.update(clip.id, {
-            status: 'processing',
-          })
+          await cinematicClips.update(clip.id, { status: 'processing' })
 
           // Fire edge function (fire-and-forget)
           supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
@@ -699,7 +745,6 @@ export default function CinematicTransitionPage() {
       refreshProfile()
       toast.success(`${clipCount} clip${clipCount !== 1 ? 's' : ''} fired! Redirecting…`, { duration: 3000 })
 
-      // Navigate to result page
       setTimeout(() => {
         navigate(`/cinematic/${activeProject.id}`)
       }, 800)
