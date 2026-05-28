@@ -1,3 +1,4 @@
+// src/pages/AdminPage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -10,14 +11,15 @@ import { useAuth } from '@/context/AuthContext'
 import { Skeleton } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
-import PromptEditor         from '@/pages/admin/PromptEditor'
-import TemplateManager      from '@/pages/admin/TemplateManager'
-import ModelsManager        from '@/pages/admin/ModelsManager'
-import StaffManager         from '@/pages/admin/StaffManager'
-import FeedModerationItem   from '@/pages/admin/FeedModerationItem'
-import FeedPublishedManager from '@/pages/admin/FeedPublishedManager'
-import ProviderSettings     from '@/pages/admin/ProviderSettings'
-import UsersManager         from '@/pages/admin/UsersManager'
+import PromptEditor                  from '@/pages/admin/PromptEditor'
+import TemplateManager               from '@/pages/admin/TemplateManager'
+import ModelsManager                 from '@/pages/admin/ModelsManager'
+import StaffManager                  from '@/pages/admin/StaffManager'
+import FeedModerationItem            from '@/pages/admin/FeedModerationItem'
+import FeedPublishedManager          from '@/pages/admin/FeedPublishedManager'
+import ProviderSettings              from '@/pages/admin/ProviderSettings'
+import UsersManager                  from '@/pages/admin/UsersManager'
+import CinematicTransitionsManager   from '@/pages/admin/CinematicTransitionsManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -37,14 +39,15 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 // ─── Tabs ─────────────────────────────────────────────────
 
 const TABS = (pendingCount) => [
-  { id: 'dashboard', label: 'Dashboard'                                           },
-  { id: 'prompts',   label: 'Prompts'                                             },
-  { id: 'templates', label: 'Templates'                                           },
-  { id: 'models',    label: 'Models'                                              },
-  { id: 'staff',     label: 'Staff'                                               },
-  { id: 'feed',      label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed' },
-  { id: 'users',     label: 'Users'                                               },
-  { id: 'settings',  label: 'Settings'                                            },
+  { id: 'dashboard',  label: 'Dashboard'                                           },
+  { id: 'prompts',    label: 'Prompts'                                             },
+  { id: 'templates',  label: 'Templates'                                           },
+  { id: 'models',     label: 'Models'                                              },
+  { id: 'cinematic',  label: 'Cinematic'                                           },
+  { id: 'staff',      label: 'Staff'                                               },
+  { id: 'feed',       label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed' },
+  { id: 'users',      label: 'Users'                                               },
+  { id: 'settings',   label: 'Settings'                                            },
 ]
 
 // ─── Admin Page ───────────────────────────────────────────
@@ -203,6 +206,13 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+        {/* ── Cinematic Transitions ── */}
+        {activeTab === 'cinematic' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <CinematicTransitionsManager />
+          </motion.div>
+        )}
+
         {/* ── Staff ── */}
         {activeTab === 'staff' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -265,12 +275,12 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-{/* ── Users ── */}
-{activeTab === 'users' && (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-    <UsersManager />
-  </motion.div>
-)}
+        {/* ── Users ── */}
+        {activeTab === 'users' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <UsersManager />
+          </motion.div>
+        )}
 
         {/* ── Settings ── */}
         {activeTab === 'settings' && (
