@@ -104,13 +104,21 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
   const inputs       = fileTemplate?.inputs       || []
   const modes        = fileTemplate?.modes        || []
   const systemPrompt = fileTemplate?.systemPrompt || ''
-  const lockedModel  = fileTemplate?.lockedModel  || dbTemplate?.default_model || 'auto'
   const creditCost   = dbTemplate?.credit_cost    || 0
   const canAfford    = credits >= creditCost
 
   const [imageValues,  setImageValues]  = useState({})
   const [selectedMode, setSelectedMode] = useState(modes[0]?.key || null)
   const [submitting,   setSubmitting]   = useState(false)
+
+  // Resolve the model to use:
+  // If the selected mode declares a modelKey, use that (e.g. face_swap → head_swap toggle).
+  // Otherwise fall back to the template's lockedModel or the DB default.
+  const activeMode      = modes.find((m) => m.key === selectedMode)
+  const resolvedModel   = activeMode?.modelKey
+    || fileTemplate?.lockedModel
+    || dbTemplate?.default_model
+    || 'auto'
 
   const allInputsFilled = inputs
     .filter((i) => i.required && i.type === 'image')
@@ -167,11 +175,14 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
       const finalPrompt = buildPrompt(activePrompt, fileTemplate, selectedMode)
 
       // 4. Map inputs to generation fields
+      // reference_image → startFrameUrl (body/scene to keep)
+      // face_image      → endFrameUrl   (donor face/head to insert)
       const inputUrls     = Object.values(uploadedUrls).filter(Boolean)
       const startFrameUrl = uploadedUrls['reference_image'] || uploadedUrls[inputs[0]?.key] || null
       const endFrameUrl   = uploadedUrls['face_image']      || uploadedUrls[inputs[1]?.key] || null
 
       // 5. Create generation row
+      // model = resolvedModel — face_swap or head_swap depending on ModeSelector
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:          user.id,
         template_id:      dbTemplate.id,
@@ -179,7 +190,7 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
         status:           'pending',
         prompt:           finalPrompt,
         enhanced_prompt:  systemPrompt,
-        model:            lockedModel,
+        model:            resolvedModel,   // ← mode-driven: 'face_swap' | 'head_swap'
         aspect_ratio:     '1:1',
         credits_charged:  creditCost,
         output_type:      'image',
@@ -315,7 +326,7 @@ export const TemplateRunner = ({ template: dbTemplate, onBack }) => {
             ))}
         </motion.div>
 
-        {/* Mode selector */}
+        {/* Mode selector — renders automatically when template defines modes */}
         {modes.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
