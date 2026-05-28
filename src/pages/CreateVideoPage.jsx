@@ -562,7 +562,7 @@ const creditCost = withSound && caps.supportsSound
                 disabled: !caps.supportedDurations.includes(o.value),
               }))}
               value={duration}
-              onChange={setDuration}
+              onChange={(v) => { console.log('duration changed to', v); setDuration(v) }}
             />
             {caps.supportsSound && (
               <SettingChips
