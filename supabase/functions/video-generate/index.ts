@@ -208,6 +208,7 @@ async function runPipeline(generationId: string) {
 
     // 2. Build + submit
     const { endpoint, body } = buildRequestBody(gen, refined)
+    console.log('video-generate dispatch', { generationId, model: gen.model, mode: gen.generation_type, endpoint })
     const reqId = await submitWaveSpeed(endpoint, body)
     await admin.from('generations').update({ fal_request_id: reqId }).eq('id', generationId)
 
