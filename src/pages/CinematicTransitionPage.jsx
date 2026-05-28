@@ -831,11 +831,13 @@ export default function CinematicTransitionPage() {
       setSlots(draft.slots?.length ? draft.slots : [{ transitionId: null, duration: '5' }])
       setAspectRatio(draft.aspectRatio || '9:16')
       setWithSound(draft.withSound ?? false)
+      setModel(draft.model || dbTemplate?.default_model || 'kling_v3_pro')
     } else {
       setFrames([null, null])
       setSlots([{ transitionId: null, duration: '5' }])
       setAspectRatio(project.aspect_ratio || '9:16')
       setWithSound(project.with_sound || false)
+      setModel(dbTemplate?.default_model || 'kling_v3_pro')
     }
 
     setActiveProject(project)
