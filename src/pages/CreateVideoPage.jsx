@@ -111,6 +111,14 @@ function deriveVideoType(startFrame, endFrame) {
   return 'text_to_video'
 }
 
+// Maps each video mode to the DB feature values that support it
+const FEATURE_MAP = {
+  text_to_video:   ['text_to_video', 'image_text_to_video'],
+  image_to_video:  ['image_to_video', 'image_text_to_video'],
+  end_frame_text:  ['frame_to_frame'],
+  start_end_frame: ['frame_to_frame'],
+}
+
 const FrameUpload = ({ label, value, onChange, onRemove }) => (
   <div className="flex flex-col gap-2">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
@@ -154,30 +162,33 @@ export default function CreateVideoPage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [submitting,  setSubmitting]  = useState(false)
 
-  const loadModels = useCallback(async () => {
+  const type          = deriveVideoType(startFrame, endFrame)
+  const selectedModel = models.find((m) => m.value === model)
+  const isI2V         = !!(startFrame || endFrame)
+  const supportsSound = !!selectedModel?.supports_sound
+  const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+
+  // ✅ Reload models whenever the video type changes — filters by feature from DB
+  const loadModels = useCallback(async (videoType) => {
     setModelsLoading(true)
+    const features = FEATURE_MAP[videoType] || ['image_text_to_video']
     const { data } = await supabase
       .from('models')
       .select('*')
       .eq('type', 'video')
       .eq('is_active', true)
+      .eq('is_user_facing', true)
+      .in('feature', features)
       .order('sort_order')
     const list = data || []
     setModels(list)
-    const unlocked = list.filter((m) => !m.is_locked)
-    setModel(unlocked[0]?.value || '')
+    // Auto-select first unlocked model in the new list
+    const firstUnlocked = list.find((m) => !m.is_locked)
+    setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
   }, [])
 
-  useEffect(() => { loadModels() }, [loadModels])
-
-  const type          = deriveVideoType(startFrame, endFrame)
-  const selectedModel = models.find((m) => m.value === model)
-  const isI2V         = !!(startFrame || endFrame)
-  const supportsSound = !!selectedModel?.supports_sound
-
-  // Derive from profile — defaults to true (refinement on) if column not yet set
-  const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+  useEffect(() => { loadModels(type) }, [type, loadModels])
 
   // Reset sound when switching to a model that doesn't support it
   useEffect(() => {
@@ -225,7 +236,6 @@ export default function CreateVideoPage() {
 
     setSubmitting(true)
     try {
-      // 1. Upload start frame
       let startFrameUrl = null
       if (startFrame?.file) {
         const ext  = (startFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
@@ -238,7 +248,6 @@ export default function CreateVideoPage() {
         startFrameUrl = publicUrl
       }
 
-      // 2. Upload end frame
       let endFrameUrl = null
       if (endFrame?.file) {
         const ext  = (endFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
@@ -251,7 +260,6 @@ export default function CreateVideoPage() {
         endFrameUrl = publicUrl
       }
 
-      // 3. Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        type,
@@ -269,14 +277,12 @@ export default function CreateVideoPage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // 4. Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // 5. Fire-and-forget pipeline
       supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('video-generate invoke error', e))
 
