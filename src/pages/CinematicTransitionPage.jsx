@@ -471,7 +471,7 @@ const EditorView = ({
       {/* Content */}
       <div
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
-        style={{ paddingBottom: 'calc(100px + 56px + env(safe-area-inset-bottom, 16px))' }}
+        style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 16px))' }}
       >
 
         {/* Settings */}
@@ -651,7 +651,7 @@ const EditorView = ({
       <div
         className="fixed left-0 right-0 px-4 pt-3"
         style={{
-          bottom:        'calc(56px + env(safe-area-inset-bottom, 0px))',
+          bottom: 0,
           background:    'var(--bg-primary)',
           borderTop:     '1px solid var(--border-color)',
           paddingBottom: '12px',
