@@ -7,6 +7,11 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// Tool accent
+const ACCENT     = 'var(--tool-video)'
+const ACCENT_SUB = 'var(--tool-video-subtle)'
+const ACCENT_BDR = 'var(--tool-video-border)'
+
 const SS_PROMPT      = 'meckury_video_prompt'
 const SS_START_FRAME = 'meckury_video_start_frame'
 const SS_END_FRAME   = 'meckury_video_end_frame'
@@ -49,8 +54,8 @@ const SettingChips = ({ label, options, value, onChange }) => (
           disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
-            color:      value === opt.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+            background: value === opt.value ? ACCENT    : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
             opacity:    opt.disabled ? 0.3 : 1,
             cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
@@ -73,7 +78,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
         <span>{selected?.label ?? 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -98,13 +103,13 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     key={m.value}
                     onClick={() => { onChange(m.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                     </div>
-                    {m.value === value && <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>}
+                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
                   </button>
                 ))}
               </div>
@@ -143,23 +148,17 @@ function deriveVideoType(startFrame, endFrame) {
   return 'text_to_video'
 }
 
-// Persist a frame to sessionStorage as base64
 const persistFrame = (key, file) => {
   if (!file) { try { sessionStorage.removeItem(key) } catch { /* noop */ }; return }
   try {
     const reader = new FileReader()
     reader.onload = (ev) => {
-      sessionStorage.setItem(key, JSON.stringify({
-        base64: ev.target.result,
-        name:   file.name,
-        type:   file.type,
-      }))
+      sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
     }
     reader.readAsDataURL(file)
   } catch { /* noop */ }
 }
 
-// Restore a frame from sessionStorage
 const restoreFrame = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
@@ -170,9 +169,7 @@ const restoreFrame = (key) => new Promise((resolve) => {
     const ia = new Uint8Array(ab)
     for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
     const blob = new Blob([ab], { type })
-    const file = new File([blob], name, { type })
-    const url  = URL.createObjectURL(blob)
-    resolve({ file, url })
+    resolve({ file: new File([blob], name, { type }), url: URL.createObjectURL(blob) })
   } catch { resolve(null) }
 })
 
@@ -213,15 +210,15 @@ const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inact
         className="flex flex-col items-center justify-center w-full rounded-2xl transition-all"
         style={{
           aspectRatio: '1/1',
-          border:      '1.5px dashed var(--border-color)',
-          background:  'var(--bg-card)',
+          border:      `1.5px dashed ${ACCENT_BDR}`,
+          background:  ACCENT_SUB,
           cursor:      disabled ? 'not-allowed' : 'pointer',
           opacity:     disabled ? 0.3 : 1,
         }}
       >
         <input type="file" accept="image/*" className="hidden" onChange={onChange} disabled={disabled} />
-        <ImagePlus size={20} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-        <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+        <ImagePlus size={20} style={{ color: ACCENT, marginBottom: 6 }} />
+        <span className="text-xs font-medium" style={{ color: ACCENT }}>
           {disabled ? 'Not supported' : 'Upload'}
         </span>
       </label>
@@ -247,7 +244,6 @@ export default function CreateVideoPage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // Restore persisted state on mount
   useEffect(() => {
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
@@ -267,7 +263,6 @@ export default function CreateVideoPage() {
     })
   }, [])
 
-  // Persist prompt
   useEffect(() => {
     try {
       if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
@@ -316,18 +311,18 @@ export default function CreateVideoPage() {
     if (!caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound])
 
-const creditsPerSecond = selectedModel
-  ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
-  : 0
-const isFlatRate = selectedModel?.is_flat_rate ?? false
-const creditCost = (() => {
-  if (!selectedModel) return 0
-  if (isFlatRate) return creditsPerSecond // stored as total, not per-second
-  const base = creditsPerSecond * parseInt(duration || '5')
-  return withSound && caps.supportsSound
-    ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-    : Math.ceil(base)
-})()
+  const creditsPerSecond = selectedModel
+    ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    : 0
+  const isFlatRate = selectedModel?.is_flat_rate ?? false
+  const creditCost = (() => {
+    if (!selectedModel) return 0
+    if (isFlatRate) return creditsPerSecond
+    const base = creditsPerSecond * parseInt(duration || '5')
+    return withSound && caps.supportsSound
+      ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
+      : Math.ceil(base)
+  })()
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
@@ -463,7 +458,7 @@ const creditCost = (() => {
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
             <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
               Generating…
@@ -472,17 +467,20 @@ const creditCost = (() => {
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Header — violet left accent bar */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)' }}
+        style={{
+          borderBottom: '1px solid var(--border-color)',
+          borderLeft:   `3px solid ${ACCENT}`,
+        }}
       >
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Video</h1>
-          <span className="text-xs" style={{ color: 'var(--brand)' }}>{modeLabel}</span>
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>{modeLabel}</span>
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && (
@@ -553,16 +551,16 @@ const creditCost = (() => {
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
-<SettingChips
-  label="Duration"
-  options={caps.supportedDurations.map((d) => ({
-    label:    `${d}s`,
-    value:    d,
-    disabled: false,
-  }))}
-  value={duration}
-  onChange={(v) => setDuration(v)}
-/>
+            <SettingChips
+              label="Duration"
+              options={caps.supportedDurations.map((d) => ({
+                label:    `${d}s`,
+                value:    d,
+                disabled: false,
+              }))}
+              value={duration}
+              onChange={(v) => setDuration(v)}
+            />
             {caps.supportsSound && (
               <SettingChips
                 label="Sound"
@@ -580,16 +578,17 @@ const creditCost = (() => {
       </div>
 
       {/* Generate button */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
             disabled={submitting || !canAfford || promptEmpty || !selectedModel}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: 'var(--text-primary)',
-              color:      'var(--text-inverse)',
-              opacity:    (submitting || !canAfford || promptEmpty || !selectedModel) ? 0.5 : 1,
+              background: (submitting || !canAfford || promptEmpty || !selectedModel)
+                ? 'var(--bg-elevated)' : ACCENT,
+              color: (submitting || !canAfford || promptEmpty || !selectedModel)
+                ? 'var(--text-muted)' : '#ffffff',
             }}
           >
             <Zap size={15} fill="currentColor" />
@@ -598,7 +597,7 @@ const creditCost = (() => {
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                 Top up
               </button>
             </p>
