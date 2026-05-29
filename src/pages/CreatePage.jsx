@@ -1,5 +1,5 @@
 // src/pages/CreatePage.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers } from 'lucide-react'
@@ -20,27 +20,31 @@ const TYPE_LABELS = {
   motion_transfer: 'Motion Transfer',
 }
 
+// Each tool carries its own accent token name so ToolCard reads from CSS vars
 const TOOLS = [
   {
-    id:       'create_image',
-    label:    'Create Image',
-    subtitle: 'From text or reference photo',
-    icon:     ImageIcon,
-    route:    '/create/image',
+    id:        'create_image',
+    label:     'Create Image',
+    subtitle:  'From text or reference photo',
+    icon:      ImageIcon,
+    route:     '/create/image',
+    accentVar: '--tool-image',   // maps to CSS variable
   },
   {
-    id:       'create_video',
-    label:    'Create Video',
-    subtitle: 'Animate, generate or transform frames',
-    icon:     VideoIcon,
-    route:    '/create/video',
+    id:        'create_video',
+    label:     'Create Video',
+    subtitle:  'Animate, generate or transform frames',
+    icon:      VideoIcon,
+    route:     '/create/video',
+    accentVar: '--tool-video',
   },
   {
-    id:       'copy_motion',
-    label:    'Copy Motion',
-    subtitle: 'Transfer motion from video to image',
-    icon:     Layers,
-    route:    '/create/copy-motion',
+    id:        'copy_motion',
+    label:     'Copy Motion',
+    subtitle:  'Transfer motion from video to image',
+    icon:      Layers,
+    route:     '/create/copy-motion',
+    accentVar: '--tool-motion',
   },
 ]
 
@@ -95,6 +99,109 @@ const TemplateCard = ({ template, index, onClick }) => (
     </div>
   </motion.button>
 )
+
+// ── Square tool card (used in 2-col row) ──────────────────────────────────────
+function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08 }}
+      whileTap={{ scale: 0.97 }}
+      onClick={() => navigate(route)}
+      className="flex flex-col items-center justify-between rounded-2xl overflow-hidden transition-all"
+      style={{
+        background:  'var(--bg-card)',
+        border:      `1px solid var(${accentVar}-border, var(--border-color))`,
+        aspectRatio: '1 / 1',
+        width:       '100%',
+        padding:     '20px',
+      }}
+    >
+      <div className="flex flex-1 items-center justify-center w-full">
+        <div
+          className="rounded-2xl flex items-center justify-center"
+          style={{
+            width:       '65%',
+            aspectRatio: '1 / 1',
+            background:  `var(${accentVar}-subtle, var(--bg-elevated))`,
+            border:      `1px solid var(${accentVar}-border, var(--border-color))`,
+          }}
+        >
+          <Icon
+            style={{
+              width:  '42%',
+              height: '42%',
+              color:  `var(${accentVar}, var(--text-primary))`,
+            }}
+            strokeWidth={1.4}
+          />
+        </div>
+      </div>
+      <div className="w-full flex flex-col gap-0.5 items-center text-center flex-shrink-0">
+        <span
+          className="text-sm font-bold"
+          style={{ color: `var(${accentVar}, var(--text-primary))` }}
+        >
+          {label}
+        </span>
+        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+          {subtitle}
+        </span>
+      </div>
+    </motion.button>
+  )
+}
+
+// ── Wide tool card (used for 3rd tool and beyond) ─────────────────────────────
+function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08 }}
+      whileTap={{ scale: 0.97 }}
+      onClick={() => navigate(route)}
+      className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
+      style={{
+        background: 'var(--bg-card)',
+        border:     `1px solid var(${accentVar}-border, var(--border-color))`,
+        padding:    '16px 20px',
+      }}
+    >
+      <div
+        className="rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{
+          width:      52,
+          height:     52,
+          background: `var(${accentVar}-subtle, var(--bg-elevated))`,
+          border:     `1px solid var(${accentVar}-border, var(--border-color))`,
+        }}
+      >
+        <Icon
+          style={{
+            width:  22,
+            height: 22,
+            color:  `var(${accentVar}, var(--text-primary))`,
+          }}
+          strokeWidth={1.4}
+        />
+      </div>
+      <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
+        <span
+          className="text-sm font-bold"
+          style={{ color: `var(${accentVar}, var(--text-primary))` }}
+        >
+          {label}
+        </span>
+        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+          {subtitle}
+        </span>
+      </div>
+      <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    </motion.button>
+  )
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function CreatePage() {
@@ -162,7 +269,7 @@ export default function CreatePage() {
                 <div className="w-full" style={{ maxWidth: '520px' }}>
                   {/* First row — 2 columns */}
                   <div className="grid grid-cols-2 gap-4 mb-4">
-                    {TOOLS.slice(0, 2).map(({ id, label, subtitle, icon: Icon, route }, i) => (
+                    {TOOLS.slice(0, 2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => (
                       <ToolCard
                         key={id}
                         id={id}
@@ -170,13 +277,14 @@ export default function CreatePage() {
                         subtitle={subtitle}
                         Icon={Icon}
                         route={route}
+                        accentVar={accentVar}
                         index={i}
                         navigate={navigate}
                       />
                     ))}
                   </div>
                   {/* Remaining tools — full width each */}
-                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route }, i) => (
+                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => (
                     <ToolCardWide
                       key={id}
                       id={id}
@@ -184,6 +292,7 @@ export default function CreatePage() {
                       subtitle={subtitle}
                       Icon={Icon}
                       route={route}
+                      accentVar={accentVar}
                       index={i + 2}
                       navigate={navigate}
                     />
@@ -258,80 +367,5 @@ export default function CreatePage() {
         </div>
       </PageWrapper>
     </>
-  )
-}
-
-// ── Square tool card (used in 2-col row) ──────────────────────────────────────
-function ToolCard({ id, label, subtitle, Icon, route, index, navigate }) {
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={() => navigate(route)}
-      className="flex flex-col items-center justify-between rounded-2xl overflow-hidden transition-all"
-      style={{
-        background:  'var(--bg-card)',
-        border:      '1px solid var(--border-color)',
-        aspectRatio: '1 / 1',
-        width:       '100%',
-        padding:     '20px',
-      }}
-    >
-      <div className="flex flex-1 items-center justify-center w-full">
-        <div
-          className="rounded-2xl flex items-center justify-center"
-          style={{
-            width:       '65%',
-            aspectRatio: '1 / 1',
-            background:  'var(--bg-elevated)',
-            border:      '1px solid var(--border-color)',
-          }}
-        >
-          <Icon style={{ width: '42%', height: '42%', color: 'var(--text-primary)' }} strokeWidth={1.4} />
-        </div>
-      </div>
-      <div className="w-full flex flex-col gap-0.5 items-center text-center flex-shrink-0">
-        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
-        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
-      </div>
-    </motion.button>
-  )
-}
-
-// ── Wide tool card (used for 3rd tool and beyond) ─────────────────────────────
-function ToolCardWide({ id, label, subtitle, Icon, route, index, navigate }) {
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={() => navigate(route)}
-      className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
-      style={{
-        background: 'var(--bg-card)',
-        border:     '1px solid var(--border-color)',
-        padding:    '16px 20px',
-      }}
-    >
-      <div
-        className="rounded-2xl flex items-center justify-center flex-shrink-0"
-        style={{
-          width:      52,
-          height:     52,
-          background: 'var(--bg-elevated)',
-          border:     '1px solid var(--border-color)',
-        }}
-      >
-        <Icon style={{ width: 22, height: 22, color: 'var(--text-primary)' }} strokeWidth={1.4} />
-      </div>
-      <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
-        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
-        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
-      </div>
-      <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-    </motion.button>
   )
 }
