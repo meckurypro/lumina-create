@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, Film, Image as ImageIcon, AlertCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Zap, X, Film, Image as ImageIcon, AlertCircle, RefreshCw, Scissors, Play, Pause } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -71,6 +71,324 @@ const getVideoDuration = (file) => new Promise((resolve) => {
   vid.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
   vid.src = url
 })
+
+// ── In-browser video trimmer using MediaRecorder ──────────
+// Returns a new File containing only the [startSec, endSec] segment.
+const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(sourceFile)
+    const video = document.createElement('video')
+    video.src = url
+    video.muted = true
+    video.preload = 'auto'
+
+    // Determine best supported mime type
+    const mimeType = (() => {
+      const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm'
+    })()
+
+    video.onloadedmetadata = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width  = video.videoWidth  || 1280
+      canvas.height = video.videoHeight || 720
+      const ctx = canvas.getContext('2d')
+
+      const stream = canvas.captureStream(30)
+
+      // If source has audio, try to capture it too
+      let recorder
+      try {
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 })
+      } catch {
+        recorder = new MediaRecorder(stream)
+      }
+
+      const chunks = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+
+      recorder.onstop = () => {
+        URL.revokeObjectURL(url)
+        const blob = new Blob(chunks, { type: mimeType })
+        const ext  = mimeType.includes('mp4') ? 'mp4' : 'webm'
+        const name = sourceFile.name.replace(/\.[^.]+$/, '') + `_trim.${ext}`
+        resolve(new File([blob], name, { type: mimeType }))
+      }
+
+      let animFrame
+      const drawFrame = () => {
+        if (video.currentTime >= endSec) {
+          cancelAnimationFrame(animFrame)
+          recorder.stop()
+          return
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        animFrame = requestAnimationFrame(drawFrame)
+      }
+
+      video.onseeked = () => {
+        recorder.start(100)
+        drawFrame()
+        video.play().catch(() => {})
+      }
+
+      video.onerror = (e) => { URL.revokeObjectURL(url); reject(new Error('Video seek failed')) }
+      video.currentTime = startSec
+    }
+
+    video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load video for trimming')) }
+  })
+
+// ── Video Trim Slider ─────────────────────────────────────
+const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChange, videoUrl }) => {
+  const trackRef      = useRef(null)
+  const previewRef    = useRef(null)
+  const [playing, setPlaying]         = useState(false)
+  const [currentTime, setCurrentTime] = useState(trimStart)
+  const [dragging, setDragging]       = useState(null) // 'start' | 'end' | null
+
+  const trimmedDuration = trimEnd - trimStart
+
+  // Keep preview in sync
+  useEffect(() => {
+    const vid = previewRef.current
+    if (!vid) return
+    vid.currentTime = trimStart
+    setCurrentTime(trimStart)
+    setPlaying(false)
+  }, [trimStart, trimEnd])
+
+  useEffect(() => {
+    const vid = previewRef.current
+    if (!vid) return
+    const onTime = () => {
+      setCurrentTime(vid.currentTime)
+      if (vid.currentTime >= trimEnd) {
+        vid.pause()
+        vid.currentTime = trimStart
+        setPlaying(false)
+      }
+    }
+    vid.addEventListener('timeupdate', onTime)
+    return () => vid.removeEventListener('timeupdate', onTime)
+  }, [trimStart, trimEnd])
+
+  const togglePlay = () => {
+    const vid = previewRef.current
+    if (!vid) return
+    if (playing) { vid.pause(); setPlaying(false) }
+    else {
+      if (vid.currentTime >= trimEnd || vid.currentTime < trimStart) vid.currentTime = trimStart
+      vid.play().then(() => setPlaying(true)).catch(() => {})
+    }
+  }
+
+  const getPosFromEvent = (e) => {
+    const track = trackRef.current
+    if (!track) return 0
+    const rect = track.getBoundingClientRect()
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    return ratio * duration
+  }
+
+  const onPointerDown = (e, handle) => {
+    e.preventDefault()
+    setDragging(handle)
+  }
+
+  useEffect(() => {
+    if (!dragging) return
+    const onMove = (e) => {
+      const pos = getPosFromEvent(e)
+      if (dragging === 'start') {
+        const newStart = Math.max(0, Math.min(pos, trimEnd - 1))
+        const newEnd   = Math.min(trimEnd, newStart + maxDuration)
+        onTrimChange(Math.round(newStart), Math.round(newEnd))
+      } else {
+        const newEnd   = Math.min(duration, Math.max(pos, trimStart + 1))
+        const newStart = Math.max(trimStart, newEnd - maxDuration)
+        onTrimChange(Math.round(newStart), Math.round(newEnd))
+      }
+    }
+    const onUp = () => setDragging(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchend', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchend', onUp)
+    }
+  }, [dragging, trimStart, trimEnd, duration, maxDuration]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startPct    = (trimStart / duration) * 100
+  const endPct      = (trimEnd   / duration) * 100
+  const playheadPct = (currentTime / duration) * 100
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}`, padding: '12px 14px 14px' }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5">
+          <Scissors size={13} style={{ color: ACCENT }} />
+          <span className="text-xs font-bold" style={{ color: ACCENT }}>Trim Video</span>
+        </div>
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+          Max <strong style={{ color: 'var(--text-primary)' }}>{maxDuration}s</strong> · Selected{' '}
+          <strong style={{ color: ACCENT }}>{trimmedDuration}s</strong>
+        </span>
+      </div>
+
+      {/* Mini preview + play */}
+      <div className="flex gap-3 mb-3 items-center">
+        <div className="relative rounded-xl overflow-hidden flex-shrink-0" style={{ width: 72, height: 72, background: 'var(--bg-elevated)' }}>
+          <video
+            ref={previewRef}
+            src={videoUrl}
+            className="w-full h-full object-cover"
+            muted
+            playsInline
+          />
+          <button
+            onClick={togglePlay}
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: playing ? 'rgba(0,0,0,0.0)' : 'rgba(0,0,0,0.4)' }}
+          >
+            {playing
+              ? <Pause size={16} style={{ color: '#fff', opacity: 0 }} />
+              : <Play  size={16} style={{ color: '#fff' }} />}
+          </button>
+        </div>
+        <div className="flex-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <p>Video is <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(duration)}</strong> — longer than the model's <strong style={{ color: 'var(--text-primary)' }}>{maxDuration}s</strong> max.</p>
+          <p className="mt-1">Drag the handles to pick which <strong style={{ color: ACCENT }}>{maxDuration}s</strong> segment to use.</p>
+        </div>
+      </div>
+
+      {/* Timeline track */}
+      <div
+        ref={trackRef}
+        className="relative select-none"
+        style={{ height: 44, cursor: 'default' }}
+      >
+        {/* Background full bar */}
+        <div
+          className="absolute inset-y-0 rounded-xl"
+          style={{ left: 0, right: 0, background: 'var(--bg-elevated)', top: '30%', bottom: '30%', borderRadius: 6 }}
+        />
+
+        {/* Dimmed left region */}
+        <div
+          className="absolute"
+          style={{
+            left: 0,
+            width: `${startPct}%`,
+            top: '30%', bottom: '30%',
+            background: 'rgba(0,0,0,0.35)',
+            borderRadius: '6px 0 0 6px',
+          }}
+        />
+
+        {/* Selected region */}
+        <div
+          className="absolute"
+          style={{
+            left:   `${startPct}%`,
+            width:  `${endPct - startPct}%`,
+            top: '20%', bottom: '20%',
+            background: ACCENT,
+            borderRadius: 4,
+            opacity: 0.85,
+          }}
+        />
+
+        {/* Dimmed right region */}
+        <div
+          className="absolute"
+          style={{
+            left: `${endPct}%`,
+            right: 0,
+            top: '30%', bottom: '30%',
+            background: 'rgba(0,0,0,0.35)',
+            borderRadius: '0 6px 6px 0',
+          }}
+        />
+
+        {/* Playhead */}
+        <div
+          className="absolute"
+          style={{
+            left: `${playheadPct}%`,
+            top: '10%', bottom: '10%',
+            width: 2,
+            background: '#ffffff',
+            borderRadius: 2,
+            transform: 'translateX(-50%)',
+            opacity: 0.8,
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* Start handle */}
+        <div
+          onMouseDown={(e) => onPointerDown(e, 'start')}
+          onTouchStart={(e) => onPointerDown(e, 'start')}
+          className="absolute flex items-center justify-center"
+          style={{
+            left: `${startPct}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 22, height: 36,
+            background: ACCENT,
+            borderRadius: 6,
+            cursor: 'ew-resize',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            zIndex: 10,
+            touchAction: 'none',
+          }}
+        >
+          <div style={{ width: 2, height: 14, background: 'rgba(255,255,255,0.7)', borderRadius: 2 }} />
+        </div>
+
+        {/* End handle */}
+        <div
+          onMouseDown={(e) => onPointerDown(e, 'end')}
+          onTouchStart={(e) => onPointerDown(e, 'end')}
+          className="absolute flex items-center justify-center"
+          style={{
+            left: `${endPct}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 22, height: 36,
+            background: ACCENT,
+            borderRadius: 6,
+            cursor: 'ew-resize',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            zIndex: 10,
+            touchAction: 'none',
+          }}
+        >
+          <div style={{ width: 2, height: 14, background: 'rgba(255,255,255,0.7)', borderRadius: 2 }} />
+        </div>
+      </div>
+
+      {/* Time labels */}
+      <div className="flex justify-between mt-2">
+        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>0s</span>
+        <span className="text-xs font-mono font-bold" style={{ color: ACCENT }}>
+          {trimStart}s → {trimEnd}s
+        </span>
+        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{duration}s</span>
+      </div>
+    </div>
+  )
+}
 
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
@@ -293,6 +611,11 @@ export default function CreateCopyMotionPage() {
   const [models,         setModels]         = useState([])
   const [modelsLoading,  setModelsLoading]  = useState(true)
   const [submitting,     setSubmitting]     = useState(false)
+  const [trimming,       setTrimming]       = useState(false)
+
+  // Trim state — only shown when video exceeds model max duration
+  const [trimStart, setTrimStart] = useState(0)
+  const [trimEnd,   setTrimEnd]   = useState(0)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -325,6 +648,22 @@ export default function CreateCopyMotionPage() {
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
 
+  // Derive the model's max allowed video duration from supported_durations
+  const modelMaxDuration = selectedModel?.supported_durations
+    ? Math.max(...selectedModel.supported_durations.map(Number))
+    : 30
+
+  // Whether we need to show the trimmer (video is longer than model allows)
+  const needsTrim = motionVideo?.duration != null && motionVideo.duration > modelMaxDuration
+
+  // Initialise / reset trim window whenever video or model changes
+  useEffect(() => {
+    if (!motionVideo?.duration) return
+    const maxEnd = Math.min(motionVideo.duration, modelMaxDuration)
+    setTrimStart(0)
+    setTrimEnd(maxEnd)
+  }, [motionVideo?.duration, modelMaxDuration]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
   useEffect(() => {
@@ -333,18 +672,31 @@ export default function CreateCopyMotionPage() {
     }
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const detectedDuration = motionVideo?.duration ?? videoGhostMeta?.duration ?? null
+  // The effective duration sent to the generation record
+  // If trimming: use trimmed length; otherwise use actual video duration
+  const effectiveDuration = needsTrim
+    ? trimEnd - trimStart
+    : motionVideo?.duration ?? videoGhostMeta?.duration ?? null
+
+  // Snap effective duration to the nearest valid enum value the model supports
+  const snappedDuration = (() => {
+    if (!effectiveDuration || !selectedModel?.supported_durations) return null
+    const durations = selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
+    // Find smallest valid duration that is >= effectiveDuration
+    const fit = durations.find((d) => d >= effectiveDuration)
+    return fit ?? durations[durations.length - 1]
+  })()
 
   const durationMultiplier = (() => {
-    if (!detectedDuration) return 1
-    if (detectedDuration <= 5)  return 1
-    if (detectedDuration <= 8)  return 1.6
-    if (detectedDuration <= 10) return 2
-    if (detectedDuration <= 12) return 2.4
-    if (detectedDuration <= 15) return 3
-    if (detectedDuration <= 20) return 4
-    if (detectedDuration <= 30) return 6
-    return Math.ceil(detectedDuration / 5)
+    if (!effectiveDuration) return 1
+    if (effectiveDuration <= 5)  return 1
+    if (effectiveDuration <= 8)  return 1.6
+    if (effectiveDuration <= 10) return 2
+    if (effectiveDuration <= 12) return 2.4
+    if (effectiveDuration <= 15) return 3
+    if (effectiveDuration <= 20) return 4
+    if (effectiveDuration <= 30) return 6
+    return Math.ceil(effectiveDuration / 5)
   })()
 
   const baseCredits = selectedModel?.credit_cost_i2i ?? 0
@@ -357,7 +709,7 @@ export default function CreateCopyMotionPage() {
   const hasVideo        = !!motionVideo
   const hasVideoOrGhost = hasVideo || !!videoGhostMeta
   const hasSubject      = !!subjectImage
-  const canGenerate     = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting
+  const canGenerate     = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting && !trimming
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -404,6 +756,11 @@ export default function CreateCopyMotionPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
+  const handleTrimChange = (start, end) => {
+    setTrimStart(start)
+    setTrimEnd(end)
+  }
+
   const handleGenerate = async () => {
     if (!hasVideo)      return toast.error('Upload a motion reference video')
     if (!hasSubject)    return toast.error('Upload a subject image')
@@ -413,14 +770,36 @@ export default function CreateCopyMotionPage() {
 
     setSubmitting(true)
     try {
-      const vidExt  = (motionVideo.file.name.split('.').pop() || 'mp4').toLowerCase()
+      // ── Step 1: Trim if needed ────────────────────────────
+      let videoFileToUpload = motionVideo.file
+      let finalDuration     = motionVideo.duration
+
+      if (needsTrim) {
+        setTrimming(true)
+        toast.loading('Trimming video…', { id: 'trim' })
+        try {
+          const trimmedFile = await trimVideoInBrowser(motionVideo.file, trimStart, trimEnd)
+          videoFileToUpload = trimmedFile
+          finalDuration     = trimEnd - trimStart
+          toast.dismiss('trim')
+        } catch (trimErr) {
+          toast.dismiss('trim')
+          throw new Error('Could not trim video. Please try a shorter clip.')
+        } finally {
+          setTrimming(false)
+        }
+      }
+
+      // ── Step 2: Upload video ──────────────────────────────
+      const vidExt  = (videoFileToUpload.name.split('.').pop() || 'webm').toLowerCase()
       const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
       const { error: vidErr } = await supabase.storage
         .from('generation-uploads')
-        .upload(vidPath, motionVideo.file, { upsert: false, cacheControl: '3600', contentType: motionVideo.file.type })
+        .upload(vidPath, videoFileToUpload, { upsert: false, cacheControl: '3600', contentType: videoFileToUpload.type })
       if (vidErr) throw new Error('Video upload failed')
       const { data: { publicUrl: motionVideoUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(vidPath)
 
+      // ── Step 3: Upload image ──────────────────────────────
       const imgExt  = (subjectImage.file.name.split('.').pop() || 'jpg').toLowerCase()
       const imgPath = `${user.id}/${crypto.randomUUID()}.${imgExt}`
       const { error: imgErr } = await supabase.storage
@@ -429,6 +808,8 @@ export default function CreateCopyMotionPage() {
       if (imgErr) throw new Error('Image upload failed')
       const { data: { publicUrl: subjectImageUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(imgPath)
 
+      // ── Step 4: Create generation record ─────────────────
+      // Use snappedDuration so it always matches a valid enum value for this model
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'motion_transfer',
@@ -436,7 +817,7 @@ export default function CreateCopyMotionPage() {
         prompt:                 null,
         model,
         aspect_ratio:           aspectRatio,
-        duration:               String(detectedDuration ?? 5),
+        duration:               String(snappedDuration ?? finalDuration ?? 5),
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
@@ -446,6 +827,7 @@ export default function CreateCopyMotionPage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
+      // ── Step 5: Deduct credits ────────────────────────────
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
@@ -465,15 +847,16 @@ export default function CreateCopyMotionPage() {
       toast.error(err.message || 'Something went wrong')
     } finally {
       setSubmitting(false)
+      setTrimming(false)
     }
   }
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
+      {/* Generating / Trimming overlay */}
       <AnimatePresence>
-        {submitting && (
+        {(submitting || trimming) && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
@@ -490,12 +873,14 @@ export default function CreateCopyMotionPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Generating…</p>
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+              {trimming ? 'Trimming video…' : 'Generating…'}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header — teal left accent bar */}
+      {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{
@@ -576,10 +961,11 @@ export default function CreateCopyMotionPage() {
                   </div>
                 </div>
 
-                {detectedDuration != null && (
+                {/* Duration info — no trim needed */}
+                {effectiveDuration != null && !needsTrim && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                     {motionVideo ? 'Detected' : 'Remembered'} duration:{' '}
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(detectedDuration)}</strong>
+                    <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(effectiveDuration)}</strong>
                     {' '}· credit cost adjusted accordingly
                     {videoGhostMeta && !motionVideo && (
                       <span style={{ color: ACCENT }}> · re-upload video to generate</span>
@@ -587,6 +973,31 @@ export default function CreateCopyMotionPage() {
                   </p>
                 )}
               </div>
+
+              {/* ── Trim slider — shown only when video is too long ── */}
+              <AnimatePresence>
+                {needsTrim && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{    opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <VideoTrimSlider
+                      duration={motionVideo.duration}
+                      maxDuration={modelMaxDuration}
+                      trimStart={trimStart}
+                      trimEnd={trimEnd}
+                      onTrimChange={handleTrimChange}
+                      videoUrl={motionVideo.url}
+                    />
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                      Selected segment: <strong style={{ color: ACCENT }}>{trimStart}s → {trimEnd}s</strong>
+                      {' '}({trimEnd - trimStart}s) · will be trimmed before upload
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Settings */}
               <div>
@@ -627,17 +1038,21 @@ export default function CreateCopyMotionPage() {
               disabled={!canGenerate}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
               style={{
-                background: canGenerate ? ACCENT              : 'var(--bg-elevated)',
-                color:      canGenerate ? '#ffffff'           : 'var(--text-muted)',
-                cursor:     canGenerate ? 'pointer'           : 'not-allowed',
+                background: canGenerate ? ACCENT    : 'var(--bg-elevated)',
+                color:      canGenerate ? '#ffffff' : 'var(--text-muted)',
+                cursor:     canGenerate ? 'pointer' : 'not-allowed',
               }}
             >
-              <Zap size={15} fill="currentColor" />
+              {needsTrim
+                ? <Scissors size={15} />
+                : <Zap size={15} fill="currentColor" />}
               {submitting
-                ? 'Generating…'
-                : detectedDuration != null
-                  ? `Generate · ${creditCost} cr · ${formatDuration(detectedDuration)}`
-                  : `Generate · ${creditCost} cr`}
+                ? (trimming ? 'Trimming…' : 'Generating…')
+                : needsTrim
+                  ? `Trim & Generate · ${creditCost} cr · ${trimEnd - trimStart}s`
+                  : effectiveDuration != null
+                    ? `Generate · ${creditCost} cr · ${formatDuration(effectiveDuration)}`
+                    : `Generate · ${creditCost} cr`}
             </button>
 
             {!hasVideoOrGhost && !hasSubject && (
