@@ -325,7 +325,8 @@ export default function CreateVideoPage() {
 const baseCredits = selectedModel
     ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
-const durationMultiplier = duration === '10' ? 2 : duration === '12' ? 2.4 : duration === '15' ? 3 : duration === '16' ? 3.2 : 1
+const isFlatRate = ['hunyuan_video_i2v', 'veo3_1_lite_s2e'].includes(model)
+const durationMultiplier = isFlatRate ? 1 : duration === '10' ? 2 : duration === '12' ? 2.4 : duration === '15' ? 3 : duration === '16' ? 3.2 : 1
 const baseWithDuration = baseCredits * durationMultiplier
 const creditCost = withSound && caps.supportsSound
     ? Math.ceil(baseWithDuration * (selectedModel?.sound_cost_multiplier ?? 1.5))
