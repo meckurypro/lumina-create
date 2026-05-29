@@ -275,7 +275,7 @@ export default function CreatePage() {
                         id={id}
                         label={label}
                         subtitle={subtitle}
-                        Icon={Icon}
+                        icon={Icon}
                         route={route}
                         accentVar={accentVar}
                         index={i}
@@ -290,7 +290,7 @@ export default function CreatePage() {
                       id={id}
                       label={label}
                       subtitle={subtitle}
-                      Icon={Icon}
+                      icon={Icon}
                       route={route}
                       accentVar={accentVar}
                       index={i + 2}
