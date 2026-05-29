@@ -248,8 +248,19 @@ function ModelRow({ model, onUpdate, catColor }) {
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #fff)', letterSpacing: '-0.01em' }}>
-            {model.label}
-          </span>
+  {model.label}
+  {model.aka && (
+    <span style={{
+      marginLeft: 6, fontSize: 10, fontWeight: 600,
+      padding: '1px 7px', borderRadius: 20,
+      background: 'rgba(255,255,255,0.08)',
+      color: 'var(--text-muted, #888)',
+      letterSpacing: '0.03em',
+    }}>
+      {model.aka}
+    </span>
+  )}
+</span>
           {isLocked && (
             <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 5, background: 'rgba(239,68,68,0.15)', color: '#ef4444', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
               LOCKED
