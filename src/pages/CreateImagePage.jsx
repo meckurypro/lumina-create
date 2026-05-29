@@ -7,6 +7,11 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// Tool accent — consumed from CSS variables set in index.css
+const ACCENT     = 'var(--tool-image)'
+const ACCENT_SUB = 'var(--tool-image-subtle)'
+const ACCENT_BDR = 'var(--tool-image-border)'
+
 const SS_PROMPT = 'meckury_create_prompt'
 const SS_IMAGE  = 'meckury_create_image'
 
@@ -29,8 +34,8 @@ const SettingChips = ({ label, options, value, onChange }) => (
           disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
-            color:      value === opt.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+            background: value === opt.value ? ACCENT       : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff'    : 'var(--text-secondary)',
             opacity:    opt.disabled ? 0.3 : 1,
             cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
@@ -60,7 +65,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
         <span>{selected?.label ?? 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -96,7 +101,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     key={m.value}
                     onClick={() => { onChange(m.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
@@ -106,7 +111,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                       )}
                     </div>
                     {m.value === value && (
-                      <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
+                      <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>
                     )}
                   </button>
                 ))}
@@ -149,7 +154,6 @@ export default function CreateImagePage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // Restore persisted state on mount
   useEffect(() => {
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
@@ -177,7 +181,6 @@ export default function CreateImagePage() {
     } catch { /* corrupt storage — silently ignore */ }
   }, [])
 
-  // Persist prompt
   useEffect(() => {
     try {
       if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
@@ -365,7 +368,7 @@ export default function CreateImagePage() {
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
             <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
               Generating…
@@ -374,15 +377,21 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Header — blue left accent bar */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)' }}
+        style={{
+          borderBottom: `1px solid var(--border-color)`,
+          borderLeft:   `3px solid ${ACCENT}`,
+        }}
       >
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Image</h1>
+        <div className="flex flex-col items-center">
+          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Create Image</h1>
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>Image Generation</span>
+        </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && (
             <ModelDropdown models={models} value={model} onChange={handleModelChange} />
@@ -469,8 +478,8 @@ export default function CreateImagePage() {
                   style={{
                     width:       '140px',
                     aspectRatio: '1 / 1',
-                    border:      '1.5px dashed var(--border-color)',
-                    background:  'var(--bg-card)',
+                    border:      `1.5px dashed ${ACCENT_BDR}`,
+                    background:  ACCENT_SUB,
                     cursor:      modelSupportsImage ? 'pointer' : 'not-allowed',
                     opacity:     modelSupportsImage ? 1 : 0.4,
                   }}
@@ -482,8 +491,8 @@ export default function CreateImagePage() {
                     onChange={handleImageUpload}
                     disabled={!modelSupportsImage}
                   />
-                  <ImagePlus size={22} style={{ color: 'var(--text-muted)', marginBottom: 6 }} />
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  <ImagePlus size={22} style={{ color: ACCENT, marginBottom: 6 }} />
+                  <span className="text-xs font-medium" style={{ color: ACCENT }}>
                     {modelSupportsImage ? 'Add reference' : 'Not supported'}
                   </span>
                 </label>
@@ -522,16 +531,16 @@ export default function CreateImagePage() {
       </div>
 
       {/* Generate button */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
             disabled={buttonDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: 'var(--text-primary)',
-              color:      'var(--text-inverse)',
-              opacity:    buttonDisabled ? 0.5 : 1,
+              background: buttonDisabled ? 'var(--bg-elevated)' : ACCENT,
+              color:      buttonDisabled ? 'var(--text-muted)'  : '#ffffff',
+              opacity:    1,
             }}
           >
             <Zap size={15} fill="currentColor" />
@@ -542,7 +551,7 @@ export default function CreateImagePage() {
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                 Top up
               </button>
             </p>
