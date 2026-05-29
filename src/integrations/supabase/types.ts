@@ -500,19 +500,19 @@ export type Database = {
           end_frame_url: string | null
           enhanced_prompt: string | null
           error_message: string | null
-          fal_request_id: string | null
           generation_time_ms: number | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id: string
           input_image_urls: string[] | null
           is_published: boolean | null
           is_staff_generation: boolean | null
-          model: Database["public"]["Enums"]["ai_model"] | null
+          model: string | null
           output_thumbnail_url: string | null
           output_type: string | null
           output_url: string | null
           pool_user_id: string | null
           prompt: string | null
+          provider_request_id: string | null
           skip_prompt_refinement: boolean
           start_frame_url: string | null
           status: Database["public"]["Enums"]["generation_status"] | null
@@ -530,19 +530,19 @@ export type Database = {
           end_frame_url?: string | null
           enhanced_prompt?: string | null
           error_message?: string | null
-          fal_request_id?: string | null
           generation_time_ms?: number | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id?: string
           input_image_urls?: string[] | null
           is_published?: boolean | null
           is_staff_generation?: boolean | null
-          model?: Database["public"]["Enums"]["ai_model"] | null
+          model?: string | null
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          provider_request_id?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
@@ -560,19 +560,19 @@ export type Database = {
           end_frame_url?: string | null
           enhanced_prompt?: string | null
           error_message?: string | null
-          fal_request_id?: string | null
           generation_time_ms?: number | null
           generation_type?: Database["public"]["Enums"]["generation_type"]
           id?: string
           input_image_urls?: string[] | null
           is_published?: boolean | null
           is_staff_generation?: boolean | null
-          model?: Database["public"]["Enums"]["ai_model"] | null
+          model?: string | null
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          provider_request_id?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
@@ -583,6 +583,13 @@ export type Database = {
           with_sound?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_generations_model"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["value"]
+          },
           {
             foreignKeyName: "generations_pool_user_id_fkey"
             columns: ["pool_user_id"]
@@ -612,15 +619,25 @@ export type Database = {
           credit_cost_i2i: number
           credit_cost_t2i: number
           credit_multiplier: number
+          feature: string
           id: string
           is_active: boolean | null
+          is_flat_rate: boolean
           is_locked: boolean | null
+          is_user_facing: boolean
+          is_verified: boolean
           label: string
+          provider: string
           sort_order: number | null
           sound_cost_multiplier: number
           sublabel: string | null
+          supported_aspect_ratios: string[] | null
+          supported_durations: string[] | null
+          supports_end_frame: boolean
+          supports_frame_to_frame: boolean
           supports_image: boolean
           supports_sound: boolean
+          supports_start_frame: boolean
           type: string
           updated_at: string | null
           value: string
@@ -630,15 +647,25 @@ export type Database = {
           credit_cost_i2i?: number
           credit_cost_t2i?: number
           credit_multiplier?: number
+          feature?: string
           id?: string
           is_active?: boolean | null
+          is_flat_rate?: boolean
           is_locked?: boolean | null
+          is_user_facing?: boolean
+          is_verified?: boolean
           label: string
+          provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
+          supported_aspect_ratios?: string[] | null
+          supported_durations?: string[] | null
+          supports_end_frame?: boolean
+          supports_frame_to_frame?: boolean
           supports_image?: boolean
           supports_sound?: boolean
+          supports_start_frame?: boolean
           type: string
           updated_at?: string | null
           value: string
@@ -648,15 +675,25 @@ export type Database = {
           credit_cost_i2i?: number
           credit_cost_t2i?: number
           credit_multiplier?: number
+          feature?: string
           id?: string
           is_active?: boolean | null
+          is_flat_rate?: boolean
           is_locked?: boolean | null
+          is_user_facing?: boolean
+          is_verified?: boolean
           label?: string
+          provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
+          supported_aspect_ratios?: string[] | null
+          supported_durations?: string[] | null
+          supports_end_frame?: boolean
+          supports_frame_to_frame?: boolean
           supports_image?: boolean
           supports_sound?: boolean
+          supports_start_frame?: boolean
           type?: string
           updated_at?: string | null
           value?: string
@@ -727,7 +764,7 @@ export type Database = {
           preferred_duration:
             | Database["public"]["Enums"]["video_duration"]
             | null
-          preferred_model: Database["public"]["Enums"]["ai_model"] | null
+          preferred_model: string | null
           primary_use_case: string | null
           referral_source: string | null
           role: Database["public"]["Enums"]["user_role"] | null
@@ -761,7 +798,7 @@ export type Database = {
           preferred_duration?:
             | Database["public"]["Enums"]["video_duration"]
             | null
-          preferred_model?: Database["public"]["Enums"]["ai_model"] | null
+          preferred_model?: string | null
           primary_use_case?: string | null
           referral_source?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
@@ -795,7 +832,7 @@ export type Database = {
           preferred_duration?:
             | Database["public"]["Enums"]["video_duration"]
             | null
-          preferred_model?: Database["public"]["Enums"]["ai_model"] | null
+          preferred_model?: string | null
           primary_use_case?: string | null
           referral_source?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
@@ -810,7 +847,15 @@ export type Database = {
           updated_at?: string | null
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_profiles_preferred_model"
+            columns: ["preferred_model"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["value"]
+          },
+        ]
       }
       staff_activity: {
         Row: {
