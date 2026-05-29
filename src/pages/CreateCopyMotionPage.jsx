@@ -73,7 +73,6 @@ const getVideoDuration = (file) => new Promise((resolve) => {
 })
 
 // ── In-browser video trimmer using MediaRecorder ──────────
-// Returns a new File containing only the [startSec, endSec] segment.
 const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
   new Promise((resolve, reject) => {
     const url = URL.createObjectURL(sourceFile)
@@ -82,7 +81,6 @@ const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
     video.muted = true
     video.preload = 'auto'
 
-    // Determine best supported mime type
     const mimeType = (() => {
       const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
       return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm'
@@ -95,8 +93,6 @@ const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
       const ctx = canvas.getContext('2d')
 
       const stream = canvas.captureStream(30)
-
-      // If source has audio, try to capture it too
       let recorder
       try {
         recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 })
@@ -132,7 +128,7 @@ const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
         video.play().catch(() => {})
       }
 
-      video.onerror = (e) => { URL.revokeObjectURL(url); reject(new Error('Video seek failed')) }
+      video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Video seek failed')) }
       video.currentTime = startSec
     }
 
@@ -140,16 +136,15 @@ const trimVideoInBrowser = (sourceFile, startSec, endSec) =>
   })
 
 // ── Video Trim Slider ─────────────────────────────────────
-const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChange, videoUrl }) => {
+const VideoTrimSlider = ({ duration, targetDuration, trimStart, trimEnd, onTrimChange, videoUrl }) => {
   const trackRef      = useRef(null)
   const previewRef    = useRef(null)
   const [playing, setPlaying]         = useState(false)
   const [currentTime, setCurrentTime] = useState(trimStart)
-  const [dragging, setDragging]       = useState(null) // 'start' | 'end' | null
+  const [dragging, setDragging]       = useState(null)
 
   const trimmedDuration = trimEnd - trimStart
 
-  // Keep preview in sync
   useEffect(() => {
     const vid = previewRef.current
     if (!vid) return
@@ -203,11 +198,13 @@ const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChan
       const pos = getPosFromEvent(e)
       if (dragging === 'start') {
         const newStart = Math.max(0, Math.min(pos, trimEnd - 1))
-        const newEnd   = Math.min(trimEnd, newStart + maxDuration)
+        // Lock the window size to targetDuration
+        const newEnd = Math.min(duration, newStart + targetDuration)
         onTrimChange(Math.round(newStart), Math.round(newEnd))
       } else {
         const newEnd   = Math.min(duration, Math.max(pos, trimStart + 1))
-        const newStart = Math.max(trimStart, newEnd - maxDuration)
+        // Lock the window size to targetDuration
+        const newStart = Math.max(0, newEnd - targetDuration)
         onTrimChange(Math.round(newStart), Math.round(newEnd))
       }
     }
@@ -222,7 +219,7 @@ const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChan
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('touchend', onUp)
     }
-  }, [dragging, trimStart, trimEnd, duration, maxDuration]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dragging, trimStart, trimEnd, duration, targetDuration]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startPct    = (trimStart / duration) * 100
   const endPct      = (trimEnd   / duration) * 100
@@ -237,11 +234,11 @@ const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChan
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
           <Scissors size={13} style={{ color: ACCENT }} />
-          <span className="text-xs font-bold" style={{ color: ACCENT }}>Trim Video</span>
+          <span className="text-xs font-bold" style={{ color: ACCENT }}>Select {targetDuration}s Clip</span>
         </div>
         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-          Max <strong style={{ color: 'var(--text-primary)' }}>{maxDuration}s</strong> · Selected{' '}
-          <strong style={{ color: ACCENT }}>{trimmedDuration}s</strong>
+          Video <strong style={{ color: 'var(--text-primary)' }}>{duration}s</strong> · Selected{' '}
+          <strong style={{ color: ACCENT }}>{trimStart}s → {trimEnd}s</strong>
         </span>
       </div>
 
@@ -266,8 +263,8 @@ const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChan
           </button>
         </div>
         <div className="flex-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <p>Video is <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(duration)}</strong> — longer than the model's <strong style={{ color: 'var(--text-primary)' }}>{maxDuration}s</strong> max.</p>
-          <p className="mt-1">Drag the handles to pick which <strong style={{ color: ACCENT }}>{maxDuration}s</strong> segment to use.</p>
+          <p>Your video is <strong style={{ color: 'var(--text-primary)' }}>{duration}s</strong> — drag the handles to choose which <strong style={{ color: ACCENT }}>{targetDuration}s</strong> to use.</p>
+          <p className="mt-1">The selection window is locked to <strong style={{ color: ACCENT }}>{targetDuration}s</strong>.</p>
         </div>
       </div>
 
@@ -389,6 +386,31 @@ const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChan
     </div>
   )
 }
+
+// ── Duration Chips (same pattern as CreateVideoPage SettingChips) ──
+const DurationChips = ({ durations, value, onChange }) => (
+  <div className="mb-5">
+    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+      Duration
+    </p>
+    <div className="flex gap-2 flex-wrap">
+      {durations.map((d) => (
+        <button
+          key={d}
+          onClick={() => onChange(Number(d))}
+          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+          style={{
+            background: value === Number(d) ? ACCENT    : 'var(--bg-elevated)',
+            color:      value === Number(d) ? '#ffffff' : 'var(--text-secondary)',
+            cursor:     'pointer',
+          }}
+        >
+          {d}s
+        </button>
+      ))}
+    </div>
+  </div>
+)
 
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
@@ -613,11 +635,12 @@ export default function CreateCopyMotionPage() {
   const [submitting,     setSubmitting]     = useState(false)
   const [trimming,       setTrimming]       = useState(false)
 
-  // Trim state — only shown when video exceeds model max duration
+  // ── Duration selection — driven by model's supported_durations ──
+  const [selectedDuration, setSelectedDuration] = useState(null) // number, in seconds
+
+  // ── Trim state — start/end within the video, locked to selectedDuration ──
   const [trimStart, setTrimStart] = useState(0)
   const [trimEnd,   setTrimEnd]   = useState(0)
-
-  const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   useEffect(() => {
     restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
@@ -648,21 +671,26 @@ export default function CreateCopyMotionPage() {
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
 
-  // Derive the model's max allowed video duration from supported_durations
-  const modelMaxDuration = selectedModel?.supported_durations
-    ? Math.max(...selectedModel.supported_durations.map(Number))
-    : 30
+  // All durations this model supports, as numbers, sorted ascending
+  const modelDurations = selectedModel?.supported_durations
+    ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
+    : []
+  const modelMinDuration = modelDurations[0] ?? 5
+  const modelMaxDuration = modelDurations[modelDurations.length - 1] ?? 30
 
-  // Whether we need to show the trimmer (video is longer than model allows)
-  const needsTrim = motionVideo?.duration != null && motionVideo.duration > modelMaxDuration
-
-  // Initialise / reset trim window whenever video or model changes
+  // ── When model changes: reset selectedDuration to first available ──
   useEffect(() => {
-    if (!motionVideo?.duration) return
-    const maxEnd = Math.min(motionVideo.duration, modelMaxDuration)
+    if (modelDurations.length > 0) {
+      setSelectedDuration(modelDurations[0])
+    }
+  }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── When selectedDuration or video changes: reset trim window ──
+  useEffect(() => {
+    if (!selectedDuration || !motionVideo?.duration) return
     setTrimStart(0)
-    setTrimEnd(maxEnd)
-  }, [motionVideo?.duration, modelMaxDuration]) // eslint-disable-line react-hooks/exhaustive-deps
+    setTrimEnd(Math.min(motionVideo.duration, selectedDuration))
+  }, [selectedDuration, motionVideo?.duration]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
@@ -672,21 +700,30 @@ export default function CreateCopyMotionPage() {
     }
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The effective duration sent to the generation record
-  // If trimming: use trimmed length; otherwise use actual video duration
-  const effectiveDuration = needsTrim
-    ? trimEnd - trimStart
-    : motionVideo?.duration ?? videoGhostMeta?.duration ?? null
+  // ── Derived video status ──────────────────────────────────
+  const videoDuration = motionVideo?.duration ?? null
 
-  // Snap effective duration to the nearest valid enum value the model supports
-  const snappedDuration = (() => {
-    if (!effectiveDuration || !selectedModel?.supported_durations) return null
-    const durations = selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
-    // Find smallest valid duration that is >= effectiveDuration
-    const fit = durations.find((d) => d >= effectiveDuration)
-    return fit ?? durations[durations.length - 1]
-  })()
+  // Video is too short for any duration the model supports
+  const videoTooShort = videoDuration != null && videoDuration < modelMinDuration
 
+  // For the selected duration: does the video need to be trimmed?
+  const needsTrim = !videoTooShort &&
+    videoDuration != null &&
+    selectedDuration != null &&
+    videoDuration > selectedDuration
+
+  // For the selected duration: does the video fit exactly (no trim needed)?
+  const videoFits = !videoTooShort &&
+    videoDuration != null &&
+    selectedDuration != null &&
+    videoDuration <= selectedDuration
+
+  // The duration we'll actually send to the generation record
+  // If video fits or is shorter: use selectedDuration (enum-safe)
+  // If trimming: also selectedDuration (trim window is exactly selectedDuration)
+  const effectiveDuration = selectedDuration
+
+  // ── Credit calculation ────────────────────────────────────
   const durationMultiplier = (() => {
     if (!effectiveDuration) return 1
     if (effectiveDuration <= 5)  return 1
@@ -709,7 +746,11 @@ export default function CreateCopyMotionPage() {
   const hasVideo        = !!motionVideo
   const hasVideoOrGhost = hasVideo || !!videoGhostMeta
   const hasSubject      = !!subjectImage
-  const canGenerate     = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting && !trimming
+
+  // Can generate: must have video, subject, afford credits, valid model, not submitting,
+  // and video must not be too short
+  const canGenerate = hasVideo && hasSubject && canAfford && !!selectedModel &&
+    !submitting && !trimming && !videoTooShort && !!selectedDuration
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -767,6 +808,7 @@ export default function CreateCopyMotionPage() {
     if (!selectedModel) return toast.error('Pick a model')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
+    if (videoTooShort)  return toast.error(`Video is too short. Minimum is ${modelMinDuration}s for this model.`)
 
     setSubmitting(true)
     try {
@@ -809,7 +851,7 @@ export default function CreateCopyMotionPage() {
       const { data: { publicUrl: subjectImageUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(imgPath)
 
       // ── Step 4: Create generation record ─────────────────
-      // Use snappedDuration so it always matches a valid enum value for this model
+      // duration is always a string matching one of the model's supported_durations enum values
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'motion_transfer',
@@ -817,7 +859,7 @@ export default function CreateCopyMotionPage() {
         prompt:                 null,
         model,
         aspect_ratio:           aspectRatio,
-        duration:               String(snappedDuration ?? finalDuration ?? 5),
+        duration:               String(selectedDuration),
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
@@ -961,22 +1003,47 @@ export default function CreateCopyMotionPage() {
                   </div>
                 </div>
 
-                {/* Duration info — no trim needed */}
-                {effectiveDuration != null && !needsTrim && (
+                {/* Video too short warning */}
+                <AnimatePresence>
+                  {videoTooShort && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{    opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
+                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}
+                    >
+                      <AlertCircle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      <p className="text-xs" style={{ color: '#ef4444' }}>
+                        Video is only <strong>{videoDuration}s</strong> — this model needs at least{' '}
+                        <strong>{modelMinDuration}s</strong>. Please upload a longer video.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Video fits note — shown when no trim needed */}
+                {videoFits && !videoTooShort && motionVideo && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                    {motionVideo ? 'Detected' : 'Remembered'} duration:{' '}
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(effectiveDuration)}</strong>
-                    {' '}· credit cost adjusted accordingly
-                    {videoGhostMeta && !motionVideo && (
-                      <span style={{ color: ACCENT }}> · re-upload video to generate</span>
-                    )}
+                    Video is <strong style={{ color: 'var(--text-primary)' }}>{videoDuration}s</strong> — fits within the selected{' '}
+                    <strong style={{ color: ACCENT }}>{selectedDuration}s</strong> slot. Full video will be used.
                   </p>
                 )}
               </div>
 
-              {/* ── Trim slider — shown only when video is too long ── */}
+              {/* ── Duration Chips — always visible when model is loaded ── */}
+              {modelDurations.length > 0 && (
+                <DurationChips
+                  durations={modelDurations}
+                  value={selectedDuration}
+                  onChange={(d) => setSelectedDuration(d)}
+                />
+              )}
+
+              {/* ── Trim slider — shown only when video exceeds selected duration ── */}
               <AnimatePresence>
-                {needsTrim && (
+                {needsTrim && motionVideo && (
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -985,14 +1052,14 @@ export default function CreateCopyMotionPage() {
                   >
                     <VideoTrimSlider
                       duration={motionVideo.duration}
-                      maxDuration={modelMaxDuration}
+                      targetDuration={selectedDuration}
                       trimStart={trimStart}
                       trimEnd={trimEnd}
                       onTrimChange={handleTrimChange}
                       videoUrl={motionVideo.url}
                     />
                     <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                      Selected segment: <strong style={{ color: ACCENT }}>{trimStart}s → {trimEnd}s</strong>
+                      Clip: <strong style={{ color: ACCENT }}>{trimStart}s → {trimEnd}s</strong>
                       {' '}({trimEnd - trimStart}s) · will be trimmed before upload
                     </p>
                   </motion.div>
@@ -1049,28 +1116,32 @@ export default function CreateCopyMotionPage() {
               {submitting
                 ? (trimming ? 'Trimming…' : 'Generating…')
                 : needsTrim
-                  ? `Trim & Generate · ${creditCost} cr · ${trimEnd - trimStart}s`
-                  : effectiveDuration != null
-                    ? `Generate · ${creditCost} cr · ${formatDuration(effectiveDuration)}`
-                    : `Generate · ${creditCost} cr`}
+                  ? `Trim & Generate · ${creditCost} cr · ${selectedDuration}s`
+                  : `Generate · ${creditCost} cr · ${selectedDuration}s`}
             </button>
 
-            {!hasVideoOrGhost && !hasSubject && (
+            {/* Helper messages below button */}
+            {videoTooShort && (
+              <p className="text-xs text-center mt-2" style={{ color: '#ef4444' }}>
+                Video too short — minimum {modelMinDuration}s required
+              </p>
+            )}
+            {!videoTooShort && !hasVideoOrGhost && !hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Upload both a motion video and a subject image to continue
               </p>
             )}
-            {(hasVideoOrGhost || hasSubject) && (!hasVideoOrGhost || !hasSubject) && (
+            {!videoTooShort && (hasVideoOrGhost || hasSubject) && (!hasVideoOrGhost || !hasSubject) && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 {!hasVideoOrGhost ? 'Still need a motion reference video' : 'Still need a subject image'}
               </p>
             )}
-            {videoGhostMeta && !motionVideo && hasSubject && (
+            {!videoTooShort && videoGhostMeta && !motionVideo && hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
                 Re-upload your motion video to generate
               </p>
             )}
-            {hasVideo && hasSubject && !canAfford && (
+            {!videoTooShort && hasVideo && hasSubject && !canAfford && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Not enough credits.{' '}
                 <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
