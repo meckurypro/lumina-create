@@ -59,6 +59,26 @@
 
   --topbar-height:     56px;
   --bottom-nav-height: 0px;
+
+  /* ── Tool accent colors — LIGHT MODE ─────────────────────── */
+
+  /* Create Image — Ink Blue */
+  --tool-image:         #4F6FD4;
+  --tool-image-subtle:  rgba(79, 111, 212, 0.10);
+  --tool-image-border:  rgba(79, 111, 212, 0.22);
+  --tool-image-muted:   rgba(79, 111, 212, 0.60);
+
+  /* Create Video — Deep Violet */
+  --tool-video:         #7C5CC4;
+  --tool-video-subtle:  rgba(124, 92, 196, 0.10);
+  --tool-video-border:  rgba(124, 92, 196, 0.22);
+  --tool-video-muted:   rgba(124, 92, 196, 0.60);
+
+  /* Copy Motion — Forest Teal */
+  --tool-motion:        #0F9E6E;
+  --tool-motion-subtle: rgba(15, 158, 110, 0.10);
+  --tool-motion-border: rgba(15, 158, 110, 0.22);
+  --tool-motion-muted:  rgba(15, 158, 110, 0.60);
 }
 
 [data-theme='dark'], .dark {
@@ -106,6 +126,26 @@
   --shadow:    0 1px 2px rgba(0,0,0,0.5);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
   --shadow-lg: 0 10px 30px rgba(0,0,0,0.6);
+
+  /* ── Tool accent colors — DARK MODE ──────────────────────── */
+
+  /* Create Image — Periwinkle Blue */
+  --tool-image:         #7C9EFF;
+  --tool-image-subtle:  rgba(124, 158, 255, 0.09);
+  --tool-image-border:  rgba(124, 158, 255, 0.18);
+  --tool-image-muted:   rgba(124, 158, 255, 0.55);
+
+  /* Create Video — Soft Violet */
+  --tool-video:         #A78BFA;
+  --tool-video-subtle:  rgba(167, 139, 250, 0.09);
+  --tool-video-border:  rgba(167, 139, 250, 0.18);
+  --tool-video-muted:   rgba(167, 139, 250, 0.55);
+
+  /* Copy Motion — Mint Emerald */
+  --tool-motion:        #34D399;
+  --tool-motion-subtle: rgba(52, 211, 153, 0.09);
+  --tool-motion-border: rgba(52, 211, 153, 0.18);
+  --tool-motion-muted:  rgba(52, 211, 153, 0.55);
 }
 
 @media (max-width: 1023px) {
