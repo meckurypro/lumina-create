@@ -1,4 +1,3 @@
-// src/pages/CreateCopyMotionPage.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -7,11 +6,14 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-// ─── SessionStorage keys ──────────────────────────────────────────────────────
-const SS_SUBJECT_IMG   = 'meckury_copymotion_subject'
-const SS_VIDEO_META    = 'meckury_copymotion_video_meta'   // stores name + duration only
+// Tool accent
+const ACCENT     = 'var(--tool-motion)'
+const ACCENT_SUB = 'var(--tool-motion-subtle)'
+const ACCENT_BDR = 'var(--tool-motion-border)'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const SS_SUBJECT_IMG = 'meckury_copymotion_subject'
+const SS_VIDEO_META  = 'meckury_copymotion_video_meta'
+
 function formatDuration(secs) {
   if (!secs && secs !== 0) return '—'
   const s = Math.round(Number(secs))
@@ -28,23 +30,17 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-// Persist image file to sessionStorage as base64
 const persistImage = (key, file) => {
   if (!file) { try { sessionStorage.removeItem(key) } catch { /* noop */ }; return }
   try {
     const reader = new FileReader()
     reader.onload = (ev) => {
-      sessionStorage.setItem(key, JSON.stringify({
-        base64: ev.target.result,
-        name:   file.name,
-        type:   file.type,
-      }))
+      sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
     }
     reader.readAsDataURL(file)
   } catch { /* noop */ }
 }
 
-// Restore image file from sessionStorage
 const restoreImage = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
@@ -59,18 +55,12 @@ const restoreImage = (key) => new Promise((resolve) => {
   } catch { resolve(null) }
 })
 
-// Persist video metadata only (not the file — too large for sessionStorage)
 const persistVideoMeta = (name, duration, aspectRatio) => {
-  try {
-    sessionStorage.setItem(SS_VIDEO_META, JSON.stringify({ name, duration, aspectRatio }))
-  } catch { /* noop */ }
+  try { sessionStorage.setItem(SS_VIDEO_META, JSON.stringify({ name, duration, aspectRatio })) } catch { /* noop */ }
 }
 
 const restoreVideoMeta = () => {
-  try {
-    const saved = sessionStorage.getItem(SS_VIDEO_META)
-    return saved ? JSON.parse(saved) : null
-  } catch { return null }
+  try { const saved = sessionStorage.getItem(SS_VIDEO_META); return saved ? JSON.parse(saved) : null } catch { return null }
 }
 
 const getVideoDuration = (file) => new Promise((resolve) => {
@@ -82,7 +72,6 @@ const getVideoDuration = (file) => new Promise((resolve) => {
   vid.src = url
 })
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
@@ -94,7 +83,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
         <span>{selected?.label ?? 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -128,13 +117,13 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     key={m.value}
                     onClick={() => { onChange(m.value); setOpen(false) }}
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                     </div>
-                    {m.value === value && <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>}
+                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
                   </button>
                 ))}
               </div>
@@ -172,8 +161,8 @@ const SettingChips = ({ label, options, value, onChange }) => (
           disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
-            color:      value === opt.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+            background: value === opt.value ? ACCENT    : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
             opacity:    opt.disabled ? 0.3 : 1,
             cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
@@ -185,20 +174,13 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Video upload zone ─────────────────────────────────────────────────────────
 const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove }) => {
-  // value = { file, url, duration } when file is loaded
-  // ghostMeta = { name, duration } when restored from session (file gone after refresh)
-
   if (value) {
     return (
       <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
         <video src={value.url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
         {value.duration != null && (
-          <div
-            className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-bold"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
-          >
+          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
             {formatDuration(value.duration)}
           </div>
         )}
@@ -214,7 +196,6 @@ const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove }) => {
   }
 
   if (ghostMeta) {
-    // File was lost on refresh — show ghost state with re-upload prompt
     return (
       <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
         <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-3 text-center">
@@ -222,7 +203,7 @@ const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove }) => {
           <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Re-upload video</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)', fontSize: 10 }}>{ghostMeta.name}</p>
           {ghostMeta.duration != null && (
-            <p className="text-xs" style={{ color: 'var(--brand)' }}>{formatDuration(ghostMeta.duration)}</p>
+            <p className="text-xs" style={{ color: ACCENT }}>{formatDuration(ghostMeta.duration)}</p>
           )}
         </div>
         <label className="absolute inset-0 cursor-pointer">
@@ -242,17 +223,16 @@ const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove }) => {
   return (
     <label
       className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '1/1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
+      style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
     >
       <input type="file" accept="video/*" className="hidden" onChange={onUpload} />
-      <Film size={24} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
-      <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Upload video</span>
+      <Film size={24} style={{ color: ACCENT, marginBottom: 8 }} />
+      <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload video</span>
       <span className="text-xs mt-1 text-center px-4" style={{ color: 'var(--text-muted)' }}>MP4 · MOV · WEBM</span>
     </label>
   )
 }
 
-// ── Image upload zone ─────────────────────────────────────────────────────────
 const ImageUploadZone = ({ value, onUpload, onRemove }) => {
   if (value) {
     return (
@@ -272,28 +252,24 @@ const ImageUploadZone = ({ value, onUpload, onRemove }) => {
   return (
     <label
       className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '1/1', border: '1.5px dashed var(--border-color)', background: 'var(--bg-card)' }}
+      style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
     >
       <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
-      <ImageIcon size={24} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
-      <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Upload image</span>
+      <ImageIcon size={24} style={{ color: ACCENT, marginBottom: 8 }} />
+      <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload image</span>
       <span className="text-xs mt-1 text-center px-4" style={{ color: 'var(--text-muted)' }}>The image that moves</span>
     </label>
   )
 }
 
-// ── No-models empty state ─────────────────────────────────────────────────────
 const NoModelsState = () => (
   <motion.div
     initial={{ opacity: 0, y: 12 }}
     animate={{ opacity: 1, y: 0 }}
     className="flex flex-col items-center justify-center py-16 gap-4 text-center"
   >
-    <div
-      className="w-14 h-14 rounded-2xl flex items-center justify-center"
-      style={{ background: 'var(--bg-elevated)' }}
-    >
-      <AlertCircle size={26} style={{ color: 'var(--text-muted)' }} />
+    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+      <AlertCircle size={26} style={{ color: ACCENT }} />
     </div>
     <div>
       <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>No models available yet</p>
@@ -304,14 +280,13 @@ const NoModelsState = () => (
   </motion.div>
 )
 
-// ─── Main page ────────────────────────────────────────────────────────────────
 export default function CreateCopyMotionPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
 
-  const [motionVideo,    setMotionVideo]    = useState(null)   // { file, url, duration }
-  const [videoGhostMeta, setVideoGhostMeta] = useState(null)   // { name, duration, aspectRatio } — restored on refresh
-  const [subjectImage,   setSubjectImage]   = useState(null)   // { file, url }
+  const [motionVideo,    setMotionVideo]    = useState(null)
+  const [videoGhostMeta, setVideoGhostMeta] = useState(null)
+  const [subjectImage,   setSubjectImage]   = useState(null)
   const [aspectRatio,    setAspectRatio]    = useState('9:16')
   const [withSound,      setWithSound]      = useState(false)
   const [model,          setModel]          = useState('')
@@ -321,20 +296,12 @@ export default function CreateCopyMotionPage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // ── Restore persisted state on mount ────────────────────────────────────
   useEffect(() => {
-    // Restore subject image (safe — images are small enough for sessionStorage)
     restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
-
-    // Restore video metadata only — the file itself is gone after refresh
     const meta = restoreVideoMeta()
-    if (meta) {
-      setVideoGhostMeta(meta)
-      if (meta.aspectRatio) setAspectRatio(meta.aspectRatio)
-    }
+    if (meta) { setVideoGhostMeta(meta); if (meta.aspectRatio) setAspectRatio(meta.aspectRatio) }
   }, [])
 
-  // ── Load models ──────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -354,14 +321,11 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // ── Selected model helpers ───────────────────────────────────────────────
   const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
 
-  useEffect(() => {
-    if (!supportsSound) setWithSound(false)
-  }, [supportsSound])
+  useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
   useEffect(() => {
     if (selectedModel && !supportedAspectRatios.includes(aspectRatio)) {
@@ -369,8 +333,6 @@ export default function CreateCopyMotionPage() {
     }
   }, [model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Credit cost ──────────────────────────────────────────────────────────
-  // Use detected duration from live file, or ghost meta duration if restored
   const detectedDuration = motionVideo?.duration ?? videoGhostMeta?.duration ?? null
 
   const durationMultiplier = (() => {
@@ -391,21 +353,17 @@ export default function CreateCopyMotionPage() {
     ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : Math.ceil(baseWithDur)
 
-  const canAfford   = credits >= creditCost
-  // Ghost meta counts as "has video" for UI purposes — but generate blocks until real file is present
-  const hasVideo    = !!motionVideo
+  const canAfford       = credits >= creditCost
+  const hasVideo        = !!motionVideo
   const hasVideoOrGhost = hasVideo || !!videoGhostMeta
-  const hasSubject  = !!subjectImage
-  const canGenerate = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting
+  const hasSubject      = !!subjectImage
+  const canGenerate     = hasVideo && hasSubject && canAfford && !!selectedModel && !submitting
 
-  // ── Upload handlers ──────────────────────────────────────────────────────
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     const url      = URL.createObjectURL(file)
     const duration = await getVideoDuration(file)
-
-    // Detect aspect ratio from video dimensions
     let detectedRatio = aspectRatio
     await new Promise((resolve) => {
       const vid = document.createElement('video')
@@ -421,7 +379,6 @@ export default function CreateCopyMotionPage() {
       vid.onerror = resolve
       vid.src = URL.createObjectURL(file)
     })
-
     setMotionVideo({ file, url, duration })
     setVideoGhostMeta(null)
     persistVideoMeta(file.name, duration, detectedRatio)
@@ -430,8 +387,7 @@ export default function CreateCopyMotionPage() {
   const handleSubjectUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = URL.createObjectURL(file)
-    setSubjectImage({ file, url })
+    setSubjectImage({ file, url: URL.createObjectURL(file) })
     persistImage(SS_SUBJECT_IMG, file)
   }
 
@@ -448,7 +404,6 @@ export default function CreateCopyMotionPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-  // ── Generate ─────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!hasVideo)      return toast.error('Upload a motion reference video')
     if (!hasSubject)    return toast.error('Upload a subject image')
@@ -458,27 +413,22 @@ export default function CreateCopyMotionPage() {
 
     setSubmitting(true)
     try {
-      // Upload motion video
       const vidExt  = (motionVideo.file.name.split('.').pop() || 'mp4').toLowerCase()
       const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
       const { error: vidErr } = await supabase.storage
         .from('generation-uploads')
         .upload(vidPath, motionVideo.file, { upsert: false, cacheControl: '3600', contentType: motionVideo.file.type })
       if (vidErr) throw new Error('Video upload failed')
-      const { data: { publicUrl: motionVideoUrl } } = supabase.storage
-        .from('generation-uploads').getPublicUrl(vidPath)
+      const { data: { publicUrl: motionVideoUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(vidPath)
 
-      // Upload subject image
       const imgExt  = (subjectImage.file.name.split('.').pop() || 'jpg').toLowerCase()
       const imgPath = `${user.id}/${crypto.randomUUID()}.${imgExt}`
       const { error: imgErr } = await supabase.storage
         .from('generation-uploads')
         .upload(imgPath, subjectImage.file, { upsert: false, cacheControl: '3600', contentType: subjectImage.file.type })
       if (imgErr) throw new Error('Image upload failed')
-      const { data: { publicUrl: subjectImageUrl } } = supabase.storage
-        .from('generation-uploads').getPublicUrl(imgPath)
+      const { data: { publicUrl: subjectImageUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(imgPath)
 
-      // Create generation row — no prompt field for motion transfer
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'motion_transfer',
@@ -492,28 +442,21 @@ export default function CreateCopyMotionPage() {
         start_frame_url:        subjectImageUrl,
         input_image_urls:       [motionVideoUrl],
         with_sound:             withSound,
-        skip_prompt_refinement: true,   // always skip — no prompt for motion transfer
+        skip_prompt_refinement: true,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
-        await generationsDb.update(genRow.id, {
-          status:        'failed',
-          error_message: deduct?.error || 'Insufficient credits',
-        })
+        await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Fire edge function (fire-and-forget)
       supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('video-generate invoke error', e))
 
       refreshProfile()
       toast.success('Copy Motion is being generated. Check your Media page.', { duration: 4000 })
-
-      // Reset state
       handleRemoveVideo()
       handleRemoveSubject()
       setWithSound(false)
@@ -525,7 +468,6 @@ export default function CreateCopyMotionPage() {
     }
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
@@ -546,24 +488,27 @@ export default function CreateCopyMotionPage() {
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: '#ffffff' }}
+              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
             <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Generating…</p>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Header — teal left accent bar */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)' }}
+        style={{
+          borderBottom: '1px solid var(--border-color)',
+          borderLeft:   `3px solid ${ACCENT}`,
+        }}
       >
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Copy Motion</h1>
-          <span className="text-xs" style={{ color: 'var(--brand)' }}>Motion Transfer</span>
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>Motion Transfer</span>
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
@@ -586,23 +531,19 @@ export default function CreateCopyMotionPage() {
           {modelsLoading ? (
             <div className="flex flex-col gap-4">
               {[...Array(2)].map((_, i) => (
-                <div
-                  key={i}
-                  className="w-full rounded-2xl animate-pulse"
-                  style={{ height: 200, background: 'var(--bg-elevated)' }}
-                />
+                <div key={i} className="w-full rounded-2xl animate-pulse" style={{ height: 200, background: 'var(--bg-elevated)' }} />
               ))}
             </div>
           ) : models.length === 0 ? (
             <NoModelsState />
           ) : (
             <>
-              {/* ── Explainer ── */}
+              {/* Explainer */}
               <div
                 className="rounded-2xl px-4 py-3 flex gap-3 items-start"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+                style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
               >
-                <Film size={16} style={{ color: 'var(--brand)', marginTop: 2, flexShrink: 0 }} />
+                <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                   Upload a <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
                   <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the
@@ -610,7 +551,7 @@ export default function CreateCopyMotionPage() {
                 </p>
               </div>
 
-              {/* ── Upload grid ── */}
+              {/* Upload grid */}
               <div>
                 <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                   Inputs
@@ -635,20 +576,19 @@ export default function CreateCopyMotionPage() {
                   </div>
                 </div>
 
-                {/* Duration info */}
                 {detectedDuration != null && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                     {motionVideo ? 'Detected' : 'Remembered'} duration:{' '}
                     <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(detectedDuration)}</strong>
                     {' '}· credit cost adjusted accordingly
                     {videoGhostMeta && !motionVideo && (
-                      <span style={{ color: 'var(--brand)' }}> · re-upload video to generate</span>
+                      <span style={{ color: ACCENT }}> · re-upload video to generate</span>
                     )}
                   </p>
                 )}
               </div>
 
-              {/* ── Settings ── */}
+              {/* Settings */}
               <div>
                 <SettingChips
                   label="Aspect Ratio"
@@ -680,17 +620,16 @@ export default function CreateCopyMotionPage() {
 
       {/* Generate button */}
       {models.length > 0 && (
-        <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+        <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={handleGenerate}
               disabled={!canGenerate}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
               style={{
-                background: 'var(--text-primary)',
-                color:      'var(--text-inverse)',
-                opacity:    canGenerate ? 1 : 0.5,
-                cursor:     canGenerate ? 'pointer' : 'not-allowed',
+                background: canGenerate ? ACCENT              : 'var(--bg-elevated)',
+                color:      canGenerate ? '#ffffff'           : 'var(--text-muted)',
+                cursor:     canGenerate ? 'pointer'           : 'not-allowed',
               }}
             >
               <Zap size={15} fill="currentColor" />
@@ -701,7 +640,6 @@ export default function CreateCopyMotionPage() {
                   : `Generate · ${creditCost} cr`}
             </button>
 
-            {/* Contextual hints */}
             {!hasVideoOrGhost && !hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Upload both a motion video and a subject image to continue
@@ -713,14 +651,14 @@ export default function CreateCopyMotionPage() {
               </p>
             )}
             {videoGhostMeta && !motionVideo && hasSubject && (
-              <p className="text-xs text-center mt-2" style={{ color: 'var(--brand)' }}>
+              <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
                 Re-upload your motion video to generate
               </p>
             )}
             {hasVideo && hasSubject && !canAfford && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Not enough credits.{' '}
-                <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                   Top up
                 </button>
               </p>
