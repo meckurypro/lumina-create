@@ -11,12 +11,6 @@ const SS_PROMPT      = 'meckury_video_prompt'
 const SS_START_FRAME = 'meckury_video_start_frame'
 const SS_END_FRAME   = 'meckury_video_end_frame'
 
-const ALL_DURATIONS = [
-  { label: '5s',  value: '5'  },
-  { label: '8s',  value: '8'  },
-  { label: '10s', value: '10' },
-  { label: '15s', value: '15' },
-]
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
   { label: '16:9', value: '16:9' },
@@ -322,15 +316,18 @@ export default function CreateVideoPage() {
     if (!caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound])
 
-const baseCredits = selectedModel
-    ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
-    : 0
-const isFlatRate = ['hunyuan_video_i2v', 'veo3_1_lite_s2e'].includes(model)
-const durationMultiplier = isFlatRate ? 1 : duration === '10' ? 2 : duration === '12' ? 2.4 : duration === '15' ? 3 : duration === '16' ? 3.2 : 1
-const baseWithDuration = baseCredits * durationMultiplier
-const creditCost = withSound && caps.supportsSound
-    ? Math.ceil(baseWithDuration * (selectedModel?.sound_cost_multiplier ?? 1.5))
-    : baseWithDuration
+const creditsPerSecond = selectedModel
+  ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+  : 0
+const isFlatRate = selectedModel?.is_flat_rate ?? false
+const creditCost = (() => {
+  if (!selectedModel) return 0
+  if (isFlatRate) return creditsPerSecond // stored as total, not per-second
+  const base = creditsPerSecond * parseInt(duration || '5')
+  return withSound && caps.supportsSound
+    ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
+    : Math.ceil(base)
+})()
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
@@ -556,15 +553,16 @@ const creditCost = withSound && caps.supportsSound
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
-            <SettingChips
-              label="Duration"
-              options={ALL_DURATIONS.map((o) => ({
-                ...o,
-                disabled: !caps.supportedDurations.includes(o.value),
-              }))}
-              value={duration}
-              onChange={(v) => { console.log('duration changed to', v); setDuration(v) }}
-            />
+<SettingChips
+  label="Duration"
+  options={caps.supportedDurations.map((d) => ({
+    label:    `${d}s`,
+    value:    d,
+    disabled: false,
+  }))}
+  value={duration}
+  onChange={(v) => setDuration(v)}
+/>
             {caps.supportsSound && (
               <SettingChips
                 label="Sound"
