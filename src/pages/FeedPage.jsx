@@ -158,29 +158,33 @@ const MediaCard = ({ post, style, className = '', onPlayVideo, onClick }) => {
       style={{ background: '#111', border: '1px solid var(--border-color)', ...style }}
       onClick={onClick}
     >
-      <img
-        src={post.thumbnail_url}
-        alt={post.title || 'Creation'}
-        className="absolute inset-0 w-full h-full"
-        style={{ objectFit: 'cover', objectPosition: 'center' }}
-        loading="lazy"
-      />
+      {isVideo ? (
+        <video
+          src={post.output_url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          poster={post.thumbnail_url || undefined}
+          className="absolute inset-0 w-full h-full"
+          style={{ objectFit: 'cover', objectPosition: 'center' }}
+        />
+      ) : (
+        <img
+          src={post.thumbnail_url}
+          alt={post.title || 'Creation'}
+          className="absolute inset-0 w-full h-full"
+          style={{ objectFit: 'cover', objectPosition: 'center' }}
+          loading="lazy"
+        />
+      )}
+
       <div
         className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs z-10"
         style={{ background: 'rgba(0,0,0,0.5)', color: 'white', backdropFilter: 'blur(4px)' }}
       >
         {isVideo ? <Film size={10} /> : <Image size={10} />}
       </div>
-      {isVideo && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onPlayVideo(post.output_url || post.thumbnail_url) }}
-          className="absolute inset-0 flex items-center justify-center z-10"
-        >
-          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-            <Play size={16} fill="white" className="text-white ml-0.5" />
-          </div>
-        </button>
-      )}
     </motion.div>
   )
 }
