@@ -67,7 +67,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
-        <span>{selected?.label ?? 'Model'}</span>
+        <span>{selected?.aka || selected?.label ?? 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path
             d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
@@ -104,8 +104,8 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
+<p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                       {!m.supports_image && (
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>Text only</p>
                       )}
