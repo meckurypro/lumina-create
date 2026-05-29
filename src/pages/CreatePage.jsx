@@ -7,6 +7,7 @@ import { templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
+import { Skeleton } from '@/components/ui/Modal'
 import { SmartPromptInput } from '@/components/ui/SmartPromptInput'
 
 const TYPE_LABELS = {
