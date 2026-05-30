@@ -418,8 +418,16 @@ export default function CreateImagePage() {
   // ── derived model caps ───────────────────────────────────────────────────
   const selectedModel       = models.find((m) => m.value === model)
   const modelSupportsImage  = selectedModel?.supports_image !== false
-  const modelSupportsMulti  = selectedModel?.supports_multi_image === true
-  const maxImages           = modelSupportsMulti ? MAX_MULTI_IMAGES : MAX_SINGLE_IMAGES
+const modelSupportsMulti  = selectedModel?.supports_multi_image === true
+const modelMaxRefImages   = selectedModel?.max_ref_images ?? 1
+const [multiMode, setMultiMode] = useState(false)
+
+// Reset multiMode when model changes
+useEffect(() => { setMultiMode(false) }, [model])
+
+const maxImages = (modelSupportsMulti && multiMode)
+  ? Math.min(modelMaxRefImages, MAX_MULTI_IMAGES)
+  : MAX_SINGLE_IMAGES
   const supportedRatios     = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
 
   // generation type: multi always sends as image_to_image when images present
@@ -680,44 +688,71 @@ export default function CreateImagePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-5">
 
-          {/* Reference image section — adapts to model capability */}
-          <div>
-            <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Reference{modelSupportsMulti ? ' Images' : ' Image'}{' '}
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
-              {modelSupportsMulti && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-md text-xs font-medium normal-case tracking-normal"
-                  style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
-                  multi-ref
-                </span>
-              )}
-            </p>
+{/* Reference image section */}
+<div>
+  {/* Header row */}
+  <div className="flex items-center justify-between mb-3">
+    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+      Reference Image
+      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+    </p>
 
-            {modelSupportsMulti ? (
-              <MultiImageGrid
-                images={images}
-                maxImages={maxImages}
-                onAdd={handleAddImage}
-                onRemove={handleRemoveImage}
-                onTagInsert={handleTagInsert}
-                onFullscreen={(idx) => setFullscreenIdx(idx)}
-              />
-            ) : (
-              <SingleImageSlot
-                image={images[0] || null}
-                onUpload={handleSingleImageUpload}
-                onRemove={() => handleRemoveImage(0)}
-                onFullscreen={() => setFullscreenIdx(0)}
-                modelSupportsImage={modelSupportsImage}
-              />
-            )}
+    {/* Multi-ref toggle — only shown for multi-image capable models */}
+    {modelSupportsMulti && modelSupportsImage && (
+      <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+        {[
+          { value: false, label: 'Simple' },
+          { value: true,  label: 'Multi-ref' },
+        ].map((opt) => (
+          <button
+            key={String(opt.value)}
+            onClick={() => {
+              setMultiMode(opt.value)
+              // switching back to simple: keep only first image
+              if (!opt.value && images.length > 1) {
+                setImages([images[0]])
+                persistImages([images[0]])
+              }
+            }}
+            className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: multiMode === opt.value ? ACCENT       : 'transparent',
+              color:      multiMode === opt.value ? '#ffffff'    : 'var(--text-muted)',
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
 
-            {!modelSupportsImage && (
-              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
-                This model is text-only. Switch models to use a reference image.
-              </p>
-            )}
-          </div>
+  {/* Image UI */}
+  {(modelSupportsMulti && multiMode) ? (
+    <MultiImageGrid
+      images={images}
+      maxImages={maxImages}
+      onAdd={handleAddImage}
+      onRemove={handleRemoveImage}
+      onTagInsert={handleTagInsert}
+      onFullscreen={(idx) => setFullscreenIdx(idx)}
+    />
+  ) : (
+    <SingleImageSlot
+      image={images[0] || null}
+      onUpload={handleSingleImageUpload}
+      onRemove={() => handleRemoveImage(0)}
+      onFullscreen={() => setFullscreenIdx(0)}
+      modelSupportsImage={modelSupportsImage}
+    />
+  )}
+
+  {!modelSupportsImage && (
+    <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+      This model is text-only. Switch models to use a reference image.
+    </p>
+  )}
+</div>
 
           {/* Prompt */}
           <Textarea
