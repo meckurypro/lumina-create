@@ -482,6 +482,14 @@ export default function CreateCopyMotionPage() {
   // Pipeline phase: null | 'converting' | 'submitting'
   const [phase,           setPhase]           = useState(null)
   const [convertProgress, setConvertProgress] = useState(0)
+  const [trimming,        setTrimming]        = useState(false)
+
+  // Trim window (seconds, integers)
+  const [trimStart, setTrimStart] = useState(0)
+  const [trimEnd,   setTrimEnd]   = useState(0)
+
+  // Persistent FFmpeg instance (loaded once)
+  const ffmpegRef = useRef(null)
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
