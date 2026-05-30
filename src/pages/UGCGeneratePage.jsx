@@ -200,11 +200,12 @@ export default function UGCGeneratePage() {
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const { data } = await supabase
+const { data } = await supabase
       .from('models')
       .select('*')
       .eq('is_active', true)
       .eq('is_user_facing', true)
+      .eq('supports_multi_image', true)
       .order('sort_order')
     const list = data || []
     setModels(list)
