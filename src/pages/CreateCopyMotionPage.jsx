@@ -449,7 +449,7 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
             style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
           />
           <p className="text-sm font-semibold tracking-wide" style={{ color: '#fff' }}>
-            Generating…
+            {phase === 'trimming' ? 'Trimming video…' : 'Generating…'}
           </p>
         </>
       )}
