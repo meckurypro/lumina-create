@@ -20,6 +20,7 @@ import FeedPublishedManager          from '@/pages/admin/FeedPublishedManager'
 import ProviderSettings              from '@/pages/admin/ProviderSettings'
 import UsersManager                  from '@/pages/admin/UsersManager'
 import CinematicTransitionsManager   from '@/pages/admin/CinematicTransitionsManager'
+import ModelsAnalytics               from '@/pages/admin/ModelsAnalytics'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 
 const TABS = (pendingCount) => [
   { id: 'dashboard',  label: 'Dashboard'                                           },
+  { id: 'analytics',  label: 'Analytics'  },
   { id: 'prompts',    label: 'Prompts'                                             },
   { id: 'templates',  label: 'Templates'                                           },
   { id: 'models',     label: 'Models'                                              },
@@ -200,11 +202,19 @@ export default function AdminPage() {
         )}
 
         {/* ── Models ── */}
-        {activeTab === 'models' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <ModelsManager />
-          </motion.div>
-        )}
+    {/* ── Analytics ── */}
+{activeTab === 'analytics' && (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <ModelsAnalytics />
+  </motion.div>
+)}
+
+{/* ── Models ── */}
+{activeTab === 'models' && (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <ModelsManager />
+  </motion.div>
+)}
 
         {/* ── Cinematic Transitions ── */}
         {activeTab === 'cinematic' && (
