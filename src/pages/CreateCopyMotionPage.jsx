@@ -542,7 +542,28 @@ export default function CreateCopyMotionPage() {
   const matchedDuration  = videoDuration != null && modelDurations.length > 0
     ? modelDurations.find((d) => d === videoDuration) ?? null
     : null
-  const durationMismatch = videoDuration != null && modelDurations.length > 0 && matchedDuration === null
+  const modelMaxDuration = modelDurations.length > 0 ? Math.max(...modelDurations) : 30
+  const needsTrim        = videoDuration != null && videoDuration > modelMaxDuration
+  const durationMismatch =
+    videoDuration != null && modelDurations.length > 0 && matchedDuration === null && !needsTrim
+
+  // Snap effective duration up to the nearest supported enum value
+  const effectiveDuration = needsTrim ? Math.max(1, trimEnd - trimStart) : videoDuration
+  const snappedDuration   = effectiveDuration != null && modelDurations.length > 0
+    ? modelDurations.find((d) => d >= effectiveDuration) ?? null
+    : null
+
+  // Reset trim window when video or model max changes
+  useEffect(() => {
+    if (videoDuration != null && needsTrim) {
+      setTrimStart(0)
+      setTrimEnd(Math.min(videoDuration, modelMaxDuration))
+    } else {
+      setTrimStart(0)
+      setTrimEnd(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoDuration, modelMaxDuration])
 
   // ── Credit calculation ───────────────────────────────────
   const durationMultiplier = (() => {
