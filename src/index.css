@@ -80,7 +80,22 @@
   --tool-motion-border: rgba(15, 158, 110, 0.22);
   --tool-motion-muted:  rgba(15, 158, 110, 0.60);
 }
-
+/* ─── ADD THIS BLOCK inside :root { } after --tool-motion lines ─── */
+ 
+  /* UGC — Rose/Pink */
+  --tool-ugc:        #E11D74;
+  --tool-ugc-subtle: rgba(225, 29, 116, 0.10);
+  --tool-ugc-border: rgba(225, 29, 116, 0.22);
+  --tool-ugc-muted:  rgba(225, 29, 116, 0.60);
+ 
+ 
+/* ─── ADD THIS BLOCK inside [data-theme='dark'], .dark { } after --tool-motion lines ─── */
+ 
+  /* UGC — Soft Pink */
+  --tool-ugc:        #FB7BB8;
+  --tool-ugc-subtle: rgba(251, 123, 184, 0.09);
+  --tool-ugc-border: rgba(251, 123, 184, 0.18);
+  --tool-ugc-muted:  rgba(251, 123, 184, 0.55);
 [data-theme='dark'], .dark {
   /* shadcn HSL tokens — true black */
   --background:            0 0% 0%;
