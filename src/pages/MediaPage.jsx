@@ -64,7 +64,7 @@ function getFriendlyError(raw) {
 function getModelDisplayLabel(modelValue, modelsList) {
   if (!modelValue) return null
   const found = modelsList?.find((m) => m.value === modelValue)
-  if (found) return found.label
+  if (found) return found.aka || found.label
   return modelValue.replace(/^(fal-ai\/|fal\/|replicate\/|runway-)/i, '')
 }
 
@@ -430,14 +430,16 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
         )}
       </div>
 
-      {gen.output_url && (
-        <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
-          {gen.output_type === 'video'
-            ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline />
-            : <img   src={gen.output_url} alt="preview" className="w-full h-full object-cover" />
-          }
-        </div>
-      )}
+{(gen.start_frame_url || gen.output_url) && (
+  <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
+    {gen.start_frame_url
+      ? <img src={gen.start_frame_url} alt="input" className="w-full h-full object-cover" />
+      : gen.output_type === 'video'
+        ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline />
+        : <img src={gen.output_url} alt="preview" className="w-full h-full object-cover" />
+    }
+  </div>
+)}
 
       <div className="px-4 flex flex-col gap-2">
         {gen.status === 'completed' && (
