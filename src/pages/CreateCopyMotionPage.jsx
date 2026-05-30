@@ -752,14 +752,19 @@ export default function CreateCopyMotionPage() {
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
   // ── Derived video status ─────────────────────────────────
-  const videoDuration    = motionVideo?.duration ?? null
-  const matchedDuration  = videoDuration != null && modelDurations.length > 0
-    ? modelDurations.find((d) => d === videoDuration) ?? null
-    : null
-  const modelMaxDuration = modelDurations.length > 0 ? Math.max(...modelDurations) : 30
-  const needsTrim        = videoDuration != null && videoDuration > modelMaxDuration
-  const durationMismatch =
-    videoDuration != null && modelDurations.length > 0 && matchedDuration === null && !needsTrim
+const matchedDuration  = videoDuration != null && modelDurations.length > 0
+  ? modelDurations.find((d) => d === videoDuration) ?? null
+  : null
+const modelMinDuration = modelDurations.length > 0 ? Math.min(...modelDurations) : 5
+const modelMaxDuration = modelDurations.length > 0 ? Math.max(...modelDurations) : 30
+const needsTrim        = videoDuration != null &&
+  modelDurations.length > 0 &&
+  matchedDuration === null &&
+  videoDuration >= modelMinDuration
+const durationMismatch = videoDuration != null &&
+  modelDurations.length > 0 &&
+  matchedDuration === null &&
+  videoDuration < modelMinDuration
 
   // Snap effective duration up to the nearest supported enum value
   const effectiveDuration = needsTrim ? Math.max(1, trimEnd - trimStart) : videoDuration
