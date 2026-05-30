@@ -258,8 +258,17 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
   const [dropOpen, setDropOpen] = useState(false)
   const triggerRef              = useRef(null)
 
-  const isVideo        = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
-  const relevantModels = models.filter((m) => !m.is_locked && m.type === (isVideo ? 'video' : 'image'))
+  const isUGC          = gen.prompt_engineering_used && gen.input_image_urls?.length > 0
+  const isMotionTransfer = gen.generation_type === 'motion_transfer'
+  const isVideo        = ['text_to_video','image_to_video','start_end_frame','end_frame_text','motion_transfer','template'].includes(gen.generation_type)
+
+  const relevantModels = models.filter((m) => {
+    if (m.is_locked) return false
+    if (isUGC)           return m.supports_multi_image === true
+    if (isMotionTransfer) return m.type === 'video' && m.feature === 'motion_transfer'
+    if (isVideo)          return m.type === 'video' && m.feature !== 'motion_transfer'
+    return m.type === 'image'
+  })
   const selectedModel  = relevantModels.find((m) => m.value === model) || relevantModels[0]
   const creditCost     = selectedModel
     ? (gen.start_frame_url ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
@@ -581,11 +590,12 @@ export default function MediaPage() {
 
   const pollRef = useRef(null)
 
-  useEffect(() => {
+useEffect(() => {
     supabase
       .from('models')
       .select('*')
       .eq('is_active', true)
+      .eq('is_user_facing', true)
       .order('sort_order')
       .then(({ data }) => setModels(data || []))
   }, [])
@@ -667,7 +677,7 @@ export default function MediaPage() {
     setRegenLoading(true)
 
     try {
-const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
+const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text','motion_transfer','template'].includes(gen.generation_type)
 const genType = gen.generation_type
 
 const { data: genRow, error: genErr } = await generationsDb.create({
