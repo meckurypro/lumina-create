@@ -2,7 +2,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 
-// Pages
 import LandingPage              from '@/pages/LandingPage'
 import AuthPage                 from '@/pages/AuthPage'
 import ResetPasswordPage        from '@/pages/ResetPasswordPage'
@@ -23,10 +22,9 @@ import AuthCallbackPage         from '@/pages/AuthCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 import CreateUGCPage            from '@/pages/CreateUGCPage'
-import CreateUGCWizardPage      from '@/pages/CreateUGCWizardPage'
+import UGCWizardPage            from '@/pages/UGCWizardPage'
 import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 
-// Layout
 import { BottomNav } from '@/components/layout/BottomNav'
 
 const FullLoader = () => (
@@ -91,13 +89,13 @@ export default function App() {
           <Route path="/create/video"       element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
           <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
 
-          {/* Cinematic — must come BEFORE generic /:templateSlug */}
+          {/* Cinematic — before generic /:templateSlug */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
           <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
 
-          {/* UGC — must come BEFORE generic /:templateSlug */}
+          {/* UGC — before generic /:templateSlug */}
           <Route path="/create/ugc"            element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/new"        element={<RequireAuth><AppLayout><CreateUGCWizardPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/new"        element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
           <Route path="/create/ugc/:profileId" element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
 
           {/* Generic template runner — MUST stay after all specific /create/* routes */}
