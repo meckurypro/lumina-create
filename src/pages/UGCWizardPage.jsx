@@ -478,7 +478,7 @@ const handleFinish = async () => {
     setSaving(true)
     try {
       if (isEdit) {
-        const { error } = await ugcProfiles.update(profileId, buildPayload())
+        const { error } = await ugcProfiles.edit(profileId, buildPayload())
         if (error) throw error
         toast.success('Character updated!')
         navigate(`/create/ugc/${profileId}`, { replace: true })
