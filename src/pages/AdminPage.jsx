@@ -21,6 +21,7 @@ import ProviderSettings              from '@/pages/admin/ProviderSettings'
 import UsersManager                  from '@/pages/admin/UsersManager'
 import CinematicTransitionsManager   from '@/pages/admin/CinematicTransitionsManager'
 import ModelsAnalytics               from '@/pages/admin/ModelsAnalytics'
+import ModelUsageManager             from '@/pages/admin/ModelUsageManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -41,7 +42,8 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 
 const TABS = (pendingCount) => [
   { id: 'dashboard',  label: 'Dashboard'                                           },
-  { id: 'analytics',  label: 'Analytics'  },
+  { id: 'analytics',  label: 'Analytics'                                           },
+  { id: 'usage',      label: 'Usage & Pricing'                                     },
   { id: 'prompts',    label: 'Prompts'                                             },
   { id: 'templates',  label: 'Templates'                                           },
   { id: 'models',     label: 'Models'                                              },
@@ -182,6 +184,20 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+        {/* ── Analytics ── */}
+        {activeTab === 'analytics' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <ModelsAnalytics />
+          </motion.div>
+        )}
+
+        {/* ── Usage & Pricing ── */}
+        {activeTab === 'usage' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <ModelUsageManager />
+          </motion.div>
+        )}
+
         {/* ── Prompts ── */}
         {activeTab === 'prompts' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -202,19 +218,11 @@ export default function AdminPage() {
         )}
 
         {/* ── Models ── */}
-    {/* ── Analytics ── */}
-{activeTab === 'analytics' && (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-    <ModelsAnalytics />
-  </motion.div>
-)}
-
-{/* ── Models ── */}
-{activeTab === 'models' && (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-    <ModelsManager />
-  </motion.div>
-)}
+        {activeTab === 'models' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <ModelsManager />
+          </motion.div>
+        )}
 
         {/* ── Cinematic Transitions ── */}
         {activeTab === 'cinematic' && (
