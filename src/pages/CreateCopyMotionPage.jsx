@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, Film, Image as ImageIcon,
-  AlertCircle, RefreshCw, CheckCircle2,
+  AlertCircle, RefreshCw, CheckCircle2, Scissors, Play, Pause,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
