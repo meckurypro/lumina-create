@@ -224,7 +224,7 @@ const PortalDropup = ({ triggerRef, open, models, value, originalModel, onSelect
             }}
           >
             <div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
               {m.sublabel && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
               )}
@@ -326,8 +326,8 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
           >
             <div className="text-left">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {selectedModel?.label ?? model}
-              </p>
+  {selectedModel?.aka || selectedModel?.label || model}
+</p>
               {selectedModel?.sublabel && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
               )}
