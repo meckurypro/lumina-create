@@ -1,11 +1,10 @@
 // src/pages/UGCGeneratePage.jsx
-// The generation screen for a specific UGC character profile
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Zap, User, Film, Sparkles,
-  ImageIcon, VideoIcon, ChevronDown, Info
+  ArrowLeft, Zap, User, Sparkles,
+  ImageIcon, VideoIcon, ChevronDown, Info,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles, ugcGenerations, buildUGCPromptPayload, buildPhotoSelectionPayload } from '@/lib/ugc'
@@ -22,6 +21,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
+// ── Setting chips ─────────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -31,12 +31,14 @@ const SettingChips = ({ label, options, value, onChange }) => (
       {options.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => !opt.disabled && onChange(opt.value)}
+          disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? ACCENT         : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#000'         : 'var(--text-secondary)',
-            border:     value === opt.value ? `1px solid ${ACCENT_BDR}` : '1px solid var(--border-color)',
+            background: value === opt.value ? ACCENT              : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff'           : 'var(--text-secondary)',
+            opacity:    opt.disabled ? 0.3 : 1,
+            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
         >
           {opt.label}
@@ -46,6 +48,7 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
+// ── Model dropdown ────────────────────────────────────────────
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
@@ -157,18 +160,18 @@ const RefinedPromptPreview = ({ text, loading }) => (
 
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCGeneratePage() {
-  const { profileId }                              = useParams()
-  const navigate                                   = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const { profileId }                                              = useParams()
+  const navigate                                                   = useNavigate()
+  const { user, profile: userProfile, credits, refreshProfile }   = useAuth()
 
-  const [profile,       setProfile]       = useState(null)
+  const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
-  const [models,        setModels]        = useState([])
-  const [modelsLoading, setModelsLoading] = useState(true)
-  const [model,         setModel]         = useState('')
+  const [models,         setModels]         = useState([])
+  const [modelsLoading,  setModelsLoading]  = useState(true)
+  const [model,          setModel]          = useState('')
 
-  const [outputType,    setOutputType]    = useState('image')  // 'image' | 'video'
-  const [filter,        setFilter]        = useState('hyper_realistic') // 'hyper_realistic' | 'cinematic'
+  const [outputType,    setOutputType]    = useState('image')
+  const [filter,        setFilter]        = useState('hyper_realistic')
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [duration,      setDuration]      = useState('5')
   const [scene,         setScene]         = useState('')
@@ -210,11 +213,9 @@ export default function UGCGeneratePage() {
     setModelsLoading(false)
   }, [])
 
-  // Filter models by output type
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
 
-  // Switch to first available model when output type changes
   useEffect(() => {
     const first = filteredModels.find((m) => !m.is_locked)
     if (first) setModel(first.value)
@@ -223,9 +224,8 @@ export default function UGCGeneratePage() {
   const caps = selectedModel ? {
     supportedDurations:    selectedModel.supported_durations    ?? ['5', '8', '10'],
     supportedAspectRatios: selectedModel.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    supportsSound:         selectedModel.supports_sound         ?? false,
     isFlatRate:            selectedModel.is_flat_rate           ?? false,
-  } : { supportedDurations: ['5'], supportedAspectRatios: ['9:16', '16:9', '1:1'], supportsSound: false, isFlatRate: false }
+  } : { supportedDurations: ['5'], supportedAspectRatios: ['9:16', '16:9', '1:1'], isFlatRate: false }
 
   const creditCost = (() => {
     if (!selectedModel) return 0
@@ -241,55 +241,30 @@ export default function UGCGeneratePage() {
   const sceneEmpty  = !scene.trim()
   const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
 
-  // ── AI prompt refinement ──────────────────────────────────
+  // AI prompt refinement
   const refinePrompt = useCallback(async (sceneText) => {
     if (!profile || skipRefinement || !sceneText.trim()) return
     setRefining(true)
     setRefinedPrompt('')
     try {
-      // First: select 4 best reference photos
-      const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({
-        profile,
-        sceneDescription: sceneText,
-        outputType,
-      })
-
-      const selRes = await fetch('https://api.anthropic.com/v1/messages', {
+      const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: sceneText, outputType })
+      const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 500,
-          system:     selSys,
-          messages:   [{ role: 'user', content: selMsg }],
-        }),
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
       })
       const selData  = await selRes.json()
       const selText  = selData.content?.find((b) => b.type === 'text')?.text || '[]'
       let selectedPhotos = []
       try { selectedPhotos = JSON.parse(selText.replace(/```json|```/g, '').trim()) } catch { /* use empty */ }
 
-      // Second: refine the generation prompt
-      const { systemPrompt, userMessage } = buildUGCPromptPayload({
-        profile,
-        sceneDescription:  sceneText,
-        outputType,
-        filter,
-        selectedPhotos,
-        skipRefinement: false,
-      })
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const { systemPrompt, userMessage } = buildUGCPromptPayload({ profile, sceneDescription: sceneText, outputType, filter, selectedPhotos, skipRefinement: false })
+      const res  = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 400,
-          system:     systemPrompt,
-          messages:   [{ role: 'user', content: userMessage }],
-        }),
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }),
       })
-      const data   = await res.json()
+      const data    = await res.json()
       const refined = data.content?.find((b) => b.type === 'text')?.text || sceneText
       setRefinedPrompt(refined.trim())
     } catch (err) {
@@ -300,14 +275,12 @@ export default function UGCGeneratePage() {
     }
   }, [profile, outputType, filter, skipRefinement])
 
-  // Debounce refinement
   useEffect(() => {
     if (sceneEmpty || !profile) return
     const timer = setTimeout(() => refinePrompt(scene), 1200)
     return () => clearTimeout(timer)
   }, [scene, outputType, filter])
 
-  // ── Generate ──────────────────────────────────────────────
   const handleGenerate = async () => {
     if (sceneEmpty)     return toast.error('Describe the scene')
     if (!selectedModel) return toast.error('Pick a model')
@@ -316,23 +289,13 @@ export default function UGCGeneratePage() {
 
     setSubmitting(true)
     try {
-      // Get selected photos (re-select if refinement wasn't triggered)
       let selectedPhotos = []
-      const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({
-        profile,
-        sceneDescription: scene,
-        outputType,
-      })
       try {
+        const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: scene, outputType })
         const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model:      'claude-sonnet-4-20250514',
-            max_tokens: 500,
-            system:     selSys,
-            messages:   [{ role: 'user', content: selMsg }],
-          }),
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
         })
         const selData = await selRes.json()
         const selText = selData.content?.find((b) => b.type === 'text')?.text || '[]'
@@ -341,45 +304,41 @@ export default function UGCGeneratePage() {
 
       const finalPrompt = refinedPrompt || scene
 
-      // Create generation row
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                user.id,
-        generation_type:        outputType === 'image' ? 'text_to_image' : 'text_to_video',
-        status:                 'pending',
-        prompt:                 scene,
-        enhanced_prompt:        finalPrompt,
-        model:                  selectedModel.value,
-        aspect_ratio:           aspectRatio,
-        duration:               outputType === 'video' ? duration : undefined,
-        credits_charged:        creditCost,
-        output_type:            outputType,
-        skip_prompt_refinement: skipRefinement,
+        user_id:                 user.id,
+        generation_type:         outputType === 'image' ? 'text_to_image' : 'text_to_video',
+        status:                  'pending',
+        prompt:                  scene,
+        enhanced_prompt:         finalPrompt,
+        model:                   selectedModel.value,
+        aspect_ratio:            aspectRatio,
+        duration:                outputType === 'video' ? duration : undefined,
+        credits_charged:         creditCost,
+        output_type:             outputType,
+        skip_prompt_refinement:  skipRefinement,
         prompt_engineering_used: !skipRefinement,
-        input_image_urls:       selectedPhotos.length ? selectedPhotos : null,
+        input_image_urls:        selectedPhotos.length ? selectedPhotos : null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Record UGC-specific metadata
       await ugcGenerations.create({
-        generation_id:  genRow.id,
-        ugc_profile_id: profileId,
-        user_id:        user.id,
-        output_type:    outputType,
-        filter_applied: filter,
-        scene_prompt:   scene,
-        refined_prompt: finalPrompt,
+        generation_id:   genRow.id,
+        ugc_profile_id:  profileId,
+        user_id:         user.id,
+        output_type:     outputType,
+        filter_applied:  filter,
+        scene_prompt:    scene,
+        refined_prompt:  finalPrompt,
         selected_photos: selectedPhotos,
-        aspect_ratio:   aspectRatio,
+        aspect_ratio:    aspectRatio,
       })
 
-      // Invoke edge function
       const fn = outputType === 'image' ? 'image-generate' : 'video-generate'
       supabase.functions.invoke(fn, { body: { generationId: genRow.id } })
         .catch((e) => console.error(`${fn} invoke error`, e))
@@ -428,7 +387,7 @@ export default function UGCGeneratePage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
-            <p className="text-sm font-semibold" style={{ color: '#fff' }}>Generating…</p>
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Generating…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -442,11 +401,7 @@ export default function UGCGeneratePage() {
           <ArrowLeft size={20} />
         </button>
 
-        {/* Character identity */}
-        <button
-          onClick={() => navigate('/create/ugc')}
-          className="flex items-center gap-2.5"
-        >
+        <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
           {profile?.thumbnail_url ? (
             <img
               src={profile.thumbnail_url}
@@ -521,10 +476,10 @@ export default function UGCGeneratePage() {
               maxLength={600}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{
-                background:  'var(--bg-elevated)',
-                border:      '1px solid var(--border-color)',
-                color:       'var(--text-primary)',
-                lineHeight:  1.6,
+                background: 'var(--bg-elevated)',
+                border:     '1px solid var(--border-color)',
+                color:      'var(--text-primary)',
+                lineHeight: 1.6,
               }}
             />
             <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
@@ -535,7 +490,7 @@ export default function UGCGeneratePage() {
           {/* Refined prompt preview */}
           <RefinedPromptPreview text={refinedPrompt} loading={refining} />
 
-          {/* Filter */}
+          {/* Style filter — ugc_generation_filter enum: hyper_realistic | cinematic */}
           <SettingChips
             label="Style Filter"
             options={[
@@ -567,7 +522,7 @@ export default function UGCGeneratePage() {
             />
           )}
 
-          {/* Prompt refinement notice */}
+          {/* Refinement off notice */}
           {skipRefinement && (
             <div
               className="flex items-center gap-2 p-3 rounded-xl mt-1"
@@ -592,7 +547,7 @@ export default function UGCGeneratePage() {
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: btnDisabled ? 'var(--bg-elevated)' : ACCENT,
-              color:      btnDisabled ? 'var(--text-muted)'  : '#000',
+              color:      btnDisabled ? 'var(--text-muted)'  : '#ffffff',
             }}
           >
             <Zap size={15} fill="currentColor" />
