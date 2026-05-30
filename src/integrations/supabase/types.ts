@@ -615,6 +615,7 @@ export type Database = {
       }
       models: {
         Row: {
+          aka: string | null
           created_at: string | null
           credit_cost_i2i: number
           credit_cost_t2i: number
@@ -643,6 +644,7 @@ export type Database = {
           value: string
         }
         Insert: {
+          aka?: string | null
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_t2i?: number
@@ -671,6 +673,7 @@ export type Database = {
           value: string
         }
         Update: {
+          aka?: string | null
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_t2i?: number
@@ -1281,6 +1284,7 @@ export type Database = {
         | "start_end_frame"
         | "end_frame_text"
         | "template"
+        | "motion_transfer"
       payment_provider: "paystack" | "google" | "admin"
       subscription_tier: "free" | "starter" | "pro" | "enterprise"
       template_category:
@@ -1472,6 +1476,7 @@ export const Constants = {
         "start_end_frame",
         "end_frame_text",
         "template",
+        "motion_transfer",
       ],
       payment_provider: ["paystack", "google", "admin"],
       subscription_tier: ["free", "starter", "pro", "enterprise"],
