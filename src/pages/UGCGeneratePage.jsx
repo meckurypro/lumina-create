@@ -1,571 +1,413 @@
-// src/pages/UGCGeneratePage.jsx
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ArrowLeft, Zap, User, Sparkles,
-  ImageIcon, VideoIcon, ChevronDown, Info,
-} from 'lucide-react'
-import { useAuth } from '@/context/AuthContext'
-import { ugcProfiles, ugcGenerations, buildUGCPromptPayload, buildPhotoSelectionPayload } from '@/lib/ugc'
-import { supabase, generations as generationsDb } from '@/lib/supabase'
-import toast from 'react-hot-toast'
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-const ACCENT     = 'var(--tool-ugc)'
-const ACCENT_SUB = 'var(--tool-ugc-subtle)'
-const ACCENT_BDR = 'var(--tool-ugc-border)'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-const ALL_ASPECT_RATIOS = [
-  { label: '9:16', value: '9:16' },
-  { label: '16:9', value: '16:9' },
-  { label: '1:1',  value: '1:1'  },
-]
+/* ============================================================
+   CSS CUSTOM PROPERTIES
+   ============================================================ */
 
-// ── Setting chips ─────────────────────────────────────────────
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => !opt.disabled && onChange(opt.value)}
-          disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT              : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff'           : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
+:root {
+  /* shadcn HSL tokens — light */
+  --background:            0 0% 100%;
+  --foreground:            240 10% 4%;
+  --card:                  0 0% 100%;
+  --card-foreground:       240 10% 4%;
+  --popover:               0 0% 100%;
+  --popover-foreground:    240 10% 4%;
+  --primary:               24 95% 53%;
+  --primary-foreground:    0 0% 100%;
+  --secondary:             240 5% 96%;
+  --secondary-foreground:  240 6% 10%;
+  --muted:                 240 5% 96%;
+  --muted-foreground:      240 4% 46%;
+  --accent:                240 5% 96%;
+  --accent-foreground:     240 6% 10%;
+  --destructive:           0 84% 60%;
+  --destructive-foreground:0 0% 100%;
+  --border:                240 6% 90%;
+  --input:                 240 6% 90%;
+  --ring:                  0 0% 20%;
+  --radius:                0.75rem;
 
-// ── Model dropdown ────────────────────────────────────────────
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
+  /* Semantic */
+  --bg-primary:   #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-card:      #ffffff;
+  --bg-elevated:  #f4f4f5;
+  --bg-input:     #f4f4f5;
+  --bg:           var(--bg-primary);
 
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-        <span>{selected?.aka || selected?.label || 'Model'}</span>
-        <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-      </button>
+  --text-primary:   #09090b;
+  --text-secondary: #3f3f46;
+  --text-muted:     #71717a;
+  --text-inverse:   #ffffff;
 
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
+  --border-color: #e4e4e7;
+  --border-focus: #09090b;
+
+  --brand:       #f97316;
+  --brand-light: #fff7ed;
+  --brand-dark:  #ea580c;
+
+  --shadow:          0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:       0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg:       0 10px 30px rgba(0,0,0,0.10);
+  --shadow-brand:    0 12px 30px -18px rgba(249,115,22,0.6);
+  --shadow-brand-lg: 0 18px 42px -18px rgba(249,115,22,0.68);
+
+  --topbar-height:     56px;
+  --bottom-nav-height: 0px;
+
+  /* ── Tool accent colors — LIGHT MODE ─────────────────────── */
+
+  /* Create Image — Ink Blue */
+  --tool-image:        #4F6FD4;
+  --tool-image-subtle: rgba(79, 111, 212, 0.10);
+  --tool-image-border: rgba(79, 111, 212, 0.22);
+  --tool-image-muted:  rgba(79, 111, 212, 0.60);
+
+  /* Create Video — Deep Violet */
+  --tool-video:        #7C5CC4;
+  --tool-video-subtle: rgba(124, 92, 196, 0.10);
+  --tool-video-border: rgba(124, 92, 196, 0.22);
+  --tool-video-muted:  rgba(124, 92, 196, 0.60);
+
+  /* Copy Motion — Forest Teal */
+  --tool-motion:        #0F9E6E;
+  --tool-motion-subtle: rgba(15, 158, 110, 0.10);
+  --tool-motion-border: rgba(15, 158, 110, 0.22);
+  --tool-motion-muted:  rgba(15, 158, 110, 0.60);
+
+  /* UGC — Rose */
+  --tool-ugc:        #E11D74;
+  --tool-ugc-subtle: rgba(225, 29, 116, 0.10);
+  --tool-ugc-border: rgba(225, 29, 116, 0.22);
+  --tool-ugc-muted:  rgba(225, 29, 116, 0.60);
 }
 
-// ── Refined prompt preview ────────────────────────────────────
-const RefinedPromptPreview = ({ text, loading }) => (
-  <AnimatePresence>
-    {(text || loading) && (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{    opacity: 0, height: 0 }}
-        className="rounded-xl overflow-hidden mb-5"
-        style={{ border: `1px solid ${ACCENT_BDR}`, background: ACCENT_SUB }}
-      >
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles size={11} style={{ color: ACCENT }} />
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: ACCENT }}>
-              AI-Refined Prompt
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex flex-col gap-1.5">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-2.5 rounded-full animate-pulse"
-                  style={{ background: ACCENT_BDR, width: i === 2 ? '60%' : '100%' }}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{text}</p>
-          )}
-        </div>
-      </motion.div>
-    )}
-  </AnimatePresence>
-)
+[data-theme='dark'], .dark {
+  /* shadcn HSL tokens — true black */
+  --background:            0 0% 0%;
+  --foreground:            0 0% 98%;
+  --card:                  0 0% 7%;
+  --card-foreground:       0 0% 98%;
+  --popover:               0 0% 7%;
+  --popover-foreground:    0 0% 98%;
+  --primary:               24 95% 53%;
+  --primary-foreground:    0 0% 100%;
+  --secondary:             0 0% 11%;
+  --secondary-foreground:  0 0% 98%;
+  --muted:                 0 0% 11%;
+  --muted-foreground:      0 0% 45%;
+  --accent:                0 0% 11%;
+  --accent-foreground:     0 0% 98%;
+  --destructive:           0 74% 56%;
+  --destructive-foreground:0 0% 100%;
+  --border:                0 0% 15%;
+  --input:                 0 0% 10%;
+  --ring:                  0 0% 80%;
 
-// ── Main page ─────────────────────────────────────────────────
-export default function UGCGeneratePage() {
-  const { profileId }                                              = useParams()
-  const navigate                                                   = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile }   = useAuth()
+  /* Semantic */
+  --bg-primary:   #000000;
+  --bg-secondary: #0c0c0c;
+  --bg-card:      #111111;
+  --bg-elevated:  #1c1c1c;
+  --bg-input:     #181818;
+  --bg:           var(--bg-primary);
 
-  const [profile,        setProfile]        = useState(null)
-  const [profileLoading, setProfileLoading] = useState(true)
-  const [models,         setModels]         = useState([])
-  const [modelsLoading,  setModelsLoading]  = useState(true)
-  const [model,          setModel]          = useState('')
+  --text-primary:   #fafafa;
+  --text-secondary: #d4d4d8;
+  --text-muted:     #71717a;
+  --text-inverse:   #000000;
 
-  const [outputType,    setOutputType]    = useState('image')
-  const [filter,        setFilter]        = useState('hyper_realistic')
-  const [aspectRatio,   setAspectRatio]   = useState('9:16')
-  const [duration,      setDuration]      = useState('5')
-  const [scene,         setScene]         = useState('')
-  const [refinedPrompt, setRefinedPrompt] = useState('')
-  const [refining,      setRefining]      = useState(false)
-  const [submitting,    setSubmitting]    = useState(false)
+  --border-color: #27272a;
+  --border-focus: #52525b;
 
-  const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
+  --brand:       #f97316;
+  --brand-light: #1c0f05;
+  --brand-dark:  #fb923c;
 
-  useEffect(() => {
-    loadProfile()
-    loadModels()
-  }, [profileId])
+  --shadow:    0 1px 2px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.6);
 
-  const loadProfile = async () => {
-    setProfileLoading(true)
-    const { data, error } = await ugcProfiles.getById(profileId)
-    if (error || !data) {
-      toast.error('Character not found')
-      navigate('/create/ugc')
-      return
-    }
-    setProfile(data)
-    setProfileLoading(false)
+  /* ── Tool accent colors — DARK MODE ──────────────────────── */
+
+  /* Create Image — Periwinkle Blue */
+  --tool-image:        #7C9EFF;
+  --tool-image-subtle: rgba(124, 158, 255, 0.09);
+  --tool-image-border: rgba(124, 158, 255, 0.18);
+  --tool-image-muted:  rgba(124, 158, 255, 0.55);
+
+  /* Create Video — Soft Violet */
+  --tool-video:        #A78BFA;
+  --tool-video-subtle: rgba(167, 139, 250, 0.09);
+  --tool-video-border: rgba(167, 139, 250, 0.18);
+  --tool-video-muted:  rgba(167, 139, 250, 0.55);
+
+  /* Copy Motion — Mint Emerald */
+  --tool-motion:        #34D399;
+  --tool-motion-subtle: rgba(52, 211, 153, 0.09);
+  --tool-motion-border: rgba(52, 211, 153, 0.18);
+  --tool-motion-muted:  rgba(52, 211, 153, 0.55);
+
+  /* UGC — Soft Pink */
+  --tool-ugc:        #FB7BB8;
+  --tool-ugc-subtle: rgba(251, 123, 184, 0.09);
+  --tool-ugc-border: rgba(251, 123, 184, 0.18);
+  --tool-ugc-muted:  rgba(251, 123, 184, 0.55);
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --bottom-nav-height: calc(60px + env(safe-area-inset-bottom, 8px));
   }
+}
 
-  const loadModels = useCallback(async () => {
-    setModelsLoading(true)
-    const { data } = await supabase
-      .from('models')
-      .select('*')
-      .eq('is_active', true)
-      .eq('is_user_facing', true)
-      .order('sort_order')
-    const list = data || []
-    setModels(list)
-    const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
-    setModel(firstUnlocked?.value || '')
-    setModelsLoading(false)
-  }, [])
+/* ============================================================
+   RESET
+   ============================================================ */
 
-  const filteredModels = models.filter((m) => m.type === outputType)
-  const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
 
-  useEffect(() => {
-    const first = filteredModels.find((m) => !m.is_locked)
-    if (first) setModel(first.value)
-  }, [outputType])
+html {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  const caps = selectedModel ? {
-    supportedDurations:    selectedModel.supported_durations    ?? ['5', '8', '10'],
-    supportedAspectRatios: selectedModel.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    isFlatRate:            selectedModel.is_flat_rate           ?? false,
-  } : { supportedDurations: ['5'], supportedAspectRatios: ['9:16', '16:9', '1:1'], isFlatRate: false }
+html, body, #root { min-height: 100dvh; }
 
-  const creditCost = (() => {
-    if (!selectedModel) return 0
-    const base = outputType === 'image'
-      ? selectedModel.credit_cost_t2i || 0
-      : caps.isFlatRate
-        ? selectedModel.credit_cost_t2i || 0
-        : (selectedModel.credit_cost_t2i || 0) * parseInt(duration)
-    return Math.ceil(base)
-  })()
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  text-rendering: geometricPrecision;
+}
 
-  const canAfford   = credits >= creditCost
-  const sceneEmpty  = !scene.trim()
-  const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
+#root {
+  display: flex;
+  flex-direction: column;
+}
 
-  // AI prompt refinement
-  const refinePrompt = useCallback(async (sceneText) => {
-    if (!profile || skipRefinement || !sceneText.trim()) return
-    setRefining(true)
-    setRefinedPrompt('')
-    try {
-      const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: sceneText, outputType })
-      const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
-      })
-      const selData  = await selRes.json()
-      const selText  = selData.content?.find((b) => b.type === 'text')?.text || '[]'
-      let selectedPhotos = []
-      try { selectedPhotos = JSON.parse(selText.replace(/```json|```/g, '').trim()) } catch { /* use empty */ }
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', -apple-system, sans-serif !important;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
 
-      const { systemPrompt, userMessage } = buildUGCPromptPayload({ profile, sceneDescription: sceneText, outputType, filter, selectedPhotos, skipRefinement: false })
-      const res  = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }),
-      })
-      const data    = await res.json()
-      const refined = data.content?.find((b) => b.type === 'text')?.text || sceneText
-      setRefinedPrompt(refined.trim())
-    } catch (err) {
-      console.error('Prompt refinement error:', err)
-      setRefinedPrompt('')
-    } finally {
-      setRefining(false)
-    }
-  }, [profile, outputType, filter, skipRefinement])
+p   { margin: 0; line-height: 1.6; }
+a   { color: inherit; text-decoration: none; }
+img, video { display: block; max-width: 100%; }
 
-  useEffect(() => {
-    if (sceneEmpty || !profile) return
-    const timer = setTimeout(() => refinePrompt(scene), 1200)
-    return () => clearTimeout(timer)
-  }, [scene, outputType, filter])
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+}
+button:disabled      { cursor: not-allowed; }
+input, textarea, select { font: inherit; }
 
-  const handleGenerate = async () => {
-    if (sceneEmpty)     return toast.error('Describe the scene')
-    if (!selectedModel) return toast.error('Pick a model')
-    if (!canAfford)     return toast.error('Not enough credits')
-    if (!user)          return toast.error('Please sign in')
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
 
-    setSubmitting(true)
-    try {
-      let selectedPhotos = []
-      try {
-        const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: scene, outputType })
-        const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
-        })
-        const selData = await selRes.json()
-        const selText = selData.content?.find((b) => b.type === 'text')?.text || '[]'
-        selectedPhotos = JSON.parse(selText.replace(/```json|```/g, '').trim())
-      } catch { /* proceed without */ }
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-color); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-      const finalPrompt = refinedPrompt || scene
+.no-scrollbar                    { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                 user.id,
-        generation_type:         outputType === 'image' ? 'text_to_image' : 'text_to_video',
-        status:                  'pending',
-        prompt:                  scene,
-        enhanced_prompt:         finalPrompt,
-        model:                   selectedModel.value,
-        aspect_ratio:            aspectRatio,
-        duration:                outputType === 'video' ? duration : undefined,
-        credits_charged:         creditCost,
-        output_type:             outputType,
-        skip_prompt_refinement:  skipRefinement,
-        prompt_engineering_used: !skipRefinement,
-        input_image_urls:        selectedPhotos.length ? selectedPhotos : null,
-      })
-      if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+/* ============================================================
+   SELECTION
+   ============================================================ */
 
-      const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
-      if (dErr || !deduct?.success) {
-        await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
-        throw new Error(deduct?.error || 'Not enough credits')
-      }
+::selection {
+  background: rgba(249,115,22,0.12);
+  color: var(--text-primary);
+}
 
-      await ugcGenerations.create({
-        generation_id:   genRow.id,
-        ugc_profile_id:  profileId,
-        user_id:         user.id,
-        output_type:     outputType,
-        filter_applied:  filter,
-        scene_prompt:    scene,
-        refined_prompt:  finalPrompt,
-        selected_photos: selectedPhotos,
-        aspect_ratio:    aspectRatio,
-      })
+/* ============================================================
+   LAYOUT
+   ============================================================ */
 
-      const fn = outputType === 'image' ? 'image-generate' : 'video-generate'
-      supabase.functions.invoke(fn, { body: { generationId: genRow.id } })
-        .catch((e) => console.error(`${fn} invoke error`, e))
+.page-container {
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+  min-height: 100dvh;
+  position: relative;
+}
 
-      refreshProfile()
-      toast.success(`Your ${outputType} is being generated. Check your Media page.`, { duration: 4000 })
-      setScene('')
-      setRefinedPrompt('')
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
 
-    } catch (err) {
-      toast.error(err.message || 'Something went wrong')
-    } finally {
-      setSubmitting(false)
-    }
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+
+.font-display { font-family: 'Inter', -apple-system, sans-serif !important; }
+.font-body    { font-family: 'Inter', -apple-system, sans-serif !important; }
+.font-mono    { font-family: 'JetBrains Mono', 'Courier New', monospace !important; }
+
+/* ============================================================
+   BRAND
+   ============================================================ */
+
+.brand-gradient {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+}
+
+.brand-gradient-text {
+  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.shadow-brand    { box-shadow: var(--shadow-brand); }
+.shadow-brand-lg { box-shadow: var(--shadow-brand-lg); }
+
+/* ============================================================
+   LOGO — invert on light theme
+   ============================================================ */
+
+.logo-icon {
+  filter: invert(1);
+  transition: filter 0.2s ease;
+}
+
+[data-theme='dark'] .logo-icon,
+.dark .logo-icon {
+  filter: invert(0);
+}
+
+/* ============================================================
+   GLASS
+   ============================================================ */
+
+.glass {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.dark .glass {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ============================================================
+   CARD
+   ============================================================ */
+
+.card {
+  background:    var(--bg-card);
+  border:        1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow:    var(--shadow);
+}
+
+/* ============================================================
+   INPUT
+   ============================================================ */
+
+.input-base {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif !important;
+  font-size: 15px;
+  line-height: 1.5;
+  transition: border-color 0.15s ease;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.input-base::placeholder { color: var(--text-muted); }
+
+.input-base:focus {
+  border-color: var(--border-focus);
+  box-shadow: none;
+}
+
+.input-base:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ============================================================
+   FOCUS
+   ============================================================ */
+
+:focus-visible {
+  outline: 1.5px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) { outline: none; }
+
+/* ============================================================
+   SHIMMER
+   ============================================================ */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-card)     50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ============================================================
+   GLOW
+   ============================================================ */
+
+.glow-brand {
+  box-shadow: 0 0 20px rgba(249,115,22,0.12), 0 0 60px rgba(249,115,22,0.06);
+}
+
+.dark .glow-brand {
+  box-shadow: 0 0 20px rgba(249,115,22,0.20), 0 0 60px rgba(249,115,22,0.10);
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    scroll-behavior:           auto   !important;
+    transition-duration:       0.01ms !important;
   }
-
-  if (profileLoading) {
-    return (
-      <div className="h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-          className="w-8 h-8 rounded-full border-2"
-          style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-
-      {/* Generating overlay */}
-      <AnimatePresence>
-        {submitting && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
-          >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-              className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
-            />
-            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Generating…</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
-      >
-        <button onClick={() => navigate('/create/ugc')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
-          <ArrowLeft size={20} />
-        </button>
-
-        <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
-          {profile?.thumbnail_url ? (
-            <img
-              src={profile.thumbnail_url}
-              alt={profile.name}
-              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-              style={{ border: `2px solid ${ACCENT_BDR}` }}
-            />
-          ) : (
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: ACCENT_SUB, border: `2px solid ${ACCENT_BDR}` }}
-            >
-              <User size={14} style={{ color: ACCENT }} />
-            </div>
-          )}
-          <div className="flex flex-col items-start">
-            <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>{profile?.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: ACCENT }}>UGC</p>
-          </div>
-        </button>
-
-        <div className="flex items-center gap-2">
-          {!modelsLoading && (
-            <ModelDropdown models={filteredModels} value={selectedModel?.value || ''} onChange={setModel} />
-          )}
-          <div
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-            {Math.floor(credits)}
-          </div>
-        </div>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
-
-          {/* Output type toggle */}
-          <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
-            {[
-              { value: 'image', label: 'Image', Icon: ImageIcon },
-              { value: 'video', label: 'Video', Icon: VideoIcon },
-            ].map(({ value, label, Icon }) => (
-              <button
-                key={value}
-                onClick={() => setOutputType(value)}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
-                style={{
-                  background: outputType === value ? 'var(--bg-card)' : 'transparent',
-                  color:      outputType === value ? 'var(--text-primary)' : 'var(--text-muted)',
-                  boxShadow:  outputType === value ? 'var(--shadow)' : 'none',
-                }}
-              >
-                <Icon size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Scene description */}
-          <div className="mb-5">
-            <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Scene Description
-            </p>
-            <textarea
-              value={scene}
-              onChange={(e) => setScene(e.target.value)}
-              placeholder={`Describe what ${profile?.name} is doing, where they are, the vibe of the moment…`}
-              rows={4}
-              maxLength={600}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
-              style={{
-                background: 'var(--bg-elevated)',
-                border:     '1px solid var(--border-color)',
-                color:      'var(--text-primary)',
-                lineHeight: 1.6,
-              }}
-            />
-            <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
-              {scene.length}/600
-            </p>
-          </div>
-
-          {/* Refined prompt preview */}
-          <RefinedPromptPreview text={refinedPrompt} loading={refining} />
-
-          {/* Style filter — ugc_generation_filter enum: hyper_realistic | cinematic */}
-          <SettingChips
-            label="Style Filter"
-            options={[
-              { value: 'hyper_realistic', label: '📱 Hyper Realistic' },
-              { value: 'cinematic',       label: '🎬 Cinematic'       },
-            ]}
-            value={filter}
-            onChange={setFilter}
-          />
-
-          {/* Aspect ratio */}
-          <SettingChips
-            label="Aspect Ratio"
-            options={ALL_ASPECT_RATIOS.map((o) => ({
-              ...o,
-              disabled: !caps.supportedAspectRatios.includes(o.value),
-            }))}
-            value={aspectRatio}
-            onChange={setAspectRatio}
-          />
-
-          {/* Duration (video only) */}
-          {outputType === 'video' && (
-            <SettingChips
-              label="Duration"
-              options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
-              value={duration}
-              onChange={setDuration}
-            />
-          )}
-
-          {/* Refinement off notice */}
-          {skipRefinement && (
-            <div
-              className="flex items-center gap-2 p-3 rounded-xl mt-1"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-            >
-              <Info size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                AI prompt refinement is off. Your scene description will be sent to the model as-is.
-              </p>
-            </div>
-          )}
-
-        </div>
-      </div>
-
-      {/* Generate button */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
-        <div className="mx-auto w-full max-w-xl">
-          <button
-            onClick={handleGenerate}
-            disabled={btnDisabled}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
-            style={{
-              background: btnDisabled ? 'var(--bg-elevated)' : ACCENT,
-              color:      btnDisabled ? 'var(--text-muted)'  : '#ffffff',
-            }}
-          >
-            <Zap size={15} fill="currentColor" />
-            {!canAfford && !sceneEmpty
-              ? 'Not enough credits'
-              : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
-          </button>
-          {!canAfford && (
-            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
-              Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
-                Top up
-              </button>
-            </p>
-          )}
-        </div>
-      </div>
-
-    </div>
-  )
 }
