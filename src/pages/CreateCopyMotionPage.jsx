@@ -672,19 +672,84 @@ export default function CreateCopyMotionPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
+  // ── Trim video in-browser via ffmpeg.wasm ────────────────
+  const trimVideoInBrowser = async (sourceFile, startSec, endSec) => {
+    // Lazy-load + cache the FFmpeg instance across calls
+    if (!ffmpegRef.current) {
+      const { FFmpeg }            = await import('@ffmpeg/ffmpeg')
+      const { toBlobURL }         = await import('@ffmpeg/util')
+      const ff                    = new FFmpeg()
+      const baseURL               = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+      await ff.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,   'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      })
+      ffmpegRef.current = ff
+    }
+    const ffmpeg       = ffmpegRef.current
+    const { fetchFile } = await import('@ffmpeg/util')
+
+    const ext        = sourceFile.name.split('.').pop() || 'mp4'
+    const inputName  = `input.${ext}`
+    const outputName = 'output.mp4'
+
+    await ffmpeg.writeFile(inputName, await fetchFile(sourceFile))
+
+    await ffmpeg.exec([
+      '-ss',                String(startSec),
+      '-to',                String(endSec),
+      '-i',                 inputName,
+      '-c:v',               'libx264',
+      '-preset',            'ultrafast',
+      '-crf',               '18',
+      '-c:a',               'aac',
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags',          '+faststart',
+      outputName,
+    ])
+
+    const data        = await ffmpeg.readFile(outputName)
+    const blob        = new Blob([data.buffer], { type: 'video/mp4' })
+    const trimmedName = sourceFile.name.replace(/\.[^.]+$/, '') + '_trim.mp4'
+    await ffmpeg.deleteFile(inputName).catch(() => {})
+    await ffmpeg.deleteFile(outputName).catch(() => {})
+    return new File([blob], trimmedName, { type: 'video/mp4' })
+  }
+
   // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!hasVideo)        return toast.error('Upload a motion reference video')
     if (durationMismatch) return toast.error(`Video duration must exactly match one of: ${modelDurations.join('s, ')}s`)
+    if (needsTrim && (snappedDuration === null || trimEnd <= trimStart)) {
+      return toast.error('Pick a valid trim window')
+    }
     if (!hasSubject)      return toast.error('Upload a subject image')
     if (!selectedModel)   return toast.error('Pick a model')
     if (!canAfford)       return toast.error('Not enough credits')
     if (!user)            return toast.error('Please sign in')
 
     let uploadFile = motionVideo.file
+    let finalDuration = matchedDuration
+
+    // ── Step 0: Trim if needed ─────────────────────────────
+    if (needsTrim) {
+      setTrimming(true)
+      toast.loading('Trimming video…', { id: 'trim' })
+      try {
+        uploadFile    = await trimVideoInBrowser(motionVideo.file, trimStart, trimEnd)
+        finalDuration = trimEnd - trimStart
+      } catch (err) {
+        toast.dismiss('trim')
+        setTrimming(false)
+        toast.error('Could not trim video. Please try a shorter clip.')
+        return
+      }
+      toast.dismiss('trim')
+      setTrimming(false)
+    }
 
     // ── Step 1: Transcode if needed ────────────────────────
-    if (compatStatus === 'incompatible') {
+    if (!needsTrim && compatStatus === 'incompatible') {
       setPhase('converting')
       setConvertProgress(0)
 
@@ -745,7 +810,7 @@ export default function CreateCopyMotionPage() {
         prompt:                 null,
         model,
         aspect_ratio:           aspectRatio,
-        duration:               String(matchedDuration),
+        duration:               String(snappedDuration ?? finalDuration ?? 5),
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
