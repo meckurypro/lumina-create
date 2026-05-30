@@ -35,11 +35,8 @@ const PHOTO_SLOTS = [
 // ── DB-safe enum options ──────────────────────────────────────
 // ugc_gender enum
 const GENDER_OPTIONS = [
-  { value: 'male',              label: 'Male'              },
-  { value: 'female',            label: 'Female'            },
-  { value: 'non_binary',        label: 'Non-binary'        },
-  { value: 'other',             label: 'Other'             },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+  { value: 'male',   label: 'Male'   },
+  { value: 'female', label: 'Female' },
 ]
 
 // ugc_socioeconomic_status enum — DB only has 3 values
@@ -272,45 +269,63 @@ const VibeTags = ({ value = [], onChange }) => {
 }
 
 // ── Photo slot ────────────────────────────────────────────────
-const PhotoSlot = ({ slot, value, onChange, onRemove, uploading }) => (
-  <div className="flex flex-col gap-2">
-    <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{slot.label}</p>
-    <p className="text-xs -mt-1.5 mb-1" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{slot.hint}</p>
+const PhotoSlot = ({ slot, value, onChange, onRemove, uploading }) => {
+  const PLACEHOLDER = {
+    photo_face_front:         '/headfront.png',
+    photo_face_three_quarter: '/headthreequarter.png',
+    photo_face_side_90:       '/headside.png',
+    photo_body_front:         '/bodyfront.png',
+    photo_body_side:          '/bodyside.png',
+    photo_body_back:          '/bodyback.png',
+  }
 
-    {value?.url ? (
-      <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '3/4', background: 'var(--bg-elevated)' }}>
-        <img src={value.url} alt={slot.label} className="w-full h-full object-cover" />
-        {uploading ? (
-          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-              className="w-6 h-6 rounded-full border-2"
-              style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}
-            />
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{slot.label}</p>
+      <p className="text-xs -mt-1.5 mb-1" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{slot.hint}</p>
+
+      {value?.url ? (
+        <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '3/4', background: 'var(--bg-elevated)' }}>
+          <img src={value.url} alt={slot.label} className="w-full h-full object-cover" />
+          {uploading ? (
+            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                className="w-6 h-6 rounded-full border-2"
+                style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => onRemove(slot.key)}
+              className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <label
+          className="relative flex flex-col items-center justify-center rounded-2xl overflow-hidden transition-all cursor-pointer"
+          style={{ aspectRatio: '3/4', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+        >
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(slot.key, e.target.files?.[0])} />
+          <img
+            src={PLACEHOLDER[slot.key]}
+            alt={slot.label}
+            className="absolute inset-0 w-full h-full object-cover opacity-30"
+          />
+          <div className="relative z-10 flex flex-col items-center gap-1.5">
+            <Camera size={18} style={{ color: ACCENT }} />
+            <span className="text-xs font-medium" style={{ color: ACCENT }}>Upload</span>
           </div>
-        ) : (
-          <button
-            onClick={() => onRemove(slot.key)}
-            className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
-          >
-            <X size={11} />
-          </button>
-        )}
-      </div>
-    ) : (
-      <label
-        className="flex flex-col items-center justify-center rounded-2xl transition-all cursor-pointer"
-        style={{ aspectRatio: '3/4', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-      >
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(slot.key, e.target.files?.[0])} />
-        <Camera size={18} style={{ color: ACCENT, marginBottom: 6 }} />
-        <span className="text-xs font-medium text-center px-2" style={{ color: ACCENT }}>Upload</span>
-      </label>
-    )}
-  </div>
-)
+        </label>
+      )}
+    </div>
+  )
+}
 
 // ── Step validation ───────────────────────────────────────────
 const stepIsValid = (step, form) => {
