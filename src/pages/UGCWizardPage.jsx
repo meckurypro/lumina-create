@@ -369,29 +369,29 @@ export default function UGCWizardPage() {
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
 
-  const buildPayload = () => ({
-    name:                 form.name,
-    age:                  parseInt(form.age),
-    gender:               form.gender,
-    nationality:          form.nationality,
-    ethnic_background:    form.ethnic_background,
-    vibe_tags:            form.vibe_tags,
-    interests:            form.interests,
-    socioeconomic_status: form.socioeconomic_status,
-    content_energy:       form.content_energy,
-    backstory:            form.backstory,
-    education_level:      form.education_level,
-    occupation:           form.occupation,
-    fashion_score:        form.fashion_score,
-    style_direction:      form.style_direction,
-    platforms:            form.platforms,
-    photo_face_front:          form.photo_face_front?.url         || null,
-    photo_face_three_quarter:  form.photo_face_three_quarter?.url || null,
-    photo_face_side_90:        form.photo_face_side_90?.url       || null,
-    photo_body_front:          form.photo_body_front?.url         || null,
-    photo_body_side:           form.photo_body_side?.url          || null,
-    photo_body_back:           form.photo_body_back?.url          || null,
-  })
+const buildPayload = () => ({
+  name:                 form.name,
+  age:                  parseInt(form.age),
+  gender:               form.gender               || null,
+  nationality:          form.nationality,
+  ethnic_background:    form.ethnic_background,
+  vibe_tags:            form.vibe_tags,
+  interests:            form.interests,
+  socioeconomic_status: form.socioeconomic_status  || null,
+  content_energy:       form.content_energy,
+  backstory:            form.backstory,
+  education_level:      form.education_level       || null,
+  occupation:           form.occupation,
+  fashion_score:        form.fashion_score,
+  style_direction:      form.style_direction,
+  platforms:            form.platforms,
+  photo_face_front:         form.photo_face_front?.url         || null,
+  photo_face_three_quarter: form.photo_face_three_quarter?.url || null,
+  photo_face_side_90:       form.photo_face_side_90?.url       || null,
+  photo_body_front:         form.photo_body_front?.url         || null,
+  photo_body_side:          form.photo_body_side?.url          || null,
+  photo_body_back:          form.photo_body_back?.url          || null,
+})
 
   const saveStep = async (nextStep) => {
     setSaving(true)
