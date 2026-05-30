@@ -22,6 +22,9 @@ import TemplateRunnerPage       from '@/pages/TemplateRunnerPage'
 import AuthCallbackPage         from '@/pages/AuthCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
+import CreateUGCPage            from '@/pages/CreateUGCPage'
+import CreateUGCWizardPage      from '@/pages/CreateUGCWizardPage'
+import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 
 // Layout
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -78,29 +81,37 @@ export default function App() {
             element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
           />
 
+          {/* Feed */}
           <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
           <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
 
-          <Route path="/create"       element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/image" element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/video" element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+          {/* Create — base */}
+          <Route path="/create"             element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/image"       element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/video"       element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
           <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
 
-          {/* Cinematic routes — must come BEFORE the generic /:templateSlug catch-all */}
+          {/* Cinematic — must come BEFORE generic /:templateSlug */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
           <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
 
-          {/* Generic template runner — keep AFTER all specific /create/* routes */}
+          {/* UGC — must come BEFORE generic /:templateSlug */}
+          <Route path="/create/ugc"            element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/new"        element={<RequireAuth><AppLayout><CreateUGCWizardPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/:profileId" element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
+
+          {/* Generic template runner — MUST stay after all specific /create/* routes */}
           <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
 
-          <Route path="/generate"    element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
-          <Route path="/result/:id"  element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
+          {/* Generate / Result */}
+          <Route path="/generate"   element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
+          <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
 
-          {/* Media (was History) */}
+          {/* Media */}
           <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
-          {/* Legacy redirect */}
           <Route path="/history" element={<Navigate to="/media" replace />} />
 
+          {/* Profile / Settings / Admin */}
           <Route path="/profile"  element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>} />
           <Route path="/admin"    element={<RequireAdmin><AdminPage /></RequireAdmin>} />
