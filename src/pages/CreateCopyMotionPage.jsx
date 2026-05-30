@@ -751,8 +751,9 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
-  // ── Derived video status ─────────────────────────────────
-const matchedDuration  = videoDuration != null && modelDurations.length > 0
+// ── Derived video status ─────────────────────────────────
+  const videoDuration    = motionVideo?.duration ?? null
+  const matchedDuration  = videoDuration != null && modelDurations.length > 0
   ? modelDurations.find((d) => d === videoDuration) ?? null
   : null
 const modelMinDuration = modelDurations.length > 0 ? Math.min(...modelDurations) : 5
