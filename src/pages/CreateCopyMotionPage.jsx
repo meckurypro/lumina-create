@@ -7,7 +7,6 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
-import { checkVideoCompatibility, transcodeVideo } from '@/lib/videoCompat'
 import toast from 'react-hot-toast'
 
 // ── Theme constants ────────────────────────────────────────────────────────
