@@ -667,23 +667,29 @@ export default function MediaPage() {
     setRegenLoading(true)
 
     try {
-      const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
-      const genType = gen.start_frame_url ? 'image_to_image' : (isVideo ? gen.generation_type : 'text_to_image')
+const isVideo = ['text_to_video','image_to_video','start_end_frame','end_frame_text','template'].includes(gen.generation_type)
+const genType = gen.generation_type
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:         user.id,
-        generation_type: genType,
-        status:          'pending',
-        prompt:          gen.prompt,
-        model:           chosenModel,
-        aspect_ratio:    gen.aspect_ratio,
-        duration:        gen.duration,
-        credits_charged: creditCost,
-        output_type:     gen.output_type,
-        start_frame_url: gen.start_frame_url || null,
-        end_frame_url:   gen.end_frame_url   || null,
-        template_id:     gen.template_id     || null,
-      })
+const { data: genRow, error: genErr } = await generationsDb.create({
+  user_id:                user.id,
+  generation_type:        genType,
+  status:                 'pending',
+  prompt:                 gen.prompt,
+  model:                  chosenModel,
+  aspect_ratio:           gen.aspect_ratio,
+  duration:               gen.duration,
+  credits_charged:        creditCost,
+  output_type:            gen.output_type,
+  start_frame_url:        null,
+  input_image_urls:       gen.input_image_urls?.length
+                            ? gen.input_image_urls
+                            : gen.start_frame_url
+                              ? [gen.start_frame_url]
+                              : null,
+  end_frame_url:          gen.end_frame_url          || null,
+  template_id:            gen.template_id            || null,
+  skip_prompt_refinement: gen.skip_prompt_refinement ?? false,
+})
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
