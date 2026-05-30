@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, User, Sparkles,
-  ImageIcon, VideoIcon, ChevronDown, Info,
+  ImageIcon, VideoIcon, ChevronDown, Info, Images,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
@@ -21,7 +21,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ── Setting chips ─────────────────────────────────────────────
+// ── Setting chips ──────────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -35,8 +35,8 @@ const SettingChips = ({ label, options, value, onChange }) => (
           disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? ACCENT              : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff'           : 'var(--text-secondary)',
+            background: value === opt.value ? ACCENT            : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff'         : 'var(--text-secondary)',
             opacity:    opt.disabled ? 0.3 : 1,
             cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}
@@ -48,7 +48,7 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Model dropdown ────────────────────────────────────────────
+// ── Model dropdown ─────────────────────────────────────────────
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
@@ -63,7 +63,10 @@ const ModelDropdown = ({ models, value, onChange }) => {
         style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
         <span>{selected?.aka || selected?.label || 'Model'}</span>
-        <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        <ChevronDown
+          size={10}
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
+        />
       </button>
 
       <AnimatePresence>
@@ -93,7 +96,9 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {m.aka || m.label}
+                      </p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                     </div>
                     {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
@@ -106,7 +111,9 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   <div className="py-1">
                     {locked.map((m) => (
                       <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+                          {m.label}
+                        </p>
                         <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                       </div>
                     ))}
@@ -121,11 +128,11 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────
+// ── Main page ──────────────────────────────────────────────────
 export default function UGCGeneratePage() {
-  const { profileId }                                              = useParams()
-  const navigate                                                   = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile }   = useAuth()
+  const { profileId }                                            = useParams()
+  const navigate                                                 = useNavigate()
+  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
 
   const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
@@ -139,8 +146,6 @@ export default function UGCGeneratePage() {
   const [duration,    setDuration]    = useState('5')
   const [scene,       setScene]       = useState('')
   const [submitting,  setSubmitting]  = useState(false)
-
-  // prompt refinement and photo selection handled server-side
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
 
@@ -186,10 +191,14 @@ export default function UGCGeneratePage() {
   }, [outputType])
 
   const caps = selectedModel ? {
-    supportedDurations:    selectedModel.supported_durations    ?? ['5', '8', '10'],
+    supportedDurations:    selectedModel.supported_durations     ?? ['5', '8', '10'],
     supportedAspectRatios: selectedModel.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    isFlatRate:            selectedModel.is_flat_rate           ?? false,
-  } : { supportedDurations: ['5'], supportedAspectRatios: ['9:16', '16:9', '1:1'], isFlatRate: false }
+    isFlatRate:            selectedModel.is_flat_rate            ?? false,
+  } : {
+    supportedDurations:    ['5'],
+    supportedAspectRatios: ['9:16', '16:9', '1:1'],
+    isFlatRate:            false,
+  }
 
   const creditCost = (() => {
     if (!selectedModel) return 0
@@ -205,8 +214,6 @@ export default function UGCGeneratePage() {
   const sceneEmpty  = !scene.trim()
   const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
 
-  // prompt refinement + photo selection handled server-side in image-generate edge function
-
   const handleGenerate = async () => {
     if (sceneEmpty)     return toast.error('Describe the scene')
     if (!selectedModel) return toast.error('Pick a model')
@@ -215,8 +222,6 @@ export default function UGCGeneratePage() {
 
     setSubmitting(true)
     try {
-      // Collect all available reference photos from the profile
-      // Edge function owns photo selection + prompt engineering with full character context
       const referencePhotos = [
         profile.photo_face_front,
         profile.photo_face_three_quarter,
@@ -227,17 +232,17 @@ export default function UGCGeneratePage() {
       ].filter(Boolean)
 
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                 user.id,
-        generation_type:         outputType === 'image' ? 'text_to_image' : 'text_to_video',
-        status:                  'pending',
-        prompt:                  scene,
-        model:                   selectedModel.value,
-        aspect_ratio:            aspectRatio,
-        duration:                outputType === 'video' ? duration : undefined,
-        credits_charged:         creditCost,
-        output_type:             outputType,
-        skip_prompt_refinement:  skipRefinement,
-        input_image_urls:        referencePhotos.length ? referencePhotos : null,
+        user_id:                user.id,
+        generation_type:        outputType === 'image' ? 'text_to_image' : 'text_to_video',
+        status:                 'pending',
+        prompt:                 scene,
+        model:                  selectedModel.value,
+        aspect_ratio:           aspectRatio,
+        duration:               outputType === 'video' ? duration : undefined,
+        credits_charged:        creditCost,
+        output_type:            outputType,
+        skip_prompt_refinement: skipRefinement,
+        input_image_urls:       referencePhotos.length ? referencePhotos : null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -247,17 +252,16 @@ export default function UGCGeneratePage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Create ugc_generations record so edge function can fetch profile context
       await ugcGenerations.create({
-        generation_id:   genRow.id,
-        ugc_profile_id:  profileId,
-        user_id:         user.id,
-        output_type:     outputType,
-        filter_applied:  filter,
-        scene_prompt:    scene,
-        refined_prompt:  null,
-        selected_photos: [],
-        aspect_ratio:    aspectRatio,
+        generation_id:  genRow.id,
+        ugc_profile_id: profileId,
+        user_id:        user.id,
+        output_type:    outputType,
+        filter_applied: filter,
+        scene_prompt:   scene,
+        refined_prompt: null,
+        selected_photos:[],
+        aspect_ratio:   aspectRatio,
       })
 
       const fn = outputType === 'image' ? 'image-generate' : 'video-generate'
@@ -265,7 +269,18 @@ export default function UGCGeneratePage() {
         .catch((e) => console.error(`${fn} invoke error`, e))
 
       refreshProfile()
-      toast.success(`Your ${outputType} is being generated. Check your Media page.`, { duration: 4000 })
+      toast.success(
+        <span>
+          Generating! View in{' '}
+          <button
+            className="font-bold underline"
+            onClick={() => navigate(`/create/ugc/${profileId}/media`)}
+          >
+            {profile?.name}'s Media
+          </button>
+        </span>,
+        { duration: 5000 }
+      )
       setScene('')
 
     } catch (err) {
@@ -299,7 +314,11 @@ export default function UGCGeneratePage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
+            style={{
+              backdropFilter:       'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              background:           'rgba(0,0,0,0.4)',
+            }}
           >
             <motion.div
               animate={{ rotate: 360 }}
@@ -317,10 +336,15 @@ export default function UGCGeneratePage() {
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
-        <button onClick={() => navigate('/create/ugc')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+        <button
+          onClick={() => navigate('/create/ugc')}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <ArrowLeft size={20} />
         </button>
 
+        {/* Character identity — tapping navigates back to UGC list */}
         <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
           {profile?.thumbnail_url ? (
             <img
@@ -338,15 +362,32 @@ export default function UGCGeneratePage() {
             </div>
           )}
           <div className="flex flex-col items-start">
-            <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>{profile?.name}</p>
+            <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
+              {profile?.name}
+            </p>
             <p className="text-xs mt-0.5" style={{ color: ACCENT }}>UGC</p>
           </div>
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Media shortcut */}
+          <button
+            onClick={() => navigate(`/create/ugc/${profileId}/media`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            <Images size={13} />
+            <span>Media</span>
+          </button>
+
           {!modelsLoading && (
-            <ModelDropdown models={filteredModels} value={selectedModel?.value || ''} onChange={setModel} />
+            <ModelDropdown
+              models={filteredModels}
+              value={selectedModel?.value || ''}
+              onChange={setModel}
+            />
           )}
+
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
@@ -372,9 +413,9 @@ export default function UGCGeneratePage() {
                 onClick={() => setOutputType(value)}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
-                  background: outputType === value ? 'var(--bg-card)' : 'transparent',
+                  background: outputType === value ? 'var(--bg-card)'   : 'transparent',
                   color:      outputType === value ? 'var(--text-primary)' : 'var(--text-muted)',
-                  boxShadow:  outputType === value ? 'var(--shadow)' : 'none',
+                  boxShadow:  outputType === value ? 'var(--shadow)'     : 'none',
                 }}
               >
                 <Icon size={14} />
@@ -407,9 +448,7 @@ export default function UGCGeneratePage() {
             </p>
           </div>
 
-          {/* prompt refinement shown after generation completes in Media page */}
-
-          {/* Style filter — ugc_generation_filter enum: hyper_realistic | cinematic */}
+          {/* Style filter */}
           <SettingChips
             label="Style Filter"
             options={[
@@ -458,8 +497,11 @@ export default function UGCGeneratePage() {
       </div>
 
       {/* Generate button */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
-        <div className="mx-auto w-full max-w-xl">
+      <div
+        className="flex-shrink-0 px-4 lg:px-8 py-4"
+        style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
+      >
+        <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
           <button
             onClick={handleGenerate}
             disabled={btnDisabled}
@@ -474,10 +516,15 @@ export default function UGCGeneratePage() {
               ? 'Not enough credits'
               : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
+
           {!canAfford && (
-            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
+              <button
+                onClick={() => navigate('/profile')}
+                className="font-semibold"
+                style={{ color: ACCENT }}
+              >
                 Top up
               </button>
             </p>
