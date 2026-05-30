@@ -299,18 +299,19 @@ export default function CreateImagePage() {
         startFrameUrl = publicUrl
       }
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                user.id,
-        generation_type:        type,
-        status:                 'pending',
-        prompt,
-        model,
-        aspect_ratio:           aspectRatio,
-        credits_charged:        creditCost,
-        output_type:            'image',
-        start_frame_url:        startFrameUrl,
-        skip_prompt_refinement: skipRefinement,
-      })
+const { data: genRow, error: genErr } = await generationsDb.create({
+  user_id:                user.id,
+  generation_type:        type,
+  status:                 'pending',
+  prompt,
+  model,
+  aspect_ratio:           aspectRatio,
+  credits_charged:        creditCost,
+  output_type:            'image',
+  start_frame_url:        null,
+  input_image_urls:       startFrameUrl ? [startFrameUrl] : null,
+  skip_prompt_refinement: skipRefinement,
+})
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
