@@ -593,11 +593,14 @@ export default function CreateCopyMotionPage() {
   const canGenerate =
     hasVideo &&
     !durationMismatch &&
-    matchedDuration !== null &&
+    (needsTrim
+      ? (snappedDuration !== null && trimEnd > trimStart)
+      : matchedDuration !== null) &&
     hasSubject &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
+    !trimming &&
     compatStatus !== 'checking'
 
   // ── Video upload handler ─────────────────────────────────
