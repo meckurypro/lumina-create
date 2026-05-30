@@ -334,18 +334,19 @@ export default function CreateUGCPage() {
                       Create your first UGC character to start generating hyper-realistic content.
                     </p>
                   </div>
-                  <button
-                    onClick={handleCreateNew}
-                    disabled={!canCreate}
-                    className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-                    style={{
-                      background: canCreate ? ACCENT : 'var(--bg-elevated)',
-                      color:      canCreate ? '#000' : 'var(--text-muted)',
-                    }}
-                  >
-                    <Plus size={16} />
-                    Create Character
-                  </button>
+<button
+  onClick={handleCreateNew}
+  disabled={!canCreate}
+  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+  style={{
+    background: canCreate ? ACCENT : 'var(--bg-elevated)',
+    color:      canCreate ? '#000' : 'var(--text-primary)',
+    border:     canCreate ? 'none' : '1px solid var(--border-color)',
+  }}
+>
+  <Plus size={16} />
+  Create Character
+</button>
                 </div>
               )}
             </>
