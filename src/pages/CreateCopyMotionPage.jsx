@@ -1227,6 +1227,26 @@ export default function CreateCopyMotionPage() {
                 )}
               </div>
 
+              {/* Trim UI (only when video exceeds model max duration) */}
+              <AnimatePresence>
+                {needsTrim && motionVideo && (
+                  <VideoTrimSlider
+                    duration={videoDuration}
+                    maxDuration={modelMaxDuration}
+                    trimStart={trimStart}
+                    trimEnd={trimEnd}
+                    onTrimChange={(s, e) => { setTrimStart(s); setTrimEnd(e) }}
+                    videoUrl={motionVideo.url}
+                  />
+                )}
+              </AnimatePresence>
+
+              {needsTrim && (
+                <p className="text-xs -mt-2" style={{ color: ACCENT }}>
+                  Selected segment: {trimStart}s → {trimEnd}s ({trimEnd - trimStart}s) · will be trimmed before upload
+                </p>
+              )}
+
               {/* Duration display — read-only */}
               {matchedDuration !== null && (
                 <div className="mb-1">
