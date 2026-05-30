@@ -238,30 +238,52 @@ export default function CreateImagePage() {
     }
   }
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      setAspectRatio(detectAspectRatio(img.width, img.height))
-      setAutoRatio(true)
-      setImgDimensions({ width: img.width, height: img.height })
-    }
-    img.src = url
-    setReferenceImg({ file, url })
-    try {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        sessionStorage.setItem(SS_IMAGE, JSON.stringify({
-          base64: ev.target.result,
-          name:   file.name,
-          type:   file.type,
-        }))
-      }
-      reader.readAsDataURL(file)
-    } catch { /* noop */ }
+const handleImageUpload = (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+
+  const url = URL.createObjectURL(file)
+  const img = new Image()
+
+  img.onload = () => {
+    const MAX_PX = 1568
+    const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
+    const canvas = document.createElement('canvas')
+    canvas.width  = Math.round(img.width  * scale)
+    canvas.height = Math.round(img.height * scale)
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+    setAspectRatio(detectAspectRatio(canvas.width, canvas.height))
+    setAutoRatio(true)
+    setImgDimensions({ width: canvas.width, height: canvas.height })
+
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const compressedUrl  = URL.createObjectURL(blob)
+      const compressedFile = new File(
+        [blob],
+        file.name.replace(/\.\w+$/, '.jpg'),
+        { type: 'image/jpeg' }
+      )
+      setReferenceImg({ file: compressedFile, url: compressedUrl })
+
+      try {
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          sessionStorage.setItem(SS_IMAGE, JSON.stringify({
+            base64: ev.target.result,
+            name:   compressedFile.name,
+            type:   'image/jpeg',
+          }))
+        }
+        reader.readAsDataURL(compressedFile)
+      } catch { /* noop */ }
+    }, 'image/jpeg', 0.92)
   }
+
+  img.src = url
+}
 
   const handleRemoveImage = () => {
     setReferenceImg(null)
