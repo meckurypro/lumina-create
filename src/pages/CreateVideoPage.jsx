@@ -365,16 +365,21 @@ export default function CreateVideoPage() {
 
     setSubmitting(true)
     try {
-      let startFrameUrl = null
-      if (activeStartFrame?.file) {
-        const ext  = (activeStartFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
-        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('generation-uploads')
-          .upload(path, activeStartFrame.file, { upsert: false, cacheControl: '3600', contentType: activeStartFrame.file.type })
-        if (upErr) throw new Error('Start frame upload failed')
-        const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
-        startFrameUrl = publicUrl
+let startFrameUrl = null
+      if (activeStartFrame) {
+        if (activeStartFrame.file) {
+          const ext  = (activeStartFrame.file.name.split('.').pop() || 'jpg').toLowerCase()
+          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('generation-uploads')
+            .upload(path, activeStartFrame.file, { upsert: false, cacheControl: '3600', contentType: activeStartFrame.file.type })
+          if (upErr) throw new Error('Start frame upload failed')
+          const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+          startFrameUrl = publicUrl
+        } else {
+          // URL-only frame (from Animate flow — external CDN, CORS-safe passthrough)
+          startFrameUrl = activeStartFrame.url
+        }
       }
 
       let endFrameUrl = null
