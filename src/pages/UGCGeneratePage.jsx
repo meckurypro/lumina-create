@@ -7,7 +7,7 @@ import {
   ImageIcon, VideoIcon, ChevronDown, Info,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { ugcProfiles, ugcGenerations, buildUGCPromptPayload, buildPhotoSelectionPayload } from '@/lib/ugc'
+import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -121,43 +121,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Refined prompt preview ────────────────────────────────────
-const RefinedPromptPreview = ({ text, loading }) => (
-  <AnimatePresence>
-    {(text || loading) && (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{    opacity: 0, height: 0 }}
-        className="rounded-xl overflow-hidden mb-5"
-        style={{ border: `1px solid ${ACCENT_BDR}`, background: ACCENT_SUB }}
-      >
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles size={11} style={{ color: ACCENT }} />
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: ACCENT }}>
-              AI-Refined Prompt
-            </p>
-          </div>
-          {loading ? (
-            <div className="flex flex-col gap-1.5">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-2.5 rounded-full animate-pulse"
-                  style={{ background: ACCENT_BDR, width: i === 2 ? '60%' : '100%' }}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{text}</p>
-          )}
-        </div>
-      </motion.div>
-    )}
-  </AnimatePresence>
-)
-
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCGeneratePage() {
   const { profileId }                                              = useParams()
@@ -170,14 +133,14 @@ export default function UGCGeneratePage() {
   const [modelsLoading,  setModelsLoading]  = useState(true)
   const [model,          setModel]          = useState('')
 
-  const [outputType,    setOutputType]    = useState('image')
-  const [filter,        setFilter]        = useState('hyper_realistic')
-  const [aspectRatio,   setAspectRatio]   = useState('9:16')
-  const [duration,      setDuration]      = useState('5')
-  const [scene,         setScene]         = useState('')
-  const [refinedPrompt, setRefinedPrompt] = useState('')
-  const [refining,      setRefining]      = useState(false)
-  const [submitting,    setSubmitting]    = useState(false)
+  const [outputType,  setOutputType]  = useState('image')
+  const [filter,      setFilter]      = useState('hyper_realistic')
+  const [aspectRatio, setAspectRatio] = useState('9:16')
+  const [duration,    setDuration]    = useState('5')
+  const [scene,       setScene]       = useState('')
+  const [submitting,  setSubmitting]  = useState(false)
+
+  // prompt refinement and photo selection handled server-side
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
 
@@ -200,7 +163,7 @@ export default function UGCGeneratePage() {
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
-const { data } = await supabase
+    const { data } = await supabase
       .from('models')
       .select('*')
       .eq('is_active', true)
@@ -242,45 +205,7 @@ const { data } = await supabase
   const sceneEmpty  = !scene.trim()
   const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
 
-  // AI prompt refinement
-  const refinePrompt = useCallback(async (sceneText) => {
-    if (!profile || skipRefinement || !sceneText.trim()) return
-    setRefining(true)
-    setRefinedPrompt('')
-    try {
-      const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: sceneText, outputType })
-      const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
-      })
-      const selData  = await selRes.json()
-      const selText  = selData.content?.find((b) => b.type === 'text')?.text || '[]'
-      let selectedPhotos = []
-      try { selectedPhotos = JSON.parse(selText.replace(/```json|```/g, '').trim()) } catch { /* use empty */ }
-
-      const { systemPrompt, userMessage } = buildUGCPromptPayload({ profile, sceneDescription: sceneText, outputType, filter, selectedPhotos, skipRefinement: false })
-      const res  = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }),
-      })
-      const data    = await res.json()
-      const refined = data.content?.find((b) => b.type === 'text')?.text || sceneText
-      setRefinedPrompt(refined.trim())
-    } catch (err) {
-      console.error('Prompt refinement error:', err)
-      setRefinedPrompt('')
-    } finally {
-      setRefining(false)
-    }
-  }, [profile, outputType, filter, skipRefinement])
-
-  useEffect(() => {
-    if (sceneEmpty || !profile) return
-    const timer = setTimeout(() => refinePrompt(scene), 1200)
-    return () => clearTimeout(timer)
-  }, [scene, outputType, filter])
+  // prompt refinement + photo selection handled server-side in image-generate edge function
 
   const handleGenerate = async () => {
     if (sceneEmpty)     return toast.error('Describe the scene')
@@ -290,35 +215,29 @@ const { data } = await supabase
 
     setSubmitting(true)
     try {
-      let selectedPhotos = []
-      try {
-        const { systemPrompt: selSys, userMessage: selMsg } = buildPhotoSelectionPayload({ profile, sceneDescription: scene, outputType })
-        const selRes  = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, system: selSys, messages: [{ role: 'user', content: selMsg }] }),
-        })
-        const selData = await selRes.json()
-        const selText = selData.content?.find((b) => b.type === 'text')?.text || '[]'
-        selectedPhotos = JSON.parse(selText.replace(/```json|```/g, '').trim())
-      } catch { /* proceed without */ }
-
-      const finalPrompt = refinedPrompt || scene
+      // Collect all available reference photos from the profile
+      // Edge function owns photo selection + prompt engineering with full character context
+      const referencePhotos = [
+        profile.photo_face_front,
+        profile.photo_face_three_quarter,
+        profile.photo_face_side_90,
+        profile.photo_body_front,
+        profile.photo_body_side,
+        profile.photo_body_back,
+      ].filter(Boolean)
 
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                 user.id,
         generation_type:         outputType === 'image' ? 'text_to_image' : 'text_to_video',
         status:                  'pending',
         prompt:                  scene,
-        enhanced_prompt:         finalPrompt,
         model:                   selectedModel.value,
         aspect_ratio:            aspectRatio,
         duration:                outputType === 'video' ? duration : undefined,
         credits_charged:         creditCost,
         output_type:             outputType,
         skip_prompt_refinement:  skipRefinement,
-        prompt_engineering_used: !skipRefinement,
-        input_image_urls:        selectedPhotos.length ? selectedPhotos : null,
+        input_image_urls:        referencePhotos.length ? referencePhotos : null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -328,6 +247,7 @@ const { data } = await supabase
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
+      // Create ugc_generations record so edge function can fetch profile context
       await ugcGenerations.create({
         generation_id:   genRow.id,
         ugc_profile_id:  profileId,
@@ -335,8 +255,8 @@ const { data } = await supabase
         output_type:     outputType,
         filter_applied:  filter,
         scene_prompt:    scene,
-        refined_prompt:  finalPrompt,
-        selected_photos: selectedPhotos,
+        refined_prompt:  null,
+        selected_photos: [],
         aspect_ratio:    aspectRatio,
       })
 
@@ -347,7 +267,6 @@ const { data } = await supabase
       refreshProfile()
       toast.success(`Your ${outputType} is being generated. Check your Media page.`, { duration: 4000 })
       setScene('')
-      setRefinedPrompt('')
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -488,8 +407,7 @@ const { data } = await supabase
             </p>
           </div>
 
-          {/* Refined prompt preview */}
-          <RefinedPromptPreview text={refinedPrompt} loading={refining} />
+          {/* prompt refinement shown after generation completes in Media page */}
 
           {/* Style filter — ugc_generation_filter enum: hyper_realistic | cinematic */}
           <SettingChips
