@@ -1073,8 +1073,11 @@ export default function CreateCopyMotionPage() {
 
       {/* Converting / Generating overlay */}
       <AnimatePresence>
-        {isProcessing && (
-          <FullscreenOverlay phase={phase} convertProgress={convertProgress} />
+        {(isProcessing || trimming) && (
+          <FullscreenOverlay
+            phase={trimming ? 'trimming' : phase}
+            convertProgress={convertProgress}
+          />
         )}
       </AnimatePresence>
 
@@ -1315,7 +1318,7 @@ export default function CreateCopyMotionPage() {
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={handleGenerate}
-              disabled={!canGenerate}
+              disabled={!canGenerate || trimming}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
               style={{
                 background: canGenerate ? ACCENT    : 'var(--bg-elevated)',
@@ -1323,12 +1326,16 @@ export default function CreateCopyMotionPage() {
                 cursor:     canGenerate ? 'pointer' : 'not-allowed',
               }}
             >
-              <Zap size={15} fill="currentColor" />
-              {isProcessing
-                ? phase === 'converting' ? 'Converting…' : 'Generating…'
-                : matchedDuration
-                  ? `Generate · ${creditCost} cr · ${matchedDuration}s`
-                  : 'Generate'}
+              {needsTrim ? <Scissors size={15} /> : <Zap size={15} fill="currentColor" />}
+              {trimming
+                ? 'Trimming video…'
+                : isProcessing
+                  ? phase === 'converting' ? 'Converting…' : 'Generating…'
+                  : needsTrim
+                    ? `Trim & Generate · ${creditCost} cr · ${trimEnd - trimStart}s`
+                    : matchedDuration
+                      ? `Generate · ${creditCost} cr · ${matchedDuration}s`
+                      : 'Generate'}
             </button>
 
             {/* Helper messages */}
