@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
-import { checkVideoCompatibility, transcodeVideo } from '@/lib/videoCompat'
+import { checkVideoCompatibility, transcodeVideo, trimVideo } from '@/lib/videoCompat'
 import toast from 'react-hot-toast'
 
 // ── Theme constants ────────────────────────────────────────────────────────
@@ -702,9 +702,6 @@ export default function CreateCopyMotionPage() {
   const [trimStart, setTrimStart] = useState(0)
   const [trimEnd,   setTrimEnd]   = useState(0)
 
-  // Persistent FFmpeg instance (loaded once)
-  const ffmpegRef = useRef(null)
-
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
     restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
@@ -892,49 +889,6 @@ const durationMismatch = videoDuration != null &&
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-  // ── Trim video in-browser via ffmpeg.wasm ────────────────
-  const trimVideoInBrowser = async (sourceFile, startSec, endSec) => {
-    // Lazy-load + cache the FFmpeg instance across calls
-    if (!ffmpegRef.current) {
-      const { FFmpeg }            = await import('@ffmpeg/ffmpeg')
-      const { toBlobURL }         = await import('@ffmpeg/util')
-      const ff                    = new FFmpeg()
-      const baseURL               = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
-      await ff.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,   'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      })
-      ffmpegRef.current = ff
-    }
-    const ffmpeg       = ffmpegRef.current
-    const { fetchFile } = await import('@ffmpeg/util')
-
-    const ext        = sourceFile.name.split('.').pop() || 'mp4'
-    const inputName  = `input.${ext}`
-    const outputName = 'output.mp4'
-
-    await ffmpeg.writeFile(inputName, await fetchFile(sourceFile))
-
-    await ffmpeg.exec([
-      '-ss',                String(startSec),
-      '-to',                String(endSec),
-      '-i',                 inputName,
-      '-c:v',               'libx264',
-      '-preset',            'ultrafast',
-      '-crf',               '18',
-      '-c:a',               'aac',
-      '-avoid_negative_ts', 'make_zero',
-      '-movflags',          '+faststart',
-      outputName,
-    ])
-
-    const data        = await ffmpeg.readFile(outputName)
-    const blob        = new Blob([data.buffer], { type: 'video/mp4' })
-    const trimmedName = sourceFile.name.replace(/\.[^.]+$/, '') + '_trim.mp4'
-    await ffmpeg.deleteFile(inputName).catch(() => {})
-    await ffmpeg.deleteFile(outputName).catch(() => {})
-    return new File([blob], trimmedName, { type: 'video/mp4' })
-  }
 
   // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
@@ -951,20 +905,17 @@ const durationMismatch = videoDuration != null &&
     let uploadFile = motionVideo.file
     let finalDuration = matchedDuration
 
-    // ── Step 0: Trim if needed ─────────────────────────────
+// ── Step 0: Trim if needed ─────────────────────────────
     if (needsTrim) {
       setTrimming(true)
-      toast.loading('Trimming video…', { id: 'trim' })
       try {
-        uploadFile    = await trimVideoInBrowser(motionVideo.file, trimStart, trimEnd)
+        uploadFile    = await trimVideo(motionVideo.file, trimStart, trimEnd)
         finalDuration = trimEnd - trimStart
       } catch (err) {
-        toast.dismiss('trim')
         setTrimming(false)
         toast.error('Could not trim video. Please try a shorter clip.')
         return
       }
-      toast.dismiss('trim')
       setTrimming(false)
     }
 
