@@ -2,12 +2,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, User, Zap, ChevronRight, Sparkles, Film, MoreVertical, Archive } from 'lucide-react'
+import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
 
-// ── Yellow accent tokens ──────────────────────────────────────
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
@@ -36,38 +35,24 @@ const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
       className="relative rounded-2xl overflow-hidden flex flex-col"
-      style={{ background: 'var(--bg-card)', border: `1px solid var(--border-color)` }}
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
-      {/* Thumbnail */}
       <button
         onClick={() => onSelect(profile)}
         className="w-full relative overflow-hidden flex-shrink-0"
         style={{ aspectRatio: '3/4' }}
       >
         {profile.thumbnail_url ? (
-          <img
-            src={profile.thumbnail_url}
-            alt={profile.name}
-            className="w-full h-full object-cover"
-          />
+          <img src={profile.thumbnail_url} alt={profile.name} className="w-full h-full object-cover" />
         ) : (
-          <div
-            className="w-full h-full flex items-center justify-center"
-            style={{ background: ACCENT_SUB }}
-          >
+          <div className="w-full h-full flex items-center justify-center" style={{ background: ACCENT_SUB }}>
             <User size={32} style={{ color: ACCENT, opacity: 0.5 }} />
           </div>
         )}
-
-        {/* Overlay gradient */}
         <div
           className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)',
-          }}
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)' }}
         />
-
-        {/* Generation count badge */}
         {profile.generation_count > 0 && (
           <div
             className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -77,9 +62,16 @@ const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
             {profile.generation_count}
           </div>
         )}
+        {profile.status === 'draft' && (
+          <div
+            className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.8)' }}
+          >
+            Draft
+          </div>
+        )}
       </button>
 
-      {/* Info row */}
       <div className="px-3 py-2.5 flex items-center justify-between">
         <button onClick={() => onSelect(profile)} className="flex flex-col min-w-0 flex-1 text-left">
           <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
@@ -90,7 +82,6 @@ const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
           </p>
         </button>
 
-        {/* Context menu */}
         <div className="relative flex-shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
@@ -118,7 +109,7 @@ const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
                 >
                   <button
                     onClick={() => { onArchive(profile); setMenuOpen(false) }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left transition-colors"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
                     style={{ color: 'var(--text-secondary)' }}
                   >
                     <Archive size={12} />
@@ -163,10 +154,10 @@ const CreateCard = ({ onClick, index }) => (
 
 // ── Main page ─────────────────────────────────────────────────
 export default function CreateUGCPage() {
-  const navigate           = useNavigate()
-  const { user, credits }  = useAuth()
-  const [profiles, setProfiles]   = useState([])
-  const [loading,  setLoading]    = useState(true)
+  const navigate          = useNavigate()
+  const { user, credits } = useAuth()
+  const [profiles,  setProfiles]  = useState([])
+  const [loading,   setLoading]   = useState(true)
   const [archiving, setArchiving] = useState(null)
 
   const canCreate = credits >= 200
@@ -185,7 +176,6 @@ export default function CreateUGCPage() {
 
   const handleSelectProfile = (profile) => {
     if (profile.status === 'draft') {
-      // Resume wizard
       navigate('/create/ugc/new', { state: { resumeProfileId: profile.id } })
     } else {
       navigate(`/create/ugc/${profile.id}`)
@@ -221,10 +211,7 @@ export default function CreateUGCPage() {
       {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{
-          borderBottom: '1px solid var(--border-color)',
-          borderLeft:   `3px solid ${ACCENT}`,
-        }}
+        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
@@ -246,7 +233,7 @@ export default function CreateUGCPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6">
 
-          {/* Credits notice if not enough */}
+          {/* Low credits notice */}
           {!canCreate && !loading && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -334,19 +321,19 @@ export default function CreateUGCPage() {
                       Create your first UGC character to start generating hyper-realistic content.
                     </p>
                   </div>
-<button
-  onClick={handleCreateNew}
-  disabled={!canCreate}
-  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-  style={{
-    background: canCreate ? ACCENT : 'var(--bg-elevated)',
-    color:      canCreate ? '#000' : 'var(--text-primary)',
-    border:     canCreate ? 'none' : '1px solid var(--border-color)',
-  }}
->
-  <Plus size={16} />
-  Create Character
-</button>
+                  <button
+                    onClick={handleCreateNew}
+                    disabled={!canCreate}
+                    className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+                    style={{
+                      background: canCreate ? ACCENT              : 'var(--bg-elevated)',
+                      color:      canCreate ? '#ffffff'           : 'var(--text-muted)',
+                      border:     canCreate ? 'none'              : '1px solid var(--border-color)',
+                    }}
+                  >
+                    <Plus size={16} />
+                    Create Character
+                  </button>
                 </div>
               )}
             </>
