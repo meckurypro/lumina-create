@@ -24,6 +24,7 @@ import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 import CreateUGCPage            from '@/pages/CreateUGCPage'
 import UGCWizardPage            from '@/pages/UGCWizardPage'
 import UGCGeneratePage          from '@/pages/UGCGeneratePage'
+import UGCMediaPage             from '@/pages/UGCMediaPage'
 
 import { BottomNav } from '@/components/layout/BottomNav'
 
@@ -93,10 +94,11 @@ export default function App() {
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
           <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
 
-          {/* UGC — before generic /:templateSlug */}
-          <Route path="/create/ugc"            element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/new"        element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/:profileId" element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
+          {/* UGC — most specific routes first, before generic /:templateSlug */}
+          <Route path="/create/ugc"                    element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/new"                element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/:profileId/media"   element={<RequireAuth><AppLayout><UGCMediaPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/:profileId"         element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
 
           {/* Generic template runner — MUST stay after all specific /create/* routes */}
           <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
