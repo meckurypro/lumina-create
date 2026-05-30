@@ -56,6 +56,16 @@ export const ugcProfiles = {
       .single()
   },
 
+/** Edit an existing active profile (user-initiated) */
+  async edit(id, data) {
+    return supabase
+      .from('ugc_profiles')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+  },
+
   /** Soft-delete a profile */
   async archive(id) {
     return supabase
