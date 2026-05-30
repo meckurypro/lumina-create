@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, Film, Image as ImageIcon,
-  AlertCircle, RefreshCw, CheckCircle2, Scissors, Play, Pause,
+  AlertCircle, RefreshCw, CheckCircle2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
-import { checkVideoCompatibility, transcodeVideo, trimVideo } from '@/lib/videoCompat'
+import { checkVideoCompatibility, transcodeVideo } from '@/lib/videoCompat'
 import toast from 'react-hot-toast'
 
 // ── Theme constants ────────────────────────────────────────────────────────
@@ -449,7 +449,7 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
             style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
           />
           <p className="text-sm font-semibold tracking-wide" style={{ color: '#fff' }}>
-            {phase === 'trimming' ? 'Trimming video…' : 'Generating…'}
+            Generating…
           </p>
         </>
       )}
@@ -458,220 +458,6 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
-// ── Video trim slider ──────────────────────────────────────────────────────
-const VideoTrimSlider = ({ duration, maxDuration, trimStart, trimEnd, onTrimChange, videoUrl }) => {
-  const trackRef    = useRef(null)
-  const videoRef    = useRef(null)
-  const [playing, setPlaying]         = useState(false)
-  const [playhead, setPlayhead]       = useState(trimStart)
-  const dragRef     = useRef(null) // 'start' | 'end' | null
-
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
-
-  const pxToSec = (clientX) => {
-    const rect = trackRef.current.getBoundingClientRect()
-    const pct  = clamp((clientX - rect.left) / rect.width, 0, 1)
-    return Math.round(pct * duration)
-  }
-
-  const onPointerMove = (clientX) => {
-    if (!dragRef.current) return
-    const sec = pxToSec(clientX)
-    if (dragRef.current === 'start') {
-      let s = clamp(sec, 0, duration - 1)
-      let e = trimEnd
-      if (s >= e) s = e - 1
-      if (e - s > maxDuration) e = s + maxDuration
-      onTrimChange(s, e)
-    } else {
-      let e = clamp(sec, 1, duration)
-      let s = trimStart
-      if (e <= s) e = s + 1
-      if (e - s > maxDuration) s = e - maxDuration
-      onTrimChange(s, e)
-    }
-  }
-
-  useEffect(() => {
-    const move = (ev) => onPointerMove(ev.clientX ?? ev.touches?.[0]?.clientX)
-    const up   = () => { dragRef.current = null }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup',   up)
-    window.addEventListener('touchmove', move, { passive: false })
-    window.addEventListener('touchend',  up)
-    return () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup',   up)
-      window.removeEventListener('touchmove', move)
-      window.removeEventListener('touchend',  up)
-    }
-  }) // eslint-disable-line
-
-  // Preview playback: only the selected segment
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    const onTime = () => {
-      setPlayhead(v.currentTime)
-      if (v.currentTime >= trimEnd) {
-        v.pause()
-        v.currentTime = trimStart
-        setPlaying(false)
-        setPlayhead(trimStart)
-      }
-    }
-    v.addEventListener('timeupdate', onTime)
-    return () => v.removeEventListener('timeupdate', onTime)
-  }, [trimStart, trimEnd])
-
-  const togglePlay = () => {
-    const v = videoRef.current
-    if (!v) return
-    if (playing) {
-      v.pause()
-      setPlaying(false)
-    } else {
-      if (v.currentTime < trimStart || v.currentTime >= trimEnd) v.currentTime = trimStart
-      v.play()
-      setPlaying(true)
-    }
-  }
-
-  const startPct    = (trimStart / duration) * 100
-  const endPct      = (trimEnd   / duration) * 100
-  const playheadPct = (clamp(playhead, 0, duration) / duration) * 100
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{    opacity: 0, height: 0 }}
-      transition={{ duration: 0.2 }}
-      className="overflow-hidden"
-    >
-      <div
-        className="rounded-2xl p-4 mt-2"
-        style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-      >
-        <div className="flex items-center gap-3 mb-3">
-          <div
-            className="relative rounded-xl overflow-hidden flex-shrink-0"
-            style={{ width: 56, height: 56, background: 'rgba(0,0,0,0.4)' }}
-          >
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <button
-              onClick={togglePlay}
-              className="absolute inset-0 flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.35)', color: '#fff' }}
-              aria-label={playing ? 'Pause preview' : 'Play preview'}
-            >
-              {playing ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: ACCENT }}>
-              <Scissors size={12} />
-              Trim to fit · max {maxDuration}s
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {trimStart}s → {trimEnd}s ({trimEnd - trimStart}s selected)
-            </p>
-          </div>
-        </div>
-
-        {/* Timeline */}
-        <div
-          ref={trackRef}
-          className="relative w-full select-none"
-          style={{ height: 36 }}
-        >
-          {/* Base track */}
-          <div
-            className="absolute left-0 right-0 rounded-full"
-            style={{ top: 14, height: 8, background: 'rgba(0,0,0,0.18)' }}
-          />
-          {/* Selected region */}
-          <div
-            className="absolute rounded-full"
-            style={{
-              top: 14, height: 8,
-              left:  `${startPct}%`,
-              width: `${endPct - startPct}%`,
-              background: ACCENT,
-            }}
-          />
-          {/* Dim outside */}
-          <div
-            className="absolute rounded-l-full"
-            style={{ top: 14, height: 8, left: 0, width: `${startPct}%`, background: 'rgba(0,0,0,0.32)' }}
-          />
-          <div
-            className="absolute rounded-r-full"
-            style={{ top: 14, height: 8, left: `${endPct}%`, right: 0, background: 'rgba(0,0,0,0.32)' }}
-          />
-          {/* Playhead */}
-          {playing && (
-            <div
-              className="absolute"
-              style={{
-                top: 8, height: 20, width: 2,
-                left: `${playheadPct}%`,
-                background: '#fff',
-                boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
-              }}
-            />
-          )}
-          {/* Start handle */}
-          <div
-            onMouseDown={() => { dragRef.current = 'start' }}
-            onTouchStart={() => { dragRef.current = 'start' }}
-            className="absolute rounded-full cursor-ew-resize flex items-center justify-center"
-            style={{
-              top: 6, width: 24, height: 24,
-              left: `calc(${startPct}% - 12px)`,
-              background: '#fff',
-              border: `2px solid ${ACCENT}`,
-              boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-              touchAction: 'none',
-            }}
-          >
-            <div style={{ width: 2, height: 10, background: ACCENT, borderRadius: 1 }} />
-          </div>
-          {/* End handle */}
-          <div
-            onMouseDown={() => { dragRef.current = 'end' }}
-            onTouchStart={() => { dragRef.current = 'end' }}
-            className="absolute rounded-full cursor-ew-resize flex items-center justify-center"
-            style={{
-              top: 6, width: 24, height: 24,
-              left: `calc(${endPct}% - 12px)`,
-              background: '#fff',
-              border: `2px solid ${ACCENT}`,
-              boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-              touchAction: 'none',
-            }}
-          >
-            <div style={{ width: 2, height: 10, background: ACCENT, borderRadius: 1 }} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>0s</span>
-          <span className="text-xs font-semibold" style={{ color: ACCENT }}>
-            {trimStart}s → {trimEnd}s
-          </span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{duration}s</span>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
 export default function CreateCopyMotionPage() {
   const navigate                                    = useNavigate()
   const { user, credits, refreshProfile }           = useAuth()
@@ -696,11 +482,6 @@ export default function CreateCopyMotionPage() {
   // Pipeline phase: null | 'converting' | 'submitting'
   const [phase,           setPhase]           = useState(null)
   const [convertProgress, setConvertProgress] = useState(0)
-  const [trimming,        setTrimming]        = useState(false)
-
-  // Trim window (seconds, integers)
-  const [trimStart, setTrimStart] = useState(0)
-  const [trimEnd,   setTrimEnd]   = useState(0)
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
@@ -748,39 +529,12 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
-// ── Derived video status ─────────────────────────────────
+  // ── Derived video status ─────────────────────────────────
   const videoDuration    = motionVideo?.duration ?? null
   const matchedDuration  = videoDuration != null && modelDurations.length > 0
-  ? modelDurations.find((d) => d === videoDuration) ?? null
-  : null
-const modelMinDuration = modelDurations.length > 0 ? Math.min(...modelDurations) : 5
-const modelMaxDuration = modelDurations.length > 0 ? Math.max(...modelDurations) : 30
-const needsTrim        = videoDuration != null &&
-  modelDurations.length > 0 &&
-  matchedDuration === null &&
-  videoDuration >= modelMinDuration
-const durationMismatch = videoDuration != null &&
-  modelDurations.length > 0 &&
-  matchedDuration === null &&
-  videoDuration < modelMinDuration
-
-  // Snap effective duration up to the nearest supported enum value
-  const effectiveDuration = needsTrim ? Math.max(1, trimEnd - trimStart) : videoDuration
-  const snappedDuration   = effectiveDuration != null && modelDurations.length > 0
-    ? modelDurations.find((d) => d >= effectiveDuration) ?? null
+    ? modelDurations.find((d) => d === videoDuration) ?? null
     : null
-
-  // Reset trim window when video or model max changes
-  useEffect(() => {
-    if (videoDuration != null && needsTrim) {
-      setTrimStart(0)
-      setTrimEnd(Math.min(videoDuration, modelMaxDuration))
-    } else {
-      setTrimStart(0)
-      setTrimEnd(0)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoDuration, modelMaxDuration])
+  const durationMismatch = videoDuration != null && modelDurations.length > 0 && matchedDuration === null
 
   // ── Credit calculation ───────────────────────────────────
   const durationMultiplier = (() => {
@@ -810,14 +564,11 @@ const durationMismatch = videoDuration != null &&
   const canGenerate =
     hasVideo &&
     !durationMismatch &&
-    (needsTrim
-      ? (snappedDuration !== null && trimEnd > trimStart)
-      : matchedDuration !== null) &&
+    matchedDuration !== null &&
     hasSubject &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
-    !trimming &&
     compatStatus !== 'checking'
 
   // ── Video upload handler ─────────────────────────────────
@@ -889,38 +640,19 @@ const durationMismatch = videoDuration != null &&
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-
   // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!hasVideo)        return toast.error('Upload a motion reference video')
     if (durationMismatch) return toast.error(`Video duration must exactly match one of: ${modelDurations.join('s, ')}s`)
-    if (needsTrim && (snappedDuration === null || trimEnd <= trimStart)) {
-      return toast.error('Pick a valid trim window')
-    }
     if (!hasSubject)      return toast.error('Upload a subject image')
     if (!selectedModel)   return toast.error('Pick a model')
     if (!canAfford)       return toast.error('Not enough credits')
     if (!user)            return toast.error('Please sign in')
 
     let uploadFile = motionVideo.file
-    let finalDuration = matchedDuration
-
-// ── Step 0: Trim if needed ─────────────────────────────
-    if (needsTrim) {
-      setTrimming(true)
-      try {
-        uploadFile    = await trimVideo(motionVideo.file, trimStart, trimEnd)
-        finalDuration = trimEnd - trimStart
-      } catch (err) {
-        setTrimming(false)
-        toast.error('Could not trim video. Please try a shorter clip.')
-        return
-      }
-      setTrimming(false)
-    }
 
     // ── Step 1: Transcode if needed ────────────────────────
-    if (!needsTrim && compatStatus === 'incompatible') {
+    if (compatStatus === 'incompatible') {
       setPhase('converting')
       setConvertProgress(0)
 
@@ -981,7 +713,7 @@ const durationMismatch = videoDuration != null &&
         prompt:                 null,
         model,
         aspect_ratio:           aspectRatio,
-        duration:               String(snappedDuration ?? finalDuration ?? 5),
+        duration:               String(matchedDuration),
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
@@ -1030,11 +762,8 @@ const durationMismatch = videoDuration != null &&
 
       {/* Converting / Generating overlay */}
       <AnimatePresence>
-        {(isProcessing || trimming) && (
-          <FullscreenOverlay
-            phase={trimming ? 'trimming' : phase}
-            convertProgress={convertProgress}
-          />
+        {isProcessing && (
+          <FullscreenOverlay phase={phase} convertProgress={convertProgress} />
         )}
       </AnimatePresence>
 
@@ -1187,26 +916,6 @@ const durationMismatch = videoDuration != null &&
                 )}
               </div>
 
-              {/* Trim UI (only when video exceeds model max duration) */}
-              <AnimatePresence>
-                {needsTrim && motionVideo && (
-                  <VideoTrimSlider
-                    duration={videoDuration}
-                    maxDuration={modelMaxDuration}
-                    trimStart={trimStart}
-                    trimEnd={trimEnd}
-                    onTrimChange={(s, e) => { setTrimStart(s); setTrimEnd(e) }}
-                    videoUrl={motionVideo.url}
-                  />
-                )}
-              </AnimatePresence>
-
-              {needsTrim && (
-                <p className="text-xs -mt-2" style={{ color: ACCENT }}>
-                  Selected segment: {trimStart}s → {trimEnd}s ({trimEnd - trimStart}s) · will be trimmed before upload
-                </p>
-              )}
-
               {/* Duration display — read-only */}
               {matchedDuration !== null && (
                 <div className="mb-1">
@@ -1275,7 +984,7 @@ const durationMismatch = videoDuration != null &&
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={handleGenerate}
-              disabled={!canGenerate || trimming}
+              disabled={!canGenerate}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
               style={{
                 background: canGenerate ? ACCENT    : 'var(--bg-elevated)',
@@ -1283,16 +992,12 @@ const durationMismatch = videoDuration != null &&
                 cursor:     canGenerate ? 'pointer' : 'not-allowed',
               }}
             >
-              {needsTrim ? <Scissors size={15} /> : <Zap size={15} fill="currentColor" />}
-              {trimming
-                ? 'Trimming video…'
-                : isProcessing
-                  ? phase === 'converting' ? 'Converting…' : 'Generating…'
-                  : needsTrim
-                    ? `Trim & Generate · ${creditCost} cr · ${trimEnd - trimStart}s`
-                    : matchedDuration
-                      ? `Generate · ${creditCost} cr · ${matchedDuration}s`
-                      : 'Generate'}
+              <Zap size={15} fill="currentColor" />
+              {isProcessing
+                ? phase === 'converting' ? 'Converting…' : 'Generating…'
+                : matchedDuration
+                  ? `Generate · ${creditCost} cr · ${matchedDuration}s`
+                  : 'Generate'}
             </button>
 
             {/* Helper messages */}
