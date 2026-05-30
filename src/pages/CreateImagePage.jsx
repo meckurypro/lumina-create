@@ -426,7 +426,7 @@ const [multiMode, setMultiMode] = useState(false)
 useEffect(() => { setMultiMode(false) }, [model])
 
 const maxImages = (modelSupportsMulti && multiMode)
-  ? Math.min(modelMaxRefImages, MAX_MULTI_IMAGES)
+  ? modelMaxRefImages
   : MAX_SINGLE_IMAGES
   const supportedRatios     = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
 
