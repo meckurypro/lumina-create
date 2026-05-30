@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -28,7 +28,7 @@ const TOOLS = [
     subtitle:  'From text or reference photo',
     icon:      ImageIcon,
     route:     '/create/image',
-    accentVar: '--tool-image',   // maps to CSS variable
+    accentVar: '--tool-image',
   },
   {
     id:        'create_video',
@@ -45,6 +45,14 @@ const TOOLS = [
     icon:      Layers,
     route:     '/create/copy-motion',
     accentVar: '--tool-motion',
+  },
+  {
+    id:        'create_ugc',
+    label:     'UGC',
+    subtitle:  'Generate content with your characters',
+    icon:      UserCircle,
+    route:     '/create/ugc',
+    accentVar: '--tool-ugc',
   },
 ]
 
