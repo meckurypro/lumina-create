@@ -345,10 +345,13 @@ export default function UGCWizardPage() {
   const location   = useLocation()
   const { user }   = useAuth()
 
-  const resumeId = location.state?.resumeProfileId || null
+const resumeId = location.state?.resumeProfileId || null
+  const editId   = location.state?.editProfileId   || null
+  const loadId   = resumeId || editId
+  const isEdit   = !!editId
 
   const [step,          setStep]          = useState(1)
-  const [profileId,     setProfileId]     = useState(resumeId)
+  const [profileId,     setProfileId]     = useState(loadId)
   const [saving,        setSaving]        = useState(false)
   const [uploadingSlot, setUploadingSlot] = useState(null)
 
@@ -361,11 +364,11 @@ export default function UGCWizardPage() {
     photo_body_front: null, photo_body_side: null, photo_body_back: null,
   })
 
-  // Load draft if resuming
+// Load profile if resuming a draft or editing an active character
   useEffect(() => {
-    if (!resumeId) return
+    if (!loadId) return
     const load = async () => {
-      const { data } = await ugcProfiles.getById(resumeId)
+      const { data } = await ugcProfiles.getById(loadId)
       if (data) {
         setForm((prev) => ({
           ...prev,
@@ -380,7 +383,7 @@ export default function UGCWizardPage() {
       }
     }
     load()
-  }, [resumeId])
+  }, [loadId])
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
 
@@ -471,20 +474,25 @@ const buildPayload = () => ({
     }
   }
 
-  const handleFinish = async () => {
+const handleFinish = async () => {
     setSaving(true)
     try {
-      const payload = { ...buildPayload(), status: 'active' }
-      if (!profileId) {
-        const { data, error } = await ugcProfiles.create(user.id, payload)
+      if (isEdit) {
+        const { error } = await ugcProfiles.update(profileId, buildPayload())
         if (error) throw error
+        toast.success('Character updated!')
+        navigate(`/create/ugc/${profileId}`, { replace: true })
+      } else if (!profileId) {
+        const { data, error } = await ugcProfiles.create(user.id, { ...buildPayload(), status: 'active' })
+        if (error) throw error
+        toast.success('Character created! Ready to generate.')
         navigate(`/create/ugc/${data.id}`, { replace: true })
       } else {
         const { error } = await ugcProfiles.activate(profileId)
         if (error) throw error
+        toast.success('Character created! Ready to generate.')
         navigate(`/create/ugc/${profileId}`, { replace: true })
       }
-      toast.success('Character created! Ready to generate.')
     } catch (err) {
       toast.error(err.message || 'Could not finish setup')
     } finally {
@@ -511,7 +519,7 @@ const buildPayload = () => ({
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {resumeId ? 'Complete Character' : 'New Character'}
+            {isEdit ? 'Edit Character' : resumeId ? 'Complete Character' : 'New Character'}
           </h1>
           <span className="text-xs" style={{ color: ACCENT }}>Step {step} of {STEPS.length}</span>
         </div>
@@ -646,7 +654,7 @@ const buildPayload = () => ({
               color:      (!valid || saving) ? 'var(--text-muted)'  : '#ffffff',
             }}
           >
-            {saving ? (
+         {saving ? (
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
@@ -654,7 +662,9 @@ const buildPayload = () => ({
                 style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#ffffff' }}
               />
             ) : step === STEPS.length ? (
-              <><Check size={15} /> Finish Setup</>
+              isEdit
+                ? <><Check size={15} /> Save Changes</>
+                : <><Check size={15} /> Finish Setup</>
             ) : (
               <>Continue <ArrowRight size={15} /></>
             )}
