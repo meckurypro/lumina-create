@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive } from 'lucide-react'
+import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
@@ -26,7 +26,7 @@ const SkeletonCard = () => (
 )
 
 // ── Profile card ──────────────────────────────────────────────
-const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
+const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -107,6 +107,15 @@ const ProfileCard = ({ profile, index, onSelect, onArchive }) => {
                     minWidth:   120,
                   }}
                 >
+<button
+                    onClick={() => { onEdit(profile); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <Pencil size={12} />
+                    Edit
+                  </button>
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 8px' }} />
                   <button
                     onClick={() => { onArchive(profile); setMenuOpen(false) }}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
@@ -194,6 +203,10 @@ export default function CreateUGCPage() {
     setArchiving(null)
   }
 
+  const handleEdit = (profile) => {
+    navigate('/create/ugc/new', { state: { editProfileId: profile.id } })
+  }
+
   const handleCreateNew = () => {
     if (!canCreate) {
       toast.error('You need at least 200 credits to create a UGC character.', { duration: 4000 })
@@ -279,6 +292,7 @@ export default function CreateUGCPage() {
                         index={i}
                         onSelect={handleSelectProfile}
                         onArchive={handleArchive}
+                        onEdit={handleEdit}
                       />
                     ))}
                     <CreateCard onClick={handleCreateNew} index={activeProfiles.length} />
@@ -300,6 +314,7 @@ export default function CreateUGCPage() {
                         index={i}
                         onSelect={handleSelectProfile}
                         onArchive={handleArchive}
+                        onEdit={handleEdit}
                       />
                     ))}
                   </div>
