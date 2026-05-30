@@ -406,7 +406,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
 
 // ── Action sheet ───────────────────────────────────────────
 
-const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
+const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload, onAnimate }) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
@@ -450,7 +450,7 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
   </div>
 )}
 
-      <div className="px-4 flex flex-col gap-2">
+<div className="px-4 flex flex-col gap-2">
         {gen.status === 'completed' && (
           <button
             onClick={onDownload}
@@ -459,6 +459,17 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
           >
             <Download size={18} style={{ color: 'var(--text-primary)' }} />
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Download</span>
+          </button>
+        )}
+
+        {gen.status === 'completed' && gen.output_type === 'image' && (
+          <button
+            onClick={onAnimate}
+            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-colors"
+            style={{ background: 'var(--bg-elevated)' }}
+          >
+            <Film size={18} style={{ color: 'var(--text-primary)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Animate</span>
           </button>
         )}
 
@@ -480,9 +491,6 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload }) => (
           <span className="text-sm font-semibold" style={{ color: '#ef4444' }}>Delete</span>
         </button>
       </div>
-    </motion.div>
-  </motion.div>
-)
 
 // ── Media Card ─────────────────────────────────────────────
 
@@ -723,6 +731,34 @@ const { data: genRow, error: genErr } = await generationsDb.create({
     }
   }
 
+const handleAnimate = async (gen) => {
+    closeSheet()
+    if (!gen.output_url) return toast.error('No image URL found')
+    try {
+      const res  = await fetch(gen.output_url)
+      const blob = await res.blob()
+      const ext  = 'png'
+      const file = new File([blob], `frame-${gen.id.slice(0, 8)}.${ext}`, { type: blob.type || 'image/png' })
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          sessionStorage.setItem('meckury_video_start_frame', JSON.stringify({
+            base64: ev.target.result,
+            name:   file.name,
+            type:   file.type,
+          }))
+          sessionStorage.removeItem('meckury_video_end_frame')
+          navigate('/create/video')
+        } catch {
+          toast.error('Could not seed frame')
+        }
+      }
+      reader.readAsDataURL(file)
+    } catch {
+      toast.error('Failed to load image')
+    }
+  }
+
   const handleCardClick = (gen) => {
     if (gen.status !== 'completed') return
     navigate(`/result/${gen.id}`)
@@ -820,7 +856,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
       </PageWrapper>
 
       <AnimatePresence>
-        {activeGen && sheetMode === 'actions' && (
+{activeGen && sheetMode === 'actions' && (
           <ActionSheet
             key="actions"
             gen={activeGen}
@@ -828,6 +864,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             onDelete={() => handleDelete(activeGen)}
             onRegenerate={openRegenerate}
             onDownload={() => handleDownload(activeGen)}
+            onAnimate={() => handleAnimate(activeGen)}
           />
         )}
         {activeGen && sheetMode === 'regenerate' && (
