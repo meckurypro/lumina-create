@@ -63,39 +63,30 @@
   /* ── Tool accent colors — LIGHT MODE ─────────────────────── */
 
   /* Create Image — Ink Blue */
-  --tool-image:         #4F6FD4;
-  --tool-image-subtle:  rgba(79, 111, 212, 0.10);
-  --tool-image-border:  rgba(79, 111, 212, 0.22);
-  --tool-image-muted:   rgba(79, 111, 212, 0.60);
+  --tool-image:        #4F6FD4;
+  --tool-image-subtle: rgba(79, 111, 212, 0.10);
+  --tool-image-border: rgba(79, 111, 212, 0.22);
+  --tool-image-muted:  rgba(79, 111, 212, 0.60);
 
   /* Create Video — Deep Violet */
-  --tool-video:         #7C5CC4;
-  --tool-video-subtle:  rgba(124, 92, 196, 0.10);
-  --tool-video-border:  rgba(124, 92, 196, 0.22);
-  --tool-video-muted:   rgba(124, 92, 196, 0.60);
+  --tool-video:        #7C5CC4;
+  --tool-video-subtle: rgba(124, 92, 196, 0.10);
+  --tool-video-border: rgba(124, 92, 196, 0.22);
+  --tool-video-muted:  rgba(124, 92, 196, 0.60);
 
   /* Copy Motion — Forest Teal */
   --tool-motion:        #0F9E6E;
   --tool-motion-subtle: rgba(15, 158, 110, 0.10);
   --tool-motion-border: rgba(15, 158, 110, 0.22);
   --tool-motion-muted:  rgba(15, 158, 110, 0.60);
-}
-/* ─── ADD THIS BLOCK inside :root { } after --tool-motion lines ─── */
- 
-  /* UGC — Rose/Pink */
+
+  /* UGC — Rose */
   --tool-ugc:        #E11D74;
   --tool-ugc-subtle: rgba(225, 29, 116, 0.10);
   --tool-ugc-border: rgba(225, 29, 116, 0.22);
   --tool-ugc-muted:  rgba(225, 29, 116, 0.60);
- 
- 
-/* ─── ADD THIS BLOCK inside [data-theme='dark'], .dark { } after --tool-motion lines ─── */
- 
-  /* UGC — Soft Pink */
-  --tool-ugc:        #FB7BB8;
-  --tool-ugc-subtle: rgba(251, 123, 184, 0.09);
-  --tool-ugc-border: rgba(251, 123, 184, 0.18);
-  --tool-ugc-muted:  rgba(251, 123, 184, 0.55);
+}
+
 [data-theme='dark'], .dark {
   /* shadcn HSL tokens — true black */
   --background:            0 0% 0%;
@@ -145,22 +136,28 @@
   /* ── Tool accent colors — DARK MODE ──────────────────────── */
 
   /* Create Image — Periwinkle Blue */
-  --tool-image:         #7C9EFF;
-  --tool-image-subtle:  rgba(124, 158, 255, 0.09);
-  --tool-image-border:  rgba(124, 158, 255, 0.18);
-  --tool-image-muted:   rgba(124, 158, 255, 0.55);
+  --tool-image:        #7C9EFF;
+  --tool-image-subtle: rgba(124, 158, 255, 0.09);
+  --tool-image-border: rgba(124, 158, 255, 0.18);
+  --tool-image-muted:  rgba(124, 158, 255, 0.55);
 
   /* Create Video — Soft Violet */
-  --tool-video:         #A78BFA;
-  --tool-video-subtle:  rgba(167, 139, 250, 0.09);
-  --tool-video-border:  rgba(167, 139, 250, 0.18);
-  --tool-video-muted:   rgba(167, 139, 250, 0.55);
+  --tool-video:        #A78BFA;
+  --tool-video-subtle: rgba(167, 139, 250, 0.09);
+  --tool-video-border: rgba(167, 139, 250, 0.18);
+  --tool-video-muted:  rgba(167, 139, 250, 0.55);
 
   /* Copy Motion — Mint Emerald */
   --tool-motion:        #34D399;
   --tool-motion-subtle: rgba(52, 211, 153, 0.09);
   --tool-motion-border: rgba(52, 211, 153, 0.18);
   --tool-motion-muted:  rgba(52, 211, 153, 0.55);
+
+  /* UGC — Soft Pink */
+  --tool-ugc:        #FB7BB8;
+  --tool-ugc-subtle: rgba(251, 123, 184, 0.09);
+  --tool-ugc-border: rgba(251, 123, 184, 0.18);
+  --tool-ugc-muted:  rgba(251, 123, 184, 0.55);
 }
 
 @media (max-width: 1023px) {
@@ -235,8 +232,8 @@ input, textarea, select { font: inherit; }
 ::-webkit-scrollbar-thumb  { background: var(--border-color); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-.no-scrollbar                     { -ms-overflow-style: none; scrollbar-width: none; }
-.no-scrollbar::-webkit-scrollbar  { display: none; }
+.no-scrollbar                    { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 /* ============================================================
    SELECTION
@@ -289,7 +286,7 @@ input, textarea, select { font: inherit; }
 .shadow-brand-lg { box-shadow: var(--shadow-brand-lg); }
 
 /* ============================================================
-   LOGO — invert on light theme (white-on-black → black-on-white)
+   LOGO — invert on light theme
    ============================================================ */
 
 .logo-icon {
@@ -359,7 +356,7 @@ input, textarea, select { font: inherit; }
 .input-base:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ============================================================
-   FOCUS — keyboard nav only, no orange
+   FOCUS
    ============================================================ */
 
 :focus-visible {
@@ -408,9 +405,9 @@ input, textarea, select { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration:       0.01ms !important;
-    animation-iteration-count:1 !important;
-    scroll-behavior:          auto !important;
-    transition-duration:      0.01ms !important;
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    scroll-behavior:           auto   !important;
+    transition-duration:       0.01ms !important;
   }
 }
