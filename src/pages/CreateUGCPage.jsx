@@ -165,7 +165,7 @@ const CreateCard = ({ onClick, index }) => (
 // ── Main page ─────────────────────────────────────────────────
 export default function CreateUGCPage() {
   const navigate          = useNavigate()
-  const { user, credits } = useAuth()
+  const { user, credits, profile } = useAuth()
   const [profiles,  setProfiles]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [archiving, setArchiving] = useState(null)
@@ -222,7 +222,7 @@ export default function CreateUGCPage() {
 
   return (
 
-    <MasterGate>
+    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 {/* Header */}
       <div
