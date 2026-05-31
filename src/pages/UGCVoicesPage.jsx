@@ -7,6 +7,7 @@ import {
   Upload, Radio,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import MasterGate from '@/components/ui/MasterGate'
 import { ugcVoices, VOICE_CREDITS } from '@/lib/ugcVoices'
 import { supabase } from '@/lib/supabase'
 import VoiceRecorder   from '@/components/ugc/VoiceRecorder'
@@ -598,8 +599,8 @@ export default function UGCVoicesPage() {
   }
 
   const handleSelect = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
-
   return (
+    <MasterGate>
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
@@ -706,5 +707,6 @@ export default function UGCVoicesPage() {
         )}
       </AnimatePresence>
     </div>
+      </MasterGate>
   )
 }
