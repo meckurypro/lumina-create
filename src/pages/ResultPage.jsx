@@ -12,7 +12,8 @@ export default function ResultPage() {
   const navigate        = useNavigate()
   const { id }          = useParams()
   const location        = useLocation()
-  const { user }        = useAuth()
+  const { user, profile } = useAuth()
+  const isNovice          = profile?.user_tier !== 'master'
 
   const [generation, setGeneration] = useState(null)
   const [loading, setLoading]       = useState(true)
@@ -187,8 +188,8 @@ export default function ResultPage() {
             </button>
           </div>
 
-          {/* Secondary row — Publish */}
-          {!published ? (
+          {/* Secondary row — Publish (Masters only) */}
+          {!isNovice && !published ? (
             <button
               onClick={handlePublishToFeed}
               disabled={publishing}
