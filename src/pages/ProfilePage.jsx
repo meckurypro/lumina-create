@@ -19,12 +19,12 @@ const PackageCard = ({ pkg, onSelect, loading }) => (
     disabled={loading}
     className="w-full text-left"
     style={{
-      background:    'none',
-      border:        'none',
-      borderBottom:  '1px solid var(--border-color)',
-      padding:       '16px 0',
-      cursor:        loading ? 'not-allowed' : 'pointer',
-      opacity:       loading ? 0.5 : 1,
+      background:              'none',
+      border:                  'none',
+      borderBottom:            '1px solid var(--border-color)',
+      padding:                 '16px 0',
+      cursor:                  loading ? 'not-allowed' : 'pointer',
+      opacity:                 loading ? 0.5 : 1,
       WebkitTapHighlightColor: 'transparent',
     }}
   >
@@ -47,8 +47,8 @@ const PackageCard = ({ pkg, onSelect, loading }) => (
 // ─── Profile Page ─────────────────────────────────────────
 
 export default function ProfilePage() {
-  const navigate                               = useNavigate()
-  const { user, profile, credits, refreshProfile, isAdmin } = useAuth()
+  const navigate                                                  = useNavigate()
+  const { user, profile, credits, refreshProfile, isAdmin }      = useAuth()
 
   const [packages,         setPackages]         = useState([])
   const [showCreditsModal, setShowCreditsModal] = useState(false)
@@ -89,6 +89,11 @@ export default function ProfilePage() {
     await auth.signOut()
     navigate('/auth')
   }
+
+  const isMaster      = profile?.user_tier === 'master'
+  const daysRemaining = isMaster && profile?.tier_expires_at
+    ? Math.max(0, Math.ceil((new Date(profile.tier_expires_at) - new Date()) / (1000 * 60 * 60 * 24)))
+    : null
 
   return (
     <>
@@ -160,6 +165,40 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* ── Tier card ── */}
+        <div
+          className="rounded-2xl p-5 mb-3"
+          style={{
+            background: isMaster ? 'rgba(245,158,11,0.06)' : 'var(--bg-card)',
+            border:     `1px solid ${isMaster ? 'rgba(245,158,11,0.25)' : 'var(--border-color)'}`,
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Your plan</p>
+              <p className="text-lg font-black" style={{ color: isMaster ? '#f59e0b' : 'var(--text-primary)' }}>
+                {isMaster ? '⭐ Master' : 'Novice'}
+              </p>
+              {isMaster && daysRemaining !== null && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  {daysRemaining} days remaining
+                </p>
+              )}
+            </div>
+            {!isMaster && (
+              <a
+                href="https://wa.me/2348162465247?text=Hi%2C%20I%20want%20to%20upgrade%20to%20Master%20on%20Meckury%20AI"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
+                style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}
+              >
+                ⭐ Go Master
+              </a>
+            )}
+          </div>
+        </div>
+
         {/* ── Actions list ── */}
         <div
           className="rounded-2xl overflow-hidden mb-3"
@@ -215,8 +254,6 @@ export default function ProfilePage() {
       {/* ── Credits modal ── */}
       <Modal isOpen={showCreditsModal} onClose={() => setShowCreditsModal(false)} title="Credits">
         <div style={{ padding: '0 2px' }}>
-
-          {/* Plans list — no cards, just clean rows */}
           <div style={{ borderTop: '1px solid var(--border-color)' }}>
             {packages.map((pkg) => (
               <PackageCard
@@ -227,9 +264,6 @@ export default function ProfilePage() {
               />
             ))}
           </div>
-
-
-
         </div>
       </Modal>
     </>
