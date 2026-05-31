@@ -198,9 +198,144 @@ const CreditAdjuster = ({ user, onClose, onUpdated }) => {
   )
 }
 
+// ─── Tier Adjuster ────────────────────────────────────────
+
+const TierAdjuster = ({ user, onClose, onUpdated }) => {
+  const [saving,  setSaving] = useState(false)
+  const isMaster             = user.user_tier === 'master'
+
+  const handleSetMaster = async () => {
+    setSaving(true)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 30)
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        user_tier:       'master',
+        tier_started_at: new Date().toISOString(),
+        tier_expires_at: expiresAt.toISOString(),
+      })
+      .eq('id', user.id)
+
+    setSaving(false)
+    if (error) { toast.error('Failed to update tier'); return }
+    toast.success(`@${user.username} is now Master for 30 days`)
+    onUpdated(user.id, { user_tier: 'master', tier_expires_at: expiresAt.toISOString() })
+    onClose()
+  }
+
+  const handleSetNovice = async () => {
+    setSaving(true)
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        user_tier:       'novice',
+        tier_started_at: null,
+        tier_expires_at: null,
+      })
+      .eq('id', user.id)
+
+    setSaving(false)
+    if (error) { toast.error('Failed to update tier'); return }
+    toast.success(`@${user.username} set back to Novice`)
+    onUpdated(user.id, { user_tier: 'novice', tier_expires_at: null })
+    onClose()
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      style={{ background: 'rgba(0,0,0,0.7)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 60, opacity: 0 }}
+        animate={{ y: 0,  opacity: 1 }}
+        exit={{ y: 60,    opacity: 0 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+        className="rounded-t-3xl p-6 flex flex-col gap-4"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Set Tier</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              @{user.username} · currently{' '}
+              <span style={{ color: isMaster ? '#f59e0b' : 'var(--text-muted)', fontWeight: 700 }}>
+                {isMaster ? 'Master' : 'Novice'}
+              </span>
+              {isMaster && user.tier_expires_at && (
+                <span> · expires {new Date(user.tier_expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Current tier badge */}
+        <div
+          className="rounded-2xl px-4 py-3 flex items-center justify-between"
+          style={{
+            background: isMaster ? 'rgba(245,158,11,0.08)' : 'var(--bg-elevated)',
+            border:     `1px solid ${isMaster ? 'rgba(245,158,11,0.25)' : 'var(--border-color)'}`,
+          }}
+        >
+          <div>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Current tier</p>
+            <p className="text-lg font-black" style={{ color: isMaster ? '#f59e0b' : 'var(--text-primary)' }}>
+              {isMaster ? '⭐ Master' : 'Novice'}
+            </p>
+          </div>
+          {isMaster && user.tier_expires_at && (
+            <div className="text-right">
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Expires</p>
+              <p className="text-sm font-bold" style={{ color: '#f59e0b' }}>
+                {Math.max(0, Math.ceil((new Date(user.tier_expires_at) - new Date()) / (1000 * 60 * 60 * 24)))} days
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Action */}
+        {!isMaster ? (
+          <button
+            onClick={handleSetMaster}
+            disabled={saving}
+            className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all"
+            style={{ background: '#f59e0b', color: 'white', opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? 'Saving…' : '⭐ Make Master (30 days)'}
+          </button>
+        ) : (
+          <button
+            onClick={handleSetNovice}
+            disabled={saving}
+            className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all"
+            style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? 'Saving…' : 'Downgrade to Novice'}
+          </button>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ─── User Row ─────────────────────────────────────────────
 
-const UserRow = ({ user, onAdjust }) => (
+const UserRow = ({ user, onAdjust, onSetTier }) => (
   <motion.div
     layout
     initial={{ opacity: 0, y: 6 }}
@@ -222,21 +357,36 @@ const UserRow = ({ user, onAdjust }) => (
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{user.total_generations} gens</span>
         <span
           className="text-xs px-1.5 py-0.5 rounded-full capitalize"
-          style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
+          style={{
+            background: user.user_tier === 'master' ? 'rgba(245,158,11,0.12)' : 'var(--bg-elevated)',
+            color:      user.user_tier === 'master' ? '#f59e0b' : 'var(--text-muted)',
+            fontWeight: 700,
+          }}
         >
-          {user.tier}
+          {user.user_tier === 'master' ? '⭐ Master' : 'Novice'}
         </span>
       </div>
     </div>
-    <button
-      onClick={() => onAdjust(user)}
-      className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0"
-      style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
-    >
-      <Zap size={11} fill="var(--brand)" />
-      Credits
-      <ChevronRight size={11} />
-    </button>
+    <div className="flex flex-col gap-1.5">
+      <button
+        onClick={() => onAdjust(user)}
+        className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0"
+        style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}
+      >
+        <Zap size={11} fill="var(--brand)" />
+        Credits
+      </button>
+      <button
+        onClick={() => onSetTier(user)}
+        className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0"
+        style={{
+          background: user.user_tier === 'master' ? 'rgba(245,158,11,0.1)' : 'var(--bg-elevated)',
+          color:      user.user_tier === 'master' ? '#f59e0b' : 'var(--text-muted)',
+        }}
+      >
+        ⭐ Tier
+      </button>
+    </div>
   </motion.div>
 )
 
@@ -248,6 +398,7 @@ export default function UsersManager() {
   const [loading,       setLoading]       = useState(false)
   const [searched,      setSearched]      = useState(false)
   const [adjustingUser, setAdjustingUser] = useState(null)
+  const [tierUser,      setTierUser]      = useState(null)
   const debounceRef                       = useRef(null)
 
   const search = useCallback(async (q) => {
@@ -257,7 +408,7 @@ export default function UsersManager() {
     setSearched(true)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, display_name, credits, total_generations, tier, created_at')
+      .select('id, username, display_name, credits, total_generations, tier, user_tier, tier_expires_at, created_at')
       .or(`username.ilike.%${trimmed}%,display_name.ilike.%${trimmed}%`)
       .order('username')
       .limit(30)
@@ -282,6 +433,12 @@ export default function UsersManager() {
   const handleUpdated = useCallback((userId, newBalance) => {
     setUsers((prev) =>
       prev.map((u) => u.id === userId ? { ...u, credits: newBalance } : u)
+    )
+  }, [])
+
+  const handleTierUpdated = useCallback((userId, patch) => {
+    setUsers((prev) =>
+      prev.map((u) => u.id === userId ? { ...u, ...patch } : u)
     )
   }, [])
 
@@ -336,7 +493,7 @@ export default function UsersManager() {
         ) : (
           <div className="flex flex-col gap-2">
             {users.map((user) => (
-              <UserRow key={user.id} user={user} onAdjust={setAdjustingUser} />
+              <UserRow key={user.id} user={user} onAdjust={setAdjustingUser} onSetTier={setTierUser} />
             ))}
           </div>
         )}
@@ -351,7 +508,14 @@ export default function UsersManager() {
             onUpdated={handleUpdated}
           />
         )}
+        {tierUser && (
+          <TierAdjuster
+            user={tierUser}
+            onClose={() => setTierUser(null)}
+            onUpdated={handleTierUpdated}
+          />
+        )}
       </AnimatePresence>
     </div>
   )
-        }
+}
