@@ -33,9 +33,9 @@ const slide = {
 const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
   <div className={`grid gap-2 ${cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
     {options.map((opt) => {
-      const val = typeof opt === 'string' ? opt : opt.value
-      const label = typeof opt === 'string' ? opt : opt.label
-      const hint = typeof opt === 'string' ? null : opt.hint
+      const val      = typeof opt === 'string' ? opt : opt.value
+      const label    = typeof opt === 'string' ? opt : opt.label
+      const hint     = typeof opt === 'string' ? null : opt.hint
       const selected = value === val
       return (
         <button
@@ -45,8 +45,8 @@ const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
           className="text-left p-3.5 rounded-xl transition-all active:scale-[0.98]"
           style={{
             background: selected ? 'var(--text-primary)' : 'var(--bg-elevated)',
-            color: selected ? 'var(--text-inverse)' : 'var(--text-primary)',
-            border: `1px solid ${selected ? 'var(--text-primary)' : 'var(--border)'}`,
+            color:      selected ? 'var(--text-inverse)' : 'var(--text-primary)',
+            border:     `1px solid ${selected ? 'var(--text-primary)' : 'var(--border)'}`,
           }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -67,9 +67,9 @@ const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
 export default function OnboardingWizard({ onComplete }) {
   const { user, profile, refreshProfile } = useAuth()
 
-  const [step, setStep]       = useState(0)
+  const [step,    setStep]    = useState(0)
   const [loading, setLoading] = useState(false)
-  const [errors, setErrors]   = useState({})
+  const [errors,  setErrors]  = useState({})
 
   const [data, setData] = useState({
     username:               profile?.username?.startsWith('user_') ? '' : (profile?.username || ''),
@@ -79,20 +79,21 @@ export default function OnboardingWizard({ onComplete }) {
     primary_use_case:       '',
     referral_source:        '',
     preferred_aspect_ratio: '9:16',
+    selected_tier:          'novice',
   })
 
   const update = (patch) => setData((d) => ({ ...d, ...patch }))
 
   const steps = [
     {
-      title: 'Pick a username',
+      title:    'Pick a username',
       subtitle: 'This is how others will find you on Meckury AI.',
       validate: async () => {
         const errs = {}
-        const u = data.username.trim().toLowerCase()
-        if (!u)                              errs.username = 'Username is required'
-        else if (u.length < 3)               errs.username = 'At least 3 characters'
-        else if (!/^[a-z0-9_]+$/.test(u))    errs.username = 'Letters, numbers and underscores only'
+        const u    = data.username.trim().toLowerCase()
+        if (!u)                           errs.username = 'Username is required'
+        else if (u.length < 3)            errs.username = 'At least 3 characters'
+        else if (!/^[a-z0-9_]+$/.test(u)) errs.username = 'Letters, numbers and underscores only'
         if (Object.keys(errs).length) { setErrors(errs); return false }
         if (u !== profile?.username) {
           const { available } = await profiles.checkUsername(u)
@@ -118,10 +119,10 @@ export default function OnboardingWizard({ onComplete }) {
       ),
     },
     {
-      title: 'What kind of creator are you?',
+      title:    'What kind of creator are you?',
       subtitle: 'Helps us tailor templates for you.',
       validate: () => data.creator_type ? true : (setErrors({ creator_type: 'Pick one' }), false),
-      render: () => (
+      render:   () => (
         <div className="flex flex-col gap-4">
           <ChoiceGrid options={CREATOR_TYPES} value={data.creator_type}
             onChange={(v) => update({ creator_type: v })} />
@@ -135,38 +136,90 @@ export default function OnboardingWizard({ onComplete }) {
       ),
     },
     {
-      title: "What will you use Meckury AI for?",
+      title:    'What will you use Meckury AI for?',
       subtitle: 'Pick your main use case.',
       validate: () => data.primary_use_case ? true : (setErrors({ primary_use_case: 'Pick one' }), false),
-      render: () => (
+      render:   () => (
         <ChoiceGrid options={USE_CASES} value={data.primary_use_case}
           onChange={(v) => update({ primary_use_case: v })} />
       ),
     },
     {
-      title: 'Preferred aspect ratio',
+      title:    'Preferred aspect ratio',
       subtitle: "We'll default new creations to this.",
       validate: () => true,
-      render: () => (
+      render:   () => (
         <ChoiceGrid cols={1} options={ASPECT_RATIOS}
           value={data.preferred_aspect_ratio}
           onChange={(v) => update({ preferred_aspect_ratio: v })} />
       ),
     },
     {
-      title: 'How did you hear about us?',
+      title:    'How did you hear about us?',
       subtitle: 'Last one — promise.',
       validate: () => data.referral_source ? true : (setErrors({ referral_source: 'Pick one' }), false),
-      render: () => (
+      render:   () => (
         <ChoiceGrid options={REFERRAL_SOURCES} value={data.referral_source}
           onChange={(v) => update({ referral_source: v })} />
       ),
     },
+    {
+      title:    'Choose your plan',
+      subtitle: 'Start free or go Master.',
+      validate: () => true,
+      render:   () => (
+        <div className="flex flex-col gap-4">
+          {/* Novice option */}
+          <button
+            type="button"
+            onClick={() => update({ selected_tier: 'novice' })}
+            className="text-left p-5 rounded-2xl transition-all"
+            style={{
+              background: 'var(--bg-elevated)',
+              border:     `2px solid ${(data.selected_tier === 'novice' || !data.selected_tier) ? 'var(--text-primary)' : 'var(--border-color)'}`,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-base font-black" style={{ color: 'var(--text-primary)' }}>Novice</p>
+              <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>Free</p>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Access image generation, video generation and copy motion. Buy credits to generate.
+            </p>
+          </button>
+
+          {/* Master option */}
+          <button
+            type="button"
+            onClick={() => update({ selected_tier: 'master' })}
+            className="text-left p-5 rounded-2xl transition-all"
+            style={{
+              background: data.selected_tier === 'master' ? 'rgba(245,158,11,0.08)' : 'var(--bg-elevated)',
+              border:     `2px solid ${data.selected_tier === 'master' ? '#f59e0b' : 'var(--border-color)'}`,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-base font-black" style={{ color: '#f59e0b' }}>⭐ Master</p>
+              <p className="text-sm font-bold" style={{ color: '#f59e0b' }}>₦5,000/month</p>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Full access to all features including templates, UGC, feed publishing and more.
+            </p>
+            <div
+              className="mt-3 rounded-xl px-3 py-2 text-xs font-medium"
+              style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}
+            >
+              Contact us on WhatsApp to activate: 08162465247
+            </div>
+          </button>
+        </div>
+      ),
+    },
   ]
 
-  const total = steps.length
+  const total   = steps.length
   const current = steps[step]
-  const isLast = step === total - 1
+  const isLast  = step === total - 1
 
   const next = async () => {
     setErrors({})
@@ -238,9 +291,10 @@ export default function OnboardingWizard({ onComplete }) {
             className="px-5 py-4 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
             style={{
               background: 'var(--bg-elevated)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-            }}>
+              color:      'var(--text-secondary)',
+              border:     '1px solid var(--border)',
+            }}
+          >
             Back
           </button>
         )}
@@ -250,10 +304,11 @@ export default function OnboardingWizard({ onComplete }) {
           className="flex-1 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
           style={{
             background: 'var(--text-primary)',
-            color: 'var(--text-inverse)',
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}>
+            color:      'var(--text-inverse)',
+            opacity:    loading ? 0.6 : 1,
+            cursor:     loading ? 'not-allowed' : 'pointer',
+          }}
+        >
           {loading ? 'Saving…' : isLast ? 'Finish & start creating 🎉' : 'Continue →'}
         </button>
       </div>
