@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil } from 'lucide-react'
+import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
@@ -168,6 +168,7 @@ export default function CreateUGCPage() {
   const [profiles,  setProfiles]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [archiving, setArchiving] = useState(null)
+  const [ugcTab,    setUgcTab]    = useState('characters')
 
   const canCreate = credits >= 200
 
@@ -221,7 +222,7 @@ export default function CreateUGCPage() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
+{/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
@@ -231,7 +232,9 @@ export default function CreateUGCPage() {
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>UGC</h1>
-          <span className="text-xs font-medium" style={{ color: ACCENT }}>Your Characters</span>
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>
+            {ugcTab === 'characters' ? 'Your Characters' : 'Your Voices'}
+          </span>
         </div>
         <div
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -240,6 +243,30 @@ export default function CreateUGCPage() {
           <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
           {Math.floor(credits)}
         </div>
+      </div>
+
+      {/* Characters | Voices tab switcher */}
+      <div className="flex-shrink-0 flex gap-1 mx-4 lg:mx-8 p-1 rounded-2xl mt-3 mb-1" style={{ background: 'var(--bg-elevated)' }}>
+        {[
+          { value: 'characters', label: 'Characters' },
+          { value: 'voices',     label: 'Voices'     },
+        ].map((t) => (
+          <button
+            key={t.value}
+            onClick={() => {
+              setUgcTab(t.value)
+              if (t.value === 'voices') navigate('/create/ugc/voices')
+            }}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200"
+            style={{
+              background: ugcTab === t.value ? 'var(--bg-card)'      : 'transparent',
+              color:      ugcTab === t.value ? 'var(--text-primary)'  : 'var(--text-muted)',
+              boxShadow:  ugcTab === t.value ? 'var(--shadow)'        : 'none',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Content */}
