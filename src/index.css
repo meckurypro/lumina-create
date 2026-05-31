@@ -80,6 +80,12 @@
   --tool-motion-border: rgba(15, 158, 110, 0.22);
   --tool-motion-muted:  rgba(15, 158, 110, 0.60);
 
+  /* Talking Head — Warm Amber/Gold */
+  --tool-talking-head:        #F59E0B;
+  --tool-talking-head-subtle: rgba(245, 158, 11, 0.10);
+  --tool-talking-head-border: rgba(245, 158, 11, 0.25);
+  --tool-talking-head-muted:  rgba(245, 158, 11, 0.60);
+
   /* UGC — Rose */
   --tool-ugc:        #E11D74;
   --tool-ugc-subtle: rgba(225, 29, 116, 0.10);
@@ -152,6 +158,12 @@
   --tool-motion-subtle: rgba(52, 211, 153, 0.09);
   --tool-motion-border: rgba(52, 211, 153, 0.18);
   --tool-motion-muted:  rgba(52, 211, 153, 0.55);
+
+  /* Talking Head — Warm Gold */
+  --tool-talking-head:        #FCD34D;
+  --tool-talking-head-subtle: rgba(252, 211, 77, 0.09);
+  --tool-talking-head-border: rgba(252, 211, 77, 0.20);
+  --tool-talking-head-muted:  rgba(252, 211, 77, 0.55);
 
   /* UGC — Soft Pink */
   --tool-ugc:        #FB7BB8;
