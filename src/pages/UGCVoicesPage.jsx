@@ -192,21 +192,33 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
     return () => clearTimeout(timer)
   }
 
-  const handleSaveLibraryVoice = async (voice) => {
+const handleSaveLibraryVoice = async (voice) => {
     setSaving(voice.voice_id)
     try {
+      // Step 1: Add to our ElevenLabs account to get a usable voice_id
+      const { data, error } = await supabase.functions.invoke('elevenlabs-proxy', {
+        body: {
+          action:          'add_shared_voice',
+          public_owner_id: voice.public_owner_id,
+          voice_id:        voice.voice_id,
+          new_name:        voice.name,
+        },
+      })
+      if (error || !data?.voice_id) throw new Error(error?.message || 'Could not add voice to account')
+
+      // Step 2: Save to Meckury's ugc_voices with the account-scoped voice_id
       await onSave({
-        elevenlabs_voice_id: voice.voice_id,
+        elevenlabs_voice_id: data.voice_id,
         name:                voice.name,
         description:         voice.description || null,
         source:              'elevenlabs_library',
         preview_url:         voice.preview_url  || null,
         labels:              voice.labels        || {},
       })
-      toast.success(`${voice.name} saved to your voices`)
+      toast.success(`${voice.name} added to your voices`)
       onClose()
-    } catch {
-      toast.error('Could not save voice')
+    } catch (err) {
+      toast.error(err.message || 'Could not save voice')
     } finally {
       setSaving(null)
     }
