@@ -24,27 +24,17 @@ const ALL_ASPECT_RATIOS = [
 ]
 
 // ─── caps helper ─────────────────────────────────────────────────────────────
-// Reads model DB fields and returns clean booleans the UI consumes.
-// Mapping:
-//   supports_start_frame    → accepts face/subject photo
-//   supports_video_input    → accepts video as subject  (new column)
-//   supports_text_script    → can drive audio from text (new column)
-//   supports_multi_image    → multi-character (2 audio slots)
-//   max_ref_images          → how many ref images (1 for single face)
-//   supports_sound          → model produces sound output (affects billing)
-//   is_flat_rate            → billing mode
-
 function getModelCaps(model) {
   if (!model) return {
-    faceInput:         true,
-    videoInput:        false,
-    textScript:        false,
-    multiChar:         false,
-    maxRefImages:      1,
+    faceInput:             true,
+    videoInput:            false,
+    textScript:            false,
+    multiChar:             false,
+    maxRefImages:          1,
     supportedDurations:    ['5', '10'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
-    supportsSound:     false,
-    isFlatRate:        false,
+    supportsSound:         false,
+    isFlatRate:            false,
   }
   return {
     faceInput:             model.supports_start_frame    ?? true,
@@ -145,7 +135,6 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// Model dropdown — identical pattern to other pages
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
@@ -230,7 +219,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ─── Subject slot (face photo OR video) ───────────────────────────────────────
+// ─── Subject slot ─────────────────────────────────────────────────────────────
 
 const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove }) => {
   if (mode === 'face') {
@@ -260,7 +249,6 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
     )
   }
 
-  // video mode
   return videoFile ? (
     <div className="relative">
       <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
@@ -298,7 +286,6 @@ const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudio
         {label}{charLabel}
       </p>
 
-      {/* Mode toggle — only if model supports both */}
       {supportsTextScript && (
         <div className="flex gap-1 p-1 rounded-xl self-start" style={{ background: 'var(--bg-elevated)' }}>
           {[
@@ -321,7 +308,6 @@ const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudio
         </div>
       )}
 
-      {/* Upload mode */}
       {audioMode === 'upload' && (
         audioFile ? (
           <div className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
@@ -348,7 +334,6 @@ const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudio
         )
       )}
 
-      {/* Text script mode */}
       {audioMode === 'text' && (
         <textarea
           value={script}
@@ -380,12 +365,12 @@ export default function CreateTalkingHeadPage() {
   const [model,         setModel]         = useState('')
 
   // subject
-  const [subjectMode,  setSubjectMode]  = useState('face')   // 'face' | 'video'
-  const [faceImage,    setFaceImage]    = useState(null)      // { file, url, ar, w, h }
-  const [videoFile,    setVideoFile]    = useState(null)      // { file, name }
+  const [subjectMode,  setSubjectMode]  = useState('face')
+  const [faceImage,    setFaceImage]    = useState(null)
+  const [videoFile,    setVideoFile]    = useState(null)
 
   // audio
-  const [audioMode1,   setAudioMode1]  = useState('upload')  // 'upload' | 'text'
+  const [audioMode1,   setAudioMode1]  = useState('upload')
   const [audioMode2,   setAudioMode2]  = useState('upload')
   const [audioFile1,   setAudioFile1]  = useState(null)
   const [audioFile2,   setAudioFile2]  = useState(null)
@@ -428,6 +413,10 @@ export default function CreateTalkingHeadPage() {
   }, [prompt])
 
   // ── load models ────────────────────────────────────────────────────────────
+  // Mirrors the exact same query pattern as CreateImagePage — filter by
+  // feature = 'lipsync' (not type, since lipsync models have type = 'video').
+  // Make sure rows have is_active = true in the DB; the migration inserts
+  // them as false — run: UPDATE models SET is_active = true WHERE feature = 'lipsync'
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -450,33 +439,28 @@ export default function CreateTalkingHeadPage() {
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  // ── reset inputs on model change if now-unsupported ────────────────────────
+  // ── reset inputs on model change if now-unsupported ───────────────────────
   useEffect(() => {
     if (!selectedModel) return
 
-    // If new model only does video input, switch subject mode
     if (!caps.faceInput && caps.videoInput)  setSubjectMode('video')
     if (caps.faceInput  && !caps.videoInput) setSubjectMode('face')
 
-    // Clear audio mode if text script no longer supported
     if (!caps.textScript) {
       setAudioMode1('upload')
       setAudioMode2('upload')
     }
 
-    // Clear second audio if multi-char no longer supported
     if (!caps.multiChar) {
       setAudioFile2(null)
       setScript2('')
       try { sessionStorage.removeItem(SS_AUDIO_2) } catch {}
     }
 
-    // Duration enforcement
     if (!caps.supportedDurations.includes(duration)) {
       setDuration(caps.supportedDurations[0] || '5')
     }
 
-    // Aspect ratio enforcement
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
     }
@@ -492,27 +476,23 @@ export default function CreateTalkingHeadPage() {
 
   const canAfford = credits >= creditCost
 
-  // ── determine if we have enough input to generate ─────────────────────────
-  const hasSubject = subjectMode === 'face'
-    ? !!faceImage
-    : !!videoFile
-
-  const hasAudio1 = audioMode1 === 'upload' ? !!audioFile1 : script1.trim().length > 0
-  const hasAudio2 = caps.multiChar
+  // ── readiness checks ──────────────────────────────────────────────────────
+  const hasSubject = subjectMode === 'face' ? !!faceImage : !!videoFile
+  const hasAudio1  = audioMode1 === 'upload' ? !!audioFile1 : script1.trim().length > 0
+  const hasAudio2  = caps.multiChar
     ? (audioMode2 === 'upload' ? !!audioFile2 : script2.trim().length > 0)
     : true
 
-  // Models without face input (pure audio-driven) don't need a subject
   const subjectRequired = caps.faceInput || caps.videoInput
-  const subjectOk = !subjectRequired || hasSubject
+  const subjectOk       = !subjectRequired || hasSubject
 
   const buttonDisabled = submitting || !canAfford || !hasAudio1 || !hasAudio2 || !subjectOk || !selectedModel
 
   // ── mode label for header ──────────────────────────────────────────────────
   const modeLabel = (() => {
-    if (caps.multiChar)       return 'Multi-Character Sync'
-    if (caps.videoInput && subjectMode === 'video') return 'Video Lip Sync'
-    if (caps.faceInput  && subjectMode === 'face')  return 'Talking Avatar'
+    if (caps.multiChar)                                     return 'Multi-Character Sync'
+    if (caps.videoInput && subjectMode === 'video')         return 'Video Lip Sync'
+    if (caps.faceInput  && subjectMode === 'face')          return 'Talking Avatar'
     return 'Talking Head'
   })()
 
@@ -576,47 +556,30 @@ export default function CreateTalkingHeadPage() {
 
     setSubmitting(true)
     try {
-      // Upload subject
-      let startFrameUrl = null
+      let startFrameUrl   = null
       let subjectVideoUrl = null
 
-      if (subjectMode === 'face' && faceImage?.file) {
-        startFrameUrl = await uploadToStorage(faceImage.file)
-      }
-      if (subjectMode === 'video' && videoFile?.file) {
-        subjectVideoUrl = await uploadToStorage(videoFile.file)
-      }
+      if (subjectMode === 'face'  && faceImage?.file)  startFrameUrl   = await uploadToStorage(faceImage.file)
+      if (subjectMode === 'video' && videoFile?.file)   subjectVideoUrl = await uploadToStorage(videoFile.file)
 
-      // Upload audio(s)
       let audio1Url = null
       let audio2Url = null
 
-      if (audioMode1 === 'upload' && audioFile1?.file) {
-        audio1Url = await uploadToStorage(audioFile1.file)
-      }
-      if (caps.multiChar && audioMode2 === 'upload' && audioFile2?.file) {
-        audio2Url = await uploadToStorage(audioFile2.file)
-      }
+      if (audioMode1 === 'upload' && audioFile1?.file)               audio1Url = await uploadToStorage(audioFile1.file)
+      if (caps.multiChar && audioMode2 === 'upload' && audioFile2?.file) audio2Url = await uploadToStorage(audioFile2.file)
 
-      // Build input_image_urls payload:
-      // Convention: [subjectVideoUrl?, audio1Url?, audio2Url?] — edge fn reads these
-      const inputImageUrls = [
-        subjectVideoUrl,
-        audio1Url,
-        audio2Url,
-      ].filter(Boolean)
+      const inputImageUrls = [subjectVideoUrl, audio1Url, audio2Url].filter(Boolean)
 
-      // Build metadata for edge fn
       const metadata = {
-        lipsync: true,
-        subject_mode:  subjectMode,
-        audio_mode_1:  audioMode1,
-        audio_mode_2:  audioMode2,
-        script_1:      audioMode1 === 'text' ? script1 : null,
-        script_2:      audioMode2 === 'text' && caps.multiChar ? script2 : null,
-        multi_char:    caps.multiChar,
-        audio_1_url:   audio1Url,
-        audio_2_url:   audio2Url,
+        lipsync:           true,
+        subject_mode:      subjectMode,
+        audio_mode_1:      audioMode1,
+        audio_mode_2:      audioMode2,
+        script_1:          audioMode1 === 'text' ? script1 : null,
+        script_2:          audioMode2 === 'text' && caps.multiChar ? script2 : null,
+        multi_char:        caps.multiChar,
+        audio_1_url:       audio1Url,
+        audio_2_url:       audio2Url,
         subject_video_url: subjectVideoUrl,
       }
 
@@ -644,7 +607,6 @@ export default function CreateTalkingHeadPage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Invoke the lipsync edge function (create talking-head-generate or reuse video-generate)
       supabase.functions.invoke('talking-head-generate', { body: { generationId: genRow.id, meta: metadata } })
         .catch((e) => console.error('talking-head-generate invoke error', e))
 
@@ -694,7 +656,14 @@ export default function CreateTalkingHeadPage() {
           <span className="text-xs font-medium" style={{ color: ACCENT }}>{modeLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          {!modelsLoading && <ModelDropdown models={models} value={model} onChange={setModel} />}
+          {!modelsLoading && models.length > 0 && (
+            <ModelDropdown models={models} value={model} onChange={setModel} />
+          )}
+          {!modelsLoading && models.length === 0 && (
+            <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              No models
+            </span>
+          )}
           <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
             <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
@@ -716,7 +685,6 @@ export default function CreateTalkingHeadPage() {
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
                 </p>
 
-                {/* Subject mode toggle — only shown when model supports BOTH */}
                 {caps.faceInput && caps.videoInput && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                     {[
