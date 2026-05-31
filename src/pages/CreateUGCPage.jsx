@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import MasterGate from '@/components/ui/MasterGate'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
 
@@ -220,8 +221,9 @@ export default function CreateUGCPage() {
   const draftProfiles  = profiles.filter((p) => p.status === 'draft')
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
+    <MasterGate>
+    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
@@ -383,5 +385,6 @@ export default function CreateUGCPage() {
         </div>
       </div>
     </div>
+      </MasterGate>
   )
 }
