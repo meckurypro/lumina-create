@@ -6,6 +6,7 @@ import {
   AlertCircle, RefreshCw, CheckCircle2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import MasterGate from '@/components/ui/MasterGate'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -459,7 +460,10 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function CreateCopyMotionPage() {
   const navigate                                    = useNavigate()
-  const { user, credits, refreshProfile }           = useAuth()
+  const { user, credits, refreshProfile, profile }  = useAuth()
+  const isNovice                                    = profile?.user_tier !== 'master'
+  const [weeklyUsed,  setWeeklyUsed]                = useState(null)
+  const [weeklyLimit, setWeeklyLimit]               = useState(20)
 
   // Media state
   const [motionVideo,    setMotionVideo]    = useState(null)
@@ -512,6 +516,25 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
+  // Weekly limit for Novices
+  useEffect(() => {
+    if (!isNovice || !profile?.id) return
+    const fetchWeekly = async () => {
+      const [{ data: settingRow }, { count }] = await Promise.all([
+        supabase.from('app_settings').select('value').eq('key', 'novice_copy_motion_weekly_limit').single(),
+        supabase
+          .from('generations')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('generation_type', 'motion_transfer')
+          .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      ])
+      if (settingRow) setWeeklyLimit(Number(JSON.parse(settingRow.value)))
+      setWeeklyUsed(count ?? 0)
+    }
+    fetchWeekly()
+  }, [isNovice, profile?.id])
+
   // ── Derived model config ─────────────────────────────────
   const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
@@ -554,11 +577,14 @@ export default function CreateCopyMotionPage() {
     ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : Math.ceil(baseWithDur)
 
+  
   const canAfford       = credits >= creditCost
+  const weeklyBlocked   = isNovice && weeklyUsed !== null && weeklyUsed >= weeklyLimit
   const hasVideo        = !!motionVideo
   const hasVideoOrGhost = hasVideo || !!videoGhostMeta
   const hasSubject      = !!subjectImage
   const isProcessing    = phase !== null
+
 
   const canGenerate =
     hasVideo &&
@@ -568,7 +594,8 @@ export default function CreateCopyMotionPage() {
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
-    compatStatus !== 'checking'
+    compatStatus !== 'checking' &&
+    !weeklyBlocked
 
   // ── Video upload handler ─────────────────────────────────
   const handleVideoUpload = async (e) => {
@@ -783,7 +810,13 @@ export default function CreateCopyMotionPage() {
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Copy Motion</h1>
-          <span className="text-xs font-medium" style={{ color: ACCENT }}>Motion Transfer</span>
+          
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>
+            Motion Transfer
+            {isNovice && weeklyUsed !== null && (
+              <span className="ml-1.5 opacity-60">· {weeklyUsed}/{weeklyLimit} this week</span>
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
@@ -1020,6 +1053,7 @@ export default function CreateCopyMotionPage() {
                 Re-upload your motion video to generate
               </p>
             )}
+      
             {!durationMismatch && hasVideo && hasSubject && matchedDuration !== null && !canAfford && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Not enough credits.{' '}
@@ -1030,6 +1064,11 @@ export default function CreateCopyMotionPage() {
                 >
                   Top up
                 </button>
+              </p>
+            )}
+            {weeklyBlocked && (
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                Weekly limit reached ({weeklyLimit} uses). Resets in 7 days.
               </p>
             )}
           </div>
