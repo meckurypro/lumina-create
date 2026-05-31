@@ -9,6 +9,7 @@ import FeedPage                 from '@/pages/FeedPage'
 import CreatePage               from '@/pages/CreatePage'
 import CreateImagePage          from '@/pages/CreateImagePage'
 import CreateVideoPage          from '@/pages/CreateVideoPage'
+import CreateTalkingHeadPage    from '@/pages/CreateTalkingHeadPage'
 import CinematicTransitionPage  from '@/pages/CinematicTransitionPage'
 import CinematicResultPage      from '@/pages/CinematicResultPage'
 import GeneratePage             from '@/pages/GeneratePage'
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/create/image"       element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
           <Route path="/create/video"       element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
           <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
 
           {/* ── Cinematic — before generic /:templateSlug ────────── */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
