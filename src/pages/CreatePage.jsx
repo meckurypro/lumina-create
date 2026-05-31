@@ -162,7 +162,7 @@ function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, na
 }
 
 // ── Wide tool card (used for 3rd tool and beyond) ─────────────────────────────
-// REPLACE WITH
+
 function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate, locked, weeklyBadge }) {
   const handleClick = () => {
     if (!locked) navigate(route)
@@ -238,7 +238,7 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-// REPLACE WITH
+
 export default function CreatePage() {
   const navigate                        = useNavigate()
   const location                        = useLocation()
@@ -341,7 +341,7 @@ export default function CreatePage() {
                     ))}
                   </div>
                   {/* Remaining tools — full width each */}
-// REPLACE WITH
+
                   {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => {
                     const isCopyMotion = id === 'copy_motion'
                     const isUGC        = id === 'create_ugc'
