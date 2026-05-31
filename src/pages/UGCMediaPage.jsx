@@ -839,7 +839,8 @@ const EmptyState = ({ profileName, onGenerate }) => (
 export default function UGCMediaPage() {
   const { profileId }                               = useParams()
   const navigate                                    = useNavigate()
-  const { user, credits, refreshProfile }           = useAuth()
+  const { user, credits, refreshProfile, profile: authProfile } = useAuth()
+  const isNovice = authProfile?.user_tier === 'novice'
 
   const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
@@ -1154,6 +1155,17 @@ export default function UGCMediaPage() {
       {/* ── Content ────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
+
+          {/* Novice storage notice */}
+          {isNovice && (
+            <div
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
+              style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#eab308' }}
+            >
+              <span>⚠️</span>
+              Your outputs are stored for 7 days only. Download and save them before they expire.
+            </div>
+          )}
 
           {/* Type filter pills */}
           {!loading && items.length > 0 && (
