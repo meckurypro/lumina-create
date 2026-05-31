@@ -258,9 +258,10 @@ export default function UGCVoiceGeneratePage() {
 
       // 2. Deduct credits
       const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
-        p_user_id:    user.id,
-        p_amount:     creditCost,
-        p_description:'Audio TTS — ' + script.trim().slice(0, 40),
+        p_user_id:       user.id,
+        p_amount:        creditCost,
+        p_generation_id: null,
+        p_description:   'Audio TTS — ' + script.trim().slice(0, 40),
       })
       if (dErr || !deduct?.success) {
         await ugcAudioGenerations.update(genRow.id, { status: 'failed', error_message: 'Insufficient credits' })
