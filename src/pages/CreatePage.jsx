@@ -1,9 +1,9 @@
 // src/pages/CreatePage.jsx
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle } from 'lucide-react'
-import { templates as templatesDb } from '@/lib/supabase'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown } from 'lucide-react'
+import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
@@ -162,19 +162,25 @@ function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, na
 }
 
 // ── Wide tool card (used for 3rd tool and beyond) ─────────────────────────────
-function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate }) {
+// REPLACE WITH
+function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate, locked, weeklyBadge }) {
+  const handleClick = () => {
+    if (!locked) navigate(route)
+  }
   return (
     <motion.button
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={() => navigate(route)}
+      whileTap={{ scale: locked ? 1 : 0.97 }}
+      onClick={handleClick}
       className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
       style={{
         background: 'var(--bg-card)',
         border:     `1px solid var(${accentVar}-border, var(--border-color))`,
         padding:    '16px 20px',
+        opacity:    locked ? 0.75 : 1,
+        cursor:     locked ? 'default' : 'pointer',
       }}
     >
       <div
@@ -202,23 +208,47 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
         >
           {label}
         </span>
-        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-          {subtitle}
-        </span>
+        {locked ? (
+          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--brand)' }}>
+            <Crown size={10} />
+            Upgrade to Master
+          </span>
+        ) : weeklyBadge ? (
+          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+            {subtitle}
+            <span
+              className="ml-2 px-1.5 py-0.5 rounded-md text-xs font-semibold"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: 10 }}
+            >
+              {weeklyBadge}
+            </span>
+          </span>
+        ) : (
+          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+            {subtitle}
+          </span>
+        )}
       </div>
-      <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      {locked
+        ? <Crown size={15} style={{ color: 'var(--brand)', flexShrink: 0 }} />
+        : <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      }
     </motion.button>
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// REPLACE WITH
 export default function CreatePage() {
-  const navigate                  = useNavigate()
-  const location                  = useLocation()
-  const { isStaff, isAdmin }      = useAuth()
-  const [activeTab, setActiveTab] = useState(location.state?.tab || 'tools')
-  const [templates, setTemplates] = useState([])
-  const [loading,   setLoading]   = useState(true)
+  const navigate                        = useNavigate()
+  const location                        = useLocation()
+  const { isStaff, isAdmin, profile }   = useAuth()
+  const isNovice                        = profile?.user_tier !== 'master'
+  const [activeTab, setActiveTab]       = useState(location.state?.tab || 'tools')
+  const [templates,  setTemplates]      = useState([])
+  const [loading,    setLoading]        = useState(true)
+  const [weeklyUsed, setWeeklyUsed]     = useState(null)
+  const [weeklyLimit, setWeeklyLimit]   = useState(20)
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -229,6 +259,25 @@ export default function CreatePage() {
     }
     fetchTemplates()
   }, [])
+
+  // Fetch weekly Copy Motion count + limit for Novices
+  useEffect(() => {
+    if (!isNovice || !profile?.id) return
+    const fetchWeekly = async () => {
+      const [{ data: settingRow }, { count }] = await Promise.all([
+        supabase.from('app_settings').select('value').eq('key', 'novice_copy_motion_weekly_limit').single(),
+        supabase
+          .from('generations')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('generation_type', 'motion_transfer')
+          .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      ])
+      if (settingRow) setWeeklyLimit(Number(JSON.parse(settingRow.value)))
+      setWeeklyUsed(count ?? 0)
+    }
+    fetchWeekly()
+  }, [isNovice, profile?.id])
 
   const handleTemplateSelect = (template) => {
     navigate(`/create/${template.slug}`)
@@ -292,19 +341,30 @@ export default function CreatePage() {
                     ))}
                   </div>
                   {/* Remaining tools — full width each */}
-                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => (
-                    <ToolCardWide
-                      key={id}
-                      id={id}
-                      label={label}
-                      subtitle={subtitle}
-                      icon={Icon}
-                      route={route}
-                      accentVar={accentVar}
-                      index={i + 2}
-                      navigate={navigate}
-                    />
-                  ))}
+// REPLACE WITH
+                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => {
+                    const isCopyMotion = id === 'copy_motion'
+                    const isUGC        = id === 'create_ugc'
+                    const locked       = isUGC && isNovice
+                    const weeklyBadge  = isCopyMotion && isNovice && weeklyUsed !== null
+                      ? `${weeklyUsed}/${weeklyLimit} this week`
+                      : null
+                    return (
+                      <ToolCardWide
+                        key={id}
+                        id={id}
+                        label={label}
+                        subtitle={subtitle}
+                        icon={Icon}
+                        route={route}
+                        accentVar={accentVar}
+                        index={i + 2}
+                        navigate={navigate}
+                        locked={locked}
+                        weeklyBadge={weeklyBadge}
+                      />
+                    )
+                  })}
                 </div>
               </motion.div>
             )}
