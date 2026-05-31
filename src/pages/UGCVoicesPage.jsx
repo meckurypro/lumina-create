@@ -567,7 +567,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCVoicesPage() {
   const navigate          = useNavigate()
-  const { user, credits } = useAuth()
+  const { user, credits, profile } = useAuth()
   const [voices,  setVoices]  = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -600,7 +600,7 @@ export default function UGCVoicesPage() {
 
   const handleSelect = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
   return (
-    <MasterGate>
+    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
