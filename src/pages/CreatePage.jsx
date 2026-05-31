@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic } from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -45,6 +45,14 @@ const TOOLS = [
     icon:      Layers,
     route:     '/create/copy-motion',
     accentVar: '--tool-motion',
+  },
+  {
+    id:        'talking_head',
+    label:     'Talking Head',
+    subtitle:  'Animate faces with voice or audio',
+    icon:      Mic,
+    route:     '/create/talking-head',
+    accentVar: '--tool-talking-head',
   },
   {
     id:        'create_ugc',
@@ -341,12 +349,11 @@ export default function CreatePage() {
                     ))}
                   </div>
                   {/* Remaining tools — full width each */}
-
                   {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => {
-                    const isCopyMotion = id === 'copy_motion'
-                    const isUGC        = id === 'create_ugc'
-                    const locked       = isUGC && isNovice
-                    const weeklyBadge  = isCopyMotion && isNovice && weeklyUsed !== null
+                    const isCopyMotion  = id === 'copy_motion'
+                    const isUGC         = id === 'create_ugc'
+                    const locked        = isUGC && isNovice
+                    const weeklyBadge   = isCopyMotion && isNovice && weeklyUsed !== null
                       ? `${weeklyUsed}/${weeklyLimit} this week`
                       : null
                     return (
