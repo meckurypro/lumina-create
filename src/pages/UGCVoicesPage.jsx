@@ -256,10 +256,11 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
 
       // Deduct credits
       const { data: deduct } = await supabase.rpc('deduct_credits', {
-        p_user_id:    userId,
-        p_amount:     VOICE_CREDITS.CLONE,
-        p_description:'Voice clone — ' + cloneName.trim(),
-      })
+  p_user_id:      userId,
+  p_amount:       VOICE_CREDITS.CLONE,
+  p_generation_id: null,
+  p_description:  'Voice clone — ' + cloneName.trim(),
+})
       if (!deduct?.success) throw new Error('Credit deduction failed')
 
       await onSave({
