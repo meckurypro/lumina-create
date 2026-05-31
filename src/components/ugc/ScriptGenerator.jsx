@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Loader2, ChevronDown, X } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -27,11 +28,11 @@ const TONES = [
 ]
 
 export default function ScriptGenerator({ onClose, onScriptReady }) {
-  const [step,      setStep]      = useState('pick')   // 'pick' | 'loading' | 'script'
-  const [niche,     setNiche]     = useState('')
-  const [tone,      setTone]      = useState('')
-  const [script,    setScript]    = useState('')
-  const [error,     setError]     = useState(null)
+  const [step,   setStep]   = useState('pick')   // 'pick' | 'loading' | 'script'
+  const [niche,  setNiche]  = useState('')
+  const [tone,   setTone]   = useState('')
+  const [script, setScript] = useState('')
+  const [error,  setError]  = useState(null)
 
   const canGenerate = niche && tone
 
@@ -40,45 +41,14 @@ export default function ScriptGenerator({ onClose, onScriptReady }) {
     setStep('loading')
     setError(null)
 
-    const nicheLabel = NICHES.find(n => n.value === niche)?.label?.replace(/^.+?\s/, '') || niche
-    const toneLabel  = TONES.find(t  => t.value === tone)?.label  || tone
-
-    const prompt = `Generate a voice cloning script for a ${nicheLabel} content creator. 
-Tone: ${toneLabel}.
-Length: exactly 300-350 words. This will be read aloud to capture someone's voice for AI cloning.
-
-Requirements:
-- Write in first person, naturally flowing speech
-- Include varied sentence lengths — short punchy ones and longer flowing ones
-- Include different emotions: enthusiasm, reflection, humor, seriousness
-- Cover multiple topics within the niche naturally (not a list, just natural speech)
-- Include natural transitions, pauses implied by punctuation
-- No stage directions, no brackets, no markdown
-- Should feel like a real person speaking authentically, not a script
-- End mid-thought naturally so the person keeps talking
-
-Return ONLY the script text. Nothing else.`
-
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 600,
-          messages:   [{ role: 'user', content: prompt }],
-        }),
+      const { data, error } = await supabase.functions.invoke('elevenlabs-proxy', {
+        body: { action: 'generate_clone_script', niche, tone },
       })
 
-      if (!response.ok) throw new Error(`API error ${response.status}`)
+      if (error || !data?.script) throw new Error(error?.message || 'No script returned')
 
-      const data   = await response.json()
-      const text   = data?.content?.[0]?.text?.trim()
-      if (!text)   throw new Error('No script returned')
-
-      setScript(text)
+      setScript(data.script)
       setStep('script')
     } catch (err) {
       setError('Could not generate script. You can still record freely.')
