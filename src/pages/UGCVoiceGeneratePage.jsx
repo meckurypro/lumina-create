@@ -378,7 +378,7 @@ export default function UGCVoiceGeneratePage() {
               ref={textareaRef}
               value={script}
               onChange={(e) => setScript(e.target.value)}
-              placeholder={`What should ${voice?.name} say?`}
+              placeholder={`Write your script for ${voice?.name}…`}
               rows={5}
               maxLength={5000}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
