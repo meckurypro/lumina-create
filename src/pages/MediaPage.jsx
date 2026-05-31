@@ -585,7 +585,8 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
 
 export default function MediaPage() {
   const navigate = useNavigate()
-  const { user, credits, refreshProfile } = useAuth()
+  const { user, credits, refreshProfile, profile } = useAuth()
+const isNovice = profile?.user_tier === 'novice'
 
   const [items,        setItems]        = useState([])
   const [loading,      setLoading]      = useState(true)
