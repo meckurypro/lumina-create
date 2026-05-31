@@ -780,6 +780,15 @@ export default function MediaPage() {
           </p>
         </div>
 
+        {isNovice && (
+          <div
+            className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
+            style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#eab308' }}
+          >
+            <span>⚠️</span>
+            Your outputs are stored for 7 days only. Download and save them before they expire.
+          </div>
+        )}
         <div className="flex gap-2 mb-5">
           {FILTERS.map((f) => (
             <button
