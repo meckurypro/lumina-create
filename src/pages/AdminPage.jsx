@@ -11,17 +11,17 @@ import { useAuth } from '@/context/AuthContext'
 import { Skeleton } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
 
-import PromptEditor                  from '@/pages/admin/PromptEditor'
-import TemplateManager               from '@/pages/admin/TemplateManager'
-import ModelsManager                 from '@/pages/admin/ModelsManager'
-import StaffManager                  from '@/pages/admin/StaffManager'
-import FeedModerationItem            from '@/pages/admin/FeedModerationItem'
-import FeedPublishedManager          from '@/pages/admin/FeedPublishedManager'
-import ProviderSettings              from '@/pages/admin/ProviderSettings'
-import UsersManager                  from '@/pages/admin/UsersManager'
-import CinematicTransitionsManager   from '@/pages/admin/CinematicTransitionsManager'
-import ModelsAnalytics               from '@/pages/admin/ModelsAnalytics'
-import ModelUsageManager             from '@/pages/admin/ModelUsageManager'
+import PromptEditor                from '@/pages/admin/PromptEditor'
+import TemplateManager             from '@/pages/admin/TemplateManager'
+import ModelsManager               from '@/pages/admin/ModelsManager'
+import StaffManager                from '@/pages/admin/StaffManager'
+import FeedModerationItem          from '@/pages/admin/FeedModerationItem'
+import FeedPublishedManager        from '@/pages/admin/FeedPublishedManager'
+import TierSettings                from '@/pages/admin/TierSettings'
+import UsersManager                from '@/pages/admin/UsersManager'
+import CinematicTransitionsManager from '@/pages/admin/CinematicTransitionsManager'
+import ModelsAnalytics             from '@/pages/admin/ModelsAnalytics'
+import ModelUsageManager           from '@/pages/admin/ModelUsageManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -41,17 +41,17 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 // ─── Tabs ─────────────────────────────────────────────────
 
 const TABS = (pendingCount) => [
-  { id: 'dashboard',  label: 'Dashboard'                                           },
-  { id: 'analytics',  label: 'Analytics'                                           },
-  { id: 'usage',      label: 'Usage & Pricing'                                     },
-  { id: 'prompts',    label: 'Prompts'                                             },
-  { id: 'templates',  label: 'Templates'                                           },
-  { id: 'models',     label: 'Models'                                              },
-  { id: 'cinematic',  label: 'Cinematic'                                           },
-  { id: 'staff',      label: 'Staff'                                               },
-  { id: 'feed',       label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed' },
-  { id: 'users',      label: 'Users'                                               },
-  { id: 'settings',   label: 'Settings'                                            },
+  { id: 'dashboard', label: 'Dashboard'                                            },
+  { id: 'analytics', label: 'Analytics'                                            },
+  { id: 'usage',     label: 'Usage & Pricing'                                      },
+  { id: 'prompts',   label: 'Prompts'                                              },
+  { id: 'templates', label: 'Templates'                                            },
+  { id: 'models',    label: 'Models'                                               },
+  { id: 'cinematic', label: 'Cinematic'                                            },
+  { id: 'staff',     label: 'Staff'                                                },
+  { id: 'feed',      label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed'  },
+  { id: 'users',     label: 'Users'                                                },
+  { id: 'settings',  label: 'Tier Settings'                                        },
 ]
 
 // ─── Admin Page ───────────────────────────────────────────
@@ -97,7 +97,7 @@ export default function AdminPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── Feed moderation actions ──
+  // ── Feed moderation actions ──────────────────────────────
 
   const handleApprove = async (postId) => {
     const { data, error } = await supabase.rpc('approve_feed_post', {
@@ -300,10 +300,10 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* ── Settings ── */}
+        {/* ── Tier Settings ── */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <ProviderSettings />
+            <TierSettings />
           </motion.div>
         )}
 
