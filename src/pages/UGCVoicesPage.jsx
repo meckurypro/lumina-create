@@ -312,7 +312,7 @@ const handleSaveLibraryVoice = async (voice) => {
         {/* Tabs */}
         <div className="flex gap-1 mx-4 p-1 rounded-xl mb-3 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
           {[
-            { value: 'browse', label: 'Browse Library' },
+            { value: 'browse', label: 'Voice Library' },
             { value: 'clone',  label: 'Clone Voice'    },
           ].map((t) => (
             <button
@@ -417,7 +417,7 @@ const handleSaveLibraryVoice = async (voice) => {
               <Zap size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} fill="currentColor" />
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                 Cloning costs <strong style={{ color: ACCENT }}>800 credits</strong>.
-                Upload 1–5 clean audio samples (30 sec – 3 min each) of the voice.
+                Upload 1–5 clean audio samples (30 sec – 3 min each) to create your voice.
               </p>
             </div>
 
@@ -460,8 +460,8 @@ const handleSaveLibraryVoice = async (voice) => {
                 />
                 <Mic size={22} style={{ color: ACCENT }} />
                 <span className="text-xs font-medium" style={{ color: ACCENT }}>
-                  {cloneFiles.length > 0 ? `${cloneFiles.length} file(s) selected` : 'Tap to upload audio'}
-                </span>
+  {cloneFiles.length > 0 ? `${cloneFiles.length} file(s) selected` : 'Upload audio samples'}
+</span>
               </label>
               {cloneFiles.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1">
@@ -551,7 +551,7 @@ export default function UGCVoicesPage() {
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Voices</h1>
-          <span className="text-xs font-medium" style={{ color: ACCENT }}>Your Voice Library</span>
+          <span className="text-xs font-medium" style={{ color: ACCENT }}>Voice Studio</span>
         </div>
         <div
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -584,9 +584,10 @@ export default function UGCVoicesPage() {
               </div>
               <div>
                 <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>No voices yet</p>
-                <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--text-muted)' }}>
-                  Browse the ElevenLabs library or clone your own voice.
-                </p>
+                // REPLACE
+<p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--text-muted)' }}>
+  Add a voice from our library or clone your own.
+</p>
               </div>
               <button
                 onClick={() => setShowAdd(true)}
