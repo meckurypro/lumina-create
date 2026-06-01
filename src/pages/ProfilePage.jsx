@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Settings, Zap, Plus, LogOut, Crown, ChevronRight } from 'lucide-react'
-import { credits as creditsDb, auth } from '@/lib/supabase'
+import { Settings, Zap, Plus, LogOut, Crown, ChevronRight, Gift, Copy, Check, Users } from 'lucide-react'
+import { credits as creditsDb, auth, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
@@ -43,6 +43,107 @@ const PackageCard = ({ pkg, onSelect, loading }) => (
     </div>
   </motion.button>
 )
+
+// ─── Referral Card ────────────────────────────────────────
+
+const ReferralCard = ({ profile }) => {
+  const [copied, setCopied]   = useState(false)
+  const [stats,  setStats]    = useState(null)
+
+  const referralCode = profile?.referral_code
+  const referralLink = referralCode
+    ? `${window.location.origin}/auth?ref=${referralCode}`
+    : null
+
+  useEffect(() => {
+    if (!profile?.id) return
+    supabase
+      .from('referral_stats')
+      .select('*')
+      .eq('user_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => setStats(data))
+  }, [profile?.id])
+
+  const handleCopy = async () => {
+    if (!referralLink) return
+    await navigator.clipboard.writeText(referralLink)
+    setCopied(true)
+    toast.success('Link copied!')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div
+      className="rounded-2xl p-5 mb-3"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Gift size={15} style={{ color: 'var(--text-muted)' }} />
+        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+          Refer &amp; Earn
+        </p>
+      </div>
+
+      {/* Stats row */}
+      <div className="flex items-center gap-4 mb-4">
+        <div>
+          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
+            {stats?.converted_referrals ?? 0}
+          </p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>converted</p>
+        </div>
+        <div
+          className="w-px h-8 self-center"
+          style={{ background: 'var(--border-color)' }}
+        />
+        <div>
+          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
+            {stats?.total_referrals ?? 0}
+          </p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>total</p>
+        </div>
+        <div
+          className="w-px h-8 self-center"
+          style={{ background: 'var(--border-color)' }}
+        />
+        <div>
+          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
+            {stats?.total_commission_earned ?? 0}
+          </p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>credits earned</p>
+        </div>
+      </div>
+
+      {/* Copyable link */}
+      <div
+        className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+      >
+        <p
+          className="flex-1 text-xs font-mono truncate"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {referralLink ?? '—'}
+        </p>
+        <button
+          onClick={handleCopy}
+          className="flex-shrink-0 transition-all active:scale-90"
+          aria-label="Copy referral link"
+        >
+          {copied
+            ? <Check size={14} style={{ color: 'var(--brand)' }} />
+            : <Copy size={14} style={{ color: 'var(--text-muted)' }} />
+          }
+        </button>
+      </div>
+
+      <p className="text-xs mt-2.5" style={{ color: 'var(--text-muted)' }}>
+        You earn 500 credits + 4% of every purchase they make.
+      </p>
+    </div>
+  )
+}
 
 // ─── Profile Page ─────────────────────────────────────────
 
@@ -198,6 +299,9 @@ export default function ProfilePage() {
             )}
           </div>
         </div>
+
+        {/* ── Referral card ── */}
+        <ReferralCard profile={profile} />
 
         {/* ── Actions list ── */}
         <div
