@@ -373,6 +373,19 @@ export default function UGCVoiceGeneratePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
+          {isVoiceMuted && (
+            <div
+              className="flex items-start gap-2.5 p-3 rounded-2xl"
+              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                This cloned voice is muted on the Novice tier. Upgrade to Master to
+                generate audio with it. Voices from the ElevenLabs library remain available.
+              </p>
+            </div>
+          )}
+
           {/* Script input */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest mb-2.5" style={{ color: 'var(--text-muted)' }}>
