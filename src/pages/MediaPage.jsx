@@ -628,24 +628,41 @@ const isNovice = profile?.user_tier === 'novice'
 
   useEffect(() => { load(0, true) }, [load])
 
-  useEffect(() => {
-    const hasPending = items.some(g => g.status === 'pending' || g.status === 'processing')
-    if (hasPending) {
-      pollRef.current = setInterval(async () => {
-        if (!user) return
-        const { data } = await generationsDb.getUserGenerations(user.id, { limit: PAGE_SIZE, offset: 0 })
-        if (data) {
-          setItems((prev) => {
-            const map = new Map(data.map(g => [g.id, g]))
-            return prev.map(g => map.get(g.id) || g)
-          })
-        }
-      }, POLL_MS)
-    } else {
-      clearInterval(pollRef.current)
-    }
-    return () => clearInterval(pollRef.current)
-  }, [items, user])
+useEffect(() => {
+  if (pollRef.current) {
+    clearInterval(pollRef.current)
+    pollRef.current = null
+  }
+
+  const pendingIds = items
+    .filter(g => g.status === 'pending' || g.status === 'processing')
+    .map(g => g.id)
+
+  if (!pendingIds.length || !user) return
+
+  pollRef.current = setInterval(async () => {
+    const { data, error } = await supabase
+      .from('generations')
+      .select('*')
+      .in('id', pendingIds)
+
+    if (error || !data) return
+
+    const map = new Map(data.map(g => [g.id, g]))
+
+    setItems(prev => prev.map(g => map.get(g.id) ?? g))
+
+    const anyResolved = data.some(g => g.status === 'completed' || g.status === 'failed')
+    if (anyResolved) refreshProfile()
+
+  }, POLL_MS)
+
+  return () => {
+    clearInterval(pollRef.current)
+    pollRef.current = null
+  }
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [items.map(g => g.id + g.status).join(','), user])
 
   const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions') }
   const openRegenerate = ()    => setSheetMode('regenerate')
