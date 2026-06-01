@@ -184,7 +184,8 @@ export default function CreateUGCPage() {
   const [archiving, setArchiving] = useState(null)
   const [ugcTab,    setUgcTab]    = useState('characters')
 
-  const canCreate = credits >= 200
+  const isMaster   = profile?.user_tier === 'master'
+  const canCreate  = credits >= 200
 
   useEffect(() => {
     if (!user) return
@@ -222,7 +223,26 @@ export default function CreateUGCPage() {
     navigate('/create/ugc/new', { state: { editProfileId: profile.id } })
   }
 
+  const oldestActiveId = profiles
+    .filter((p) => p.status === 'active')
+    .slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0]?.id
+
+  const isProfileMuted = (p) =>
+    !isMaster && p.status === 'active' && p.id !== oldestActiveId
+
+  const noviceAtLimit = !isMaster && profiles.some((p) => p.status === 'active' || p.status === 'draft')
+
+  const handleMutedClick = () => {
+    toast.error('Upgrade to Master to use additional characters.', { duration: 4000 })
+    navigate('/profile')
+  }
+
   const handleCreateNew = () => {
+    if (noviceAtLimit) {
+      toast.error('Novice users can only have one UGC character. Upgrade to Master for more.', { duration: 4500 })
+      return
+    }
     if (!canCreate) {
       toast.error('You need at least 200 credits to create a UGC character.', { duration: 4000 })
       return
@@ -234,8 +254,6 @@ export default function CreateUGCPage() {
   const draftProfiles  = profiles.filter((p) => p.status === 'draft')
 
   return (
-
-    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 {/* Header */}
       <div
@@ -335,10 +353,33 @@ export default function CreateUGCPage() {
                         onSelect={handleSelectProfile}
                         onArchive={handleArchive}
                         onEdit={handleEdit}
+                        muted={isProfileMuted(profile)}
+                        onMutedClick={handleMutedClick}
                       />
                     ))}
-                    <CreateCard onClick={handleCreateNew} index={activeProfiles.length} />
+                    {(isMaster || activeProfiles.length === 0) && (
+                      <CreateCard onClick={handleCreateNew} index={activeProfiles.length} />
+                    )}
                   </div>
+                  {!isMaster && activeProfiles.length >= 1 && (
+                    <div
+                      className="mt-4 flex items-start gap-3 p-3 rounded-2xl"
+                      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+                    >
+                      <Crown size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 2 }} />
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Novice plan supports 1 active character.{' '}
+                        <button
+                          onClick={() => navigate('/profile')}
+                          className="font-semibold underline"
+                          style={{ color: ACCENT }}
+                        >
+                          Upgrade to Master
+                        </button>{' '}
+                        to create and use more.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -398,6 +439,5 @@ export default function CreateUGCPage() {
         </div>
       </div>
     </div>
-      </MasterGate>
   )
 }
