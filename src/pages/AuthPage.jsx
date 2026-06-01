@@ -1,9 +1,9 @@
 // src/pages/AuthPage.jsx
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, Lock } from 'lucide-react'
-import { auth } from '@/lib/supabase'
+import { Mail, Lock, Gift } from 'lucide-react'
+import { auth, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Input } from '@/components/ui/Input'
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard'
@@ -207,6 +207,7 @@ const OrDivider = () => (
 
 export default function AuthPage() {
   const navigate                   = useNavigate()
+  const [searchParams]             = useSearchParams()
   const { user, onboardingNeeded } = useAuth()
 
   const [view,        setView]        = useState(VIEWS.LANDING)
@@ -217,6 +218,9 @@ export default function AuthPage() {
   const [otp,         setOtp]         = useState('')
   const [loading,     setLoading]     = useState(false)
   const [errors,      setErrors]      = useState({})
+
+  // Referral code — read from ?ref= query param, user can also edit it
+  const [referralCode, setReferralCode] = useState(() => searchParams.get('ref') || '')
 
   useEffect(() => {
     if (!user) return
@@ -233,6 +237,25 @@ export default function AuthPage() {
     clearErrors()
     setView((current) => BACK_MAP[current] ?? VIEWS.LANDING)
   }, [])
+
+  // ─────────────────────────────────────────────────────────
+  // Referral helper — called after account is confirmed
+  // ─────────────────────────────────────────────────────────
+
+  const applyReferralIfPresent = async (userId) => {
+    const code = referralCode.trim()
+    if (!code) return
+    try {
+      const { data, error } = await supabase.rpc('apply_referral', {
+        p_referral_code:    code.toUpperCase(),
+        p_referred_user_id: userId,
+      })
+      if (error) console.warn('[referral] apply_referral error:', error.message)
+      else if (data?.success === false) console.warn('[referral]', data.error)
+    } catch (e) {
+      console.warn('[referral] unexpected error:', e)
+    }
+  }
 
   // ─────────────────────────────────────────────────────────
   // Auth handlers
@@ -257,10 +280,16 @@ export default function AuthPage() {
     if (otp.length < 8) return setErrors({ otp: 'Enter the complete 8-digit code' })
 
     setLoading(true)
-    const { error } = await auth.verifyOTP(email, otp)
+    const { data, error } = await auth.verifyOTP(email, otp)
     setLoading(false)
 
     if (error) { setErrors({ otp: 'Invalid or expired code. Try again.' }); return }
+
+    // Apply referral right after OTP confirms the user
+    if (data?.user?.id) {
+      await applyReferralIfPresent(data.user.id)
+    }
+
     setView(VIEWS.SET_PASSWORD)
   }
 
@@ -409,6 +438,18 @@ export default function AuthPage() {
                     placeholder="you@example.com" icon={Mail} error={errors.email}
                     autoComplete="email" autoFocus
                   />
+
+                  {/* Referral code field */}
+                  <Input
+                    label="Referral code (optional)"
+                    type="text"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. AB3K7MNP"
+                    icon={Gift}
+                    maxLength={8}
+                  />
+
                   <PrimaryButton onClick={handleSendOTP} loading={loading}>
                     Send verification code
                   </PrimaryButton>
@@ -620,4 +661,4 @@ export default function AuthPage() {
       </div>
     </div>
   )
-      }
+}
