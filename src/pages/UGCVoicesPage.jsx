@@ -4,10 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plus, Mic, Zap, Play, Pause,
   MoreVertical, Archive, Search, X, Loader2,
-  Upload, Radio,
+  Upload, Radio, Lock, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import MasterGate from '@/components/ui/MasterGate'
 import { ugcVoices, VOICE_CREDITS } from '@/lib/ugcVoices'
 import { supabase } from '@/lib/supabase'
 import VoiceRecorder   from '@/components/ugc/VoiceRecorder'
