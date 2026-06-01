@@ -6,7 +6,8 @@ import {
   Trash2, Loader2, MoreHorizontal, Check, Lock,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { ugcVoices, ugcAudioGenerations, calcTTSCredits, ELEVENLABS_MODELS } from '@/lib/ugcVoices'
+import { ugcVoices, ugcAudioGenerations, ugcAudioChunks, calcTTSCredits, ELEVENLABS_MODELS } from '@/lib/ugcVoices'
+import { useVoiceChunker } from '@/hooks/useVoiceChunker'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -46,7 +47,7 @@ function useAudioPlayer() {
 }
 
 // ── Audio generation card ─────────────────────────────────────
-const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownload }) => {
+const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownload, isChunking }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const isPlaying   = playing === gen.id
   const isPending   = gen.status === 'pending' || gen.status === 'processing'
@@ -90,13 +91,21 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
             <motion.div
               className="h-full rounded-full"
               style={{ background: ACCENT }}
-              animate={{ width: isPlaying ? `${pct * 100}%` : isPending ? '0%' : '0%' }}
+              animate={{ width: isPlaying ? `${pct * 100}%` : '0%' }}
               transition={{ duration: 0.2 }}
             />
           </div>
           <div className="flex items-center justify-between mt-1.5">
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {isPending ? 'Generating…' : isFailed ? 'Failed' : gen.duration_seconds ? `${gen.duration_seconds}s` : ''}
+              {isPending
+                ? 'Generating…'
+                : isChunking
+                  ? 'Slicing into parts…'
+                  : isFailed
+                    ? 'Failed'
+                    : gen.duration_seconds
+                      ? `${gen.duration_seconds}s · ${gen.chunk_count ?? 0} parts`
+                      : ''}
             </span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
               ⚡ {gen.credits_charged} cr
@@ -104,58 +113,69 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
           </div>
         </div>
 
+        {/* Chunking spinner — shown while WAV slicing is in progress */}
+        {isChunking && (
+          <Loader2
+            size={14}
+            className="animate-spin flex-shrink-0"
+            style={{ color: ACCENT }}
+          />
+        )}
+
         {/* More menu */}
-        <div className="relative flex-shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-            className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-          >
-            <MoreHorizontal size={15} />
-          </button>
-          <AnimatePresence>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.92, y: -4 }}
-                  animate={{ opacity: 1, scale: 1,    y: 0  }}
-                  exit={{    opacity: 0, scale: 0.92, y: -4 }}
-                  transition={{ duration: 0.12 }}
-                  className="absolute right-0 bottom-9 z-50 rounded-xl overflow-hidden"
-                  style={{
-                    background: 'var(--bg-card)',
-                    border:     '1px solid var(--border-color)',
-                    boxShadow:  '0 8px 24px rgba(0,0,0,0.3)',
-                    minWidth:   130,
-                  }}
-                >
-                  {isCompleted && (
-                    <>
-                      <button
-                        onClick={() => { onDownload(gen); setMenuOpen(false) }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        <Download size={12} />
-                        Download
-                      </button>
-                      <div style={{ height: 1, background: 'var(--border-color)', margin: '0 8px' }} />
-                    </>
-                  )}
-                  <button
-                    onClick={() => { onDelete(gen); setMenuOpen(false) }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
-                    style={{ color: '#ef4444' }}
+        {!isChunking && (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              <MoreHorizontal size={15} />
+            </button>
+            <AnimatePresence>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.92, y: -4 }}
+                    animate={{ opacity: 1, scale: 1,    y: 0  }}
+                    exit={{    opacity: 0, scale: 0.92, y: -4 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 bottom-9 z-50 rounded-xl overflow-hidden"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border:     '1px solid var(--border-color)',
+                      boxShadow:  '0 8px 24px rgba(0,0,0,0.3)',
+                      minWidth:   130,
+                    }}
                   >
-                    <Trash2 size={12} />
-                    Delete
-                  </button>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
+                    {isCompleted && (
+                      <>
+                        <button
+                          onClick={() => { onDownload(gen); setMenuOpen(false) }}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <Download size={12} />
+                          Download
+                        </button>
+                        <div style={{ height: 1, background: 'var(--border-color)', margin: '0 8px' }} />
+                      </>
+                    )}
+                    <button
+                      onClick={() => { onDelete(gen); setMenuOpen(false) }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                      style={{ color: '#ef4444' }}
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </motion.div>
   )
@@ -180,7 +200,13 @@ export default function UGCVoiceGeneratePage() {
   const [similarity,    setSimilarity]    = useState(0.75)
   const [submitting,    setSubmitting]    = useState(false)
 
+  // Track which generation IDs are currently being chunked
+  const [chunkingIds,   setChunkingIds]   = useState(new Set())
+  // Track which IDs have already been chunked this session (avoid re-chunking on re-poll)
+  const chunkedThisSession = useRef(new Set())
+
   const { playing, progress, toggle } = useAudioPlayer()
+  const { chunkAndStore }             = useVoiceChunker()
   const pollRef = useRef(null)
   const textareaRef = useRef(null)
 
@@ -215,7 +241,43 @@ export default function UGCVoiceGeneratePage() {
     setLoading(false)
   }
 
-  // Poll for pending generations
+  // ── Chunking trigger ──────────────────────────────────────────
+  // Called whenever we receive fresh generation data (from poll or optimistic update).
+  // Only runs once per generation per session.
+  const maybeChunk = async (gen) => {
+    if (
+      gen.status !== 'completed'    ||   // not done yet
+      !gen.output_url               ||   // no audio to slice
+      (gen.chunk_count > 0)         ||   // already chunked in DB
+      chunkedThisSession.current.has(gen.id)  // already chunked this session
+    ) return
+
+    // Mark immediately to prevent concurrent triggers
+    chunkedThisSession.current.add(gen.id)
+    setChunkingIds((prev) => new Set(prev).add(gen.id))
+
+    const { chunks, error } = await chunkAndStore(gen, gen.output_url, user.id)
+
+    setChunkingIds((prev) => {
+      const next = new Set(prev)
+      next.delete(gen.id)
+      return next
+    })
+
+    if (error) {
+      console.error('[VoiceGeneratePage] chunking failed:', error)
+      // Non-fatal — audio still plays fine, chunks just won't be available in lipsync
+      toast.error('Could not slice audio into parts. The full audio is still available.', { duration: 4000 })
+      return
+    }
+
+    // Update chunk_count on the local item so the card shows "X parts"
+    setItems((prev) =>
+      prev.map((g) => g.id === gen.id ? { ...g, chunk_count: chunks.length } : g)
+    )
+  }
+
+  // ── Poll for pending generations ──────────────────────────────
   useEffect(() => {
     const hasPending = items.some((g) => g.status === 'pending' || g.status === 'processing')
     if (hasPending) {
@@ -227,6 +289,8 @@ export default function UGCVoiceGeneratePage() {
             const map = new Map(data.map((g) => [g.id, g]))
             return prev.map((g) => map.get(g.id) || g)
           })
+          // Check each fresh row — trigger chunking for any newly completed ones
+          data.forEach((g) => maybeChunk(g))
         }
       }, POLL_MS)
     } else {
@@ -276,7 +340,7 @@ export default function UGCVoiceGeneratePage() {
         .catch((e) => console.error('audio-generate invoke error', e))
 
       // 4. Optimistically add to list
-      setItems((prev) => [genRow, ...prev])
+      setItems((prev) => [{ ...genRow, chunk_count: 0 }, ...prev])
       refreshProfile()
       setScript('')
       toast.success('Generating audio…')
@@ -290,10 +354,23 @@ export default function UGCVoiceGeneratePage() {
 
   const handleDelete = async (gen) => {
     try {
+      // 1. Delete chunk storage files
+      const { data: chunks } = await ugcAudioChunks.getByGeneration(gen.id)
+      if (chunks?.length) {
+        const paths = chunks.map((c) => c.storage_path)
+        await supabase.storage.from('ugc-profiles').remove(paths)
+      }
+
+      // 2. Delete chunk DB rows (also handled by ON DELETE CASCADE, but explicit is cleaner)
+      await ugcAudioChunks.deleteByGeneration(gen.id)
+
+      // 3. Delete the generation row
       await ugcAudioGenerations.delete(gen.id)
-      // Also delete from storage
-      const path = `${user.id}/audio/${gen.id}.mp3`
-      await supabase.storage.from('generations').remove([path])
+
+      // 4. Delete the full audio file from storage
+      const fullAudioPath = `${user.id}/audio/${gen.id}.mp3`
+      await supabase.storage.from('generations').remove([fullAudioPath])
+
       setItems((prev) => prev.filter((g) => g.id !== gen.id))
       toast.success('Deleted')
     } catch {
@@ -447,8 +524,8 @@ export default function UGCVoiceGeneratePage() {
               Voice Settings
             </p>
             {[
-              { label: 'Stability',   value: stability,  onChange: setStability,  min: 0, max: 1, step: 0.05, left: 'Expressive', right: 'Stable' },
-              { label: 'Similarity',  value: similarity, onChange: setSimilarity, min: 0, max: 1, step: 0.05, left: 'Natural',    right: 'Clone-like' },
+              { label: 'Stability',  value: stability,  onChange: setStability,  min: 0, max: 1, step: 0.05, left: 'Expressive', right: 'Stable'     },
+              { label: 'Similarity', value: similarity, onChange: setSimilarity, min: 0, max: 1, step: 0.05, left: 'Natural',    right: 'Clone-like' },
             ].map((s) => (
               <div key={s.label} className="mb-4">
                 <div className="flex items-center justify-between mb-1.5">
@@ -490,6 +567,7 @@ export default function UGCVoiceGeneratePage() {
                     onToggle={toggle}
                     onDelete={handleDelete}
                     onDownload={handleDownload}
+                    isChunking={chunkingIds.has(gen.id)}
                   />
                 ))}
               </div>
