@@ -17,32 +17,40 @@ const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
 
+// ── Shared audio singleton — one playback across all hook instances ──
+const sharedAudio = { ref: null }
+
 // ── Audio preview hook ────────────────────────────────────────
 function useAudioPreview() {
-  const audioRef              = useRef(null)
   const cacheRef              = useRef({})
   const [playing, setPlaying] = useState(null)
   const [loading, setLoading] = useState(null)
 
   const play = async (voiceId, previewUrl, elevenlabsVoiceId, userId, onPreviewUrlSaved) => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
+    // Stop whatever is playing globally
+    if (sharedAudio.ref) {
+      sharedAudio.ref.pause()
+      sharedAudio.ref = null
     }
+    // Toggle off if same voice
     if (playing === voiceId) { setPlaying(null); return }
 
     const playUrl = (url) => {
       const audio = new Audio(url)
       audio.onended = () => setPlaying(null)
       audio.play()
-      audioRef.current = audio
+      sharedAudio.ref = audio
       setPlaying(voiceId)
     }
 
+    // 1. Persistent preview_url already set (library voices or previously cached clones)
     if (previewUrl) { playUrl(previewUrl); return }
     if (!elevenlabsVoiceId || !userId) return
+
+    // 2. Session cache hit
     if (cacheRef.current[voiceId]) { playUrl(cacheRef.current[voiceId]); return }
 
+    // 3. First time — fetch, play, then persist to storage + DB
     setLoading(voiceId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -72,7 +80,7 @@ function useAudioPreview() {
       const storagePath = `${userId}/voice-previews/${voiceId}.mp3`
 
       const { error: uploadError } = await supabase.storage
-        .from('ugc-profiles')            // ← correct bucket
+        .from('ugc-profiles')
         .upload(storagePath, blob, {
           contentType:  'audio/mpeg',
           upsert:       true,
@@ -80,9 +88,8 @@ function useAudioPreview() {
         })
 
       if (uploadError) {
-        // Log so you can see it in Supabase Edge Function logs
         console.error('[voice-preview] storage upload failed:', uploadError.message)
-        return  // don't attempt DB write if storage failed
+        return
       }
 
       const { data: { publicUrl } } = supabase.storage
@@ -93,13 +100,14 @@ function useAudioPreview() {
         .from('ugc_voices')
         .update({ preview_url: publicUrl, updated_at: new Date().toISOString() })
         .eq('id', voiceId)
+        .eq('user_id', userId)
 
       if (dbError) {
         console.error('[voice-preview] DB update failed:', dbError.message)
         return
       }
 
-      // Only notify parent when BOTH storage and DB succeeded
+      // Notify parent only when both storage and DB succeeded
       onPreviewUrlSaved?.(voiceId, publicUrl)
 
     } catch (err) {
@@ -111,7 +119,7 @@ function useAudioPreview() {
   }
 
   useEffect(() => () => {
-    audioRef.current?.pause()
+    // Don't touch sharedAudio on unmount — another instance may still be using it
     Object.values(cacheRef.current).forEach((url) => URL.revokeObjectURL(url))
   }, [])
 
@@ -177,8 +185,10 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, o
             {sourceLabel}
           </span>
           {muted && (
-            <span className="text-xs px-1.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1"
-                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
               <Lock size={9} /> Master only
             </span>
           )}
@@ -555,7 +565,8 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                           <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{f.name}</p>
                           <button
                             onClick={() => setCloneFiles(prev => prev.filter((_, idx) => idx !== i))}
-                            className="p-1 ml-2 flex-shrink-0" style={{ color: 'var(--text-muted)' }}
+                            className="p-1 ml-2 flex-shrink-0"
+                            style={{ color: 'var(--text-muted)' }}
                           >
                             <X size={11} />
                           </button>
@@ -649,8 +660,6 @@ export default function UGCVoicesPage() {
     toast.success(`${voice.name} removed`)
   }
 
-  // Called by the hook after a preview is persisted — update local state
-  // so next mount reads preview_url directly without any fetch
   const handlePreviewUrlSaved = (voiceId, publicUrl) => {
     setVoices((prev) =>
       prev.map((v) => v.id === voiceId ? { ...v, preview_url: publicUrl } : v)
