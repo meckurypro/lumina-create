@@ -612,8 +612,11 @@ export default function UGCVoicesPage() {
   }
 
   const handleSelect = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
+  const isMaster   = profile?.user_tier === 'master'
+  const isVoiceMuted = (v) => !isMaster && v.source !== 'elevenlabs_library'
+  const hasMutedVoices = voices.some(isVoiceMuted)
+
   return (
-    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
@@ -682,8 +685,24 @@ export default function UGCVoicesPage() {
                   onArchive={handleArchive}
                   playing={playing}
                   onPlay={play}
+                  muted={isVoiceMuted(voice)}
+                  onMutedClick={() =>
+                    toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
+                  }
                 />
               ))}
+              {hasMutedVoices && (
+                <div
+                  className="flex items-start gap-2.5 p-3 rounded-2xl mt-1"
+                  style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+                >
+                  <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Your cloned voices are muted on the Novice tier. Upgrade to Master
+                    to unlock all of your cloned voices.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -716,10 +735,10 @@ export default function UGCVoicesPage() {
             onSave={handleSave}
             userId={user?.id}
             credits={credits}
+            isMaster={isMaster}
           />
         )}
       </AnimatePresence>
     </div>
-      </MasterGate>
   )
 }
