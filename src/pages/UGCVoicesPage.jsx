@@ -4,10 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plus, Mic, Zap, Play, Pause,
   MoreVertical, Archive, Search, X, Loader2,
-  Upload, Radio,
+  Upload, Radio, Lock, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import MasterGate from '@/components/ui/MasterGate'
 import { ugcVoices, VOICE_CREDITS } from '@/lib/ugcVoices'
 import { supabase } from '@/lib/supabase'
 import VoiceRecorder   from '@/components/ugc/VoiceRecorder'
@@ -56,7 +55,7 @@ const SkeletonCard = () => (
 )
 
 // ── Saved voice card ──────────────────────────────────────────
-const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) => {
+const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const isPlaying = playing === voice.id
 
@@ -71,8 +70,8 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="flex items-center gap-3 p-4 rounded-2xl"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+      className="flex items-center gap-3 p-4 rounded-2xl relative"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: muted ? 0.55 : 1 }}
     >
       <button
         onClick={() => onPlay(voice.id, voice.preview_url)}
@@ -85,7 +84,7 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
         }
       </button>
 
-      <button onClick={() => onSelect(voice)} className="flex-1 min-w-0 text-left">
+      <button onClick={() => muted ? onMutedClick?.() : onSelect(voice)} className="flex-1 min-w-0 text-left">
         <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
           {voice.name}
         </p>
@@ -96,6 +95,12 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
           >
             {sourceLabel}
           </span>
+          {muted && (
+            <span className="text-xs px-1.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              <Lock size={9} /> Master only
+            </span>
+          )}
           {voice.generation_count > 0 && (
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {voice.generation_count} gen{voice.generation_count !== 1 ? 's' : ''}
@@ -147,7 +152,7 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
 }
 
 // ── Add voice sheet ───────────────────────────────────────────
-const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
+const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   const [tab,           setTab]           = useState('browse')  // browse | clone
   const [cloneMode,     setCloneMode]     = useState('upload')  // upload | record
   const [query,         setQuery]         = useState('')
@@ -320,16 +325,23 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
           <div className="flex gap-1 mx-4 p-1 rounded-xl mb-3 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
             {[
               { value: 'browse', label: 'Voice Library' },
-              { value: 'clone',  label: 'Clone Voice'   },
+              { value: 'clone',  label: isMaster ? 'Clone Voice' : 'Clone (Master)' },
             ].map((t) => (
               <button
                 key={t.value}
-                onClick={() => setTab(t.value)}
+                onClick={() => {
+                  if (t.value === 'clone' && !isMaster) {
+                    toast.error('Voice cloning is available for Master users only')
+                    return
+                  }
+                  setTab(t.value)
+                }}
                 className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
                 style={{
                   background: tab === t.value ? 'var(--bg-card)' : 'transparent',
                   color:      tab === t.value ? 'var(--text-primary)' : 'var(--text-muted)',
                   boxShadow:  tab === t.value ? 'var(--shadow)' : 'none',
+                  opacity:    t.value === 'clone' && !isMaster ? 0.6 : 1,
                 }}
               >
                 {t.label}
@@ -600,8 +612,11 @@ export default function UGCVoicesPage() {
   }
 
   const handleSelect = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
+  const isMaster   = profile?.user_tier === 'master'
+  const isVoiceMuted = (v) => !isMaster && v.source !== 'elevenlabs_library'
+  const hasMutedVoices = voices.some(isVoiceMuted)
+
   return (
-    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
@@ -670,8 +685,24 @@ export default function UGCVoicesPage() {
                   onArchive={handleArchive}
                   playing={playing}
                   onPlay={play}
+                  muted={isVoiceMuted(voice)}
+                  onMutedClick={() =>
+                    toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
+                  }
                 />
               ))}
+              {hasMutedVoices && (
+                <div
+                  className="flex items-start gap-2.5 p-3 rounded-2xl mt-1"
+                  style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+                >
+                  <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Your cloned voices are muted on the Novice tier. Upgrade to Master
+                    to unlock all of your cloned voices.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -704,10 +735,10 @@ export default function UGCVoicesPage() {
             onSave={handleSave}
             userId={user?.id}
             credits={credits}
+            isMaster={isMaster}
           />
         )}
       </AnimatePresence>
     </div>
-      </MasterGate>
   )
 }

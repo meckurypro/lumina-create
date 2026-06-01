@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Mic, Play, Pause, Download,
-  Trash2, Loader2, MoreHorizontal, Check,
+  Trash2, Loader2, MoreHorizontal, Check, Lock,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcVoices, ugcAudioGenerations, calcTTSCredits, ELEVENLABS_MODELS } from '@/lib/ugcVoices'
@@ -165,7 +165,8 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
 export default function UGCVoiceGeneratePage() {
   const { voiceId }                                   = useParams()
   const navigate                                      = useNavigate()
-  const { user, credits, refreshProfile }             = useAuth()
+  const { user, credits, refreshProfile, profile: authProfile } = useAuth()
+  const isMaster = authProfile?.user_tier === 'master'
 
   const [voice,         setVoice]         = useState(null)
   const [voiceLoading,  setVoiceLoading]  = useState(true)
@@ -185,7 +186,8 @@ export default function UGCVoiceGeneratePage() {
 
   const creditCost = calcTTSCredits(script)
   const canAfford  = credits >= creditCost
-  const canGenerate = script.trim().length > 0 && canAfford && !submitting
+  const isVoiceMuted = !!voice && !isMaster && voice.source !== 'elevenlabs_library'
+  const canGenerate = script.trim().length > 0 && canAfford && !submitting && !isVoiceMuted
 
   useEffect(() => {
     loadVoice()
@@ -234,6 +236,7 @@ export default function UGCVoiceGeneratePage() {
   }, [items, user, voiceId])
 
   const handleGenerate = async () => {
+    if (isVoiceMuted) return toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
     if (!script.trim()) return toast.error('Write something to generate')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
@@ -369,6 +372,19 @@ export default function UGCVoiceGeneratePage() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
+
+          {isVoiceMuted && (
+            <div
+              className="flex items-start gap-2.5 p-3 rounded-2xl"
+              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                This cloned voice is muted on the Novice tier. Upgrade to Master to
+                generate audio with it. Voices from the ElevenLabs library remain available.
+              </p>
+            </div>
+          )}
 
           {/* Script input */}
           <div>
