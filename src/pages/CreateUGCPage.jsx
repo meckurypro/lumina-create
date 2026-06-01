@@ -2,9 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic } from 'lucide-react'
+import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic, Lock, Crown } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import MasterGate from '@/components/ui/MasterGate'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
 
@@ -27,7 +26,7 @@ const SkeletonCard = () => (
 )
 
 // ── Profile card ──────────────────────────────────────────────
-const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
+const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -39,12 +38,17 @@ const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <button
-        onClick={() => onSelect(profile)}
+        onClick={() => (muted ? onMutedClick?.() : onSelect(profile))}
         className="w-full relative overflow-hidden flex-shrink-0"
         style={{ aspectRatio: '3/4' }}
       >
         {profile.thumbnail_url ? (
-          <img src={profile.thumbnail_url} alt={profile.name} className="w-full h-full object-cover" />
+          <img
+            src={profile.thumbnail_url}
+            alt={profile.name}
+            className="w-full h-full object-cover"
+            style={{ filter: muted ? 'grayscale(1) brightness(0.55)' : 'none' }}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center" style={{ background: ACCENT_SUB }}>
             <User size={32} style={{ color: ACCENT, opacity: 0.5 }} />
@@ -54,6 +58,15 @@ const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
           className="absolute inset-0"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)' }}
         />
+        {muted && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+               style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <Lock size={20} style={{ color: '#fff' }} />
+            <span className="text-xs font-bold flex items-center gap-1" style={{ color: '#fff' }}>
+              <Crown size={10} /> Master only
+            </span>
+          </div>
+        )}
         {profile.generation_count > 0 && (
           <div
             className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -171,7 +184,8 @@ export default function CreateUGCPage() {
   const [archiving, setArchiving] = useState(null)
   const [ugcTab,    setUgcTab]    = useState('characters')
 
-  const canCreate = credits >= 200
+  const isMaster   = profile?.user_tier === 'master'
+  const canCreate  = credits >= 200
 
   useEffect(() => {
     if (!user) return
@@ -209,7 +223,26 @@ export default function CreateUGCPage() {
     navigate('/create/ugc/new', { state: { editProfileId: profile.id } })
   }
 
+  const oldestActiveId = profiles
+    .filter((p) => p.status === 'active')
+    .slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0]?.id
+
+  const isProfileMuted = (p) =>
+    !isMaster && p.status === 'active' && p.id !== oldestActiveId
+
+  const noviceAtLimit = !isMaster && profiles.some((p) => p.status === 'active' || p.status === 'draft')
+
+  const handleMutedClick = () => {
+    toast.error('Upgrade to Master to use additional characters.', { duration: 4000 })
+    navigate('/profile')
+  }
+
   const handleCreateNew = () => {
+    if (noviceAtLimit) {
+      toast.error('Novice users can only have one UGC character. Upgrade to Master for more.', { duration: 4500 })
+      return
+    }
     if (!canCreate) {
       toast.error('You need at least 200 credits to create a UGC character.', { duration: 4000 })
       return
@@ -221,8 +254,6 @@ export default function CreateUGCPage() {
   const draftProfiles  = profiles.filter((p) => p.status === 'draft')
 
   return (
-
-    <MasterGate isMaster={profile?.user_tier === 'master'} title="This feature" accentVar="--tool-ugc">
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 {/* Header */}
       <div
@@ -322,10 +353,33 @@ export default function CreateUGCPage() {
                         onSelect={handleSelectProfile}
                         onArchive={handleArchive}
                         onEdit={handleEdit}
+                        muted={isProfileMuted(profile)}
+                        onMutedClick={handleMutedClick}
                       />
                     ))}
-                    <CreateCard onClick={handleCreateNew} index={activeProfiles.length} />
+                    {(isMaster || activeProfiles.length === 0) && (
+                      <CreateCard onClick={handleCreateNew} index={activeProfiles.length} />
+                    )}
                   </div>
+                  {!isMaster && activeProfiles.length >= 1 && (
+                    <div
+                      className="mt-4 flex items-start gap-3 p-3 rounded-2xl"
+                      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+                    >
+                      <Crown size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 2 }} />
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Novice plan supports 1 active character.{' '}
+                        <button
+                          onClick={() => navigate('/profile')}
+                          className="font-semibold underline"
+                          style={{ color: ACCENT }}
+                        >
+                          Upgrade to Master
+                        </button>{' '}
+                        to create and use more.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -385,6 +439,5 @@ export default function CreateUGCPage() {
         </div>
       </div>
     </div>
-      </MasterGate>
   )
 }

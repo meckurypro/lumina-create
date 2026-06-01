@@ -351,8 +351,7 @@ export default function CreatePage() {
                   {/* Remaining tools — full width each */}
                   {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => {
                     const isCopyMotion  = id === 'copy_motion'
-                    const isUGC         = id === 'create_ugc'
-                    const locked        = isUGC && isNovice
+                    const locked        = false
                     const weeklyBadge   = isCopyMotion && isNovice && weeklyUsed !== null
                       ? `${weeklyUsed}/${weeklyLimit} this week`
                       : null
