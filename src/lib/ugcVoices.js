@@ -13,7 +13,6 @@ export function calcTTSCredits(text) {
 }
 
 // ─── Supabase CRUD ───────────────────────────────────────────
-
 export const ugcVoices = {
   getAll: (userId) =>
     supabase
@@ -84,21 +83,56 @@ export const ugcAudioGenerations = {
       .eq('id', id),
 }
 
+// ─── Audio chunks CRUD ───────────────────────────────────────
+// Chunks are 5-second slices of a completed ugc_audio_generation.
+// Storage path pattern: {userId}/audio/{generationId}/chunk-{index}.wav
+// in the ugc-profiles bucket.
+export const ugcAudioChunks = {
+  // Fetch all chunks for a generation, ordered by index
+  getByGeneration: (generationId) =>
+    supabase
+      .from('ugc_audio_chunks')
+      .select('*')
+      .eq('generation_id', generationId)
+      .order('chunk_index', { ascending: true }),
+
+  // Insert a single chunk row
+  create: (payload) =>
+    supabase
+      .from('ugc_audio_chunks')
+      .insert(payload)
+      .select()
+      .single(),
+
+  // Batch insert all chunks for a generation in one round-trip
+  createMany: (chunks) =>
+    supabase
+      .from('ugc_audio_chunks')
+      .insert(chunks)
+      .select(),
+
+  // Delete all chunks for a generation (called on generation delete)
+  deleteByGeneration: (generationId) =>
+    supabase
+      .from('ugc_audio_chunks')
+      .delete()
+      .eq('generation_id', generationId),
+}
+
 // ─── ElevenLabs API calls (called from edge function only) ───
 // These are kept here as reference for the edge function.
 // Never call ElevenLabs directly from the client.
-
 export const ELEVENLABS_MODELS = [
   {
     id:       'eleven_multilingual_v2',
     label:    'Multilingual v2',
     sublabel: 'Best quality · 29+ languages',
-    cost:     1,   // credits per 100 chars
+    cost:     1,
   },
   {
     id:       'eleven_flash_v2_5',
     label:    'Flash v2.5',
     sublabel: 'Fast · Lower latency',
-    cost:     0.5, // credits per 100 chars
+    cost:     0.5,
   },
 ]
