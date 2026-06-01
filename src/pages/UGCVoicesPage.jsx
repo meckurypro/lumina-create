@@ -325,16 +325,23 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
           <div className="flex gap-1 mx-4 p-1 rounded-xl mb-3 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
             {[
               { value: 'browse', label: 'Voice Library' },
-              { value: 'clone',  label: 'Clone Voice'   },
+              { value: 'clone',  label: isMaster ? 'Clone Voice' : 'Clone (Master)' },
             ].map((t) => (
               <button
                 key={t.value}
-                onClick={() => setTab(t.value)}
+                onClick={() => {
+                  if (t.value === 'clone' && !isMaster) {
+                    toast.error('Voice cloning is available for Master users only')
+                    return
+                  }
+                  setTab(t.value)
+                }}
                 className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
                 style={{
                   background: tab === t.value ? 'var(--bg-card)' : 'transparent',
                   color:      tab === t.value ? 'var(--text-primary)' : 'var(--text-muted)',
                   boxShadow:  tab === t.value ? 'var(--shadow)' : 'none',
+                  opacity:    t.value === 'clone' && !isMaster ? 0.6 : 1,
                 }}
               >
                 {t.label}
