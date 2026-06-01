@@ -565,35 +565,149 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   )
 }
 
-// ─── Single audio slot pill ───────────────────────────────────────────────────
-const AudioSlotPill = ({ slotIndex, audioFile, onRemove }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-    transition={{ duration: 0.15 }}
-    className="flex items-center gap-3 p-3 rounded-2xl"
-    style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
-    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ACCENT_SUB }}>
-      <Mic size={15} style={{ color: ACCENT }} />
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-        {audioFile.fromChunk ? audioFile.chunkLabel : audioFile.name}
-      </p>
-      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-        {audioFile.fromChunk
-          ? `Part ${slotIndex + 1} · chunk`
-          : audioFile.fromGeneration
-            ? `Part ${slotIndex + 1} · imported`
-            : `Part ${slotIndex + 1} · uploaded`}
-        {audioFile.duration_seconds != null ? ` · ${audioFile.duration_seconds.toFixed(1)}s` : ''}
-      </p>
-    </div>
-    <button onClick={onRemove} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-      style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
-      <X size={13} />
-    </button>
-  </motion.div>
-)
+// ─── Chained audio player ─────────────────────────────────────────────────────
+// Renders all filled slots as a single playable chain with individual remove buttons.
+function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
+  const [playing,  setPlaying]  = useState(false)
+  const [progress, setProgress] = useState(0)   // 0–1
+  const audioRef  = useRef(null)
+  const blobUrlRef = useRef(null)
+  const rafRef     = useRef(null)
+
+  const filledSlots = audioSlots.filter(Boolean)
+  const totalDur    = filledSlots.reduce((a, s) => a + (s.duration_seconds ?? 0), 0)
+  const fmtTime     = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+
+  // Build a chained blob URL from all filled slots (fetch remote, concat locally)
+  const buildChain = useCallback(async () => {
+    const blobs = await Promise.all(
+      filledSlots.map(async (slot) => {
+        if (slot.file) return slot.file
+        const res = await fetch(slot.url)
+        if (!res.ok) throw new Error('fetch failed')
+        return res.blob()
+      })
+    )
+    if (blobs.length === 1) return URL.createObjectURL(blobs[0])
+    const combined = await concatenateAudioBlobs(blobs)
+    return URL.createObjectURL(combined)
+  }, [filledSlots.map((s) => s.url).join('|')])  // eslint-disable-line
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current)  cancelAnimationFrame(rafRef.current)
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    }
+  }, [])
+
+  // Stop playback if slots change
+  useEffect(() => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    setPlaying(false)
+    setProgress(0)
+  }, [filledSlots.length])
+
+  const tickProgress = () => {
+    const a = audioRef.current
+    if (!a || a.paused) return
+    setProgress(a.duration ? a.currentTime / a.duration : 0)
+    rafRef.current = requestAnimationFrame(tickProgress)
+  }
+
+  const handlePlayPause = async () => {
+    if (playing) {
+      audioRef.current?.pause()
+      setPlaying(false)
+      return
+    }
+    try {
+      if (!blobUrlRef.current) blobUrlRef.current = await buildChain()
+      if (!audioRef.current) {
+        const a = new Audio(blobUrlRef.current)
+        a.onended = () => { setPlaying(false); setProgress(0) }
+        audioRef.current = a
+      } else {
+        audioRef.current.src = blobUrlRef.current
+      }
+      await audioRef.current.play()
+      setPlaying(true)
+      rafRef.current = requestAnimationFrame(tickProgress)
+    } catch (err) {
+      toast.error('Could not play audio')
+      console.error(err)
+    }
+  }
+
+  const handleSeek = (e) => {
+    const a = audioRef.current
+    if (!a || !a.duration) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    a.currentTime = ratio * a.duration
+    setProgress(ratio)
+  }
+
+  if (filledSlots.length === 0) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className="flex flex-col gap-2 p-3 rounded-2xl"
+      style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+
+      {/* Play bar */}
+      <div className="flex items-center gap-3">
+        <button onClick={handlePlayPause}
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+          style={{ background: ACCENT }}>
+          {playing
+            ? <Pause size={14} style={{ color: '#fff' }} fill="currentColor" />
+            : <Play  size={14} style={{ color: '#fff' }} fill="currentColor" />}
+        </button>
+
+        {/* Scrubber */}
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          <div className="relative h-1.5 rounded-full cursor-pointer" style={{ background: 'var(--bg-card)' }} onClick={handleSeek}>
+            <div className="absolute inset-y-0 left-0 rounded-full transition-all" style={{ width: `${progress * 100}%`, background: ACCENT }} />
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {filledSlots.length} part{filledSlots.length > 1 ? 's' : ''} chained
+            </span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTime(totalDur)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Individual parts list */}
+      <div className="flex flex-col gap-1">
+        {audioSlots.map((slot, i) => slot && (
+          <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-xl"
+            style={{ background: 'var(--bg-card)' }}>
+            <span className="text-xs font-bold flex-shrink-0 w-5 text-center"
+              style={{ color: ACCENT }}>{i + 1}</span>
+            <p className="text-xs flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+              {slot.fromChunk ? slot.chunkLabel : slot.name}
+            </p>
+            <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+              {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
+            </span>
+            <button onClick={() => onSlotClear(i)}
+              className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  )
+}
 
 // ─── Multi-slot audio section ─────────────────────────────────────────────────
 // Budget logic:
@@ -650,13 +764,12 @@ function MultiSlotAudio({
         </div>
       )}
 
-      {audioMode === 'upload' && (
+{audioMode === 'upload' && (
         <div className="flex flex-col gap-2">
-          <AnimatePresence>
-            {audioSlots.map((slot, i) => slot && (
-              <AudioSlotPill key={i} slotIndex={i} audioFile={slot} onRemove={() => onSlotClear(i)} />
-            ))}
-          </AnimatePresence>
+          {/* Chained player — shown when at least one slot is filled */}
+          {filledCount > 0 && (
+            <ChainedAudioPlayer audioSlots={audioSlots} onSlotClear={onSlotClear} />
+          )}
 
           {/* Show picker only while there is remaining budget */}
           {!isFull && (
@@ -689,7 +802,6 @@ function MultiSlotAudio({
           )}
         </div>
       )}
-
       {audioMode === 'text' && (
         <textarea value={script} onChange={(e) => onScriptChange(e.target.value)}
           placeholder="Type the script this character will speak…" rows={3}
