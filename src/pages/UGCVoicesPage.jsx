@@ -19,25 +19,65 @@ const ACCENT_BDR = 'var(--tool-ugc-border)'
 
 // ── Audio preview hook ────────────────────────────────────────
 function useAudioPreview() {
-  const audioRef            = useRef(null)
+  const audioRef              = useRef(null)
   const [playing, setPlaying] = useState(null)
+  const [loading, setLoading] = useState(null) // voiceId being fetched
 
-  const play = (voiceId, previewUrl) => {
-    if (!previewUrl) return
+  const play = async (voiceId, previewUrl, elevenlabsVoiceId) => {
+    // Stop whatever is currently playing
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
     }
+    // Toggle off if same voice
     if (playing === voiceId) { setPlaying(null); return }
-    const audio = new Audio(previewUrl)
-    audio.onended = () => setPlaying(null)
-    audio.play()
-    audioRef.current = audio
-    setPlaying(voiceId)
+
+    // Library voices have a direct previewUrl — play immediately
+    if (previewUrl) {
+      const audio = new Audio(previewUrl)
+      audio.onended = () => setPlaying(null)
+      audio.play()
+      audioRef.current = audio
+      setPlaying(voiceId)
+      return
+    }
+
+    // Cloned voices — generate a live preview via edge function (free)
+    if (!elevenlabsVoiceId) return
+    setLoading(voiceId)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-proxy`,
+        {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            action:               'preview_voice',
+            elevenlabs_voice_id:  elevenlabsVoiceId,
+          }),
+        }
+      )
+      if (!res.ok) throw new Error('Preview failed')
+      const blob  = await res.blob()
+      const url   = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.onended = () => { setPlaying(null); URL.revokeObjectURL(url) }
+      audio.play()
+      audioRef.current = audio
+      setPlaying(voiceId)
+    } catch {
+      toast.error('Could not load voice preview')
+    } finally {
+      setLoading(null)
+    }
   }
 
   useEffect(() => () => audioRef.current?.pause(), [])
-  return { playing, play }
+  return { playing, loading, play }
 }
 
 // ── Skeleton card ─────────────────────────────────────────────
@@ -55,9 +95,10 @@ const SkeletonCard = () => (
 )
 
 // ── Saved voice card ──────────────────────────────────────────
-const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, muted, onMutedClick }) => {
+const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, onPlay, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
-  const isPlaying = playing === voice.id
+  const isPlaying  = playing === voice.id
+  const isLoading  = loading === voice.id
 
   const sourceLabel = {
     elevenlabs_library: 'Library',
@@ -74,13 +115,15 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, mu
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: muted ? 0.55 : 1 }}
     >
       <button
-        onClick={() => onPlay(voice.id, voice.preview_url)}
+        onClick={() => onPlay(voice.id, voice.preview_url, voice.elevenlabs_voice_id)}
         className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
         style={{ background: isPlaying ? ACCENT : ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
       >
-        {isPlaying
-          ? <Pause size={18} style={{ color: '#ffffff' }} fill="currentColor" />
-          : <Play  size={18} style={{ color: ACCENT   }} fill="currentColor" />
+        {isLoading
+          ? <Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" />
+          : isPlaying
+            ? <Pause size={18} style={{ color: '#ffffff' }} fill="currentColor" />
+            : <Play  size={18} style={{ color: ACCENT   }} fill="currentColor" />
         }
       </button>
 
@@ -153,24 +196,24 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, mu
 
 // ── Add voice sheet ───────────────────────────────────────────
 const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
-  const [tab,           setTab]           = useState('browse')  // browse | clone
-  const [cloneMode,     setCloneMode]     = useState('upload')  // upload | record
+  const [tab,           setTab]           = useState('browse')
+  const [cloneMode,     setCloneMode]     = useState('upload')
   const [query,         setQuery]         = useState('')
   const [results,       setResults]       = useState([])
   const [searching,     setSearching]     = useState(false)
   const [saving,        setSaving]        = useState(null)
-  const [cloneFiles,    setCloneFiles]    = useState([])        // for upload mode
-  const [recordedFile,  setRecordedFile]  = useState(null)      // for record mode
+  const [cloneFiles,    setCloneFiles]    = useState([])
+  const [recordedFile,  setRecordedFile]  = useState(null)
   const [cloneName,     setCloneName]     = useState('')
   const [cloning,       setCloning]       = useState(false)
   const [showScriptGen, setShowScriptGen] = useState(false)
   const [script,        setScript]        = useState(null)
-  const { playing, play } = useAudioPreview()
+  const { playing, loading, play } = useAudioPreview()
 
-  const canClone      = credits >= VOICE_CREDITS.CLONE
-  const activeFile    = cloneMode === 'record' ? recordedFile : cloneFiles[0]
-  const hasAudio      = cloneMode === 'record' ? !!recordedFile : cloneFiles.length > 0
-  const canSubmit     = canClone && cloneName.trim() && hasAudio && !cloning
+  const canClone   = credits >= VOICE_CREDITS.CLONE
+  const activeFile = cloneMode === 'record' ? recordedFile : cloneFiles[0]
+  const hasAudio   = cloneMode === 'record' ? !!recordedFile : cloneFiles.length > 0
+  const canSubmit  = canClone && cloneName.trim() && hasAudio && !cloning
 
   // ── Browse voices ──────────────────────────────────────────
   const searchVoices = async (q) => {
@@ -231,19 +274,16 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
     }
   }
 
-  // ── Clone voice (upload or record) ─────────────────────────
+  // ── Clone voice ────────────────────────────────────────────
   const handleClone = async () => {
     if (!canSubmit) return
     setCloning(true)
     try {
-      const filesToSend = cloneMode === 'record'
-        ? [recordedFile]
-        : cloneFiles
+      const filesToSend = cloneMode === 'record' ? [recordedFile] : cloneFiles
 
       const encodedFiles = await Promise.all(
         filesToSend.map(async (f) => {
-          const buf = await f.arrayBuffer()
-          // Safe base64 encoding for large buffers
+          const buf    = await f.arrayBuffer()
           const bytes  = new Uint8Array(buf)
           let   binary = ''
           const chunk  = 8192
@@ -259,13 +299,12 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
       })
       if (error || !data?.voice_id) throw new Error(error?.message || 'Clone failed')
 
-      // Deduct credits
       const { data: deduct } = await supabase.rpc('deduct_credits', {
-  p_user_id:      userId,
-  p_amount:       VOICE_CREDITS.CLONE,
-  p_generation_id: null,
-  p_description:  'Voice clone — ' + cloneName.trim(),
-})
+        p_user_id:       userId,
+        p_amount:        VOICE_CREDITS.CLONE,
+        p_generation_id: null,
+        p_description:   'Voice clone — ' + cloneName.trim(),
+      })
       if (!deduct?.success) throw new Error('Credit deduction failed')
 
       await onSave({
@@ -321,7 +360,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
             </button>
           </div>
 
-          {/* Main tabs: Browse | Clone */}
+          {/* Main tabs */}
           <div className="flex gap-1 mx-4 p-1 rounded-xl mb-3 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
             {[
               { value: 'browse', label: 'Voice Library' },
@@ -385,13 +424,15 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                         style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
                       >
                         <button
-                          onClick={() => play(voice.voice_id, voice.preview_url)}
+                          onClick={() => play(voice.voice_id, voice.preview_url, null)}
                           className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                           style={{ background: playing === voice.voice_id ? ACCENT : ACCENT_SUB }}
                         >
-                          {playing === voice.voice_id
-                            ? <Pause size={14} style={{ color: '#fff'  }} fill="currentColor" />
-                            : <Play  size={14} style={{ color: ACCENT }} fill="currentColor" />
+                          {loading === voice.voice_id
+                            ? <Loader2 size={14} style={{ color: ACCENT }} className="animate-spin" />
+                            : playing === voice.voice_id
+                              ? <Pause size={14} style={{ color: '#fff'  }} fill="currentColor" />
+                              : <Play  size={14} style={{ color: ACCENT }} fill="currentColor" />
                           }
                         </button>
                         <div className="flex-1 min-w-0">
@@ -425,8 +466,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
           {/* ── Clone tab ──────────────────────────────────── */}
           {tab === 'clone' && (
             <div className="flex-1 overflow-y-auto px-4 pb-6">
-
-              {/* Credit notice */}
               <div
                 className="flex items-start gap-3 p-3 rounded-xl mb-4"
                 style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
@@ -438,7 +477,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 </p>
               </div>
 
-              {/* Voice name */}
               <div className="mb-4">
                 <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
                   Voice Name
@@ -456,7 +494,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 />
               </div>
 
-              {/* Upload / Record sub-tabs */}
               <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'var(--bg-elevated)' }}>
                 {[
                   { value: 'upload', label: 'Upload Audio', icon: Upload },
@@ -478,7 +515,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 ))}
               </div>
 
-              {/* ── Upload mode ── */}
               {cloneMode === 'upload' && (
                 <div className="mb-5">
                   <label
@@ -519,7 +555,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 </div>
               )}
 
-              {/* ── Record mode ── */}
               {cloneMode === 'record' && (
                 <div className="mb-5">
                   <VoiceRecorder
@@ -535,7 +570,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 </div>
               )}
 
-              {/* Clone button */}
               <button
                 onClick={handleClone}
                 disabled={!canSubmit}
@@ -561,7 +595,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
         </motion.div>
       </motion.div>
 
-      {/* Script generator — renders above the sheet (z-[60]) */}
       <AnimatePresence>
         {showScriptGen && (
           <ScriptGenerator
@@ -584,7 +617,7 @@ export default function UGCVoicesPage() {
   const [voices,  setVoices]  = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
-  const { playing, play }     = useAudioPreview()
+  const { playing, loading: previewLoading, play } = useAudioPreview()
 
   useEffect(() => {
     if (!user) return
@@ -611,10 +644,10 @@ export default function UGCVoicesPage() {
     toast.success(`${voice.name} removed`)
   }
 
-  const handleSelect = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
-  const isMaster   = profile?.user_tier === 'master'
-  const isVoiceMuted = (v) => !isMaster && v.source !== 'elevenlabs_library'
-  const hasMutedVoices = voices.some(isVoiceMuted)
+  const handleSelect     = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
+  const isMaster         = profile?.user_tier === 'master'
+  const isVoiceMuted     = (v) => !isMaster && v.source !== 'elevenlabs_library'
+  const hasMutedVoices   = voices.some(isVoiceMuted)
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -684,6 +717,7 @@ export default function UGCVoicesPage() {
                   onSelect={handleSelect}
                   onArchive={handleArchive}
                   playing={playing}
+                  loading={previewLoading}
                   onPlay={play}
                   muted={isVoiceMuted(voice)}
                   onMutedClick={() =>
