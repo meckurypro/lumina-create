@@ -20,20 +20,17 @@ const ACCENT_BDR = 'var(--tool-ugc-border)'
 // ── Audio preview hook ────────────────────────────────────────
 function useAudioPreview() {
   const audioRef              = useRef(null)
-  const cacheRef              = useRef({})       // voiceId → blob URL (session cache)
+  const cacheRef              = useRef({})
   const [playing, setPlaying] = useState(null)
-  const [loading, setLoading] = useState(null)   // voiceId being fetched
+  const [loading, setLoading] = useState(null)
 
   const play = async (voiceId, previewUrl, elevenlabsVoiceId, userId, onPreviewUrlSaved) => {
-    // Stop whatever is currently playing
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
     }
-    // Toggle off if same voice
     if (playing === voiceId) { setPlaying(null); return }
 
-    // Helper: play a URL directly
     const playUrl = (url) => {
       const audio = new Audio(url)
       audio.onended = () => setPlaying(null)
@@ -42,21 +39,10 @@ function useAudioPreview() {
       setPlaying(voiceId)
     }
 
-    // 1. Already have a persistent preview_url (library voices or previously generated)
-    if (previewUrl) {
-      playUrl(previewUrl)
-      return
-    }
-
+    if (previewUrl) { playUrl(previewUrl); return }
     if (!elevenlabsVoiceId || !userId) return
+    if (cacheRef.current[voiceId]) { playUrl(cacheRef.current[voiceId]); return }
 
-    // 2. Session cache hit — already fetched this session
-    if (cacheRef.current[voiceId]) {
-      playUrl(cacheRef.current[voiceId])
-      return
-    }
-
-    // 3. First time — fetch from proxy, play, then persist to storage + DB
     setLoading(voiceId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -75,42 +61,49 @@ function useAudioPreview() {
           }),
         }
       )
-      if (!res.ok) throw new Error('Preview failed')
+      if (!res.ok) throw new Error(`Preview fetch failed: ${res.status}`)
 
-      const blob = await res.blob()
+      const blob    = await res.blob()
       const blobUrl = URL.createObjectURL(blob)
-
-      // Cache in session memory
       cacheRef.current[voiceId] = blobUrl
-
-      // Play immediately
       playUrl(blobUrl)
 
-      // Persist to Supabase storage in the background
+      // ── Persist to storage in background ──────────────────────
       const storagePath = `${userId}/voice-previews/${voiceId}.mp3`
+
       const { error: uploadError } = await supabase.storage
-        .from('generations')
+        .from('ugc-profiles')            // ← correct bucket
         .upload(storagePath, blob, {
           contentType:  'audio/mpeg',
           upsert:       true,
-          cacheControl: '31536000', // 1 year
+          cacheControl: '31536000',
         })
 
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage
-          .from('generations')
-          .getPublicUrl(storagePath)
-
-        // Save URL back to ugc_voices row
-        await supabase
-          .from('ugc_voices')
-          .update({ preview_url: publicUrl, updated_at: new Date().toISOString() })
-          .eq('id', voiceId)
-
-        // Notify parent to update local state so next mount uses the URL directly
-        onPreviewUrlSaved?.(voiceId, publicUrl)
+      if (uploadError) {
+        // Log so you can see it in Supabase Edge Function logs
+        console.error('[voice-preview] storage upload failed:', uploadError.message)
+        return  // don't attempt DB write if storage failed
       }
-    } catch {
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('ugc-profiles')
+        .getPublicUrl(storagePath)
+
+      const { error: dbError } = await supabase
+        .from('ugc_voices')
+        .update({ preview_url: publicUrl, updated_at: new Date().toISOString() })
+        .eq('id', voiceId)
+
+      if (dbError) {
+        console.error('[voice-preview] DB update failed:', dbError.message)
+        return
+      }
+
+      // Only notify parent when BOTH storage and DB succeeded
+      onPreviewUrlSaved?.(voiceId, publicUrl)
+
+    } catch (err) {
+      console.error('[voice-preview] error:', err.message)
       toast.error('Could not load voice preview')
     } finally {
       setLoading(null)
