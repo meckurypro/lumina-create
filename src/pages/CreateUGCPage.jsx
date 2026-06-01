@@ -26,7 +26,7 @@ const SkeletonCard = () => (
 )
 
 // ── Profile card ──────────────────────────────────────────────
-const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
+const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -38,12 +38,17 @@ const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <button
-        onClick={() => onSelect(profile)}
+        onClick={() => (muted ? onMutedClick?.() : onSelect(profile))}
         className="w-full relative overflow-hidden flex-shrink-0"
         style={{ aspectRatio: '3/4' }}
       >
         {profile.thumbnail_url ? (
-          <img src={profile.thumbnail_url} alt={profile.name} className="w-full h-full object-cover" />
+          <img
+            src={profile.thumbnail_url}
+            alt={profile.name}
+            className="w-full h-full object-cover"
+            style={{ filter: muted ? 'grayscale(1) brightness(0.55)' : 'none' }}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center" style={{ background: ACCENT_SUB }}>
             <User size={32} style={{ color: ACCENT, opacity: 0.5 }} />
@@ -53,6 +58,15 @@ const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit }) => {
           className="absolute inset-0"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)' }}
         />
+        {muted && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+               style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <Lock size={20} style={{ color: '#fff' }} />
+            <span className="text-xs font-bold flex items-center gap-1" style={{ color: '#fff' }}>
+              <Crown size={10} /> Master only
+            </span>
+          </div>
+        )}
         {profile.generation_count > 0 && (
           <div
             className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
