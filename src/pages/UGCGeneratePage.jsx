@@ -1,10 +1,11 @@
 // src/pages/UGCGeneratePage.jsx
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, User, Sparkles,
   ImageIcon, VideoIcon, ChevronDown, Info, Images,
+  X, ImagePlus, Maximize2, Plus,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
@@ -20,6 +21,43 @@ const ALL_ASPECT_RATIOS = [
   { label: '16:9', value: '16:9' },
   { label: '1:1',  value: '1:1'  },
 ]
+
+const MAX_REF_IMAGES = 4
+
+// ─── image utilities ──────────────────────────────────────────────────────────
+
+function tagForSlot(idx) {
+  return `[img${idx + 1}]`
+}
+
+async function compressImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const MAX_PX = 1568
+      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob((blob) => {
+        const compressed = new File(
+          [blob],
+          file.name.replace(/\.\w+$/, '.jpg'),
+          { type: 'image/jpeg' }
+        )
+        resolve({
+          file: compressed,
+          url:  URL.createObjectURL(blob),
+          w:    canvas.width,
+          h:    canvas.height,
+        })
+      }, 'image/jpeg', 0.92)
+    }
+    img.src = url
+  })
+}
 
 // ── Setting chips ──────────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
@@ -128,11 +166,113 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
+// ── Multi-image grid (Master only, silent) ────────────────────
+const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
+  const slots       = Array.from({ length: maxImages }, (_, i) => images[i] || null)
+  const filledCount = images.filter(Boolean).length
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Add up to {maxImages} reference images. Tap{' '}
+        {Array.from({ length: Math.min(maxImages, 4) }, (_, i) => (
+          <span key={i}>
+            <button
+              onClick={() => onTagInsert(tagForSlot(i))}
+              className="px-1.5 py-0.5 rounded-md text-xs font-mono font-semibold transition-all"
+              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              {tagForSlot(i)}
+            </button>
+            {i < Math.min(maxImages, 4) - 1 ? ' ' : ''}
+          </span>
+        ))}{' '}
+        to reference each in your scene description.
+      </p>
+
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxImages, 4)}, 1fr)` }}>
+        {slots.map((img, idx) => (
+          <div key={idx} className="flex flex-col gap-1.5">
+            {img ? (
+              <div className="relative group">
+                <div
+                  className="relative overflow-hidden rounded-xl cursor-pointer"
+                  style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
+                  onClick={() => onFullscreen(idx)}
+                >
+                  <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+                  <div
+                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: 'rgba(0,0,0,0.45)' }}
+                  >
+                    <Maximize2 size={16} color="white" />
+                  </div>
+                </div>
+                <button
+                  onClick={() => onTagInsert(tagForSlot(idx))}
+                  className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
+                  style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+                >
+                  {tagForSlot(idx)}
+                </button>
+                <button
+                  onClick={() => onRemove(idx)}
+                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+                  style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              idx === filledCount ? (
+                <label className="cursor-pointer">
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
+                  <div
+                    className="flex flex-col items-center justify-center rounded-xl transition-all"
+                    style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+                  >
+                    <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
+                    <span className="text-xs font-medium" style={{ color: ACCENT }}>img{idx + 1}</span>
+                  </div>
+                  <div
+                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.4 }}
+                  >
+                    {tagForSlot(idx)}
+                  </div>
+                </label>
+              ) : (
+                <div>
+                  <div
+                    className="flex flex-col items-center justify-center rounded-xl"
+                    style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)', opacity: 0.25 }}
+                  >
+                    <Plus size={14} style={{ color: 'var(--text-muted)' }} />
+                  </div>
+                  <div
+                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.2 }}
+                  >
+                    {tagForSlot(idx)}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────
 export default function UGCGeneratePage() {
   const { profileId }                                            = useParams()
   const navigate                                                 = useNavigate()
   const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const textareaRef                                              = useRef(null)
+
+  const isMaster = userProfile?.user_tier === 'master'
 
   const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
@@ -140,12 +280,16 @@ export default function UGCGeneratePage() {
   const [modelsLoading,  setModelsLoading]  = useState(true)
   const [model,          setModel]          = useState('')
 
-  const [outputType,  setOutputType]  = useState('image')
-  const [filter,      setFilter]      = useState('hyper_realistic')
-  const [aspectRatio, setAspectRatio] = useState('9:16')
-  const [duration,    setDuration]    = useState('5')
-  const [scene,       setScene]       = useState('')
-  const [submitting,  setSubmitting]  = useState(false)
+  const [outputType,    setOutputType]    = useState('image')
+  const [filter,        setFilter]        = useState('hyper_realistic')
+  const [aspectRatio,   setAspectRatio]   = useState('9:16')
+  const [duration,      setDuration]      = useState('5')
+  const [scene,         setScene]         = useState('')
+  const [submitting,    setSubmitting]    = useState(false)
+
+  // Master-only ref images state
+  const [refImages,     setRefImages]     = useState([])   // [{ file, url, w, h }]
+  const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
 
@@ -190,6 +334,11 @@ export default function UGCGeneratePage() {
     if (first) setModel(first.value)
   }, [outputType])
 
+  // Clear ref images when switching output type
+  useEffect(() => {
+    setRefImages([])
+  }, [outputType])
+
   const caps = selectedModel ? {
     supportedDurations:    selectedModel.supported_durations     ?? ['5', '8', '10'],
     supportedAspectRatios: selectedModel.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
@@ -214,6 +363,46 @@ export default function UGCGeneratePage() {
   const sceneEmpty  = !scene.trim()
   const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
 
+  // ── ref image handlers (Master only) ─────────────────────────────────────
+
+  const handleAddRefImage = async (e, slotIdx) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const compressed = await compressImage(file)
+    setRefImages((prev) => {
+      const next = [...prev]
+      next[slotIdx] = compressed
+      return next.filter((_, i) => i <= slotIdx || next[i] != null)
+    })
+  }
+
+  const handleRemoveRefImage = (idx) => {
+    setRefImages((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleTagInsert = (tag) => {
+    const el = textareaRef.current
+    if (!el) {
+      setScene((p) => p ? `${p} ${tag}` : tag)
+      return
+    }
+    const start      = el.selectionStart
+    const end        = el.selectionEnd
+    const before     = scene.slice(0, start)
+    const after      = scene.slice(end)
+    const needsSpace = before.length > 0 && !before.endsWith(' ')
+    const inserted   = `${needsSpace ? ' ' : ''}${tag} `
+    const next       = before + inserted + after
+    setScene(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      const cursor = start + inserted.length
+      el.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  // ── generate ──────────────────────────────────────────────────────────────
+
   const handleGenerate = async () => {
     if (sceneEmpty)     return toast.error('Describe the scene')
     if (!selectedModel) return toast.error('Pick a model')
@@ -222,7 +411,8 @@ export default function UGCGeneratePage() {
 
     setSubmitting(true)
     try {
-      const referencePhotos = [
+      // Character reference photos (always included)
+      const characterPhotos = [
         profile.photo_face_front,
         profile.photo_face_three_quarter,
         profile.photo_face_side_90,
@@ -230,6 +420,27 @@ export default function UGCGeneratePage() {
         profile.photo_body_side,
         profile.photo_body_back,
       ].filter(Boolean)
+
+      // Master: upload any extra ref images, then append after character photos
+      let extraUrls = []
+      if (isMaster && refImages.length > 0) {
+        for (const img of refImages) {
+          if (!img?.file) continue
+          const contentType = img.file.type || 'image/jpeg'
+          const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+          const { data: uploadData, error: upErr } = await supabase.storage
+            .from('generation-uploads')
+            .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
+          if (upErr) throw new Error(`Upload failed: ${upErr.message}`)
+          const { data: { publicUrl } } = supabase.storage
+            .from('generation-uploads')
+            .getPublicUrl(uploadData.path)
+          extraUrls.push(publicUrl)
+        }
+      }
+
+      const allInputImages = [...characterPhotos, ...extraUrls]
 
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
@@ -242,7 +453,7 @@ export default function UGCGeneratePage() {
         credits_charged:        creditCost,
         output_type:            outputType,
         skip_prompt_refinement: skipRefinement,
-        input_image_urls:       referencePhotos.length ? referencePhotos : null,
+        input_image_urls:       allInputImages.length ? allInputImages : null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -253,15 +464,15 @@ export default function UGCGeneratePage() {
       }
 
       await ugcGenerations.create({
-        generation_id:  genRow.id,
-        ugc_profile_id: profileId,
-        user_id:        user.id,
-        output_type:    outputType,
-        filter_applied: filter,
-        scene_prompt:   scene,
-        refined_prompt: null,
-        selected_photos:[],
-        aspect_ratio:   aspectRatio,
+        generation_id:   genRow.id,
+        ugc_profile_id:  profileId,
+        user_id:         user.id,
+        output_type:     outputType,
+        filter_applied:  filter,
+        scene_prompt:    scene,
+        refined_prompt:  null,
+        selected_photos: [],
+        aspect_ratio:    aspectRatio,
       })
 
       const fn = outputType === 'image' ? 'image-generate' : 'video-generate'
@@ -282,6 +493,7 @@ export default function UGCGeneratePage() {
         { duration: 5000 }
       )
       setScene('')
+      setRefImages([])
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -289,6 +501,8 @@ export default function UGCGeneratePage() {
       setSubmitting(false)
     }
   }
+
+  const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
 
   if (profileLoading) {
     return (
@@ -331,6 +545,33 @@ export default function UGCGeneratePage() {
         )}
       </AnimatePresence>
 
+      {/* Fullscreen ref image viewer */}
+      <AnimatePresence>
+        {fullscreenImage && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(12px)' }}
+            onClick={() => setFullscreenIdx(null)}
+          >
+            <button
+              onClick={() => setFullscreenIdx(null)}
+              className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
+            >
+              <X size={18} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
+              src={fullscreenImage.url} alt="Reference"
+              className="rounded-2xl"
+              style={{ maxWidth: '100%', maxHeight: '90dvh', objectFit: 'contain' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
@@ -344,7 +585,6 @@ export default function UGCGeneratePage() {
           <ArrowLeft size={20} />
         </button>
 
-        {/* Character identity — tapping navigates back to UGC list */}
         <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
           {profile?.thumbnail_url ? (
             <img
@@ -370,7 +610,6 @@ export default function UGCGeneratePage() {
         </button>
 
         <div className="flex items-center gap-2">
-          {/* Media shortcut */}
           <button
             onClick={() => navigate(`/create/ugc/${profileId}/media`)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -413,9 +652,9 @@ export default function UGCGeneratePage() {
                 onClick={() => setOutputType(value)}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
-                  background: outputType === value ? 'var(--bg-card)'   : 'transparent',
-                  color:      outputType === value ? 'var(--text-primary)' : 'var(--text-muted)',
-                  boxShadow:  outputType === value ? 'var(--shadow)'     : 'none',
+                  background: outputType === value ? 'var(--bg-card)'      : 'transparent',
+                  color:      outputType === value ? 'var(--text-primary)'  : 'var(--text-muted)',
+                  boxShadow:  outputType === value ? 'var(--shadow)'        : 'none',
                 }}
               >
                 <Icon size={14} />
@@ -424,12 +663,31 @@ export default function UGCGeneratePage() {
             ))}
           </div>
 
+          {/* Master-only: extra reference images — renders silently, no explanation */}
+          {isMaster && (
+            <div className="mb-5">
+              <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                Reference Images
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+              </p>
+              <MultiImageGrid
+                images={refImages}
+                maxImages={MAX_REF_IMAGES}
+                onAdd={handleAddRefImage}
+                onRemove={handleRemoveRefImage}
+                onTagInsert={handleTagInsert}
+                onFullscreen={(idx) => setFullscreenIdx(idx)}
+              />
+            </div>
+          )}
+
           {/* Scene description */}
           <div className="mb-5">
             <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Scene Description
             </p>
             <textarea
+              ref={textareaRef}
               value={scene}
               onChange={(e) => setScene(e.target.value)}
               placeholder={`Describe what ${profile?.name} is doing, where they are, the vibe of the moment…`}
