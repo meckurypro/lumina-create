@@ -152,7 +152,7 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, mu
 }
 
 // ── Add voice sheet ───────────────────────────────────────────
-const AddVoiceSheet = ({ onClose, onSave, userId, credits }) => {
+const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   const [tab,           setTab]           = useState('browse')  // browse | clone
   const [cloneMode,     setCloneMode]     = useState('upload')  // upload | record
   const [query,         setQuery]         = useState('')
