@@ -8,7 +8,6 @@ import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Skeleton } from '@/components/ui/Modal'
-import { SmartPromptInput } from '@/components/ui/SmartPromptInput'
 
 const TYPE_LABELS = {
   text_to_image:   'Text to Image',
@@ -411,29 +410,30 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Canvas Tab */}
+            {/* Canvas Tab — Coming Soon */}
             {activeTab === 'canvas' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                <SmartPromptInput
-                  onConfirm={(data) => {
-                    navigate('/generate', {
-                      state: {
-                        type:           data.templateSlug ? 'template' : data.type,
-                        templateSlug:   data.templateSlug || null,
-                        templateName:   data.templateSlug
-                          ? data.templateSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-                          : null,
-                        toolLabel:      TYPE_LABELS[data.type] || 'AI Creation',
-                        prompt:         data.enhanced_prompt,
-                        aspectRatio:    data.aspect_ratio,
-                        duration:       data.duration,
-                        model:          data.model,
-                        prefillImages:  data.uploadedImages || [],
-                        smartGenerated: true,
-                      },
-                    })
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-1 flex-col items-center justify-center text-center px-6 py-16"
+              >
+                <div
+                  className="rounded-2xl flex items-center justify-center mb-5"
+                  style={{
+                    width: 64,
+                    height: 64,
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-color)',
                   }}
-                />
+                >
+                  <Sparkles size={28} style={{ color: 'var(--brand)' }} />
+                </div>
+                <h2 className="text-lg font-black mb-2" style={{ color: 'var(--text-primary)' }}>
+                  Coming Soon
+                </h2>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)', maxWidth: 260 }}>
+                  Canvas is on its way. We're putting the finishing touches on something great — check back soon.
+                </p>
               </motion.div>
             )}
 
