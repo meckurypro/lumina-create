@@ -55,7 +55,7 @@ const SkeletonCard = () => (
 )
 
 // ── Saved voice card ──────────────────────────────────────────
-const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) => {
+const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const isPlaying = playing === voice.id
 
@@ -70,8 +70,8 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="flex items-center gap-3 p-4 rounded-2xl"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+      className="flex items-center gap-3 p-4 rounded-2xl relative"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: muted ? 0.55 : 1 }}
     >
       <button
         onClick={() => onPlay(voice.id, voice.preview_url)}
@@ -84,7 +84,7 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
         }
       </button>
 
-      <button onClick={() => onSelect(voice)} className="flex-1 min-w-0 text-left">
+      <button onClick={() => muted ? onMutedClick?.() : onSelect(voice)} className="flex-1 min-w-0 text-left">
         <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
           {voice.name}
         </p>
@@ -95,6 +95,12 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, onPlay }) 
           >
             {sourceLabel}
           </span>
+          {muted && (
+            <span className="text-xs px-1.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              <Lock size={9} /> Master only
+            </span>
+          )}
           {voice.generation_count > 0 && (
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {voice.generation_count} gen{voice.generation_count !== 1 ? 's' : ''}
