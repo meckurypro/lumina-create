@@ -20,11 +20,11 @@ const ACCENT_BDR = 'var(--tool-ugc-border)'
 // ── Audio preview hook ────────────────────────────────────────
 function useAudioPreview() {
   const audioRef              = useRef(null)
-  const cacheRef              = useRef({})
+  const cacheRef              = useRef({})       // voiceId → blob URL (session cache)
   const [playing, setPlaying] = useState(null)
-  const [loading, setLoading] = useState(null) // voiceId being fetched
+  const [loading, setLoading] = useState(null)   // voiceId being fetched
 
-  const play = async (voiceId, previewUrl, elevenlabsVoiceId) => {
+  const play = async (voiceId, previewUrl, elevenlabsVoiceId, userId, onPreviewUrlSaved) => {
     // Stop whatever is currently playing
     if (audioRef.current) {
       audioRef.current.pause()
@@ -33,32 +33,34 @@ function useAudioPreview() {
     // Toggle off if same voice
     if (playing === voiceId) { setPlaying(null); return }
 
-    // Library voices have a direct previewUrl — play immediately
+    // Helper: play a URL directly
+    const playUrl = (url) => {
+      const audio = new Audio(url)
+      audio.onended = () => setPlaying(null)
+      audio.play()
+      audioRef.current = audio
+      setPlaying(voiceId)
+    }
+
+    // 1. Already have a persistent preview_url (library voices or previously generated)
     if (previewUrl) {
-      const audio = new Audio(previewUrl)
-      audio.onended = () => setPlaying(null)
-      audio.play()
-      audioRef.current = audio
-      setPlaying(voiceId)
+      playUrl(previewUrl)
       return
     }
 
-    if (!elevenlabsVoiceId) return
+    if (!elevenlabsVoiceId || !userId) return
 
-    // Use cached blob URL if already fetched this session
+    // 2. Session cache hit — already fetched this session
     if (cacheRef.current[voiceId]) {
-      const audio = new Audio(cacheRef.current[voiceId])
-      audio.onended = () => setPlaying(null)
-      audio.play()
-      audioRef.current = audio
-      setPlaying(voiceId)
+      playUrl(cacheRef.current[voiceId])
       return
     }
 
-    // First time — fetch from proxy then cache
+    // 3. First time — fetch from proxy, play, then persist to storage + DB
     setLoading(voiceId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
+
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-proxy`,
         {
@@ -68,20 +70,46 @@ function useAudioPreview() {
             'Authorization': `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            action:               'preview_voice',
-            elevenlabs_voice_id:  elevenlabsVoiceId,
+            action:              'preview_voice',
+            elevenlabs_voice_id: elevenlabsVoiceId,
           }),
         }
       )
       if (!res.ok) throw new Error('Preview failed')
-      const blob  = await res.blob()
-      const url   = URL.createObjectURL(blob)
-      cacheRef.current[voiceId] = url
-      const audio = new Audio(url)
-      audio.onended = () => setPlaying(null)
-      audio.play()
-      audioRef.current = audio
-      setPlaying(voiceId)
+
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+
+      // Cache in session memory
+      cacheRef.current[voiceId] = blobUrl
+
+      // Play immediately
+      playUrl(blobUrl)
+
+      // Persist to Supabase storage in the background
+      const storagePath = `${userId}/voice-previews/${voiceId}.mp3`
+      const { error: uploadError } = await supabase.storage
+        .from('generations')
+        .upload(storagePath, blob, {
+          contentType:  'audio/mpeg',
+          upsert:       true,
+          cacheControl: '31536000', // 1 year
+        })
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('generations')
+          .getPublicUrl(storagePath)
+
+        // Save URL back to ugc_voices row
+        await supabase
+          .from('ugc_voices')
+          .update({ preview_url: publicUrl, updated_at: new Date().toISOString() })
+          .eq('id', voiceId)
+
+        // Notify parent to update local state so next mount uses the URL directly
+        onPreviewUrlSaved?.(voiceId, publicUrl)
+      }
     } catch {
       toast.error('Could not load voice preview')
     } finally {
@@ -93,6 +121,7 @@ function useAudioPreview() {
     audioRef.current?.pause()
     Object.values(cacheRef.current).forEach((url) => URL.revokeObjectURL(url))
   }, [])
+
   return { playing, loading, play }
 }
 
@@ -113,8 +142,8 @@ const SkeletonCard = () => (
 // ── Saved voice card ──────────────────────────────────────────
 const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, onPlay, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
-  const isPlaying  = playing === voice.id
-  const isLoading  = loading === voice.id
+  const isPlaying = playing === voice.id
+  const isLoading = loading === voice.id
 
   const sourceLabel = {
     elevenlabs_library: 'Library',
@@ -226,12 +255,10 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   const [script,        setScript]        = useState(null)
   const { playing, loading, play } = useAudioPreview()
 
-  const canClone   = credits >= VOICE_CREDITS.CLONE
-  const activeFile = cloneMode === 'record' ? recordedFile : cloneFiles[0]
-  const hasAudio   = cloneMode === 'record' ? !!recordedFile : cloneFiles.length > 0
-  const canSubmit  = canClone && cloneName.trim() && hasAudio && !cloning
+  const canClone  = credits >= VOICE_CREDITS.CLONE
+  const hasAudio  = cloneMode === 'record' ? !!recordedFile : cloneFiles.length > 0
+  const canSubmit = canClone && cloneName.trim() && hasAudio && !cloning
 
-  // ── Browse voices ──────────────────────────────────────────
   const searchVoices = async (q) => {
     setSearching(true)
     try {
@@ -259,7 +286,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
     return () => clearTimeout(timer)
   }
 
-  // ── Save library voice ─────────────────────────────────────
   const handleSaveLibraryVoice = async (voice) => {
     setSaving(voice.voice_id)
     try {
@@ -272,7 +298,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
         },
       })
       if (error || !data?.voice_id) throw new Error(error?.message || 'Could not add voice')
-
       await onSave({
         elevenlabs_voice_id: data.voice_id,
         name:                voice.name,
@@ -290,13 +315,11 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
     }
   }
 
-  // ── Clone voice ────────────────────────────────────────────
   const handleClone = async () => {
     if (!canSubmit) return
     setCloning(true)
     try {
-      const filesToSend = cloneMode === 'record' ? [recordedFile] : cloneFiles
-
+      const filesToSend  = cloneMode === 'record' ? [recordedFile] : cloneFiles
       const encodedFiles = await Promise.all(
         filesToSend.map(async (f) => {
           const buf    = await f.arrayBuffer()
@@ -363,12 +386,9 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Handle */}
           <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
             <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
           </div>
-
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
             <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Add Voice</p>
             <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>
@@ -376,7 +396,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
             </button>
           </div>
 
-          {/* Main tabs */}
           <div className="flex gap-1 mx-4 p-1 rounded-xl mb-3 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
             {[
               { value: 'browse', label: 'Voice Library' },
@@ -404,7 +423,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
             ))}
           </div>
 
-          {/* ── Browse tab ─────────────────────────────────── */}
           {tab === 'browse' && (
             <div className="flex flex-col flex-1 min-h-0">
               <div className="px-4 mb-3 flex-shrink-0">
@@ -428,9 +446,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                     <Loader2 size={20} style={{ color: ACCENT }} className="animate-spin" />
                   </div>
                 ) : results.length === 0 ? (
-                  <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>
-                    No voices found
-                  </p>
+                  <p className="text-sm text-center py-8" style={{ color: 'var(--text-muted)' }}>No voices found</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {results.map((voice) => (
@@ -440,7 +456,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                         style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
                       >
                         <button
-                          onClick={() => play(voice.voice_id, voice.preview_url, null)}
+                          onClick={() => play(voice.voice_id, voice.preview_url, null, null, null)}
                           className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                           style={{ background: playing === voice.voice_id ? ACCENT : ACCENT_SUB }}
                         >
@@ -465,10 +481,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
                           style={{ background: ACCENT, color: '#fff', opacity: saving === voice.voice_id ? 0.6 : 1 }}
                         >
-                          {saving === voice.voice_id
-                            ? <Loader2 size={11} className="animate-spin" />
-                            : <Plus size={11} />
-                          }
+                          {saving === voice.voice_id ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
                           Save
                         </button>
                       </div>
@@ -479,7 +492,6 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
             </div>
           )}
 
-          {/* ── Clone tab ──────────────────────────────────── */}
           {tab === 'clone' && (
             <div className="flex-1 overflow-y-auto px-4 pb-6">
               <div
@@ -502,11 +514,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                   onChange={(e) => setCloneName(e.target.value)}
                   placeholder="e.g. My Voice, Brand Voice"
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    border:     '1px solid var(--border-color)',
-                    color:      'var(--text-primary)',
-                  }}
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
                 />
               </div>
 
@@ -538,19 +546,14 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                     style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
                   >
                     <input
-                      type="file"
-                      accept="audio/*"
-                      multiple
-                      className="hidden"
+                      type="file" accept="audio/*" multiple className="hidden"
                       onChange={(e) => setCloneFiles(Array.from(e.target.files || []).slice(0, 5))}
                     />
                     <Upload size={22} style={{ color: ACCENT }} />
                     <span className="text-xs font-medium" style={{ color: ACCENT }}>
                       {cloneFiles.length > 0 ? `${cloneFiles.length} file(s) selected` : 'Upload audio samples'}
                     </span>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      MP3, WAV, M4A · up to 5 files
-                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>MP3, WAV, M4A · up to 5 files</span>
                   </label>
                   {cloneFiles.length > 0 && (
                     <div className="mt-2 flex flex-col gap-1">
@@ -559,8 +562,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                           <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{f.name}</p>
                           <button
                             onClick={() => setCloneFiles(prev => prev.filter((_, idx) => idx !== i))}
-                            className="p-1 ml-2 flex-shrink-0"
-                            style={{ color: 'var(--text-muted)' }}
+                            className="p-1 ml-2 flex-shrink-0" style={{ color: 'var(--text-muted)' }}
                           >
                             <X size={11} />
                           </button>
@@ -590,10 +592,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 onClick={handleClone}
                 disabled={!canSubmit}
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-                style={{
-                  background: canSubmit ? ACCENT : 'var(--bg-elevated)',
-                  color:      canSubmit ? '#fff'  : 'var(--text-muted)',
-                }}
+                style={{ background: canSubmit ? ACCENT : 'var(--bg-elevated)', color: canSubmit ? '#fff' : 'var(--text-muted)' }}
               >
                 {cloning
                   ? <><Loader2 size={15} className="animate-spin" /> Cloning…</>
@@ -615,10 +614,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
         {showScriptGen && (
           <ScriptGenerator
             onClose={() => setShowScriptGen(false)}
-            onScriptReady={(text) => {
-              setScript(text)
-              setShowScriptGen(false)
-            }}
+            onScriptReady={(text) => { setScript(text); setShowScriptGen(false) }}
           />
         )}
       </AnimatePresence>
@@ -628,11 +624,11 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
 
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCVoicesPage() {
-  const navigate          = useNavigate()
+  const navigate                   = useNavigate()
   const { user, credits, profile } = useAuth()
-  const [voices,  setVoices]  = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
+  const [voices,  setVoices]       = useState([])
+  const [loading, setLoading]      = useState(true)
+  const [showAdd, setShowAdd]      = useState(false)
   const { playing, loading: previewLoading, play } = useAudioPreview()
 
   useEffect(() => {
@@ -660,10 +656,22 @@ export default function UGCVoicesPage() {
     toast.success(`${voice.name} removed`)
   }
 
-  const handleSelect     = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
-  const isMaster         = profile?.user_tier === 'master'
-  const isVoiceMuted     = (v) => !isMaster && v.source !== 'elevenlabs_library'
-  const hasMutedVoices   = voices.some(isVoiceMuted)
+  // Called by the hook after a preview is persisted — update local state
+  // so next mount reads preview_url directly without any fetch
+  const handlePreviewUrlSaved = (voiceId, publicUrl) => {
+    setVoices((prev) =>
+      prev.map((v) => v.id === voiceId ? { ...v, preview_url: publicUrl } : v)
+    )
+  }
+
+  const handlePlay = (voiceId, previewUrl, elevenlabsVoiceId) => {
+    play(voiceId, previewUrl, elevenlabsVoiceId, user?.id, handlePreviewUrlSaved)
+  }
+
+  const handleSelect   = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
+  const isMaster       = profile?.user_tier === 'master'
+  const isVoiceMuted   = (v) => !isMaster && v.source !== 'elevenlabs_library'
+  const hasMutedVoices = voices.some(isVoiceMuted)
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -734,7 +742,7 @@ export default function UGCVoicesPage() {
                   onArchive={handleArchive}
                   playing={playing}
                   loading={previewLoading}
-                  onPlay={play}
+                  onPlay={handlePlay}
                   muted={isVoiceMuted(voice)}
                   onMutedClick={() =>
                     toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
@@ -760,10 +768,7 @@ export default function UGCVoicesPage() {
 
       {/* Add voice FAB */}
       {voices.length > 0 && (
-        <div
-          className="flex-shrink-0 px-4 lg:px-8 py-4"
-          style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
-        >
+        <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={() => setShowAdd(true)}
@@ -777,7 +782,6 @@ export default function UGCVoicesPage() {
         </div>
       )}
 
-      {/* Add voice sheet */}
       <AnimatePresence>
         {showAdd && (
           <AddVoiceSheet
