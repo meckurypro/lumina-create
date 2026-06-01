@@ -25,11 +25,37 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-const SLOT_DURATION_S = 5   // each audio slot = 5 seconds
+// ─── Duration helpers ─────────────────────────────────────────────────────────
+
+/** Sum of all filled slot durations (seconds). Falls back to 0 for unknown durations. */
+function totalSlotDuration(slots) {
+  return slots.filter(Boolean).reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0)
+}
+
+/**
+ * Trim a slots array so the cumulative duration never exceeds limitS.
+ * Returns { kept, dropped } — kept is the trimmed array, dropped is count removed.
+ */
+function trimSlotsToLimit(slots, limitS) {
+  let cumulative = 0
+  let cutIndex   = null
+  for (let i = 0; i < slots.length; i++) {
+    if (!slots[i]) continue
+    const dur = slots[i].duration_seconds ?? 0
+    if (cumulative + dur > limitS + 0.25) {   // 0.25s tolerance for float imprecision
+      cutIndex = i
+      break
+    }
+    cumulative += dur
+  }
+  if (cutIndex === null) return { kept: slots, dropped: 0 }
+  const kept    = slots.slice(0, cutIndex).filter(Boolean)
+  const dropped = slots.slice(cutIndex).filter(Boolean).length
+  return { kept, dropped }
+}
 
 // ─── Audio utilities ──────────────────────────────────────────────────────────
 
-// Encode AudioBuffer → WAV Blob (16-bit PCM)
 function audioBufferToWav(buffer) {
   const numChannels    = buffer.numberOfChannels
   const sampleRate     = buffer.sampleRate
@@ -56,14 +82,12 @@ function audioBufferToWav(buffer) {
   return new Blob([ab], { type: 'audio/wav' })
 }
 
-// Decode an audio blob (any format browser supports) → AudioBuffer
 async function decodeBlob(blob) {
   const ctx = new AudioContext()
   const ab  = await blob.arrayBuffer()
   return ctx.decodeAudioData(ab)
 }
 
-// Get duration of a File/Blob in seconds
 function getAudioDuration(fileOrBlob) {
   return new Promise((resolve, reject) => {
     const url   = URL.createObjectURL(fileOrBlob)
@@ -74,21 +98,17 @@ function getAudioDuration(fileOrBlob) {
   })
 }
 
-// Concatenate multiple audio blobs → single WAV blob
 async function concatenateAudioBlobs(blobs) {
   if (blobs.length === 1) {
-    // Single blob — decode and re-encode to WAV for consistent format
     const buf = await decodeBlob(blobs[0])
     return audioBufferToWav(buf)
   }
-
   const buffers    = await Promise.all(blobs.map(decodeBlob))
   const sampleRate = buffers[0].sampleRate
   const numCh      = buffers[0].numberOfChannels
   const totalLen   = buffers.reduce((acc, b) => acc + b.length, 0)
-
-  const ctx    = new OfflineAudioContext(numCh, totalLen, sampleRate)
-  let   offset = 0
+  const ctx        = new OfflineAudioContext(numCh, totalLen, sampleRate)
+  let   offset     = 0
   for (const buf of buffers) {
     const src = ctx.createBufferSource()
     src.buffer = buf
@@ -323,8 +343,7 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
 const sharedPickerAudio = { ref: null }
 
 // ─── AudioSourcePicker ────────────────────────────────────────────────────────
-// Allows picking a chunk from generations OR uploading a file directly.
-// maxDurationS: maximum allowed audio duration for the current slot.
+// maxDurationS: how many seconds remain in the budget for this slot
 function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slotIndex }) {
   const [mode,          setMode]          = useState(null)
   const [generations,   setGens]          = useState([])
@@ -333,6 +352,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   const [expandedId,    setExpandedId]    = useState(null)
   const [chunksMap,     setChunksMap]     = useState({})
   const [loadingChunks, setLoadingChunks] = useState(null)
+
+  // Format seconds nicely: "4.2s" or "4s"
+  const fmtS = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
   const openPicker = async () => {
     setMode('pick')
@@ -376,18 +398,28 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   }
 
   const handleImportChunk = (gen, chunk) => {
+    const chunkDur = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+    if (chunkDur !== null && chunkDur > maxDurationS + 0.25) {
+      toast.error(`This chunk is ${chunkDur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains. Pick a shorter clip.`, { duration: 5000 })
+      return
+    }
     stopAudio()
     onImport({
-      output_url:      chunk.public_url,
-      name:            chunk.label,
-      voice:           gen.voice,
-      duration_seconds: chunk.duration_ms ? chunk.duration_ms / 1000 : SLOT_DURATION_S,
-      fromChunk:       true,
-      chunkLabel:      chunk.label,
+      output_url:       chunk.public_url,
+      name:             chunk.label,
+      voice:            gen.voice,
+      duration_seconds: chunkDur ?? maxDurationS,
+      fromChunk:        true,
+      chunkLabel:       chunk.label,
     })
   }
 
   const handleImportFull = (gen) => {
+    const dur = gen.duration_seconds ?? null
+    if (dur !== null && dur > maxDurationS + 0.25) {
+      toast.error(`This audio is ${dur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains. Pick a shorter clip or use a chunk.`, { duration: 5000 })
+      return
+    }
     stopAudio(); onImport(gen)
   }
 
@@ -400,7 +432,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           <input type="file" accept="audio/*" className="hidden" onChange={onAudioUpload} />
           <Mic size={20} style={{ color: ACCENT }} />
           <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload file</span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Max {maxDurationS}s</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Max {fmtS(maxDurationS)}</span>
         </label>
         <button onClick={openPicker}
           className="flex-1 flex flex-col items-center justify-center rounded-2xl transition-all gap-1.5 py-5"
@@ -433,6 +465,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           const isExpanded = expandedId === gen.id
           const chunks     = chunksMap[gen.id] || []
           const hasChunks  = gen.chunk_count > 0
+          const tooLong    = gen.duration_seconds != null && gen.duration_seconds > maxDurationS + 0.25
 
           return (
             <div key={gen.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -450,6 +483,11 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     {gen.voice?.name ?? 'Voice'} · {dur}{hasChunks ? ` · ${gen.chunk_count} parts` : ''} · {date}
                   </p>
+                  {tooLong && !hasChunks && (
+                    <p className="text-xs mt-0.5 font-semibold" style={{ color: '#f59e0b' }}>
+                      Too long · only {fmtS(maxDurationS)} remaining
+                    </p>
+                  )}
                 </button>
                 {hasChunks ? (
                   <button onClick={() => handleExpand(gen)}
@@ -459,9 +497,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                     Parts
                   </button>
                 ) : (
-                  <button onClick={() => handleImportFull(gen)}
+                  <button onClick={() => handleImportFull(gen)} disabled={tooLong}
                     className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
-                    style={{ background: ACCENT, color: '#fff' }}>
+                    style={{ background: tooLong ? 'var(--bg-card)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff', opacity: tooLong ? 0.5 : 1 }}>
                     Use
                   </button>
                 )}
@@ -479,14 +517,16 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                       ) : chunks.length === 0 ? (
                         <div className="flex items-center justify-between py-2">
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Parts not ready — use full audio</p>
-                          <button onClick={() => handleImportFull(gen)}
+                          <button onClick={() => handleImportFull(gen)} disabled={tooLong}
                             className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                            style={{ background: ACCENT, color: '#fff' }}>
+                            style={{ background: tooLong ? 'var(--bg-elevated)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff' }}>
                             Use full
                           </button>
                         </div>
                       ) : chunks.map((chunk) => {
-                        const chunkDur      = chunk.duration_ms ? `${(chunk.duration_ms / 1000).toFixed(1)}s` : '—'
+                        const chunkDur       = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+                        const chunkDurStr    = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
+                        const chunkTooLong   = chunkDur != null && chunkDur > maxDurationS + 0.25
                         const isPlayingChunk = playing === chunk.id
                         return (
                           <div key={chunk.id} className="flex items-center gap-2 py-1.5 px-2 rounded-xl"
@@ -501,11 +541,13 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                             </button>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{chunk.label}</p>
-                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{chunkDur}</p>
+                              <p className="text-xs" style={{ color: chunkTooLong ? '#f59e0b' : 'var(--text-muted)' }}>
+                                {chunkDurStr}{chunkTooLong ? ` · only ${fmtS(maxDurationS)} left` : ''}
+                              </p>
                             </div>
-                            <button onClick={() => handleImportChunk(gen, chunk)}
+                            <button onClick={() => handleImportChunk(gen, chunk)} disabled={chunkTooLong}
                               className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95"
-                              style={{ background: ACCENT, color: '#fff' }}>
+                              style={{ background: chunkTooLong ? 'var(--bg-card)' : ACCENT, color: chunkTooLong ? 'var(--text-muted)' : '#fff', opacity: chunkTooLong ? 0.5 : 1 }}>
                               Use
                             </button>
                           </div>
@@ -539,11 +581,11 @@ const AudioSlotPill = ({ slotIndex, audioFile, onRemove }) => (
       </p>
       <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
         {audioFile.fromChunk
-          ? `Slot ${slotIndex + 1} · chunk`
+          ? `Part ${slotIndex + 1} · chunk`
           : audioFile.fromGeneration
-            ? `Slot ${slotIndex + 1} · imported`
-            : `Slot ${slotIndex + 1} · uploaded`}
-        {audioFile.duration_seconds ? ` · ${audioFile.duration_seconds.toFixed(1)}s` : ''}
+            ? `Part ${slotIndex + 1} · imported`
+            : `Part ${slotIndex + 1} · uploaded`}
+        {audioFile.duration_seconds != null ? ` · ${audioFile.duration_seconds.toFixed(1)}s` : ''}
       </p>
     </div>
     <button onClick={onRemove} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
@@ -554,20 +596,23 @@ const AudioSlotPill = ({ slotIndex, audioFile, onRemove }) => (
 )
 
 // ─── Multi-slot audio section ─────────────────────────────────────────────────
-// maxSlots  = ceil(duration / SLOT_DURATION_S)
-// Slots are revealed progressively: slot N+1 only shows after slot N is filled.
-// Smart open: if imported audio is shorter than SLOT_DURATION_S and more slots remain,
-// next slot opens automatically.
+// Budget logic:
+//   - totalUsed   = sum of all filled slot durations
+//   - remaining   = durationS - totalUsed
+//   - showPicker  = remaining > 0 (not >= full slot — any remaining space gets a picker)
+//   - maxDurationS passed to picker = remaining (so upload/import validation uses real budget)
 function MultiSlotAudio({
-  label, audioSlots, maxSlots, durationS,
+  label, audioSlots, durationS,
   onSlotFill, onSlotClear, audioMode, onAudioModeChange,
   script, onScriptChange, supportsTextScript, charIndex, userId,
 }) {
-  const charLabel = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
-  const filledCount = audioSlots.filter(Boolean).length
-
-  // How many slots to show: all filled + 1 empty (up to maxSlots)
-  const visibleSlots = Math.min(filledCount + 1, maxSlots)
+  const charLabel    = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
+  const filledSlots  = audioSlots.filter(Boolean)
+  const filledCount  = filledSlots.length
+  const totalUsed    = totalSlotDuration(audioSlots)
+  const remaining    = Math.max(0, durationS - totalUsed)
+  const isFull       = remaining <= 0.1   // treat <0.1s as full
+  const fmtS         = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
   return (
     <div className="flex flex-col gap-2">
@@ -575,19 +620,18 @@ function MultiSlotAudio({
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
           {label}{charLabel}
         </p>
-        {maxSlots > 1 && (
+        {filledCount > 0 && (
           <span className="text-xs px-2 py-0.5 rounded-lg font-semibold"
-            style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
-            {filledCount}/{maxSlots} parts
+            style={{ background: isFull ? ACCENT : ACCENT_SUB, color: isFull ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+            {fmtS(totalUsed)} / {durationS}s {isFull ? '· full' : `· ${fmtS(remaining)} left`}
           </span>
         )}
       </div>
 
-      {/* Duration hint */}
-      {maxSlots > 1 && (
+      {/* Hint shown when multiple parts are possible */}
+      {durationS > 0 && filledCount === 0 && (
         <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          {durationS}s duration — add up to {maxSlots} audio parts (~{SLOT_DURATION_S}s each).
-          They will be joined in order.
+          Upload audio up to {durationS}s total. Add multiple clips — they will be joined in order.
         </p>
       )}
 
@@ -614,25 +658,34 @@ function MultiSlotAudio({
             ))}
           </AnimatePresence>
 
-          {/* Show picker for next empty slot */}
-          {filledCount < maxSlots && (
+          {/* Show picker only while there is remaining budget */}
+          {!isFull && (
             <motion.div
               key={`picker-${filledCount}`}
               initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18 }}>
-              {maxSlots > 1 && filledCount > 0 && (
+              {filledCount > 0 && (
                 <p className="text-xs mb-1.5 font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Part {filledCount + 1} of {maxSlots}
+                  Part {filledCount + 1} · {fmtS(remaining)} remaining
                 </p>
               )}
               <AudioSourcePicker
                 onAudioUpload={(e) => onSlotFill(filledCount, e)}
                 onImport={(gen) => onSlotFill(filledCount, null, gen)}
                 userId={userId}
-                maxDurationS={SLOT_DURATION_S}
+                maxDurationS={remaining}
                 slotIndex={filledCount}
               />
             </motion.div>
+          )}
+
+          {isFull && filledCount > 0 && (
+            <motion.p
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="text-xs text-center py-1 font-semibold"
+              style={{ color: ACCENT }}>
+              Budget full · {durationS}s used ✓
+            </motion.p>
           )}
         </div>
       )}
@@ -661,8 +714,7 @@ export default function CreateTalkingHeadPage() {
   const [faceImage,   setFaceImage]   = useState(null)
   const [videoFile,   setVideoFile]   = useState(null)
 
-  // audio — now arrays of slots per character
-  // audioSlots1[i] = { file?, url, name, fromChunk?, fromGeneration?, duration_seconds? }
+  // audio — arrays of slots per character
   const [audioSlots1,  setAudioSlots1]  = useState([])
   const [audioSlots2,  setAudioSlots2]  = useState([])
   const [audioMode1,   setAudioMode1]   = useState('upload')
@@ -679,9 +731,7 @@ export default function CreateTalkingHeadPage() {
   const [submitting,  setSubmitting]  = useState(false)
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // How many audio slots for current duration
   const durationNum = parseInt(duration || '5', 10)
-  const maxSlots    = Math.ceil(durationNum / SLOT_DURATION_S)
 
   // ── session restore ──────────────────────────────────────────
   useEffect(() => {
@@ -703,11 +753,23 @@ export default function CreateTalkingHeadPage() {
     } catch {}
   }, [prompt])
 
-  // ── When duration changes, trim excess slots ─────────────────
+  // ── When duration changes, trim slots that exceed the new limit ──────────
   useEffect(() => {
-    setAudioSlots1((prev) => prev.slice(0, maxSlots))
-    setAudioSlots2((prev) => prev.slice(0, maxSlots))
-  }, [maxSlots])
+    const trimAndNotify = (slots, setSlots, charLabel) => {
+      const { kept, dropped } = trimSlotsToLimit(slots, durationNum)
+      if (dropped > 0) {
+        setSlots(kept)
+        toast(`${dropped} audio part${dropped > 1 ? 's' : ''} removed from ${charLabel} — exceeded new ${durationNum}s limit.`, {
+          icon: '✂️', duration: 4000,
+        })
+      } else {
+        // No drop needed, but still enforce hard trim by index in case durations were unknown
+        setSlots((prev) => prev.slice(0, prev.filter(Boolean).length))
+      }
+    }
+    trimAndNotify(audioSlots1, setAudioSlots1, 'Character 1')
+    trimAndNotify(audioSlots2, setAudioSlots2, 'Character 2')
+  }, [durationNum]) // eslint-disable-line
 
   // ── load models ──────────────────────────────────────────────
   const loadModels = useCallback(async () => {
@@ -783,16 +845,24 @@ export default function CreateTalkingHeadPage() {
   }
 
   // ── Slot fill: handles both file upload and chunk/generation import ──────
-  // charSlot: 1 or 2 (which character's audio stack)
-  // slotIndex: which slot within the stack (0-based)
-  // e: file input event (if upload) or null (if import)
-  // imported: the imported gen/chunk object (if import) or null (if upload)
   const handleSlotFill = (charSlot) => async (slotIndex, e, imported) => {
-    const setSlots = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
+    const setSlots  = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
+    const curSlots  = charSlot === 1 ? audioSlots1    : audioSlots2
+    const usedSoFar = totalSlotDuration(curSlots)
+    const remaining = Math.max(0, durationNum - usedSoFar)
 
     // ── Import path ──
     if (imported) {
-      const durS = imported.duration_seconds ?? SLOT_DURATION_S
+      const durS = imported.duration_seconds ?? null
+
+      if (durS !== null && durS > remaining + 0.25) {
+        toast.error(
+          `This audio is ${durS.toFixed(1)}s but only ${remaining <= 0 ? '0s' : remaining.toFixed(1) + 's'} remains in your ${durationNum}s budget.`,
+          { duration: 5000 }
+        )
+        return
+      }
+
       const filled = {
         file:            null,
         url:             imported.output_url,
@@ -802,25 +872,20 @@ export default function CreateTalkingHeadPage() {
         chunkLabel:      imported.chunkLabel ?? null,
         duration_seconds: durS,
       }
-      setSlots((prev) => {
-        const next = [...prev]
-        next[slotIndex] = filled
-        return next
-      })
+      setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
       return
     }
 
     // ── File upload path ──
     const file = e?.target?.files?.[0]; if (!file) return
 
-    // Validate duration
     let durS = null
     try { durS = await getAudioDuration(file) } catch {}
 
-    if (durS !== null && durS > SLOT_DURATION_S + 0.5) {
+    if (durS !== null && durS > remaining + 0.25) {
       toast.error(
-        `This audio is ${durS.toFixed(1)}s — too long for a single slot (max ${SLOT_DURATION_S}s). ` +
-        `Use a shorter clip or pick a chunk from My Generations.`,
+        `This audio is ${durS.toFixed(1)}s but only ${remaining.toFixed(1)}s remains in your ${durationNum}s budget. ` +
+        `Upload a shorter clip or use a chunk from My Generations.`,
         { duration: 6000 }
       )
       return
@@ -834,11 +899,7 @@ export default function CreateTalkingHeadPage() {
       fromGeneration:  false,
       duration_seconds: durS,
     }
-    setSlots((prev) => {
-      const next = [...prev]
-      next[slotIndex] = filled
-      return next
-    })
+    setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
   }
 
   const handleSlotClear = (charSlot) => (slotIndex) => {
@@ -846,7 +907,6 @@ export default function CreateTalkingHeadPage() {
     setSlots((prev) => {
       const next = [...prev]
       next[slotIndex] = null
-      // Remove trailing nulls
       while (next.length > 0 && !next[next.length - 1]) next.pop()
       return next
     })
@@ -874,20 +934,14 @@ export default function CreateTalkingHeadPage() {
   }
 
   // ── Build final audio URL for a character's slots ────────────
-  // If 1 slot: upload directly (or just use URL if already remote).
-  // If >1 slot: decode all blobs, concatenate, encode to WAV, upload.
   const buildAudioUrl = async (slots) => {
     const filled = slots.filter(Boolean)
     if (filled.length === 0) return null
-
-    // All slots already have remote URLs (chunks/generations) and there's only one — use directly
     if (filled.length === 1 && !filled[0].file) return filled[0].url
 
-    // Need to concatenate or upload a local file
     const blobs = await Promise.all(
       filled.map(async (slot) => {
         if (slot.file) return slot.file
-        // Remote URL — fetch as blob
         const res = await fetch(slot.url)
         if (!res.ok) throw new Error(`Could not fetch audio: ${slot.url}`)
         return res.blob()
@@ -895,11 +949,9 @@ export default function CreateTalkingHeadPage() {
     )
 
     if (blobs.length === 1 && filled[0].file) {
-      // Single local file — upload directly
       return uploadToStorage(filled[0].file, filled[0].name)
     }
 
-    // Multiple blobs — concatenate then upload
     const combined = await concatenateAudioBlobs(blobs)
     return uploadToStorage(combined, 'combined.wav')
   }
@@ -913,6 +965,10 @@ export default function CreateTalkingHeadPage() {
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
+    // Final safety trim before generate (covers edge cases with unknown durations)
+    const { kept: safe1 } = trimSlotsToLimit(audioSlots1, durationNum)
+    const { kept: safe2 } = trimSlotsToLimit(audioSlots2, durationNum)
+
     setSubmitting(true)
     try {
       let startFrameUrl   = null
@@ -924,8 +980,8 @@ export default function CreateTalkingHeadPage() {
       let audio1Url = null
       let audio2Url = null
 
-      if (audioMode1 === 'upload') audio1Url = await buildAudioUrl(audioSlots1)
-      if (caps.multiChar && audioMode2 === 'upload') audio2Url = await buildAudioUrl(audioSlots2)
+      if (audioMode1 === 'upload') audio1Url = await buildAudioUrl(safe1)
+      if (caps.multiChar && audioMode2 === 'upload') audio2Url = await buildAudioUrl(safe2)
 
       const inputImageUrls = [subjectVideoUrl, audio1Url, audio2Url].filter(Boolean)
 
@@ -1059,7 +1115,7 @@ export default function CreateTalkingHeadPage() {
             </div>
           )}
 
-          {/* ── Settings (duration first so maxSlots is correct when audio renders) ── */}
+          {/* ── Settings ── */}
           <div>
             <SettingChips
               label="Aspect Ratio"
@@ -1093,7 +1149,6 @@ export default function CreateTalkingHeadPage() {
             <MultiSlotAudio
               label="Audio"
               audioSlots={audioSlots1}
-              maxSlots={maxSlots}
               durationS={durationNum}
               onSlotFill={handleSlotFill(1)}
               onSlotClear={handleSlotClear(1)}
@@ -1110,7 +1165,6 @@ export default function CreateTalkingHeadPage() {
               <MultiSlotAudio
                 label="Audio"
                 audioSlots={audioSlots2}
-                maxSlots={maxSlots}
                 durationS={durationNum}
                 onSlotFill={handleSlotFill(2)}
                 onSlotClear={handleSlotClear(2)}
