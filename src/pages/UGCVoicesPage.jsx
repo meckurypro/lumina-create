@@ -20,6 +20,7 @@ const ACCENT_BDR = 'var(--tool-ugc-border)'
 // ── Audio preview hook ────────────────────────────────────────
 function useAudioPreview() {
   const audioRef              = useRef(null)
+  const cacheRef              = useRef({})
   const [playing, setPlaying] = useState(null)
   const [loading, setLoading] = useState(null) // voiceId being fetched
 
@@ -42,8 +43,19 @@ function useAudioPreview() {
       return
     }
 
-    // Cloned voices — generate a live preview via edge function (free)
     if (!elevenlabsVoiceId) return
+
+    // Use cached blob URL if already fetched this session
+    if (cacheRef.current[voiceId]) {
+      const audio = new Audio(cacheRef.current[voiceId])
+      audio.onended = () => setPlaying(null)
+      audio.play()
+      audioRef.current = audio
+      setPlaying(voiceId)
+      return
+    }
+
+    // First time — fetch from proxy then cache
     setLoading(voiceId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -64,8 +76,9 @@ function useAudioPreview() {
       if (!res.ok) throw new Error('Preview failed')
       const blob  = await res.blob()
       const url   = URL.createObjectURL(blob)
+      cacheRef.current[voiceId] = url
       const audio = new Audio(url)
-      audio.onended = () => { setPlaying(null); URL.revokeObjectURL(url) }
+      audio.onended = () => setPlaying(null)
       audio.play()
       audioRef.current = audio
       setPlaying(voiceId)
@@ -76,7 +89,10 @@ function useAudioPreview() {
     }
   }
 
-  useEffect(() => () => audioRef.current?.pause(), [])
+  useEffect(() => () => {
+    audioRef.current?.pause()
+    Object.values(cacheRef.current).forEach((url) => URL.revokeObjectURL(url))
+  }, [])
   return { playing, loading, play }
 }
 
