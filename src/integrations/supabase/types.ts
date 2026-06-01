@@ -507,19 +507,23 @@ export type Database = {
           is_published: boolean | null
           is_staff_generation: boolean | null
           model: string | null
+          novice_accumulated_days: number
           output_thumbnail_url: string | null
           output_type: string | null
           output_url: string | null
           pool_user_id: string | null
           prompt: string | null
+          prompt_engineering_used: boolean | null
           provider_request_id: string | null
           skip_prompt_refinement: boolean
           start_frame_url: string | null
           status: Database["public"]["Enums"]["generation_status"] | null
+          storage_protected_at: string | null
           template_id: string | null
           title: string | null
           updated_at: string | null
           user_id: string
+          vision_analysis_used: boolean | null
           with_sound: boolean
         }
         Insert: {
@@ -537,19 +541,23 @@ export type Database = {
           is_published?: boolean | null
           is_staff_generation?: boolean | null
           model?: string | null
+          novice_accumulated_days?: number
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          prompt_engineering_used?: boolean | null
           provider_request_id?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
+          storage_protected_at?: string | null
           template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id: string
+          vision_analysis_used?: boolean | null
           with_sound?: boolean
         }
         Update: {
@@ -567,22 +575,33 @@ export type Database = {
           is_published?: boolean | null
           is_staff_generation?: boolean | null
           model?: string | null
+          novice_accumulated_days?: number
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
           pool_user_id?: string | null
           prompt?: string | null
+          prompt_engineering_used?: boolean | null
           provider_request_id?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
+          storage_protected_at?: string | null
           template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string
+          vision_analysis_used?: boolean | null
           with_sound?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_generations_model"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "model_usage_stats"
+            referencedColumns: ["value"]
+          },
           {
             foreignKeyName: "fk_generations_model"
             columns: ["model"]
@@ -628,6 +647,7 @@ export type Database = {
           is_user_facing: boolean
           is_verified: boolean
           label: string
+          max_ref_images: number
           provider: string
           sort_order: number | null
           sound_cost_multiplier: number
@@ -637,8 +657,11 @@ export type Database = {
           supports_end_frame: boolean
           supports_frame_to_frame: boolean
           supports_image: boolean
+          supports_multi_image: boolean
           supports_sound: boolean
           supports_start_frame: boolean
+          supports_text_script: boolean
+          supports_video_input: boolean
           type: string
           updated_at: string | null
           value: string
@@ -657,6 +680,7 @@ export type Database = {
           is_user_facing?: boolean
           is_verified?: boolean
           label: string
+          max_ref_images?: number
           provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
@@ -666,8 +690,11 @@ export type Database = {
           supports_end_frame?: boolean
           supports_frame_to_frame?: boolean
           supports_image?: boolean
+          supports_multi_image?: boolean
           supports_sound?: boolean
           supports_start_frame?: boolean
+          supports_text_script?: boolean
+          supports_video_input?: boolean
           type: string
           updated_at?: string | null
           value: string
@@ -686,6 +713,7 @@ export type Database = {
           is_user_facing?: boolean
           is_verified?: boolean
           label?: string
+          max_ref_images?: number
           provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
@@ -695,8 +723,11 @@ export type Database = {
           supports_end_frame?: boolean
           supports_frame_to_frame?: boolean
           supports_image?: boolean
+          supports_multi_image?: boolean
           supports_sound?: boolean
           supports_start_frame?: boolean
+          supports_text_script?: boolean
+          supports_video_input?: boolean
           type?: string
           updated_at?: string | null
           value?: string
@@ -776,10 +807,13 @@ export type Database = {
           subscription_count: number | null
           team_role: string | null
           tier: Database["public"]["Enums"]["subscription_tier"] | null
+          tier_expires_at: string | null
+          tier_started_at: string | null
           total_credits_purchased: number | null
           total_credits_used: number | null
           total_generations: number | null
           updated_at: string | null
+          user_tier: string
           username: string
         }
         Insert: {
@@ -810,10 +844,13 @@ export type Database = {
           subscription_count?: number | null
           team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
+          tier_expires_at?: string | null
+          tier_started_at?: string | null
           total_credits_purchased?: number | null
           total_credits_used?: number | null
           total_generations?: number | null
           updated_at?: string | null
+          user_tier?: string
           username: string
         }
         Update: {
@@ -844,13 +881,23 @@ export type Database = {
           subscription_count?: number | null
           team_role?: string | null
           tier?: Database["public"]["Enums"]["subscription_tier"] | null
+          tier_expires_at?: string | null
+          tier_started_at?: string | null
           total_credits_purchased?: number | null
           total_credits_used?: number | null
           total_generations?: number | null
           updated_at?: string | null
+          user_tier?: string
           username?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_profiles_preferred_model"
+            columns: ["preferred_model"]
+            isOneToOne: false
+            referencedRelation: "model_usage_stats"
+            referencedColumns: ["value"]
+          },
           {
             foreignKeyName: "fk_profiles_preferred_model"
             columns: ["preferred_model"]
@@ -1085,6 +1132,327 @@ export type Database = {
         }
         Relationships: []
       }
+      ugc_audio_generations: {
+        Row: {
+          character_count: number
+          created_at: string | null
+          credits_charged: number
+          duration_seconds: number | null
+          elevenlabs_voice_id: string
+          error_message: string | null
+          id: string
+          model_id: string
+          output_url: string | null
+          refined_script: string | null
+          script: string
+          similarity_boost: number
+          stability: number
+          status: Database["public"]["Enums"]["audio_gen_status"]
+          style: number
+          updated_at: string | null
+          user_id: string
+          voice_id: string
+        }
+        Insert: {
+          character_count?: number
+          created_at?: string | null
+          credits_charged?: number
+          duration_seconds?: number | null
+          elevenlabs_voice_id: string
+          error_message?: string | null
+          id?: string
+          model_id?: string
+          output_url?: string | null
+          refined_script?: string | null
+          script: string
+          similarity_boost?: number
+          stability?: number
+          status?: Database["public"]["Enums"]["audio_gen_status"]
+          style?: number
+          updated_at?: string | null
+          user_id: string
+          voice_id: string
+        }
+        Update: {
+          character_count?: number
+          created_at?: string | null
+          credits_charged?: number
+          duration_seconds?: number | null
+          elevenlabs_voice_id?: string
+          error_message?: string | null
+          id?: string
+          model_id?: string
+          output_url?: string | null
+          refined_script?: string | null
+          script?: string
+          similarity_boost?: number
+          stability?: number
+          status?: Database["public"]["Enums"]["audio_gen_status"]
+          style?: number
+          updated_at?: string | null
+          user_id?: string
+          voice_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_audio_generations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_audio_generations_voice_id_fkey"
+            columns: ["voice_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_voices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ugc_generations: {
+        Row: {
+          aspect_ratio: string
+          created_at: string | null
+          filter_applied: Database["public"]["Enums"]["ugc_generation_filter"]
+          generation_id: string
+          id: string
+          output_type: string
+          refined_prompt: string | null
+          scene_prompt: string
+          selected_photos: string[]
+          ugc_profile_id: string
+          user_id: string
+        }
+        Insert: {
+          aspect_ratio?: string
+          created_at?: string | null
+          filter_applied?: Database["public"]["Enums"]["ugc_generation_filter"]
+          generation_id: string
+          id?: string
+          output_type: string
+          refined_prompt?: string | null
+          scene_prompt: string
+          selected_photos?: string[]
+          ugc_profile_id: string
+          user_id: string
+        }
+        Update: {
+          aspect_ratio?: string
+          created_at?: string | null
+          filter_applied?: Database["public"]["Enums"]["ugc_generation_filter"]
+          generation_id?: string
+          id?: string
+          output_type?: string
+          refined_prompt?: string | null
+          scene_prompt?: string
+          selected_photos?: string[]
+          ugc_profile_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_generations_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_generations_ugc_profile_id_fkey"
+            columns: ["ugc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_generations_ugc_profile_id_fkey"
+            columns: ["ugc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_profiles_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_generations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ugc_profiles: {
+        Row: {
+          age: number
+          backstory: string
+          content_energy: string[]
+          created_at: string | null
+          education_level:
+            | Database["public"]["Enums"]["ugc_education_level"]
+            | null
+          ethnic_background: string
+          fashion_score: number
+          gender: Database["public"]["Enums"]["ugc_gender"] | null
+          generation_count: number
+          id: string
+          interests: string
+          last_used_at: string | null
+          name: string
+          nationality: string
+          occupation: string
+          photo_body_back: string | null
+          photo_body_front: string | null
+          photo_body_side: string | null
+          photo_face_front: string | null
+          photo_face_side_90: string | null
+          photo_face_three_quarter: string | null
+          platforms: string[]
+          socioeconomic_status:
+            | Database["public"]["Enums"]["ugc_socioeconomic_status"]
+            | null
+          status: Database["public"]["Enums"]["ugc_profile_status"]
+          style_direction: string
+          thumbnail_url: string | null
+          updated_at: string | null
+          user_id: string
+          vibe_tags: string[]
+        }
+        Insert: {
+          age: number
+          backstory: string
+          content_energy?: string[]
+          created_at?: string | null
+          education_level?:
+            | Database["public"]["Enums"]["ugc_education_level"]
+            | null
+          ethnic_background: string
+          fashion_score: number
+          gender?: Database["public"]["Enums"]["ugc_gender"] | null
+          generation_count?: number
+          id?: string
+          interests: string
+          last_used_at?: string | null
+          name: string
+          nationality: string
+          occupation: string
+          photo_body_back?: string | null
+          photo_body_front?: string | null
+          photo_body_side?: string | null
+          photo_face_front?: string | null
+          photo_face_side_90?: string | null
+          photo_face_three_quarter?: string | null
+          platforms?: string[]
+          socioeconomic_status?:
+            | Database["public"]["Enums"]["ugc_socioeconomic_status"]
+            | null
+          status?: Database["public"]["Enums"]["ugc_profile_status"]
+          style_direction: string
+          thumbnail_url?: string | null
+          updated_at?: string | null
+          user_id: string
+          vibe_tags?: string[]
+        }
+        Update: {
+          age?: number
+          backstory?: string
+          content_energy?: string[]
+          created_at?: string | null
+          education_level?:
+            | Database["public"]["Enums"]["ugc_education_level"]
+            | null
+          ethnic_background?: string
+          fashion_score?: number
+          gender?: Database["public"]["Enums"]["ugc_gender"] | null
+          generation_count?: number
+          id?: string
+          interests?: string
+          last_used_at?: string | null
+          name?: string
+          nationality?: string
+          occupation?: string
+          photo_body_back?: string | null
+          photo_body_front?: string | null
+          photo_body_side?: string | null
+          photo_face_front?: string | null
+          photo_face_side_90?: string | null
+          photo_face_three_quarter?: string | null
+          platforms?: string[]
+          socioeconomic_status?:
+            | Database["public"]["Enums"]["ugc_socioeconomic_status"]
+            | null
+          status?: Database["public"]["Enums"]["ugc_profile_status"]
+          style_direction?: string
+          thumbnail_url?: string | null
+          updated_at?: string | null
+          user_id?: string
+          vibe_tags?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ugc_voices: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          elevenlabs_voice_id: string
+          generation_count: number
+          id: string
+          labels: Json | null
+          last_used_at: string | null
+          name: string
+          preview_url: string | null
+          source: Database["public"]["Enums"]["ugc_voice_source"]
+          status: Database["public"]["Enums"]["ugc_voice_status"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          elevenlabs_voice_id: string
+          generation_count?: number
+          id?: string
+          labels?: Json | null
+          last_used_at?: string | null
+          name: string
+          preview_url?: string | null
+          source?: Database["public"]["Enums"]["ugc_voice_source"]
+          status?: Database["public"]["Enums"]["ugc_voice_status"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          elevenlabs_voice_id?: string
+          generation_count?: number
+          id?: string
+          labels?: Json | null
+          last_used_at?: string | null
+          name?: string
+          preview_url?: string | null
+          source?: Database["public"]["Enums"]["ugc_voice_source"]
+          status?: Database["public"]["Enums"]["ugc_voice_status"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_voices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1108,7 +1476,56 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      model_usage_stats: {
+        Row: {
+          aka: string | null
+          avg_credits_per_gen: number | null
+          avg_generation_time_ms: number | null
+          credit_cost_i2i: number | null
+          credit_cost_t2i: number | null
+          estimated_revenue_usd: number | null
+          failed_gens: number | null
+          feature: string | null
+          gens_last_30d: number | null
+          gens_last_7d: number | null
+          is_active: boolean | null
+          label: string | null
+          last_used_at: string | null
+          successful_gens: number | null
+          total_credits_consumed: number | null
+          total_gens: number | null
+          type: string | null
+          unique_users: number | null
+          value: string | null
+        }
+        Relationships: []
+      }
+      ugc_profiles_summary: {
+        Row: {
+          age: number | null
+          created_at: string | null
+          gender: Database["public"]["Enums"]["ugc_gender"] | null
+          generation_count: number | null
+          id: string | null
+          last_used_at: string | null
+          name: string | null
+          nationality: string | null
+          status: Database["public"]["Enums"]["ugc_profile_status"] | null
+          thumbnail_url: string | null
+          total_generations: number | null
+          user_id: string | null
+          vibe_tags: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       add_credits: {
@@ -1222,6 +1639,7 @@ export type Database = {
         Args: { p_admin_id: string; p_prompt_id: string }
         Returns: Json
       }
+      run_novice_storage_cleanup: { Args: never; Returns: undefined }
       save_prompt_version: {
         Args: {
           p_admin_id: string
@@ -1237,6 +1655,10 @@ export type Database = {
       }
       toggle_template_visibility: {
         Args: { p_admin_id: string; p_template_id: string }
+        Returns: Json
+      }
+      update_model_pricing: {
+        Args: { p_cost_i2i: number; p_cost_t2i: number; p_model_value: string }
         Returns: Json
       }
     }
@@ -1274,6 +1696,7 @@ export type Database = {
         | "pixverse_v6"
       app_role: "admin" | "moderator" | "staff" | "user"
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
+      audio_gen_status: "pending" | "processing" | "completed" | "failed"
       feed_status: "pending" | "approved" | "rejected" | "published"
       generation_status: "pending" | "processing" | "completed" | "failed"
       generation_type:
@@ -1285,6 +1708,7 @@ export type Database = {
         | "end_frame_text"
         | "template"
         | "motion_transfer"
+        | "lipsync"
       payment_provider: "paystack" | "google" | "admin"
       subscription_tier: "free" | "starter" | "pro" | "enterprise"
       template_category:
@@ -1303,6 +1727,35 @@ export type Database = {
         | "bonus"
         | "admin_grant"
         | "staff_usage"
+      ugc_education_level:
+        | "no_formal_education"
+        | "primary_school"
+        | "secondary_school"
+        | "vocational_training"
+        | "some_college"
+        | "bachelors_degree"
+        | "masters_degree"
+        | "phd_or_doctorate"
+        | "self_taught"
+      ugc_gender:
+        | "male"
+        | "female"
+        | "non_binary"
+        | "other"
+        | "prefer_not_to_say"
+      ugc_generation_filter: "hyper_realistic" | "cinematic"
+      ugc_profile_status: "draft" | "active" | "archived"
+      ugc_socioeconomic_status:
+        | "struggling"
+        | "working_class"
+        | "comfortable"
+        | "wealthy"
+        | "elite"
+      ugc_voice_source:
+        | "elevenlabs_library"
+        | "instant_clone"
+        | "professional_clone"
+      ugc_voice_status: "active" | "archived"
       user_role: "user" | "staff" | "admin"
       video_duration: "5" | "8" | "10" | "15"
     }
@@ -1466,6 +1919,7 @@ export const Constants = {
       ],
       app_role: ["admin", "moderator", "staff", "user"],
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
+      audio_gen_status: ["pending", "processing", "completed", "failed"],
       feed_status: ["pending", "approved", "rejected", "published"],
       generation_status: ["pending", "processing", "completed", "failed"],
       generation_type: [
@@ -1477,6 +1931,7 @@ export const Constants = {
         "end_frame_text",
         "template",
         "motion_transfer",
+        "lipsync",
       ],
       payment_provider: ["paystack", "google", "admin"],
       subscription_tier: ["free", "starter", "pro", "enterprise"],
@@ -1498,6 +1953,39 @@ export const Constants = {
         "admin_grant",
         "staff_usage",
       ],
+      ugc_education_level: [
+        "no_formal_education",
+        "primary_school",
+        "secondary_school",
+        "vocational_training",
+        "some_college",
+        "bachelors_degree",
+        "masters_degree",
+        "phd_or_doctorate",
+        "self_taught",
+      ],
+      ugc_gender: [
+        "male",
+        "female",
+        "non_binary",
+        "other",
+        "prefer_not_to_say",
+      ],
+      ugc_generation_filter: ["hyper_realistic", "cinematic"],
+      ugc_profile_status: ["draft", "active", "archived"],
+      ugc_socioeconomic_status: [
+        "struggling",
+        "working_class",
+        "comfortable",
+        "wealthy",
+        "elite",
+      ],
+      ugc_voice_source: [
+        "elevenlabs_library",
+        "instant_clone",
+        "professional_clone",
+      ],
+      ugc_voice_status: ["active", "archived"],
       user_role: ["user", "staff", "admin"],
       video_duration: ["5", "8", "10", "15"],
     },
