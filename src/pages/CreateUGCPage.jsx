@@ -2,9 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic } from 'lucide-react'
+import { ArrowLeft, Plus, User, Zap, Sparkles, MoreVertical, Archive, Pencil, Mic, Lock, Crown } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import MasterGate from '@/components/ui/MasterGate'
 import { ugcProfiles } from '@/lib/ugc'
 import toast from 'react-hot-toast'
 
