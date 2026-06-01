@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, VideoIcon, Mic, FileText, Users, User } from 'lucide-react'
+import {
+  ArrowLeft, Zap, X, ImagePlus, VideoIcon, Mic, FileText,
+  Users, User, Library, Play, Pause, Loader2,
+} from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
@@ -23,7 +26,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ─── caps helper ─────────────────────────────────────────────────────────────
+// ─── caps helper ──────────────────────────────────────────────────────────────
 function getModelCaps(model) {
   if (!model) return {
     faceInput:             true,
@@ -50,7 +53,6 @@ function getModelCaps(model) {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
 function detectAspectRatio(w, h) {
   const r = w / h
   if (r > 1.6)  return '16:9'
@@ -108,7 +110,6 @@ const restoreFile = (key) => new Promise((resolve) => {
 })
 
 // ─── sub-components ───────────────────────────────────────────────────────────
-
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -219,8 +220,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ─── Subject slot ─────────────────────────────────────────────────────────────
-
+// ─── Subject slot ──────────────────────────────────────────────────────────────
 const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove }) => {
   if (mode === 'face') {
     return faceImage ? (
@@ -276,9 +276,165 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
   )
 }
 
-// ─── Audio slot ───────────────────────────────────────────────────────────────
+// ─── Audio source picker ───────────────────────────────────────────────────────
+const sharedPickerAudio = { ref: null }
 
-const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudioRemove, onScriptChange, supportsTextScript, charIndex }) => {
+function AudioSourcePicker({ onAudioUpload, onImport, userId }) {
+  const [mode,        setMode]        = useState(null)   // null | 'pick'
+  const [generations, setGens]        = useState([])
+  const [loadingList, setLoadingList] = useState(false)
+  const [playing,     setPlaying]     = useState(null)
+
+  const openPicker = async () => {
+    setMode('pick')
+    setLoadingList(true)
+    const { data, error } = await supabase
+      .from('ugc_audio_generations')
+      .select('id, script, duration_seconds, output_url, created_at, voice:ugc_voices(name)')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (!error) setGens(data || [])
+    setLoadingList(false)
+  }
+
+  const stopAudio = () => {
+    if (sharedPickerAudio.ref) { sharedPickerAudio.ref.pause(); sharedPickerAudio.ref = null }
+    setPlaying(null)
+  }
+
+  const togglePlay = (gen) => {
+    if (playing === gen.id) { stopAudio(); return }
+    stopAudio()
+    if (!gen.output_url) return
+    const audio = new Audio(gen.output_url)
+    audio.onended = () => setPlaying(null)
+    audio.play()
+    sharedPickerAudio.ref = audio
+    setPlaying(gen.id)
+  }
+
+  const handleImport = (gen) => {
+    stopAudio()
+    onImport(gen)
+  }
+
+  // ── Choice view ──
+  if (mode === null) {
+    return (
+      <div className="flex gap-2">
+        <label
+          className="flex-1 flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all gap-1.5 py-5"
+          style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+        >
+          <input type="file" accept="audio/*" className="hidden" onChange={onAudioUpload} />
+          <Mic size={20} style={{ color: ACCENT }} />
+          <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload file</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>MP3, WAV, M4A…</span>
+        </label>
+
+        <button
+          onClick={openPicker}
+          className="flex-1 flex flex-col items-center justify-center rounded-2xl transition-all gap-1.5 py-5"
+          style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+        >
+          <Library size={20} style={{ color: ACCENT }} />
+          <span className="text-xs font-semibold" style={{ color: ACCENT }}>My generations</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Browse &amp; import</span>
+        </button>
+      </div>
+    )
+  }
+
+  // ── Generations list ──
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-elevated)' }}>
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-3 py-2.5"
+        style={{ borderBottom: '1px solid var(--border-color)' }}
+      >
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>My Generated Audio</span>
+        <button
+          onClick={() => { stopAudio(); setMode(null) }}
+          className="p-1 rounded-lg"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <X size={13} />
+        </button>
+      </div>
+
+      {/* List */}
+      <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
+        {loadingList ? (
+          <div className="flex justify-center py-8">
+            <Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" />
+          </div>
+        ) : generations.length === 0 ? (
+          <p className="text-xs text-center py-8" style={{ color: 'var(--text-muted)' }}>
+            No generated audio yet
+          </p>
+        ) : (
+          generations.map((gen) => {
+            const dur     = gen.duration_seconds ? `${Math.round(gen.duration_seconds)}s` : '—'
+            const date    = new Date(gen.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+            const time    = new Date(gen.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+            const isPlay  = playing === gen.id
+            const snippet = gen.script?.length > 60 ? gen.script.slice(0, 60) + '…' : gen.script
+
+            return (
+              <div
+                key={gen.id}
+                className="flex items-center gap-2.5 px-3 py-2.5"
+                style={{ borderBottom: '1px solid var(--border-color)' }}
+              >
+                {/* Play */}
+                <button
+                  onClick={() => togglePlay(gen)}
+                  disabled={!gen.output_url}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+                  style={{ background: isPlay ? ACCENT : ACCENT_SUB, opacity: gen.output_url ? 1 : 0.3 }}
+                >
+                  {isPlay
+                    ? <Pause size={13} style={{ color: '#fff'  }} fill="currentColor" />
+                    : <Play  size={13} style={{ color: ACCENT }} fill="currentColor" />
+                  }
+                </button>
+
+                {/* Meta */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                    {snippet}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {gen.voice?.name ?? 'Voice'} · {dur} · {date} {time}
+                  </p>
+                </div>
+
+                {/* Import */}
+                <button
+                  onClick={() => handleImport(gen)}
+                  className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  style={{ background: ACCENT, color: '#fff' }}
+                >
+                  Use
+                </button>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Audio slot ────────────────────────────────────────────────────────────────
+const AudioSlot = ({
+  label, audioFile, script, audioMode,
+  onAudioUpload, onAudioRemove, onAudioImport,
+  onScriptChange, supportsTextScript, charIndex, userId,
+}) => {
   const charLabel = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
   return (
     <div className="flex flex-col gap-2">
@@ -310,27 +466,31 @@ const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudio
 
       {audioMode === 'upload' && (
         audioFile ? (
-          <div className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+          <div className="flex items-center gap-3 p-3 rounded-2xl"
+            style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ACCENT_SUB }}>
               <Mic size={15} style={{ color: ACCENT }} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{audioFile.name}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Audio ready</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {audioFile.fromGeneration ? 'Imported from generations' : 'Audio ready'}
+              </p>
             </div>
-            <button onClick={onAudioRemove} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+            <button
+              onClick={onAudioRemove}
+              className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
+            >
               <X size={13} />
             </button>
           </div>
         ) : (
-          <label className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-            style={{ minHeight: 88, border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
-            <input type="file" accept="audio/*" className="hidden" onChange={onAudioUpload} />
-            <Mic size={20} style={{ color: ACCENT, marginBottom: 6 }} />
-            <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload audio / voiceover</span>
-            <span className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>MP3, WAV, M4A…</span>
-          </label>
+          <AudioSourcePicker
+            onAudioUpload={onAudioUpload}
+            onImport={onAudioImport}
+            userId={userId}
+          />
         )
       )}
 
@@ -354,8 +514,7 @@ const AudioSlot = ({ label, audioFile, script, audioMode, onAudioUpload, onAudio
   )
 }
 
-// ─── main page ────────────────────────────────────────────────────────────────
-
+// ─── main page ─────────────────────────────────────────────────────────────────
 export default function CreateTalkingHeadPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
@@ -365,25 +524,25 @@ export default function CreateTalkingHeadPage() {
   const [model,         setModel]         = useState('')
 
   // subject
-  const [subjectMode,  setSubjectMode]  = useState('face')
-  const [faceImage,    setFaceImage]    = useState(null)
-  const [videoFile,    setVideoFile]    = useState(null)
+  const [subjectMode, setSubjectMode] = useState('face')
+  const [faceImage,   setFaceImage]   = useState(null)
+  const [videoFile,   setVideoFile]   = useState(null)
 
   // audio
-  const [audioMode1,   setAudioMode1]  = useState('upload')
-  const [audioMode2,   setAudioMode2]  = useState('upload')
-  const [audioFile1,   setAudioFile1]  = useState(null)
-  const [audioFile2,   setAudioFile2]  = useState(null)
-  const [script1,      setScript1]     = useState('')
-  const [script2,      setScript2]     = useState('')
+  const [audioMode1,  setAudioMode1]  = useState('upload')
+  const [audioMode2,  setAudioMode2]  = useState('upload')
+  const [audioFile1,  setAudioFile1]  = useState(null)
+  const [audioFile2,  setAudioFile2]  = useState(null)
+  const [script1,     setScript1]     = useState('')
+  const [script2,     setScript2]     = useState('')
 
   // settings
-  const [prompt,       setPrompt]      = useState('')
-  const [aspectRatio,  setAspectRatio] = useState('9:16')
-  const [autoRatio,    setAutoRatio]   = useState(false)
-  const [duration,     setDuration]    = useState('5')
+  const [prompt,      setPrompt]      = useState('')
+  const [aspectRatio, setAspectRatio] = useState('9:16')
+  const [autoRatio,   setAutoRatio]   = useState(false)
+  const [duration,    setDuration]    = useState('5')
 
-  const [submitting,   setSubmitting]  = useState(false)
+  const [submitting,  setSubmitting]  = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -413,10 +572,6 @@ export default function CreateTalkingHeadPage() {
   }, [prompt])
 
   // ── load models ────────────────────────────────────────────────────────────
-  // Mirrors the exact same query pattern as CreateImagePage — filter by
-  // feature = 'lipsync' (not type, since lipsync models have type = 'video').
-  // Make sure rows have is_active = true in the DB; the migration inserts
-  // them as false — run: UPDATE models SET is_active = true WHERE feature = 'lipsync'
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -435,32 +590,23 @@ export default function CreateTalkingHeadPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // ── derive caps from selected model ───────────────────────────────────────
+  // ── derive caps ────────────────────────────────────────────────────────────
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
   // ── reset inputs on model change if now-unsupported ───────────────────────
   useEffect(() => {
     if (!selectedModel) return
-
     if (!caps.faceInput && caps.videoInput)  setSubjectMode('video')
     if (caps.faceInput  && !caps.videoInput) setSubjectMode('face')
-
-    if (!caps.textScript) {
-      setAudioMode1('upload')
-      setAudioMode2('upload')
-    }
-
+    if (!caps.textScript) { setAudioMode1('upload'); setAudioMode2('upload') }
     if (!caps.multiChar) {
-      setAudioFile2(null)
-      setScript2('')
+      setAudioFile2(null); setScript2('')
       try { sessionStorage.removeItem(SS_AUDIO_2) } catch {}
     }
-
     if (!caps.supportedDurations.includes(duration)) {
       setDuration(caps.supportedDurations[0] || '5')
     }
-
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
     }
@@ -476,7 +622,7 @@ export default function CreateTalkingHeadPage() {
 
   const canAfford = credits >= creditCost
 
-  // ── readiness checks ──────────────────────────────────────────────────────
+  // ── readiness ──────────────────────────────────────────────────────────────
   const hasSubject = subjectMode === 'face' ? !!faceImage : !!videoFile
   const hasAudio1  = audioMode1 === 'upload' ? !!audioFile1 : script1.trim().length > 0
   const hasAudio2  = caps.multiChar
@@ -485,14 +631,13 @@ export default function CreateTalkingHeadPage() {
 
   const subjectRequired = caps.faceInput || caps.videoInput
   const subjectOk       = !subjectRequired || hasSubject
+  const buttonDisabled  = submitting || !canAfford || !hasAudio1 || !hasAudio2 || !subjectOk || !selectedModel
 
-  const buttonDisabled = submitting || !canAfford || !hasAudio1 || !hasAudio2 || !subjectOk || !selectedModel
-
-  // ── mode label for header ──────────────────────────────────────────────────
+  // ── mode label ─────────────────────────────────────────────────────────────
   const modeLabel = (() => {
-    if (caps.multiChar)                                     return 'Multi-Character Sync'
-    if (caps.videoInput && subjectMode === 'video')         return 'Video Lip Sync'
-    if (caps.faceInput  && subjectMode === 'face')          return 'Talking Avatar'
+    if (caps.multiChar)                             return 'Multi-Character Sync'
+    if (caps.videoInput && subjectMode === 'video') return 'Video Lip Sync'
+    if (caps.faceInput  && subjectMode === 'face')  return 'Talking Avatar'
     return 'Talking Head'
   })()
 
@@ -519,6 +664,18 @@ export default function CreateTalkingHeadPage() {
     if (!file) return
     if (slot === 1) { setAudioFile1({ file, name: file.name }); persistFile(SS_AUDIO_1, file) }
     else            { setAudioFile2({ file, name: file.name }); persistFile(SS_AUDIO_2, file) }
+  }
+
+  const handleAudioImport = (slot) => (gen) => {
+    const imported = {
+      file:          null,
+      name:          gen.voice?.name ?? 'Generated Audio',
+      url:           gen.output_url,
+      fromGeneration: true,
+      generationId:  gen.id,
+    }
+    if (slot === 1) setAudioFile1(imported)
+    else            setAudioFile2(imported)
   }
 
   const clearAll = () => {
@@ -565,8 +722,14 @@ export default function CreateTalkingHeadPage() {
       let audio1Url = null
       let audio2Url = null
 
-      if (audioMode1 === 'upload' && audioFile1?.file)               audio1Url = await uploadToStorage(audioFile1.file)
-      if (caps.multiChar && audioMode2 === 'upload' && audioFile2?.file) audio2Url = await uploadToStorage(audioFile2.file)
+      if (audioMode1 === 'upload') {
+        if (audioFile1?.fromGeneration) audio1Url = audioFile1.url
+        else if (audioFile1?.file)      audio1Url = await uploadToStorage(audioFile1.file)
+      }
+      if (caps.multiChar && audioMode2 === 'upload') {
+        if (audioFile2?.fromGeneration) audio2Url = audioFile2.url
+        else if (audioFile2?.file)      audio2Url = await uploadToStorage(audioFile2.file)
+      }
 
       const inputImageUrls = [subjectVideoUrl, audio1Url, audio2Url].filter(Boolean)
 
@@ -660,7 +823,8 @@ export default function CreateTalkingHeadPage() {
             <ModelDropdown models={models} value={model} onChange={setModel} />
           )}
           {!modelsLoading && models.length === 0 && (
-            <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+            <span className="text-xs px-3 py-1.5 rounded-xl"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
               No models
             </span>
           )}
@@ -676,7 +840,7 @@ export default function CreateTalkingHeadPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── Subject section ── */}
+          {/* ── Subject ── */}
           {(caps.faceInput || caps.videoInput) && (
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -715,9 +879,7 @@ export default function CreateTalkingHeadPage() {
                 onFaceUpload={handleFaceUpload}
                 onVideoUpload={handleVideoUpload}
                 onFaceRemove={() => {
-                  setFaceImage(null)
-                  setAutoRatio(false)
-                  setAspectRatio('9:16')
+                  setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16')
                   try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {}
                 }}
                 onVideoRemove={() => {
@@ -728,7 +890,7 @@ export default function CreateTalkingHeadPage() {
             </div>
           )}
 
-          {/* ── Audio section ── */}
+          {/* ── Audio ── */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -751,12 +913,14 @@ export default function CreateTalkingHeadPage() {
               audioMode={audioMode1}
               onAudioUpload={handleAudioUpload(1)}
               onAudioRemove={() => { setAudioFile1(null); try { sessionStorage.removeItem(SS_AUDIO_1) } catch {} }}
+              onAudioImport={handleAudioImport(1)}
               onScriptChange={(val) => {
                 if (val === 'upload' || val === 'text') setAudioMode1(val)
                 else setScript1(val)
               }}
               supportsTextScript={caps.textScript}
               charIndex={caps.multiChar ? 0 : undefined}
+              userId={user?.id}
             />
 
             {caps.multiChar && (
@@ -767,17 +931,19 @@ export default function CreateTalkingHeadPage() {
                 audioMode={audioMode2}
                 onAudioUpload={handleAudioUpload(2)}
                 onAudioRemove={() => { setAudioFile2(null); try { sessionStorage.removeItem(SS_AUDIO_2) } catch {} }}
+                onAudioImport={handleAudioImport(2)}
                 onScriptChange={(val) => {
                   if (val === 'upload' || val === 'text') setAudioMode2(val)
                   else setScript2(val)
                 }}
                 supportsTextScript={caps.textScript}
                 charIndex={1}
+                userId={user?.id}
               />
             )}
           </div>
 
-          {/* ── Prompt (optional) ── */}
+          {/* ── Prompt ── */}
           <Textarea
             label="Prompt"
             value={prompt}
