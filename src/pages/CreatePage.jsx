@@ -426,13 +426,18 @@ export default function CreatePage() {
                     border: '1px solid var(--border-color)',
                   }}
                 >
-                  <Sparkles size={28} style={{ color: 'var(--brand)' }} />
+                 <img
+  src="/icon-192.png"
+  alt="Canvas"
+  className="logo-icon"
+  style={{ width: 36, height: 36 }}
+/>
                 </div>
                 <h2 className="text-lg font-black mb-2" style={{ color: 'var(--text-primary)' }}>
                   Coming Soon
                 </h2>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)', maxWidth: 260 }}>
-                  Canvas is on its way. We're putting the finishing touches on something great — check back soon.
+                  We're putting the finishing touches on something great — check back soon.
                 </p>
               </motion.div>
             )}
