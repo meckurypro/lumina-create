@@ -14,8 +14,8 @@ import { useAuth }                               from '@/context/AuthContext'
 import { TopBar }                                from '@/components/layout/TopBar'
 import { generations as generationsDb, supabase } from '@/lib/supabase'
 import { Film, Zap }                             from 'lucide-react'
-import MediaPageCore                             from '@/components/media/MediaPageCore'
-import { MediaEmptyState }                       from '@/components/media/MediaCardComponents'
+import MediaPageCore                             from '@/components/media/MediaPageCore.jsx'
+import { MediaEmptyState }                       from '@/components/media/MediaCardComponents.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fetcher
