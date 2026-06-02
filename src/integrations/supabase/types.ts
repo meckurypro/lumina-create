@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string | null
+          updated_by: string | null
+          value: string
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value: string
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           description: string | null
@@ -637,6 +669,7 @@ export type Database = {
           aka: string | null
           created_at: string | null
           credit_cost_i2i: number
+          credit_cost_per_second: number | null
           credit_cost_t2i: number
           credit_multiplier: number
           feature: string
@@ -648,6 +681,7 @@ export type Database = {
           is_verified: boolean
           label: string
           max_ref_images: number
+          min_billable_seconds: number | null
           provider: string
           sort_order: number | null
           sound_cost_multiplier: number
@@ -670,6 +704,7 @@ export type Database = {
           aka?: string | null
           created_at?: string | null
           credit_cost_i2i?: number
+          credit_cost_per_second?: number | null
           credit_cost_t2i?: number
           credit_multiplier?: number
           feature?: string
@@ -681,6 +716,7 @@ export type Database = {
           is_verified?: boolean
           label: string
           max_ref_images?: number
+          min_billable_seconds?: number | null
           provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
@@ -703,6 +739,7 @@ export type Database = {
           aka?: string | null
           created_at?: string | null
           credit_cost_i2i?: number
+          credit_cost_per_second?: number | null
           credit_cost_t2i?: number
           credit_multiplier?: number
           feature?: string
@@ -714,6 +751,7 @@ export type Database = {
           is_verified?: boolean
           label?: string
           max_ref_images?: number
+          min_billable_seconds?: number | null
           provider?: string
           sort_order?: number | null
           sound_cost_multiplier?: number
@@ -800,7 +838,10 @@ export type Database = {
             | null
           preferred_model: string | null
           primary_use_case: string | null
+          purchase_count: number
+          referral_code: string | null
           referral_source: string | null
+          referred_by: string | null
           role: Database["public"]["Enums"]["user_role"] | null
           staff_note: string | null
           staff_since: string | null
@@ -837,7 +878,10 @@ export type Database = {
             | null
           preferred_model?: string | null
           primary_use_case?: string | null
+          purchase_count?: number
+          referral_code?: string | null
           referral_source?: string | null
+          referred_by?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
@@ -874,7 +918,10 @@ export type Database = {
             | null
           preferred_model?: string | null
           primary_use_case?: string | null
+          purchase_count?: number
+          referral_code?: string | null
           referral_source?: string | null
+          referred_by?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           staff_note?: string | null
           staff_since?: string | null
@@ -904,6 +951,61 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "models"
             referencedColumns: ["value"]
+          },
+          {
+            foreignKeyName: "profiles_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          converted_at: string | null
+          created_at: string | null
+          first_purchase_bonus_paid: boolean
+          id: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          total_commission_credits: number
+        }
+        Insert: {
+          converted_at?: string | null
+          created_at?: string | null
+          first_purchase_bonus_paid?: boolean
+          id?: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          total_commission_credits?: number
+        }
+        Update: {
+          converted_at?: string | null
+          created_at?: string | null
+          first_purchase_bonus_paid?: boolean
+          id?: string
+          referral_code?: string
+          referred_id?: string
+          referrer_id?: string
+          total_commission_credits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_id_fkey"
+            columns: ["referred_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1132,9 +1234,67 @@ export type Database = {
         }
         Relationships: []
       }
+      ugc_audio_chunks: {
+        Row: {
+          chunk_index: number
+          created_at: string | null
+          duration_ms: number | null
+          file_size_bytes: number | null
+          generation_id: string
+          id: string
+          label: string
+          public_url: string
+          status: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          chunk_index: number
+          created_at?: string | null
+          duration_ms?: number | null
+          file_size_bytes?: number | null
+          generation_id: string
+          id?: string
+          label: string
+          public_url: string
+          status?: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          chunk_index?: number
+          created_at?: string | null
+          duration_ms?: number | null
+          file_size_bytes?: number | null
+          generation_id?: string
+          id?: string
+          label?: string
+          public_url?: string
+          status?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_audio_chunks_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_audio_generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_audio_chunks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ugc_audio_generations: {
         Row: {
           character_count: number
+          chunk_count: number
           created_at: string | null
           credits_charged: number
           duration_seconds: number | null
@@ -1155,6 +1315,7 @@ export type Database = {
         }
         Insert: {
           character_count?: number
+          chunk_count?: number
           created_at?: string | null
           credits_charged?: number
           duration_seconds?: number | null
@@ -1175,6 +1336,7 @@ export type Database = {
         }
         Update: {
           character_count?: number
+          chunk_count?: number
           created_at?: string | null
           credits_charged?: number
           duration_seconds?: number | null
@@ -1500,6 +1662,25 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_stats: {
+        Row: {
+          converted_referrals: number | null
+          pending_referrals: number | null
+          referral_code: string | null
+          total_commission_earned: number | null
+          total_referrals: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referrer_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ugc_profiles_summary: {
         Row: {
           age: number | null
@@ -1531,12 +1712,12 @@ export type Database = {
       add_credits: {
         Args: {
           p_amount: number
-          p_amount_ngn?: number
-          p_amount_usd?: number
-          p_bonus_amount?: number
-          p_description?: string
-          p_payment_provider?: Database["public"]["Enums"]["payment_provider"]
-          p_payment_reference?: string
+          p_amount_ngn: number
+          p_amount_usd: number
+          p_bonus_amount: number
+          p_description: string
+          p_payment_provider: string
+          p_payment_reference: string
           p_user_id: string
         }
         Returns: Json
@@ -1559,9 +1740,21 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_referral: {
+        Args: { p_referral_code: string; p_referred_user_id: string }
+        Returns: Json
+      }
       approve_feed_post: {
         Args: { p_admin_id: string; p_notes?: string; p_post_id: string }
         Returns: Json
+      }
+      award_referral_commission: {
+        Args: {
+          p_buyer_user_id: string
+          p_credits_bought: number
+          p_transaction_id: string
+        }
+        Returns: undefined
       }
       deduct_credits: {
         Args: {
@@ -1585,6 +1778,7 @@ export type Database = {
         Args: { p_admin_id: string; p_user_id: string }
         Returns: Json
       }
+      generate_referral_code: { Args: never; Returns: string }
       get_active_prompt: { Args: { p_template_slug: string }; Returns: string }
       get_admin_stats: { Args: never; Returns: Json }
       get_app_setting: { Args: { p_key: string }; Returns: string }
@@ -1727,6 +1921,8 @@ export type Database = {
         | "bonus"
         | "admin_grant"
         | "staff_usage"
+        | "referral_commission"
+        | "referral_bonus"
       ugc_education_level:
         | "no_formal_education"
         | "primary_school"
@@ -1952,6 +2148,8 @@ export const Constants = {
         "bonus",
         "admin_grant",
         "staff_usage",
+        "referral_commission",
+        "referral_bonus",
       ],
       ugc_education_level: [
         "no_formal_education",

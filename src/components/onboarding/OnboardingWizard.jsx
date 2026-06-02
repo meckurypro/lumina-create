@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { User, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { profiles } from '@/lib/supabase'
+import { subscribeToMaster, MASTER_PRICE_NGN } from '@/lib/subscription'
 import { Input } from '@/components/ui/Input'
 import toast from 'react-hot-toast'
 
@@ -209,7 +210,7 @@ export default function OnboardingWizard({ onComplete }) {
               className="mt-3 rounded-xl px-3 py-2 text-xs font-medium"
               style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}
             >
-              Contact us on WhatsApp to activate: 08162465247
+              Pay securely with Paystack right after this step.
             </div>
           </button>
         </div>
@@ -237,10 +238,29 @@ export default function OnboardingWizard({ onComplete }) {
       referral_source:        data.referral_source,
       preferred_aspect_ratio: data.preferred_aspect_ratio,
     })
-    setLoading(false)
-    if (error) { toast.error(error.message || 'Failed to save profile'); return }
+    if (error) { setLoading(false); toast.error(error.message || 'Failed to save profile'); return }
     await refreshProfile()
     toast.success('Welcome to Meckury AI! 🎉')
+
+    // Optional: launch Paystack if the user picked Master
+    if (data.selected_tier === 'master' && user?.email) {
+      try {
+        await subscribeToMaster({
+          user,
+          onSuccess: async (res) => {
+            if (res?.error) toast.error(res.error)
+            else { toast.success('Master plan activated ⭐'); await refreshProfile() }
+            setLoading(false)
+            onComplete?.()
+          },
+          onClose: () => { setLoading(false); onComplete?.() },
+        })
+        return
+      } catch (e) {
+        toast.error(e.message || 'Could not open Paystack')
+      }
+    }
+    setLoading(false)
     onComplete?.()
   }
 
