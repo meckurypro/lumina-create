@@ -1,9 +1,127 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Film, Image, X, XCircle, CheckCircle } from 'lucide-react'
+import { Search, Film, Image, X, XCircle, CheckCircle, Radio, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import toast from 'react-hot-toast'
+
+// ─── Feed Visibility Toggle ───────────────────────────────
+
+const FeedVisibilityToggle = () => {
+  const [feedEnabled, setFeedEnabled] = useState(true)
+  const [loading,     setLoading]     = useState(true)
+  const [saving,      setSaving]      = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'feed_enabled')
+      .single()
+      .then(({ data }) => {
+        if (data) setFeedEnabled(data.value === 'true' || data.value === true)
+        setLoading(false)
+      })
+  }, [])
+
+  const handleChange = async (value) => {
+    setSaving(true)
+    const { error } = await supabase
+      .from('app_config')
+      .upsert({ key: 'feed_enabled', value: String(value) }, { onConflict: 'key' })
+    setSaving(false)
+    if (error) {
+      toast.error('Failed to update feed visibility')
+      return
+    }
+    setFeedEnabled(value)
+    toast.success(value ? 'Feed is now visible to users' : 'Feed hidden — splash screen active')
+  }
+
+  return (
+    <div
+      className="rounded-2xl p-4 mb-2"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: feedEnabled ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)' }}
+        >
+          {feedEnabled
+            ? <Eye size={14} style={{ color: '#22c55e' }} />
+            : <EyeOff size={14} style={{ color: '#ef4444' }} />
+          }
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Feed Visibility</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {loading ? 'Loading…' : feedEnabled ? 'Community posts are live' : 'Splash screen is showing'}
+          </p>
+        </div>
+        {saving && (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Saving…</p>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {/* Feed ON */}
+        <button
+          disabled={loading || saving}
+          onClick={() => handleChange(true)}
+          className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{
+            background: feedEnabled
+              ? 'rgba(34,197,94,0.12)'
+              : 'var(--bg-elevated)',
+            border: `1.5px solid ${feedEnabled ? 'rgba(34,197,94,0.35)' : 'var(--border-color)'}`,
+            color: feedEnabled ? '#22c55e' : 'var(--text-muted)',
+          }}
+        >
+          <div
+            className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+            style={{
+              borderColor: feedEnabled ? '#22c55e' : 'var(--text-muted)',
+              background: feedEnabled ? '#22c55e' : 'transparent',
+            }}
+          >
+            {feedEnabled && (
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+            )}
+          </div>
+          Feed On
+        </button>
+
+        {/* Feed OFF */}
+        <button
+          disabled={loading || saving}
+          onClick={() => handleChange(false)}
+          className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{
+            background: !feedEnabled
+              ? 'rgba(239,68,68,0.10)'
+              : 'var(--bg-elevated)',
+            border: `1.5px solid ${!feedEnabled ? 'rgba(239,68,68,0.30)' : 'var(--border-color)'}`,
+            color: !feedEnabled ? '#ef4444' : 'var(--text-muted)',
+          }}
+        >
+          <div
+            className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+            style={{
+              borderColor: !feedEnabled ? '#ef4444' : 'var(--text-muted)',
+              background: !feedEnabled ? '#ef4444' : 'transparent',
+            }}
+          >
+            {!feedEnabled && (
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+            )}
+          </div>
+          Feed Off
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Post Grid Item ───────────────────────────────────────
 
@@ -194,6 +312,10 @@ export default function FeedPublishedManager() {
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── Feed Visibility Toggle ── */}
+      <FeedVisibilityToggle />
+
       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
         Search a user by username, then view and remove their published posts.
       </p>
