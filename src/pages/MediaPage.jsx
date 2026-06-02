@@ -1,19 +1,12 @@
 // src/pages/MediaPage.jsx
 //
 // Thin wrapper. All heavy lifting is in MediaPageCore.
-// This file only supplies:
-//   • fetcher  — queries the generations table
-//   • onRegenerate — standard regenerate flow
-//   • filterRelevantModels / computeCreditCost
-//   • onCardClick — navigate to /result/:id
-//   • headerSlot — TopBar + title
-//   • No footerSlot, no lightbox, no grid toggle
 
 import { useNavigate }                           from 'react-router-dom'
 import { useAuth }                               from '@/context/AuthContext'
 import { TopBar }                                from '@/components/layout/TopBar'
 import { generations as generationsDb, supabase } from '@/lib/supabase'
-import { Film, Zap }                             from 'lucide-react'
+import { Film }                                  from 'lucide-react'
 import MediaPageCore                             from '@/components/media/MediaPageCore.jsx'
 import { MediaEmptyState }                       from '@/components/media/MediaCardComponents.jsx'
 
@@ -29,7 +22,7 @@ async function fetchGenerations(user, { limit, offset, afterIso, statusFilter })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (afterIso)                          query = query.gte('created_at', afterIso)
+  if (afterIso)                               query = query.gte('created_at', afterIso)
   if (statusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
 
   const { data, count, error } = await query
@@ -38,7 +31,7 @@ async function fetchGenerations(user, { limit, offset, afterIso, statusFilter })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// filterRelevantModels
+// filterRelevantModels  (for Regenerate)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterRelevantModels(models, gen) {
@@ -59,19 +52,47 @@ function filterRelevantModels(models, gen) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// computeCreditCost
+// filterEditModels  (for Edit — I2I capable image models only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function filterEditModels(models, gen) {
+  // Edit always produces an image (output → I2I input).
+  // Only surface unlocked image models that support image-to-image input.
+  return models.filter(
+    (m) => !m.is_locked && m.type === 'image' && m.supports_image === true
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeCreditCost  (for Regenerate)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCreditCost(selectedModel, gen) {
   if (!selectedModel) return 0
-  return (gen.start_frame_url ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+  // If the original generation had any input image, treat as I2I
+  const hadInputImage = !!(gen.input_image_urls?.length || gen.start_frame_url)
+  return (hadInputImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeEditCreditCost  (for Edit — always I2I since output becomes input)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function computeEditCreditCost(selectedModel) {
+  if (!selectedModel) return 0
+  return selectedModel.credit_cost_i2i || 0
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
+//
+// Now receives editedPrompt (5th positional arg) so the user's prompt
+// changes in the sheet are honoured.
+// The ORIGINAL INPUT images (input_image_urls / start_frame_url) are reused —
+// NOT the generated output.
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, {
+async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
   supabase, user, generationsDb, refreshProfile, setItems, setTotalCount,
 }) {
   const isVideo = [
@@ -83,20 +104,22 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, {
     user_id:                user.id,
     generation_type:        gen.generation_type,
     status:                 'pending',
-    prompt:                 gen.prompt,
+    // Use the (possibly edited) prompt from the sheet
+    prompt:                 editedPrompt ?? gen.prompt,
     model:                  chosenModel,
     aspect_ratio:           gen.aspect_ratio,
     duration:               gen.duration,
     credits_charged:        creditCost,
     output_type:            gen.output_type,
+    // Reuse the ORIGINAL INPUT images — never the generated output
     start_frame_url:        null,
     input_image_urls:       gen.input_image_urls?.length
                               ? gen.input_image_urls
                               : gen.start_frame_url
                                 ? [gen.start_frame_url]
                                 : null,
-    end_frame_url:          gen.end_frame_url          || null,
-    template_id:            gen.template_id            || null,
+    end_frame_url:          gen.end_frame_url   || null,
+    template_id:            gen.template_id     || null,
     skip_prompt_refinement: gen.skip_prompt_refinement ?? false,
   })
   if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -112,6 +135,50 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, {
   const fnName = isVideo ? 'video-generate' : 'image-generate'
   supabase.functions.invoke(fnName, { body: { generationId: genRow.id } })
     .catch((e) => console.error(`${fnName} invoke error`, e))
+
+  setItems((prev) => [genRow, ...prev])
+  setTotalCount((c) => c + 1)
+  refreshProfile()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// onEdit
+//
+// Takes the GENERATED OUTPUT (gen.output_url) as the new start_frame_url,
+// fires an image-to-image generation with the user's (possibly edited) prompt.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
+  supabase, user, generationsDb, refreshProfile, setItems, setTotalCount,
+}) {
+  if (!gen.output_url) throw new Error('No output URL to edit from')
+
+  const { data: genRow, error: genErr } = await generationsDb.create({
+    user_id:                user.id,
+    generation_type:        'image_to_image',
+    status:                 'pending',
+    prompt:                 editedPrompt ?? gen.prompt,
+    model:                  chosenModel,
+    aspect_ratio:           gen.aspect_ratio,
+    credits_charged:        creditCost,
+    output_type:            'image',
+    // The generated output becomes the new input
+    start_frame_url:        gen.output_url,
+    input_image_urls:       [gen.output_url],
+    skip_prompt_refinement: true,
+  })
+  if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+
+  const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+  if (dErr || !deduct?.success) {
+    await generationsDb.update(genRow.id, {
+      status: 'failed', error_message: deduct?.error || 'Insufficient credits',
+    })
+    throw new Error(deduct?.error || 'Not enough credits')
+  }
+
+  supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
+    .catch((e) => console.error('image-generate invoke error', e))
 
   setItems((prev) => [genRow, ...prev])
   setTotalCount((c) => c + 1)
@@ -189,6 +256,10 @@ export default function MediaPage() {
       onCardClick={(gen, navigate) => {
         if (gen.status === 'completed') navigate(`/result/${gen.id}`)
       }}
+      // Edit flow
+      filterEditModels={filterEditModels}
+      computeEditCreditCost={computeEditCreditCost}
+      onEdit={onEdit}
       headerSlot={headerSlot}
       emptySlot={emptySlot}
       isNovice={isNovice}
