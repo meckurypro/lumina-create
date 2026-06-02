@@ -291,63 +291,86 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
 
 // ─── Splash Screen (feed disabled) ───────────────────────
 
-const SplashScreen = () => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ duration: 0.5 }}
-    className="flex flex-col items-center justify-center w-full"
-    style={{ paddingTop: '24px', paddingBottom: '40px' }}
-  >
-    {/* 16:9 video container */}
-    <div
-      className="w-full rounded-3xl overflow-hidden"
-      style={{
-        aspectRatio: '16 / 9',
-        maxWidth: '100%',
-        background: '#000',
-        border: '1px solid var(--border-color)',
-        boxShadow: 'var(--shadow-lg)',
-      }}
-    >
-      <video
-        src="/splash.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        className="splash-video w-full h-full"
-        style={{ objectFit: 'cover', display: 'block' }}
-      />
-    </div>
+const SplashScreen = () => {
+  const navigate = useNavigate()
 
-    {/* Tagline */}
-    <motion.p
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3, duration: 0.4 }}
-      className="mt-5 text-center font-black"
-      style={{
-        fontSize: '22px',
-        letterSpacing: '-0.03em',
-        color: 'var(--text-primary)',
-        lineHeight: 1.2,
-      }}
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="flex flex-col items-center justify-center w-full"
+      style={{ paddingTop: '24px', paddingBottom: '40px' }}
     >
-      Imagine it?{' '}
-      <span
+      {/* 16:9 video container */}
+      <div
+        className="w-full rounded-3xl overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
+          aspectRatio: '16 / 9',
+          maxWidth: '100%',
+          background: '#000',
+          border: '1px solid var(--border-color)',
+          boxShadow: 'var(--shadow-lg)',
         }}
       >
-        Create it!
-      </span>
-    </motion.p>
-  </motion.div>
-)
+        <video
+          src="/splash.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="splash-video w-full h-full"
+          style={{ objectFit: 'cover', display: 'block' }}
+        />
+      </div>
+
+      {/* Tagline */}
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.4 }}
+        className="mt-5 text-center font-black"
+        style={{
+          fontSize: '22px',
+          letterSpacing: '-0.03em',
+          color: 'var(--text-primary)',
+          lineHeight: 1.2,
+        }}
+      >
+        Imagine it?{' '}
+        <span
+          style={{
+            background: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          Create it!
+        </span>
+      </motion.p>
+
+      {/* CTA Button */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.4 }}
+        whileTap={{ scale: 0.96 }}
+        onClick={() => navigate('/create')}
+        className="mt-6 px-8 py-3 rounded-2xl font-bold text-sm"
+        style={{
+          background: 'var(--brand)',
+          color: 'white',
+          border: 'none',
+          boxShadow: '0 4px 20px rgba(249,115,22,0.35)',
+          letterSpacing: '0.01em',
+        }}
+      >
+        Start Here
+      </motion.button>
+    </motion.div>
+  )
+}
 
 // ─── Feed Page ────────────────────────────────────────────
 
@@ -427,22 +450,21 @@ export default function FeedPage() {
         {/* ── Page header — conditional on feed state ── */}
         <div className="pt-2 pb-5">
           {!configLoading && !feedEnabled ? (
-            /* Feed off: premium studio identity statement */
+            /* Feed off: centered studio title in Roboto, orange */
             <motion.h1
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
-              className="font-black"
+              className="font-black text-center w-full"
               style={{
                 fontSize: '22px',
-                letterSpacing: '-0.02em',
+                letterSpacing: '-0.01em',
                 lineHeight: 1.25,
-                color: 'var(--text-primary)',
+                fontFamily: "'Roboto', sans-serif",
+                color: 'var(--brand)',
               }}
             >
-              Content{' '}
-              <span style={{ fontWeight: 800, color: 'var(--text-primary)', opacity: 0.55 }}>&</span>{' '}
-              Film Making Studio
+              Content &amp; Film Making Studio
             </motion.h1>
           ) : (
             /* Feed on (or config still loading): normal Discover header */
@@ -491,7 +513,7 @@ export default function FeedPage() {
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
           </div>
         ) : !feedEnabled ? (
-          /* Feed disabled → splash video + tagline */
+          /* Feed disabled → splash video + tagline + CTA */
           <SplashScreen />
         ) : (
           /* Feed enabled → normal trending section */
