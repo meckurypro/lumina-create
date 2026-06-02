@@ -440,7 +440,7 @@ export default function FeedPage() {
                 color: 'var(--text-primary)',
               }}
             >
-              AI Content Creation{' '}
+              Content{' '}
               <span style={{ fontWeight: 800, color: 'var(--text-primary)', opacity: 0.55 }}>&</span>{' '}
               Film Making Studio
             </motion.h1>
