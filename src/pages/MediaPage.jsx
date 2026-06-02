@@ -406,7 +406,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
 
 // ── Action sheet ───────────────────────────────────────────
 
-const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload, onAnimate }) => (
+const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onRefresh, onDownload, onAnimate }) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
@@ -481,6 +481,22 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload, onAnima
           <RefreshCw size={18} style={{ color: 'var(--text-primary)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Regenerate</span>
         </button>
+
+        {(gen.status === 'processing' || gen.status === 'pending') && gen.provider_request_id && (
+          <button
+            onClick={onRefresh}
+            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-colors"
+            style={{ background: 'rgba(59,130,246,0.08)' }}
+          >
+            <RefreshCw size={18} style={{ color: '#3b82f6' }} />
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-semibold" style={{ color: '#3b82f6' }}>Refresh</span>
+              <span className="text-xs" style={{ color: 'rgba(59,130,246,0.7)' }}>
+                Check if complete on provider
+              </span>
+            </div>
+          </button>
+        )}
 
         <button
           onClick={onDelete}
@@ -586,19 +602,20 @@ const MediaCard = ({ gen, modelsList, onClick, onMore }) => {
 export default function MediaPage() {
   const navigate = useNavigate()
   const { user, credits, refreshProfile, profile } = useAuth()
-const isNovice = profile?.user_tier === 'novice'
+  const isNovice = profile?.user_tier === 'novice'
 
-  const [items,        setItems]        = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [loadingMore,  setLoadingMore]  = useState(false)
-  const [filter,       setFilter]       = useState('all')
-  const [page,         setPage]         = useState(0)
-  const [hasMore,      setHasMore]      = useState(true)
-  const [totalCount,   setTotalCount]   = useState(0)
-  const [activeGen,    setActiveGen]    = useState(null)
-  const [sheetMode,    setSheetMode]    = useState(null)
-  const [models,       setModels]       = useState([])
-  const [regenLoading, setRegenLoading] = useState(false)
+  const [items,          setItems]          = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [loadingMore,    setLoadingMore]    = useState(false)
+  const [filter,         setFilter]         = useState('all')
+  const [page,           setPage]           = useState(0)
+  const [hasMore,        setHasMore]        = useState(true)
+  const [totalCount,     setTotalCount]     = useState(0)
+  const [activeGen,      setActiveGen]      = useState(null)
+  const [sheetMode,      setSheetMode]      = useState(null)
+  const [models,         setModels]         = useState([])
+  const [regenLoading,   setRegenLoading]   = useState(false)
+  const [refreshLoading, setRefreshLoading] = useState(false)
 
   const pollRef = useRef(null)
 
@@ -628,41 +645,41 @@ const isNovice = profile?.user_tier === 'novice'
 
   useEffect(() => { load(0, true) }, [load])
 
-useEffect(() => {
-  if (pollRef.current) {
-    clearInterval(pollRef.current)
-    pollRef.current = null
-  }
+  useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
 
-  const pendingIds = items
-    .filter(g => g.status === 'pending' || g.status === 'processing')
-    .map(g => g.id)
+    const pendingIds = items
+      .filter(g => g.status === 'pending' || g.status === 'processing')
+      .map(g => g.id)
 
-  if (!pendingIds.length || !user) return
+    if (!pendingIds.length || !user) return
 
-  pollRef.current = setInterval(async () => {
-    const { data, error } = await supabase
-      .from('generations')
-      .select('*')
-      .in('id', pendingIds)
+    pollRef.current = setInterval(async () => {
+      const { data, error } = await supabase
+        .from('generations')
+        .select('*')
+        .in('id', pendingIds)
 
-    if (error || !data) return
+      if (error || !data) return
 
-    const map = new Map(data.map(g => [g.id, g]))
+      const map = new Map(data.map(g => [g.id, g]))
 
-    setItems(prev => prev.map(g => map.get(g.id) ?? g))
+      setItems(prev => prev.map(g => map.get(g.id) ?? g))
 
-    const anyResolved = data.some(g => g.status === 'completed' || g.status === 'failed')
-    if (anyResolved) refreshProfile()
+      const anyResolved = data.some(g => g.status === 'completed' || g.status === 'failed')
+      if (anyResolved) refreshProfile()
 
-  }, POLL_MS)
+    }, POLL_MS)
 
-  return () => {
-    clearInterval(pollRef.current)
-    pollRef.current = null
-  }
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [items.map(g => g.id + g.status).join(','), user])
+    return () => {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.map(g => g.id + g.status).join(','), user])
 
   const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions') }
   const openRegenerate = ()    => setSheetMode('regenerate')
@@ -723,6 +740,88 @@ useEffect(() => {
       reader.readAsDataURL(file)
     } catch {
       toast.error('Failed to load image')
+    }
+  }
+
+  const handleRefresh = async (gen) => {
+    closeSheet()
+    if (!gen?.provider_request_id) {
+      toast.error('No provider request ID — cannot refresh this generation')
+      return
+    }
+    setRefreshLoading(true)
+
+    try {
+      // 1. Determine provider from models table
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('provider, value')
+        .eq('value', gen.model)
+        .single()
+
+      const provider = modelRow?.provider ?? 'wavespeed'
+
+      // 2. Poll the provider directly
+      let newStatus  = null
+      let outputUrl  = null
+      let errorMsg   = null
+
+      if (provider === 'fal') {
+        // fal.ai endpoint map — mirrors video-poll FAL_ENDPOINTS
+        const FAL_ENDPOINTS = {
+          seedance_2_0_i2v: 'bytedance/seedance-2.0/image-to-video',
+          seedance_2_0_t2v: 'bytedance/seedance-2.0/text-to-video',
+          seedance_2_0_ref: 'bytedance/seedance-2.0/reference-to-video',
+        }
+        const endpoint = FAL_ENDPOINTS[gen.model]
+        if (!endpoint) throw new Error(`No fal endpoint mapped for model "${gen.model}"`)
+
+        // Route through Supabase Edge Function "video-poll-single" to avoid exposing FAL_KEY in browser
+        const { data: pollResult, error: pollErr } = await supabase.functions.invoke(
+          'video-poll-single',
+          { body: { generationId: gen.id } }
+        )
+        if (pollErr) throw new Error(pollErr.message || 'Poll failed')
+        newStatus = pollResult?.status
+        outputUrl = pollResult?.output_url
+        errorMsg  = pollResult?.error_message
+
+      } else {
+        // WaveSpeed — route through Edge Function to avoid exposing WAVESPEED_KEY in browser
+        const { data: pollResult, error: pollErr } = await supabase.functions.invoke(
+          'video-poll-single',
+          { body: { generationId: gen.id } }
+        )
+        if (pollErr) throw new Error(pollErr.message || 'Poll failed')
+        newStatus = pollResult?.status
+        outputUrl = pollResult?.output_url
+        errorMsg  = pollResult?.error_message
+      }
+
+      // 3. Refresh the row from DB (video-poll-single already updated it)
+      const { data: fresh } = await supabase
+        .from('generations')
+        .select('*')
+        .eq('id', gen.id)
+        .single()
+
+      if (fresh) {
+        setItems((prev) => prev.map((g) => g.id === gen.id ? fresh : g))
+      }
+
+      if (fresh?.status === 'completed') {
+        toast.success('✅ Generation is complete! Refreshed.')
+      } else if (fresh?.status === 'failed') {
+        toast.error(`Generation failed: ${fresh.error_message || 'Unknown error'}`)
+      } else {
+        toast('Still processing — check back in a moment.', { icon: '⏳' })
+      }
+
+    } catch (err) {
+      console.error('[handleRefresh]', err)
+      toast.error(err.message || 'Refresh failed')
+    } finally {
+      setRefreshLoading(false)
     }
   }
 
@@ -807,6 +906,7 @@ useEffect(() => {
             Your outputs are stored for 7 days only. Download and save them before they expire.
           </div>
         )}
+
         <div className="flex gap-2 mb-5">
           {FILTERS.map((f) => (
             <button
@@ -892,6 +992,7 @@ useEffect(() => {
             onClose={closeSheet}
             onDelete={() => handleDelete(activeGen)}
             onRegenerate={openRegenerate}
+            onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onAnimate={() => handleAnimate(activeGen)}
           />
