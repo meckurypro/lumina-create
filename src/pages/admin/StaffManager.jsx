@@ -1,3 +1,4 @@
+// src/pages/admin/StaffManager.jsx
 import { useState, useEffect, useCallback } from 'react'
 import { Zap } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -17,8 +18,18 @@ export default function StaffManager() {
   const loadData = useCallback(async () => {
     setLoading(true)
     const [staffRes, usersRes] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, avatar_url, credits, total_generations').eq('is_staff', true).order('username'),
-      supabase.from('profiles').select('id, username, display_name, credits').eq('is_staff', false).neq('role', 'admin').order('username').limit(50),
+      supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, credits, total_generations, role')
+        .or('is_staff.eq.true,role.eq.admin')   // ← admin accounts always appear in staff list
+        .order('username'),
+      supabase
+        .from('profiles')
+        .select('id, username, display_name, credits')
+        .eq('is_staff', false)
+        .neq('role', 'admin')                   // ← exclude admins from the promotable list
+        .order('username')
+        .limit(50),
     ])
     setStaffList(staffRes.data || [])
     setAllUsers(usersRes.data  || [])
@@ -42,6 +53,12 @@ export default function StaffManager() {
   }
 
   const handleDemote = async (userId, username) => {
+    // Guard: never demote an admin-role account
+    const target = staffList.find((s) => s.id === userId)
+    if (target?.role === 'admin') {
+      toast.error('Cannot demote an admin account')
+      return
+    }
     const { data, error } = await supabase.rpc('demote_from_staff', { p_admin_id: user.id, p_user_id: userId })
     if (error || !data?.success) { toast.error('Failed to demote user'); return }
     toast.success(`@${username} removed from staff`)
@@ -71,20 +88,36 @@ export default function StaffManager() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No staff members yet.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {staffList.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: 'var(--brand)', color: 'white' }}>
-                  {s.username?.[0]?.toUpperCase()}
+            {staffList.map((s) => {
+              const isAdmin = s.role === 'admin'
+              return (
+                <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: 'var(--brand)', color: 'white' }}>
+                    {s.username?.[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{s.username}</p>
+                      {isAdmin && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-bold" style={{ background: 'rgba(249,115,22,0.15)', color: 'var(--brand)', fontSize: '10px' }}>
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ {s.credits?.toFixed(1)} credits · {s.total_generations} gens</p>
+                  </div>
+                  {!isAdmin && (
+                    <button
+                      onClick={() => handleDemote(s.id, s.username)}
+                      className="text-xs px-3 py-1.5 rounded-xl font-semibold"
+                      style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>@{s.username}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>⚡ {s.credits?.toFixed(1)} credits · {s.total_generations} gens</p>
-                </div>
-                <button onClick={() => handleDemote(s.id, s.username)} className="text-xs px-3 py-1.5 rounded-xl font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                  Remove
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
