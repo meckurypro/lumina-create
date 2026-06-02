@@ -247,7 +247,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                       className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
                       style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
                         <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                         {tags.length > 0 && (
                           <div className="flex gap-1 flex-wrap mt-1">
@@ -269,7 +269,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   <div className="py-1">
                     {locked.map((m) => (
                       <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.aka}</p>
                         <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                       </div>
                     ))}
