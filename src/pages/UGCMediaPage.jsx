@@ -72,10 +72,6 @@ function getModelDisplayLabel(modelValue, modelsList) {
 }
 
 // ── Fetch UGC generations for a profile ───────────────────────────────────
-// Returns flattened rows merging ugc_generation metadata onto the generation row.
-// NOTE: Supabase PostgREST cannot filter on joined table columns, so we fetch
-// all statuses and keep them (pending/processing shown with progress overlay,
-// failed shown with error message — matching MediaPage behaviour).
 
 async function fetchUGCGenerations(profileId, { limit = PAGE_SIZE, offset = 0 } = {}) {
   const { data, error, count } = await supabase
@@ -105,7 +101,8 @@ async function fetchUGCGenerations(profileId, { limit = PAGE_SIZE, offset = 0 } 
         input_image_urls,
         generation_type,
         skip_prompt_refinement,
-        prompt_engineering_used
+        prompt_engineering_used,
+        provider_request_id
       )
       `,
       { count: 'exact' }
@@ -323,11 +320,9 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
   const isVideo = ['text_to_video', 'image_to_video', 'start_end_frame', 'end_frame_text', 'motion_transfer', 'template']
     .includes(gen.generation_type)
 
-  // UGC generations always use multi-image capable models
   const relevantModels = models.filter((m) => !m.is_locked && m.supports_multi_image === true)
-
-  const selectedModel = relevantModels.find((m) => m.value === model) || relevantModels[0]
-  const creditCost    = selectedModel
+  const selectedModel  = relevantModels.find((m) => m.value === model) || relevantModels[0]
+  const creditCost     = selectedModel
     ? (selectedModel.credit_cost_t2i || 0) * (isVideo ? parseInt(gen.duration || 5) : 1)
     : 0
   const canAfford = credits >= creditCost
@@ -350,12 +345,10 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
         style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
 
-        {/* Header */}
         <div className="px-4 pb-4">
           <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Regenerate</p>
           <div className="flex items-start gap-2 mt-0.5">
@@ -375,7 +368,6 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
           )}
         </div>
 
-        {/* Model selector */}
         <div className="px-4 mb-4">
           <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
             Model
@@ -396,10 +388,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {model === originalModel && (
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: ACCENT_SUB, color: ACCENT }}
-                >
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: ACCENT_SUB, color: ACCENT }}>
                   original
                 </span>
               )}
@@ -429,7 +418,6 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
           </AnimatePresence>
         </div>
 
-        {/* CTA */}
         <div className="px-4 flex flex-col gap-2">
           <button
             onClick={() => canAfford && selectedModel && onConfirm(model, creditCost, selectedModel)}
@@ -459,7 +447,7 @@ const RegenerateSheet = ({ gen, models, credits, onClose, onConfirm }) => {
 
 // ── Action sheet ───────────────────────────────────────────────────────────
 
-const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload, onAnimate }) => (
+const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onRefresh, onDownload, onAnimate, refreshLoading }) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
@@ -534,6 +522,34 @@ const ActionSheet = ({ gen, onClose, onDelete, onRegenerate, onDownload, onAnima
           <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Regenerate</span>
         </button>
 
+        {/* ── Refresh button — only for stuck processing/pending rows ── */}
+        {(gen.status === 'processing' || gen.status === 'pending') && gen.provider_request_id && (
+          <button
+            onClick={onRefresh}
+            disabled={refreshLoading}
+            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-all active:scale-[0.98]"
+            style={{
+              background: 'rgba(59,130,246,0.08)',
+              opacity:    refreshLoading ? 0.6 : 1,
+            }}
+          >
+            <motion.div
+              animate={refreshLoading ? { rotate: 360 } : { rotate: 0 }}
+              transition={refreshLoading ? { repeat: Infinity, duration: 0.9, ease: 'linear' } : {}}
+            >
+              <RefreshCw size={18} style={{ color: '#3b82f6' }} />
+            </motion.div>
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-semibold" style={{ color: '#3b82f6' }}>
+                {refreshLoading ? 'Checking…' : 'Refresh'}
+              </span>
+              <span className="text-xs" style={{ color: 'rgba(59,130,246,0.65)' }}>
+                Check if complete on provider
+              </span>
+            </div>
+          </button>
+        )}
+
         <button
           onClick={onDelete}
           className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-colors"
@@ -566,17 +582,13 @@ const SkeletonCard = () => (
 // ── Grid card ──────────────────────────────────────────────────────────────
 
 const GridCard = ({ gen, index, onClick, onMore }) => {
-  const isVideo     = gen.output_type === 'video'
-  const isPending   = gen.status === 'pending' || gen.status === 'processing'
-  const isComplete  = gen.status === 'completed'
-  const thumbUrl    = gen.output_thumbnail_url || gen.output_url
+  const isVideo    = gen.output_type === 'video'
+  const isPending  = gen.status === 'pending' || gen.status === 'processing'
+  const isComplete = gen.status === 'completed'
+  const thumbUrl   = gen.output_thumbnail_url || gen.output_url
   const filterEmoji = gen.ugc_filter_applied === 'cinematic' ? '🎬' : '📱'
 
-  const arStyle = gen.aspect_ratio === '16:9'
-    ? '16/9'
-    : gen.aspect_ratio === '1:1'
-      ? '1/1'
-      : '9/16'
+  const arStyle = gen.aspect_ratio === '16:9' ? '16/9' : gen.aspect_ratio === '1:1' ? '1/1' : '9/16'
 
   return (
     <motion.div
@@ -603,18 +615,14 @@ const GridCard = ({ gen, index, onClick, onMore }) => {
             }
           </div>
         )}
-
-        {/* Gradient */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 45%)' }}
         />
       </button>
 
-      {/* Progress overlay */}
       {isPending && <ProgressOverlay gen={gen} />}
 
-      {/* Failed badge */}
       {gen.status === 'failed' && (
         <div
           className="absolute inset-0 flex items-center justify-center"
@@ -626,7 +634,6 @@ const GridCard = ({ gen, index, onClick, onMore }) => {
         </div>
       )}
 
-      {/* Bottom meta */}
       {!isPending && isComplete && (
         <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2.5 flex items-end justify-between pointer-events-none">
           <div className="flex items-center gap-1">
@@ -644,7 +651,6 @@ const GridCard = ({ gen, index, onClick, onMore }) => {
         </div>
       )}
 
-      {/* More button */}
       <button
         onClick={(e) => { e.stopPropagation(); onMore() }}
         className="absolute top-2 right-2 w-7 h-7 rounded-xl flex items-center justify-center"
@@ -677,7 +683,6 @@ const ListCard = ({ gen, index, modelsList, onClick, onMore }) => {
       className="flex items-center gap-3 p-3 rounded-2xl"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
-      {/* Thumb */}
       <div
         className="relative flex-shrink-0 rounded-xl overflow-hidden"
         style={{ width: 56, height: 56, background: 'var(--bg-elevated)', cursor: isComplete ? 'pointer' : 'default' }}
@@ -709,7 +714,6 @@ const ListCard = ({ gen, index, modelsList, onClick, onMore }) => {
         )}
       </div>
 
-      {/* Info */}
       <div
         className="flex-1 min-w-0"
         style={{ cursor: isComplete ? 'pointer' : 'default' }}
@@ -724,10 +728,7 @@ const ListCard = ({ gen, index, modelsList, onClick, onMore }) => {
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <StatusPill status={gen.status} />
           {gen.ugc_filter_applied && (
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-lg font-medium"
-              style={{ background: ACCENT_SUB, color: ACCENT }}
-            >
+            <span className="text-xs px-1.5 py-0.5 rounded-lg font-medium" style={{ background: ACCENT_SUB, color: ACCENT }}>
               {filterLabel}
             </span>
           )}
@@ -735,10 +736,7 @@ const ListCard = ({ gen, index, modelsList, onClick, onMore }) => {
             ⚡ {gen.credits_charged} cr
           </span>
           {modelLabel && (
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-lg font-medium"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-            >
+            <span className="text-xs px-1.5 py-0.5 rounded-lg font-medium" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
               {modelLabel}
             </span>
           )}
@@ -837,9 +835,9 @@ const EmptyState = ({ profileName, onGenerate }) => (
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function UGCMediaPage() {
-  const { profileId }                               = useParams()
-  const navigate                                    = useNavigate()
-  const { user, credits, refreshProfile, profile: authProfile } = useAuth()
+  const { profileId }                                                    = useParams()
+  const navigate                                                         = useNavigate()
+  const { user, credits, refreshProfile, profile: authProfile }         = useAuth()
   const isNovice = authProfile?.user_tier === 'novice'
 
   const [profile,        setProfile]        = useState(null)
@@ -851,16 +849,17 @@ export default function UGCMediaPage() {
   const [totalCount,     setTotalCount]     = useState(0)
   const [page,           setPage]           = useState(0)
   const [models,         setModels]         = useState([])
-  const [viewMode,       setViewMode]       = useState('list') // 'list' | 'grid'
-  const [typeFilter,     setTypeFilter]     = useState('all')  // 'all' | 'image' | 'video'
+  const [viewMode,       setViewMode]       = useState('list')
+  const [typeFilter,     setTypeFilter]     = useState('all')
   const [activeGen,      setActiveGen]      = useState(null)
-  const [sheetMode,      setSheetMode]      = useState(null)   // 'actions' | 'regenerate'
+  const [sheetMode,      setSheetMode]      = useState(null)
   const [lightboxGen,    setLightboxGen]    = useState(null)
   const [regenLoading,   setRegenLoading]   = useState(false)
+  const [refreshLoading, setRefreshLoading] = useState(false)
 
   const pollRef = useRef(null)
 
-  // ── Load profile ─────────────────────────────────────────────────────────
+  // ── Load profile ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     ;(async () => {
@@ -992,6 +991,59 @@ export default function UGCMediaPage() {
     }
   }
 
+  // ── Refresh — manual cron for stuck generations ───────────────────────────
+
+  const handleRefresh = async (gen) => {
+    closeSheet()
+    if (!gen?.provider_request_id) {
+      toast.error('No provider request ID — cannot refresh')
+      return
+    }
+    setRefreshLoading(true)
+
+    try {
+      const { data: pollResult, error: pollErr } = await supabase.functions.invoke(
+        'video-poll-single',
+        { body: { generationId: gen.id } }
+      )
+      if (pollErr) throw new Error(pollErr.message || 'Poll failed')
+
+      // Re-fetch the raw generation row and merge UGC metadata back in
+      const { data: freshGen } = await supabase
+        .from('generations')
+        .select('*')
+        .eq('id', gen.id)
+        .single()
+
+      if (freshGen) {
+        const merged = {
+          ...freshGen,
+          ugc_generation_id:  gen.ugc_generation_id,
+          ugc_scene_prompt:   gen.ugc_scene_prompt,
+          ugc_filter_applied: gen.ugc_filter_applied,
+          ugc_aspect_ratio:   gen.ugc_aspect_ratio,
+        }
+        setItems((prev) => prev.map((g) => g.id === gen.id ? merged : g))
+      }
+
+      const status = pollResult?.status
+      if (status === 'completed') {
+        toast.success('✅ Generation is complete!')
+        refreshProfile()
+      } else if (status === 'failed') {
+        toast.error(`Failed: ${pollResult?.error_message || 'Unknown error'}`)
+      } else {
+        toast('Still processing — check back in a moment.', { icon: '⏳' })
+      }
+
+    } catch (err) {
+      console.error('[handleRefresh]', err)
+      toast.error(err.message || 'Refresh failed')
+    } finally {
+      setRefreshLoading(false)
+    }
+  }
+
   const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj) => {
     if (!activeGen || !user) return
     const gen = activeGen
@@ -1022,7 +1074,6 @@ export default function UGCMediaPage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Create ugc_generations row so the edge function has full profile context
       await ugcGenerations.create({
         generation_id:  genRow.id,
         ugc_profile_id: profileId,
@@ -1039,7 +1090,6 @@ export default function UGCMediaPage() {
       supabase.functions.invoke(fnName, { body: { generationId: genRow.id } })
         .catch((e) => console.error(`${fnName} invoke error`, e))
 
-      // Optimistically prepend the new pending row
       const optimistic = {
         ...genRow,
         ugc_generation_id:  null,
@@ -1069,7 +1119,7 @@ export default function UGCMediaPage() {
     ? items
     : items.filter((g) => g.output_type === typeFilter)
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Loading screen ────────────────────────────────────────────────────────
 
   if (profileLoading) {
     return (
@@ -1083,6 +1133,8 @@ export default function UGCMediaPage() {
       </div>
     )
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -1100,7 +1152,6 @@ export default function UGCMediaPage() {
           <ArrowLeft size={20} />
         </button>
 
-        {/* Character identity */}
         <button
           onClick={() => navigate(`/create/ugc/${profileId}`)}
           className="flex items-center gap-2.5"
@@ -1133,7 +1184,6 @@ export default function UGCMediaPage() {
           </div>
         </button>
 
-        {/* View toggle + credits */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode((v) => v === 'list' ? 'grid' : 'list')}
@@ -1156,7 +1206,6 @@ export default function UGCMediaPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
-          {/* Novice storage notice */}
           {isNovice && (
             <div
               className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
@@ -1167,7 +1216,6 @@ export default function UGCMediaPage() {
             </div>
           )}
 
-          {/* Type filter pills */}
           {!loading && items.length > 0 && (
             <div className="flex gap-2 mb-5">
               {[
@@ -1180,8 +1228,8 @@ export default function UGCMediaPage() {
                   onClick={() => setTypeFilter(o.value)}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
                   style={{
-                    background: typeFilter === o.value ? ACCENT            : 'var(--bg-elevated)',
-                    color:      typeFilter === o.value ? '#ffffff'         : 'var(--text-muted)',
+                    background: typeFilter === o.value ? ACCENT    : 'var(--bg-elevated)',
+                    color:      typeFilter === o.value ? '#ffffff' : 'var(--text-muted)',
                   }}
                 >
                   {o.label}
@@ -1190,7 +1238,6 @@ export default function UGCMediaPage() {
             </div>
           )}
 
-          {/* Loading skeletons */}
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -1250,7 +1297,6 @@ export default function UGCMediaPage() {
             </div>
           )}
 
-          {/* Load more */}
           {hasMore && !loadingMore && (
             <button
               onClick={() => {
@@ -1283,7 +1329,7 @@ export default function UGCMediaPage() {
         </div>
       </div>
 
-      {/* ── Generate CTA ─────────────────────────────────────────────────────── */}
+      {/* ── Generate CTA ──────────────────────────────────────────────────── */}
       {!loading && items.length > 0 && (
         <div
           className="flex-shrink-0 px-4 lg:px-8 py-4"
@@ -1302,7 +1348,7 @@ export default function UGCMediaPage() {
         </div>
       )}
 
-      {/* ── Sheets & Lightbox ─────────────────────────────────────────────────── */}
+      {/* ── Sheets & Lightbox ─────────────────────────────────────────────── */}
       <AnimatePresence>
         {activeGen && sheetMode === 'actions' && (
           <ActionSheet
@@ -1311,8 +1357,10 @@ export default function UGCMediaPage() {
             onClose={closeSheet}
             onDelete={() => handleDelete(activeGen)}
             onRegenerate={openRegenerate}
+            onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onAnimate={() => handleAnimate(activeGen)}
+            refreshLoading={refreshLoading}
           />
         )}
         {activeGen && sheetMode === 'regenerate' && (
