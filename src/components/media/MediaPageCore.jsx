@@ -1,39 +1,40 @@
 // src/components/media/MediaPageCore.jsx
 //
 // Core logic + layout shared by MediaPage and UGCMediaPage.
-// Neither page should duplicate polling, filtering, pagination,
-// or action handlers — all of that lives here.
 //
-// Props contract:
+// Props contract (additions marked with NEW):
 //
 //   fetcher(user, { limit, offset, timeRange, statusFilter })
 //     → Promise<{ data: Gen[], count: number }>
-//     Injected by the page. Knows how to query generations OR ugc_generations.
 //
-//   onRegenerate(gen, chosenModel, creditCost, selectedModelObj, { supabase, user, generationsDb, refreshProfile, setItems, setTotalCount })
+//   onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, ctx)
 //     → Promise<void>
-//     Injected by the page. Encapsulates page-specific regenerate logic.
+//     NOTE: now receives editedPrompt as 5th arg (may differ from gen.prompt)
 //
 //   filterRelevantModels(models, gen) → Model[]
-//     Injected by the page. Decides which models are valid for this gen type.
 //
 //   computeCreditCost(selectedModel, gen) → number
-//     Injected by the page.
 //
 //   onCardClick(gen, navigate) → void
-//     Injected by the page. Navigate to result or open lightbox.
 //
-//   headerSlot  — ReactNode rendered above the filter bar (page-specific header)
-//   footerSlot  — ReactNode rendered below the list (e.g. UGC "Generate New" CTA)
-//   emptySlot   — ReactNode rendered when list is empty (page-specific empty state)
+//   -- NEW --
+//   filterEditModels(models, gen) → Model[]
+//     Injected by page. Returns I2I-capable models for the Edit sheet.
+//     Defaults to models where supports_image === true and not locked.
 //
+//   computeEditCreditCost(selectedModel, gen) → number
+//     Injected by page. Defaults to credit_cost_i2i.
+//
+//   onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, ctx)
+//     → Promise<void>
+//     Injected by page. Fires an I2I generation using gen.output_url as input.
+//   -- END NEW --
+//
+//   headerSlot, footerSlot, emptySlot
 //   accentColor, accentSubtle, accentBorder
-//     CSS colour strings for theming (UGC uses brand purple/teal, Media uses defaults)
-//
-//   extraStatusFilters  — e.g. [{ label: '📱 Image', value: 'image' }, ...]
-//     When provided, renders a second filter row for output_type (UGC only)
-//
-//   isNovice  — bool, shows 7-day storage warning when true
+//   extraStatusFilters
+//   isNovice
+//   allowGridView
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
@@ -43,7 +44,7 @@ import { useAuth }                                   from '@/context/AuthContext
 import toast                                         from 'react-hot-toast'
 import {
   MediaCard, GridCard, SkeletonCard,
-  ActionSheet, RegenerateSheet,
+  ActionSheet, RegenerateSheet, EditSheet,
   FallbackBanner,
 } from './MediaCardComponents.jsx'
 import { Film, Grid2X2, List } from 'lucide-react'
@@ -55,7 +56,6 @@ import { Film, Grid2X2, List } from 'lucide-react'
 const PAGE_SIZE = 20
 const POLL_MS   = 4_000
 
-// Time-range filter definitions
 export const TIME_FILTERS = [
   { label: 'Today',      value: 'today'     },
   { label: 'This Week',  value: 'this_week' },
@@ -63,7 +63,6 @@ export const TIME_FILTERS = [
   { label: 'All',        value: 'all'       },
 ]
 
-// Status filter definitions
 export const STATUS_FILTERS = [
   { label: 'Completed', value: 'completed' },
   { label: 'All',       value: 'all'       },
@@ -78,21 +77,13 @@ function getTimeRangeStart(range) {
   if (range === 'all') return null
   const now = new Date()
   if (range === 'today') {
-    const d = new Date(now)
-    d.setHours(0, 0, 0, 0)
-    return d.toISOString()
+    const d = new Date(now); d.setHours(0, 0, 0, 0); return d.toISOString()
   }
   if (range === 'this_week') {
-    const d = new Date(now)
-    d.setDate(d.getDate() - 6)
-    d.setHours(0, 0, 0, 0)
-    return d.toISOString()
+    const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0, 0, 0, 0); return d.toISOString()
   }
   if (range === 'this_month') {
-    const d = new Date(now)
-    d.setDate(1)
-    d.setHours(0, 0, 0, 0)
-    return d.toISOString()
+    const d = new Date(now); d.setDate(1); d.setHours(0, 0, 0, 0); return d.toISOString()
   }
   return null
 }
@@ -108,6 +99,11 @@ export default function MediaPageCore({
   filterRelevantModels,
   computeCreditCost,
   onCardClick,
+
+  // NEW: Edit flow
+  filterEditModels      = null,
+  computeEditCreditCost = null,
+  onEdit                = null,
 
   // Slots
   headerSlot,
@@ -125,19 +121,19 @@ export default function MediaPageCore({
   // Misc
   isNovice = false,
 
-  // Grid toggle (opt-in — UGC uses it, Media doesn't)
+  // Grid toggle (opt-in)
   allowGridView = false,
 }) {
   const navigate                                    = useNavigate()
   const { user, credits, refreshProfile }           = useAuth()
 
-  // ── Filter state ────────────────────────────────────────────────────────
+  // ── Filter state ─────────────────────────────────────────────────────────
   const [timeFilter,   setTimeFilter]   = useState('today')
   const [statusFilter, setStatusFilter] = useState('completed')
-  const [extraFilter,  setExtraFilter]  = useState('all')   // output_type
+  const [extraFilter,  setExtraFilter]  = useState('all')
   const [viewMode,     setViewMode]     = useState('list')
 
-  // ── Data state ───────────────────────────────────────────────────────────
+  // ── Data state ────────────────────────────────────────────────────────────
   const [items,          setItems]          = useState([])
   const [loading,        setLoading]        = useState(true)
   const [loadingMore,    setLoadingMore]    = useState(false)
@@ -146,20 +142,21 @@ export default function MediaPageCore({
   const [page,           setPage]           = useState(0)
   const [models,         setModels]         = useState([])
 
-  // ── Sheet state ──────────────────────────────────────────────────────────
+  // ── Sheet state ───────────────────────────────────────────────────────────
   const [activeGen,      setActiveGen]      = useState(null)
+  // sheetMode: null | 'actions' | 'regenerate' | 'edit'
   const [sheetMode,      setSheetMode]      = useState(null)
   const [regenLoading,   setRegenLoading]   = useState(false)
+  const [editLoading,    setEditLoading]    = useState(false)
   const [refreshLoading, setRefreshLoading] = useState(false)
 
-  // ── Auto-fallback state ──────────────────────────────────────────────────
-  // When Today+Completed is empty we silently expand to This Week and show a banner.
+  // ── Auto-fallback state ───────────────────────────────────────────────────
   const [fallbackMsg,    setFallbackMsg]    = useState(null)
 
-  const pollRef     = useRef(null)
+  const pollRef       = useRef(null)
   const loadedFilters = useRef({ timeFilter: null, statusFilter: null })
 
-  // ── Load models ──────────────────────────────────────────────────────────
+  // ── Load models ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     supabase
@@ -171,7 +168,7 @@ export default function MediaPageCore({
       .then(({ data }) => setModels(data || []))
   }, [])
 
-  // ── Core load ────────────────────────────────────────────────────────────
+  // ── Core load ─────────────────────────────────────────────────────────────
 
   const load = useCallback(async ({
     offset    = 0,
@@ -189,20 +186,14 @@ export default function MediaPageCore({
     const afterIso = getTimeRangeStart(tFilter)
 
     const { data, count } = await fetcher(user, {
-      limit:        PAGE_SIZE,
-      offset,
-      afterIso,
-      statusFilter: sFilter,
+      limit: PAGE_SIZE, offset, afterIso, statusFilter: sFilter,
     })
 
-    // ── Auto-fallback: Today + Completed → This Week ─────────────────────
+    // Auto-fallback: Today + Completed → This Week
     if (offset === 0 && tFilter === 'today' && sFilter === 'completed' && (!data || data.length === 0)) {
       const weekAfter = getTimeRangeStart('this_week')
       const { data: weekData, count: weekCount } = await fetcher(user, {
-        limit:        PAGE_SIZE,
-        offset:       0,
-        afterIso:     weekAfter,
-        statusFilter: 'completed',
+        limit: PAGE_SIZE, offset: 0, afterIso: weekAfter, statusFilter: 'completed',
       })
       if (weekData && weekData.length > 0) {
         setFallbackMsg('Nothing completed today — showing this week')
@@ -234,7 +225,7 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFilter, statusFilter, user])
 
-  // ── Polling ──────────────────────────────────────────────────────────────
+  // ── Polling ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -254,11 +245,9 @@ export default function MediaPageCore({
       if (error || !data) return
 
       const map = new Map(data.map((g) => [g.id, g]))
-
       setItems((prev) => prev.map((g) => {
         const fresh = map.get(g.id)
         if (!fresh) return g
-        // Preserve UGC metadata keys that aren't in the generations table
         return { ...fresh, ...preserveUGCKeys(g, fresh) }
       }))
 
@@ -270,13 +259,14 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.map((g) => g.id + g.status).join(','), user])
 
-  // ── Sheet helpers ────────────────────────────────────────────────────────
+  // ── Sheet helpers ─────────────────────────────────────────────────────────
 
-  const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions') }
+  const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions')    }
   const openRegenerate = ()    => setSheetMode('regenerate')
+  const openEdit       = ()    => setSheetMode('edit')
   const closeSheet     = ()    => { setActiveGen(null); setSheetMode(null) }
 
-  // ── Action handlers ──────────────────────────────────────────────────────
+  // ── Action handlers ───────────────────────────────────────────────────────
 
   const handleDelete = async (gen) => {
     closeSheet()
@@ -380,13 +370,14 @@ export default function MediaPageCore({
     }
   }
 
-  const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj) => {
+  // Regenerate — now receives editedPrompt from the sheet
+  const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
     if (!activeGen || !user) return
     const gen = activeGen
     closeSheet()
     setRegenLoading(true)
     try {
-      await onRegenerate(gen, chosenModel, creditCost, selectedModelObj, {
+      await onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
         supabase, user, generationsDb, refreshProfile,
         setItems, setTotalCount,
         navigate,
@@ -399,26 +390,43 @@ export default function MediaPageCore({
     }
   }
 
-  // ── Derived ──────────────────────────────────────────────────────────────
+  // Edit — uses output as the new I2I input
+  const handleEditConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
+    if (!activeGen || !user || !onEdit) return
+    const gen = activeGen
+    closeSheet()
+    setEditLoading(true)
+    try {
+      await onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
+        supabase, user, generationsDb, refreshProfile,
+        setItems, setTotalCount,
+        navigate,
+      })
+      toast.success('Edit queued! Check back in a moment.', { duration: 4_000 })
+    } catch (err) {
+      toast.error(err.message || 'Edit failed')
+    } finally {
+      setEditLoading(false)
+    }
+  }
 
-  // Extra filter (output_type) applied client-side on the already-fetched page
+  // ── Derived ───────────────────────────────────────────────────────────────
+
   const filtered = extraFilter === 'all'
     ? items
     : items.filter((g) => g.output_type === extraFilter)
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Page-specific header */}
       {headerSlot && (
         <div className="flex-shrink-0">
           {headerSlot({ viewMode, setViewMode, allowGridView, totalCount, credits, accentColor })}
         </div>
       )}
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
@@ -437,7 +445,6 @@ export default function MediaPageCore({
             </div>
           )}
 
-          {/* Auto-fallback banner */}
           <AnimatePresence>
             {fallbackMsg && (
               <FallbackBanner
@@ -447,7 +454,7 @@ export default function MediaPageCore({
             )}
           </AnimatePresence>
 
-          {/* ── Time filter row ── */}
+          {/* Time filter row */}
           <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
             {TIME_FILTERS.map((f) => (
               <button
@@ -464,7 +471,7 @@ export default function MediaPageCore({
             ))}
           </div>
 
-          {/* ── Status filter row ── */}
+          {/* Status filter row */}
           <div className="flex gap-2 mb-4">
             {STATUS_FILTERS.map((f) => (
               <button
@@ -481,7 +488,7 @@ export default function MediaPageCore({
             ))}
           </div>
 
-          {/* ── Extra output-type filter (opt-in, e.g. UGC) ── */}
+          {/* Extra output-type filter (UGC only) */}
           {extraStatusFilters && !loading && items.length > 0 && (
             <div className="flex gap-2 mb-5">
               {extraStatusFilters.map((o) => (
@@ -500,14 +507,13 @@ export default function MediaPageCore({
             </div>
           )}
 
-          {/* ── Content ── */}
+          {/* Content */}
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
 
           ) : filtered.length === 0 ? (
-            // Empty state — provided by page or a sensible default
             emptySlot
               ? emptySlot({ timeFilter, statusFilter, setTimeFilter, setStatusFilter })
               : <DefaultEmpty
@@ -587,7 +593,7 @@ export default function MediaPageCore({
         </div>
       </div>
 
-      {/* Page-specific footer (e.g. UGC "Generate New" CTA) */}
+      {/* Footer slot */}
       {footerSlot && !loading && items.length > 0 && (
         <div className="flex-shrink-0">
           {footerSlot()}
@@ -603,6 +609,7 @@ export default function MediaPageCore({
             onClose={closeSheet}
             onDelete={() => handleDelete(activeGen)}
             onRegenerate={openRegenerate}
+            onEdit={onEdit ? openEdit : undefined}
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onAnimate={() => handleAnimate(activeGen)}
@@ -623,6 +630,20 @@ export default function MediaPageCore({
             computeCreditCost={computeCreditCost}
           />
         )}
+        {activeGen && sheetMode === 'edit' && onEdit && (
+          <EditSheet
+            key="edit"
+            gen={activeGen}
+            models={models}
+            credits={credits}
+            onClose={closeSheet}
+            onConfirm={handleEditConfirm}
+            accentColor={accentColor}
+            accentSubtle={accentSubtle}
+            filterEditModels={filterEditModels}
+            computeEditCreditCost={computeEditCreditCost}
+          />
+        )}
       </AnimatePresence>
 
     </div>
@@ -633,7 +654,6 @@ export default function MediaPageCore({
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Preserve UGC-specific keys when merging a fresh generations row back into items
 function preserveUGCKeys(existing, fresh) {
   const ugcKeys = ['ugc_generation_id', 'ugc_scene_prompt', 'ugc_filter_applied', 'ugc_aspect_ratio']
   const kept = {}
@@ -643,14 +663,13 @@ function preserveUGCKeys(existing, fresh) {
   return kept
 }
 
-// Decide text colour on accent button (white vs inverse token)
 function invertText(accentColor) {
   if (!accentColor || accentColor.startsWith('var(--text')) return 'var(--text-inverse)'
   return '#ffffff'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DefaultEmpty  (used when page doesn't supply emptySlot)
+// DefaultEmpty
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DefaultEmpty({ timeFilter, statusFilter, setTimeFilter, setStatusFilter, accentColor }) {
