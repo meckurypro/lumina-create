@@ -47,15 +47,15 @@
   --border-color: #e4e4e7;
   --border-focus: #09090b;
 
-  --brand:       #f97316;
-  --brand-light: #fff7ed;
-  --brand-dark:  #ea580c;
+  --brand:       #5B6EF7;
+  --brand-light: #eef0fe;
+  --brand-dark:  #4356e0;
 
   --shadow:          0 1px 2px rgba(0,0,0,0.05);
   --shadow-md:       0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg:       0 10px 30px rgba(0,0,0,0.10);
-  --shadow-brand:    0 12px 30px -18px rgba(249,115,22,0.6);
-  --shadow-brand-lg: 0 18px 42px -18px rgba(249,115,22,0.68);
+  --shadow-brand:    0 12px 30px -18px rgba(91,110,247,0.5);
+  --shadow-brand-lg: 0 18px 42px -18px rgba(91,110,247,0.58);
 
   --topbar-height:     56px;
   --bottom-nav-height: 0px;
@@ -101,7 +101,7 @@
   --card-foreground:       0 0% 98%;
   --popover:               0 0% 7%;
   --popover-foreground:    0 0% 98%;
-  --primary:               24 95% 53%;
+  --primary:               234 90% 65%;
   --primary-foreground:    0 0% 100%;
   --secondary:             0 0% 11%;
   --secondary-foreground:  0 0% 98%;
@@ -131,9 +131,9 @@
   --border-color: #27272a;
   --border-focus: #52525b;
 
-  --brand:       #f97316;
-  --brand-light: #1c0f05;
-  --brand-dark:  #fb923c;
+  --brand:       #7B8FFA;
+  --brand-light: #0d0f2a;
+  --brand-dark:  #9aaafb;
 
   --shadow:    0 1px 2px rgba(0,0,0,0.5);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
@@ -252,7 +252,7 @@ input, textarea, select { font: inherit; }
    ============================================================ */
 
 ::selection {
-  background: rgba(249,115,22,0.12);
+  background: rgba(91,110,247,0.12);
   color: var(--text-primary);
 }
 
@@ -284,11 +284,11 @@ input, textarea, select { font: inherit; }
    ============================================================ */
 
 .brand-gradient {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  background: linear-gradient(135deg, #5B6EF7 0%, #4356e0 100%);
 }
 
 .brand-gradient-text {
-  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  background: linear-gradient(135deg, #5B6EF7 0%, #7B8FFA 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -420,11 +420,11 @@ input, textarea, select { font: inherit; }
    ============================================================ */
 
 .glow-brand {
-  box-shadow: 0 0 20px rgba(249,115,22,0.12), 0 0 60px rgba(249,115,22,0.06);
+  box-shadow: 0 0 20px rgba(91,110,247,0.12), 0 0 60px rgba(91,110,247,0.06);
 }
 
 .dark .glow-brand {
-  box-shadow: 0 0 20px rgba(249,115,22,0.20), 0 0 60px rgba(249,115,22,0.10);
+  box-shadow: 0 0 20px rgba(91,110,247,0.22), 0 0 60px rgba(91,110,247,0.10);
 }
 
 /* ============================================================
