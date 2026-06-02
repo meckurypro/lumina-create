@@ -11,6 +11,7 @@ import {
   Download, RefreshCw, Trash2,
   MoreHorizontal, ChevronDown,
   Copy, Check, Sparkles, Zap,
+  Pencil,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +276,12 @@ export const PortalDropup = ({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RegenerateSheet
+//
+// Key behaviour:
+//   • Preview shows the ORIGINAL INPUT image (input_image_urls[0] || start_frame_url),
+//     NOT the generated output — this is what will be sent to the model again.
+//   • Prompt is editable so users can tweak before re-running.
+//   • onConfirm receives (model, creditCost, selectedModelObj, editedPrompt)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const RegenerateSheet = ({
@@ -282,13 +289,17 @@ export const RegenerateSheet = ({
   onClose, onConfirm,
   accentColor = 'var(--text-primary)',
   accentSubtle,
-  filterRelevantModels,   // (models) => filtered array — injected by page
-  computeCreditCost,      // (selectedModel, gen) => number — injected by page
+  filterRelevantModels,
+  computeCreditCost,
 }) => {
   const originalModel           = gen.model || ''
   const [model, setModel]       = useState(originalModel)
   const [dropOpen, setDropOpen] = useState(false)
   const triggerRef              = useRef(null)
+
+  // Prompt is editable — initialise from UGC scene prompt or regular prompt
+  const initialPrompt = gen.ugc_scene_prompt || gen.prompt || ''
+  const [editedPrompt, setEditedPrompt] = useState(initialPrompt)
 
   const relevantModels = filterRelevantModels ? filterRelevantModels(models, gen) : models.filter((m) => !m.is_locked)
   const selectedModel  = relevantModels.find((m) => m.value === model) || relevantModels[0]
@@ -297,7 +308,8 @@ export const RegenerateSheet = ({
     : (gen.start_frame_url ? selectedModel?.credit_cost_i2i : selectedModel?.credit_cost_t2i) || 0
   const canAfford = credits >= creditCost
 
-  const displayPrompt = gen.ugc_scene_prompt || gen.prompt
+  // The image that will actually be sent to the model: the original input, not the output
+  const inputImageUrl = gen.input_image_urls?.[0] || gen.start_frame_url || null
 
   return (
     <motion.div
@@ -322,33 +334,66 @@ export const RegenerateSheet = ({
           <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
 
-        {/* Title + prompt */}
-        <div className="px-4 pb-4">
+        {/* Title */}
+        <div className="px-4 pb-3">
           <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Regenerate</p>
-          <div className="flex items-start gap-2 mt-0.5">
-            <p className="text-xs flex-1 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
-              {displayPrompt || 'No prompt'}
-            </p>
-            {displayPrompt && <CopyPromptButton prompt={displayPrompt} />}
-          </div>
-
-          {gen.start_frame_url && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <ImageIcon size={11} style={{ color: 'var(--text-muted)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Reference image will be reused
-              </span>
-            </div>
-          )}
-
-          {gen.ugc_filter_applied && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {gen.ugc_filter_applied === 'cinematic' ? '🎬 Cinematic' : '📱 Hyper Realistic'} · same style will be reused
-              </span>
-            </div>
-          )}
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            Re-run with the same (or edited) settings
+          </p>
         </div>
+
+        {/* Original input image preview — what will be reused */}
+        {inputImageUrl && (
+          <div className="px-4 mb-3">
+            <p
+              className="text-xs font-semibold mb-2 uppercase tracking-widest"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Input image (will be reused)
+            </p>
+            <div className="rounded-2xl overflow-hidden" style={{ height: 140 }}>
+              <img
+                src={inputImageUrl}
+                alt="Original input"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Editable prompt */}
+        <div className="px-4 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <p
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Prompt
+            </p>
+            <CopyPromptButton prompt={editedPrompt} />
+          </div>
+          <textarea
+            value={editedPrompt}
+            onChange={(e) => setEditedPrompt(e.target.value)}
+            rows={3}
+            placeholder="Describe what you want to generate…"
+            className="w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none transition-all"
+            style={{
+              background:  'var(--bg-elevated)',
+              border:      '1px solid var(--border-color)',
+              color:       'var(--text-primary)',
+              lineHeight:  1.5,
+            }}
+          />
+        </div>
+
+        {gen.ugc_filter_applied && (
+          <div className="px-4 mb-3">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {gen.ugc_filter_applied === 'cinematic' ? '🎬 Cinematic' : '📱 Hyper Realistic'} · same style will be reused
+            </span>
+          </div>
+        )}
 
         {/* Model selector */}
         <div className="px-4 mb-4">
@@ -412,7 +457,7 @@ export const RegenerateSheet = ({
         {/* CTA */}
         <div className="px-4 flex flex-col gap-2">
           <button
-            onClick={() => canAfford && selectedModel && onConfirm(model, creditCost, selectedModel)}
+            onClick={() => canAfford && selectedModel && onConfirm(model, creditCost, selectedModel, editedPrompt)}
             disabled={!canAfford || !selectedModel}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
@@ -438,12 +483,233 @@ export const RegenerateSheet = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EditSheet
+//
+// Takes the GENERATED OUTPUT and sends it as the new input image (I2I).
+// The user can edit the prompt before confirming.
+// Only shows I2I-capable models (filterEditModels prop).
+// onConfirm receives (model, creditCost, selectedModelObj, editedPrompt)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EditSheet = ({
+  gen, models, credits,
+  onClose, onConfirm,
+  accentColor = 'var(--text-primary)',
+  accentSubtle,
+  filterEditModels,    // (models, gen) => filtered I2I-capable models
+  computeEditCreditCost, // (selectedModel, gen) => number
+}) => {
+  const [dropOpen, setDropOpen] = useState(false)
+  const triggerRef              = useRef(null)
+
+  // Prompt editable, pre-filled from original
+  const [editedPrompt, setEditedPrompt] = useState(gen.ugc_scene_prompt || gen.prompt || '')
+
+  // Filter to I2I-capable models; auto-select first
+  const editableModels  = filterEditModels ? filterEditModels(models, gen) : models.filter((m) => !m.is_locked && m.supports_image)
+  const [model, setModel] = useState(editableModels[0]?.value || gen.model || '')
+  const selectedModel     = editableModels.find((m) => m.value === model) || editableModels[0]
+
+  const creditCost = computeEditCreditCost
+    ? computeEditCreditCost(selectedModel, gen)
+    : selectedModel?.credit_cost_i2i || 0
+
+  const canAfford  = credits >= creditCost
+  const outputUrl  = gen.output_url
+  const isVideo    = gen.output_type === 'video'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={() => { if (dropOpen) { setDropOpen(false); return } onClose() }}
+    >
+      <motion.div
+        initial={{ y: 80, opacity: 0 }}
+        animate={{ y: 0,  opacity: 1 }}
+        exit={{    y: 80, opacity: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+        className="w-full rounded-t-3xl pb-8"
+        style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
+        </div>
+
+        {/* Title */}
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2">
+            <Pencil size={15} style={{ color: accentColor }} />
+            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Edit</p>
+          </div>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            Use the generated output as the new input image
+          </p>
+        </div>
+
+        {/* Generated output preview — this becomes the I2I input */}
+        {outputUrl && (
+          <div className="px-4 mb-3">
+            <p
+              className="text-xs font-semibold mb-2 uppercase tracking-widest"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Source (generated output → new input)
+            </p>
+            <div className="rounded-2xl overflow-hidden relative" style={{ height: 140 }}>
+              {isVideo ? (
+                <video
+                  src={outputUrl}
+                  className="w-full h-full object-cover"
+                  muted
+                  autoPlay
+                  loop
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={outputUrl}
+                  alt="Generated output"
+                  className="w-full h-full object-cover"
+                />
+              )}
+              {/* Badge clarifying this is now the input */}
+              <div
+                className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+              >
+                <ImageIcon size={10} style={{ color: 'rgba(255,255,255,0.7)' }} />
+                <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  Will be used as input
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Editable prompt */}
+        <div className="px-4 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <p
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Prompt
+            </p>
+            <CopyPromptButton prompt={editedPrompt} />
+          </div>
+          <textarea
+            value={editedPrompt}
+            onChange={(e) => setEditedPrompt(e.target.value)}
+            rows={3}
+            placeholder="Describe what changes you want…"
+            className="w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none transition-all"
+            style={{
+              background: 'var(--bg-elevated)',
+              border:     '1px solid var(--border-color)',
+              color:      'var(--text-primary)',
+              lineHeight: 1.5,
+            }}
+          />
+        </div>
+
+        {/* Model selector — I2I capable only */}
+        <div className="px-4 mb-4">
+          <p
+            className="text-xs font-semibold mb-2 uppercase tracking-widest"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Model
+          </p>
+          <button
+            ref={triggerRef}
+            onClick={(e) => { e.stopPropagation(); setDropOpen((v) => !v) }}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+          >
+            <div className="text-left">
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {selectedModel?.aka || selectedModel?.label || model}
+              </p>
+              {selectedModel?.sublabel && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}
+              >
+                I2I
+              </span>
+              <ChevronDown
+                size={16}
+                style={{
+                  color:      'var(--text-muted)',
+                  transform:  dropOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                }}
+              />
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {dropOpen && (
+              <PortalDropup
+                triggerRef={triggerRef}
+                open={dropOpen}
+                models={editableModels}
+                value={model}
+                originalModel={gen.model}
+                onSelect={(v) => setModel(v)}
+                onClose={() => setDropOpen(false)}
+                accentColor={accentColor}
+                accentSubtle={accentSubtle}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* CTA */}
+        <div className="px-4 flex flex-col gap-2">
+          <button
+            onClick={() => canAfford && selectedModel && onConfirm(model, creditCost, selectedModel, editedPrompt)}
+            disabled={!canAfford || !selectedModel || !outputUrl}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+            style={{
+              background: accentColor,
+              color:      accentColor === 'var(--text-primary)' ? 'var(--text-inverse)' : '#ffffff',
+              opacity:    (!canAfford || !selectedModel || !outputUrl) ? 0.5 : 1,
+            }}
+          >
+            <Pencil size={15} />
+            {!canAfford ? 'Not enough credits' : `Edit · ${creditCost} cr`}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-2xl text-sm font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ActionSheet
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ActionSheet = ({
   gen, onClose,
-  onDelete, onRegenerate, onRefresh, onDownload, onAnimate,
+  onDelete, onRegenerate, onEdit, onRefresh, onDownload, onAnimate,
   refreshLoading = false,
 }) => (
   <motion.div
@@ -484,14 +750,12 @@ export const ActionSheet = ({
         )}
       </div>
 
-      {/* Preview thumbnail */}
-      {(gen.start_frame_url || gen.output_url) && (
+      {/* Preview thumbnail — always show OUTPUT here (it's the result they're acting on) */}
+      {gen.output_url && (
         <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
-          {gen.start_frame_url
-            ? <img src={gen.start_frame_url} alt="input" className="w-full h-full object-cover" />
-            : gen.output_type === 'video'
-              ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline />
-              : <img src={gen.output_url} alt="preview" className="w-full h-full object-cover" />
+          {gen.output_type === 'video'
+            ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline />
+            : <img   src={gen.output_url} alt="preview" className="w-full h-full object-cover" />
           }
         </div>
       )}
@@ -519,13 +783,35 @@ export const ActionSheet = ({
           </button>
         )}
 
+        {/* Edit — only for completed generations that have an output */}
+        {gen.status === 'completed' && gen.output_url && onEdit && (
+          <button
+            onClick={onEdit}
+            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
+            style={{ background: 'var(--bg-elevated)' }}
+          >
+            <Pencil size={18} style={{ color: 'var(--text-primary)' }} />
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Edit</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Use output as input for I2I
+              </span>
+            </div>
+          </button>
+        )}
+
         <button
           onClick={onRegenerate}
           className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
           style={{ background: 'var(--bg-elevated)' }}
         >
           <RefreshCw size={18} style={{ color: 'var(--text-primary)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Regenerate</span>
+          <div className="flex flex-col items-start">
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Regenerate</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Re-run with original input
+            </span>
+          </div>
         </button>
 
         {(gen.status === 'processing' || gen.status === 'pending') && gen.provider_request_id && (
