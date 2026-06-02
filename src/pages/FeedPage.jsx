@@ -97,7 +97,7 @@ const TemplateDiscoverCard = ({ template, index, onUse }) => (
         aspectRatio: '1 / 1',
         background: template.thumbnail_url || template.demo_video_url
           ? undefined
-          : 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.08))',
+          : 'linear-gradient(135deg, rgba(91,110,247,0.2), rgba(67,86,224,0.08))',
       }}
     >
       {template.demo_video_url ? (
@@ -329,23 +329,16 @@ const SplashScreen = () => {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.4 }}
-        className="mt-5 text-center font-black"
+        className="mt-5 text-center font-bold"
         style={{
-          fontSize: '22px',
-          letterSpacing: '-0.03em',
+          fontSize: '20px',
+          letterSpacing: '-0.02em',
           color: 'var(--text-primary)',
           lineHeight: 1.2,
         }}
       >
         Imagine it?{' '}
-        <span
-          style={{
-            background: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
+        <span style={{ color: '#ffffff' }}>
           Create it!
         </span>
       </motion.p>
@@ -362,7 +355,7 @@ const SplashScreen = () => {
           background: 'var(--brand)',
           color: 'white',
           border: 'none',
-          boxShadow: '0 4px 20px rgba(249,115,22,0.35)',
+          boxShadow: '0 4px 20px rgba(91,110,247,0.35)',
           letterSpacing: '0.01em',
         }}
       >
@@ -450,18 +443,17 @@ export default function FeedPage() {
         {/* ── Page header — conditional on feed state ── */}
         <div className="pt-2 pb-5">
           {!configLoading && !feedEnabled ? (
-            /* Feed off: centered studio title in Roboto, orange */
+            /* Feed off: centered studio title — white, smaller, lighter */
             <motion.h1
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
-              className="font-black text-center w-full"
+              className="font-semibold text-center w-full"
               style={{
-                fontSize: '22px',
+                fontSize: '17px',
                 letterSpacing: '-0.01em',
-                lineHeight: 1.25,
-                fontFamily: "'Roboto', sans-serif",
-                color: 'var(--brand)',
+                lineHeight: 1.3,
+                color: '#ffffff',
               }}
             >
               Content &amp; Film Making Studio
