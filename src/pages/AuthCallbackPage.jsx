@@ -2,6 +2,22 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
+const applyPendingReferral = async (userId) => {
+  let code = ''
+  try { code = localStorage.getItem('meckury_referral_code') || '' } catch {}
+  if (!code) return
+  try {
+    await supabase.rpc('apply_referral', {
+      p_referral_code:    code.toUpperCase(),
+      p_referred_user_id: userId,
+    })
+  } catch (e) {
+    console.warn('[referral] post-OAuth apply failed:', e)
+  } finally {
+    try { localStorage.removeItem('meckury_referral_code') } catch {}
+  }
+}
+
 const CALLBACK_TIMEOUT_MS = 5000
 
 export default function AuthCallbackPage() {
@@ -55,6 +71,7 @@ export default function AuthCallbackPage() {
           return
         }
 
+        await applyPendingReferral(session.user.id)
         navigate('/feed', { replace: true })
       } catch (err) {
         console.error('Auth callback unexpected error:', err)
