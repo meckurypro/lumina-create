@@ -299,7 +299,7 @@ const SplashScreen = () => (
     className="flex flex-col items-center justify-center w-full"
     style={{ paddingTop: '24px', paddingBottom: '40px' }}
   >
-    {/* 16:9 video container, max width constrained for mobile */}
+    {/* 16:9 video container */}
     <div
       className="w-full rounded-3xl overflow-hidden"
       style={{
@@ -424,9 +424,33 @@ export default function FeedPage() {
       <TopBar showLogo showCredits />
       <PageWrapper>
 
+        {/* ── Page header — conditional on feed state ── */}
         <div className="pt-2 pb-5">
-          <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Discover</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Templates + community creations</p>
+          {!configLoading && !feedEnabled ? (
+            /* Feed off: premium studio identity statement */
+            <motion.h1
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="font-black"
+              style={{
+                fontSize: '22px',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.25,
+                color: 'var(--text-primary)',
+              }}
+            >
+              AI Content Creation{' '}
+              <span style={{ fontWeight: 800, color: 'var(--text-primary)', opacity: 0.55 }}>&</span>{' '}
+              Film Making Studio
+            </motion.h1>
+          ) : (
+            /* Feed on (or config still loading): normal Discover header */
+            <>
+              <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Discover</h1>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Templates + community creations</p>
+            </>
+          )}
         </div>
 
         {/* Templates strip — always shown */}
@@ -467,7 +491,7 @@ export default function FeedPage() {
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
           </div>
         ) : !feedEnabled ? (
-          /* Feed disabled → splash video */
+          /* Feed disabled → splash video + tagline */
           <SplashScreen />
         ) : (
           /* Feed enabled → normal trending section */
