@@ -45,7 +45,7 @@ import {
   MediaCard, GridCard, SkeletonCard,
   ActionSheet, RegenerateSheet,
   FallbackBanner,
-} from './MediaCardComponents'
+} from './MediaCardComponents.jsx'
 import { Film, Grid2X2, List } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
