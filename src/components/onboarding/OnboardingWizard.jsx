@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { User, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { profiles } from '@/lib/supabase'
-import { subscribeToMaster, MASTER_PRICE_NGN } from '@/lib/subscription'
 import { Input } from '@/components/ui/Input'
 import toast from 'react-hot-toast'
 
@@ -80,7 +79,6 @@ export default function OnboardingWizard({ onComplete }) {
     primary_use_case:       '',
     referral_source:        '',
     preferred_aspect_ratio: '9:16',
-    selected_tier:          'novice',
   })
 
   const update = (patch) => setData((d) => ({ ...d, ...patch }))
@@ -164,58 +162,6 @@ export default function OnboardingWizard({ onComplete }) {
           onChange={(v) => update({ referral_source: v })} />
       ),
     },
-    {
-      title:    'Choose your plan',
-      subtitle: 'Start free or go Master.',
-      validate: () => true,
-      render:   () => (
-        <div className="flex flex-col gap-4">
-          {/* Novice option */}
-          <button
-            type="button"
-            onClick={() => update({ selected_tier: 'novice' })}
-            className="text-left p-5 rounded-2xl transition-all"
-            style={{
-              background: 'var(--bg-elevated)',
-              border:     `2px solid ${(data.selected_tier === 'novice' || !data.selected_tier) ? 'var(--text-primary)' : 'var(--border-color)'}`,
-            }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-base font-black" style={{ color: 'var(--text-primary)' }}>Novice</p>
-              <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>Free</p>
-            </div>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Access image generation, video generation and copy motion. Buy credits to generate.
-            </p>
-          </button>
-
-          {/* Master option */}
-          <button
-            type="button"
-            onClick={() => update({ selected_tier: 'master' })}
-            className="text-left p-5 rounded-2xl transition-all"
-            style={{
-              background: data.selected_tier === 'master' ? 'rgba(245,158,11,0.08)' : 'var(--bg-elevated)',
-              border:     `2px solid ${data.selected_tier === 'master' ? '#f59e0b' : 'var(--border-color)'}`,
-            }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-base font-black" style={{ color: '#f59e0b' }}>⭐ Master</p>
-              <p className="text-sm font-bold" style={{ color: '#f59e0b' }}>₦5,000/month</p>
-            </div>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Full access to all features including templates, UGC, feed publishing and more.
-            </p>
-            <div
-              className="mt-3 rounded-xl px-3 py-2 text-xs font-medium"
-              style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}
-            >
-              Pay securely with Paystack right after this step.
-            </div>
-          </button>
-        </div>
-      ),
-    },
   ]
 
   const total   = steps.length
@@ -241,25 +187,6 @@ export default function OnboardingWizard({ onComplete }) {
     if (error) { setLoading(false); toast.error(error.message || 'Failed to save profile'); return }
     await refreshProfile()
     toast.success('Welcome to Meckury AI! 🎉')
-
-    // Optional: launch Paystack if the user picked Master
-    if (data.selected_tier === 'master' && user?.email) {
-      try {
-        await subscribeToMaster({
-          user,
-          onSuccess: async (res) => {
-            if (res?.error) toast.error(res.error)
-            else { toast.success('Master plan activated ⭐'); await refreshProfile() }
-            setLoading(false)
-            onComplete?.()
-          },
-          onClose: () => { setLoading(false); onComplete?.() },
-        })
-        return
-      } catch (e) {
-        toast.error(e.message || 'Could not open Paystack')
-      }
-    }
     setLoading(false)
     onComplete?.()
   }
