@@ -220,7 +220,14 @@ export default function AuthPage() {
   const [errors,      setErrors]      = useState({})
 
   // Referral code — read from ?ref= query param, user can also edit it
-  const [referralCode, setReferralCode] = useState(() => searchParams.get('ref') || '')
+  const [referralCode, setReferralCode] = useState(() => {
+    const fromUrl = searchParams.get('ref') || ''
+    if (fromUrl) {
+      try { localStorage.setItem('meckury_referral_code', fromUrl.toUpperCase()) } catch {}
+      return fromUrl
+    }
+    try { return localStorage.getItem('meckury_referral_code') || '' } catch { return '' }
+  })
 
   useEffect(() => {
     if (!user) return
@@ -324,6 +331,9 @@ export default function AuthPage() {
   }
 
   const handleGoogleAuth = async () => {
+    // Persist referral so we can apply it after the OAuth round-trip
+    const code = referralCode.trim().toUpperCase()
+    if (code) { try { localStorage.setItem('meckury_referral_code', code) } catch {} }
     const { error } = await auth.signInWithGoogle()
     if (error) toast.error('Google sign in failed')
   }
