@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Play, Film, Image, X, Sparkles, ArrowRight, Star, TrendingUp } from 'lucide-react'
-import { feed as feedDb, templates as templatesDb } from '@/lib/supabase'
+import { feed as feedDb, templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
@@ -289,18 +289,94 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
   )
 }
 
+// ─── Splash Screen (feed disabled) ───────────────────────
+
+const SplashScreen = () => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.5 }}
+    className="flex flex-col items-center justify-center w-full"
+    style={{ paddingTop: '24px', paddingBottom: '40px' }}
+  >
+    {/* 16:9 video container, max width constrained for mobile */}
+    <div
+      className="w-full rounded-3xl overflow-hidden"
+      style={{
+        aspectRatio: '16 / 9',
+        maxWidth: '100%',
+        background: '#000',
+        border: '1px solid var(--border-color)',
+        boxShadow: 'var(--shadow-lg)',
+      }}
+    >
+      <video
+        src="/splash.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="splash-video w-full h-full"
+        style={{ objectFit: 'cover', display: 'block' }}
+      />
+    </div>
+
+    {/* Tagline */}
+    <motion.p
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.3, duration: 0.4 }}
+      className="mt-5 text-center font-black"
+      style={{
+        fontSize: '22px',
+        letterSpacing: '-0.03em',
+        color: 'var(--text-primary)',
+        lineHeight: 1.2,
+      }}
+    >
+      Imagine it?{' '}
+      <span
+        style={{
+          background: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        }}
+      >
+        Create it!
+      </span>
+    </motion.p>
+  </motion.div>
+)
+
 // ─── Feed Page ────────────────────────────────────────────
 
 export default function FeedPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
+  const [feedEnabled,      setFeedEnabled]      = useState(true)
+  const [configLoading,    setConfigLoading]    = useState(true)
   const [trending,         setTrending]         = useState([])
   const [publicTemplates,  setPublicTemplates]  = useState([])
   const [templatesLoading, setTemplatesLoading] = useState(true)
   const [trendingLoading,  setTrendingLoading]  = useState(true)
   const [activeVideo,      setActiveVideo]      = useState(null)
   const [arMap,            setArMap]            = useState({})
+
+  // ── Load feed_enabled config ──
+  useEffect(() => {
+    supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'feed_enabled')
+      .single()
+      .then(({ data }) => {
+        if (data) setFeedEnabled(data.value === 'true' || data.value === true)
+        setConfigLoading(false)
+      })
+      .catch(() => setConfigLoading(false))
+  }, [])
 
   useEffect(() => {
     templatesDb.getPublic().then(({ data }) => {
@@ -353,14 +429,13 @@ export default function FeedPage() {
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Templates + community creations</p>
         </div>
 
-        {/* Templates strip */}
+        {/* Templates strip — always shown */}
         {(templatesLoading || publicTemplates.length > 0) && (
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
                 ✦ Templates
               </p>
-              {/* ← passes state so CreatePage opens on the Templates tab */}
               <button
                 onClick={() => navigate('/create', { state: { tab: 'templates' } })}
                 className="text-xs font-semibold flex items-center gap-1"
@@ -385,29 +460,42 @@ export default function FeedPage() {
           </div>
         )}
 
-        {/* Trending */}
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={14} style={{ color: 'var(--brand)' }} />
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Trending</p>
-        </div>
-
-        {trendingLoading ? (
+        {/* ── Feed section: splash or trending ── */}
+        {configLoading ? (
+          /* Config still loading — show skeleton trending layout */
           <div className="grid grid-cols-2 gap-3 mb-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
           </div>
-        ) : trending.length === 0 ? (
-          <EmptyState icon={Film} title="No posts yet" description="Be the first to share your creation with the community!" />
+        ) : !feedEnabled ? (
+          /* Feed disabled → splash video */
+          <SplashScreen />
         ) : (
-          <div className="mb-4">
-            {trending.map((p) => <AspectProbe key={p.id} post={p} />)}
-            {slides.length > 0 && (
-              <TrendingSection
-                slides={slides}
-                onPlayVideo={(url) => setActiveVideo(url)}
-                onNavigate={(id) => navigate('/feed/community', { state: { selectedPostId: id } })}
-              />
+          /* Feed enabled → normal trending section */
+          <>
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={14} style={{ color: 'var(--brand)' }} />
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Trending</p>
+            </div>
+
+            {trendingLoading ? (
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
+              </div>
+            ) : trending.length === 0 ? (
+              <EmptyState icon={Film} title="No posts yet" description="Be the first to share your creation with the community!" />
+            ) : (
+              <div className="mb-4">
+                {trending.map((p) => <AspectProbe key={p.id} post={p} />)}
+                {slides.length > 0 && (
+                  <TrendingSection
+                    slides={slides}
+                    onPlayVideo={(url) => setActiveVideo(url)}
+                    onNavigate={(id) => navigate('/feed/community', { state: { selectedPostId: id } })}
+                  />
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
 
         <div className="h-6" />
@@ -416,4 +504,4 @@ export default function FeedPage() {
       {activeVideo && <VideoModal url={activeVideo} onClose={() => setActiveVideo(null)} />}
     </>
   )
-                                 }
+}
