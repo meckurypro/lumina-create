@@ -312,6 +312,22 @@ input, textarea, select { font: inherit; }
 }
 
 /* ============================================================
+   SPLASH VIDEO — invert on light theme (mirrors .logo-icon pattern)
+   The video uses black/white/blue; invert flips black↔white on light,
+   leaving blue visually consistent.
+   ============================================================ */
+
+.splash-video {
+  filter: invert(1);
+  transition: filter 0.2s ease;
+}
+
+[data-theme='dark'] .splash-video,
+.dark .splash-video {
+  filter: invert(0);
+}
+
+/* ============================================================
    GLASS
    ============================================================ */
 
