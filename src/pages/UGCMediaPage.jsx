@@ -22,8 +22,8 @@ import { useAuth }                                    from '@/context/AuthContex
 import { ugcProfiles, ugcGenerations }                from '@/lib/ugc'
 import { supabase, generations as generationsDb }     from '@/lib/supabase'
 import toast                                          from 'react-hot-toast'
-import MediaPageCore                                  from '@/components/media/MediaPageCore'
-import { MediaEmptyState, Lightbox }                  from '@/components/media/MediaCardComponents'
+import MediaPageCore                                  from '@/components/media/MediaPageCore.jsx'
+import { MediaEmptyState, Lightbox }                  from '@/components/media/MediaCardComponents.jsx'
 import { Sparkles as SparklesIcon, Zap as ZapIcon }   from 'lucide-react'
 
 const ACCENT     = 'var(--tool-ugc)'
