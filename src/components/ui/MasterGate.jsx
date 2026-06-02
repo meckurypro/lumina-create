@@ -1,9 +1,7 @@
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star } from 'lucide-react'
-
-const WHATSAPP_URL =
-  'https://wa.me/2348162465247?text=Hi%2C%20I%20want%20to%20upgrade%20to%20Master%20on%20Meckury%20AI'
+import { useMasterUpgrade } from '@/hooks/useMasterUpgrade'
 
 /**
  * MasterGate
@@ -28,6 +26,7 @@ export default function MasterGate({
   children,
 }) {
   const navigate = useNavigate()
+  const { upgrade, loading, price } = useMasterUpgrade()
   const accent   = `var(${accentVar})`
   const accentSub = `var(${accentVar}-subtle, rgba(249,115,22,0.08))`
   const accentBdr = `var(${accentVar}-border, rgba(249,115,22,0.2))`
@@ -99,16 +98,15 @@ export default function MasterGate({
 
         {/* CTA */}
         <div className="flex flex-col gap-3 w-full max-w-xs">
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={upgrade}
+            disabled={loading}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-            style={{ background: '#f59e0b', color: 'white' }}
+            style={{ background: '#f59e0b', color: 'white', opacity: loading ? 0.7 : 1 }}
           >
             <Star size={15} fill="white" />
-            Upgrade to Master · ₦5,000/mo
-          </a>
+            {loading ? 'Opening Paystack…' : `Upgrade to Master · ₦${price.toLocaleString()}/mo`}
+          </button>
           <button
             onClick={onBack ?? (() => navigate(-1))}
             className="w-full py-3 rounded-2xl text-sm font-semibold"
