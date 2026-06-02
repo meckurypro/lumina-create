@@ -1,15 +1,6 @@
 // src/pages/UGCMediaPage.jsx
 //
 // Thin wrapper. All heavy lifting is in MediaPageCore.
-// This file only supplies:
-//   • fetcher  — queries ugc_generations joined to generations
-//   • onRegenerate — UGC-specific regenerate (writes ugc_generations row too)
-//   • filterRelevantModels / computeCreditCost (multi-image models only)
-//   • onCardClick — opens lightbox (not navigate)
-//   • headerSlot — profile header with back button + grid toggle
-//   • footerSlot — "Generate New" CTA
-//   • extraStatusFilters — image / video type filter
-//   • Lightbox rendered outside MediaPageCore (needs its own state here)
 
 import { useState, useEffect }                        from 'react'
 import { useNavigate, useParams }                     from 'react-router-dom'
@@ -24,16 +15,13 @@ import { supabase, generations as generationsDb }     from '@/lib/supabase'
 import toast                                          from 'react-hot-toast'
 import MediaPageCore                                  from '@/components/media/MediaPageCore.jsx'
 import { MediaEmptyState, Lightbox }                  from '@/components/media/MediaCardComponents.jsx'
-import { Sparkles as SparklesIcon, Zap as ZapIcon }   from 'lucide-react'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
 
-const PAGE_SIZE = 20
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Fetcher — ugc_generations joined to generations
+// Fetcher
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeFetcher(profileId) {
@@ -77,7 +65,6 @@ function makeFetcher(profileId) {
         ugc_aspect_ratio:   r.aspect_ratio,
       }))
 
-    // Status filter applied in JS (join makes SQL filter on generation.status awkward)
     if (statusFilter && statusFilter !== 'all') {
       flat = flat.filter((g) => g.status === statusFilter)
     }
@@ -87,7 +74,7 @@ function makeFetcher(profileId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// filterRelevantModels  (UGC = multi-image only)
+// filterRelevantModels  (for Regenerate — multi-image only)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterRelevantModels(models /*, gen */) {
@@ -95,7 +82,19 @@ function filterRelevantModels(models /*, gen */) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// computeCreditCost
+// filterEditModels  (for Edit — I2I capable image models)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function filterEditModels(models, gen) {
+  // UGC edit: allow multi-image models that also support regular image input,
+  // plus regular I2I image models.
+  return models.filter(
+    (m) => !m.is_locked && m.type === 'image' && m.supports_image === true
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeCreditCost  (for Regenerate)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCreditCost(selectedModel, gen) {
@@ -105,11 +104,23 @@ function computeCreditCost(selectedModel, gen) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// computeEditCreditCost  (for Edit — always I2I)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function computeEditCreditCost(selectedModel) {
+  if (!selectedModel) return 0
+  return selectedModel.credit_cost_i2i || 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
+//
+// Now receives editedPrompt (5th positional arg).
+// Reuses original INPUT images (input_image_urls), NOT the generated output.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeOnRegenerate(profileId) {
-  return async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, {
+  return async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
     supabase, user, generationsDb, refreshProfile, setItems, setTotalCount,
   }) {
     const isVideo = gen.output_type === 'video'
@@ -118,12 +129,14 @@ function makeOnRegenerate(profileId) {
       user_id:                user.id,
       generation_type:        isVideo ? 'text_to_video' : 'text_to_image',
       status:                 'pending',
-      prompt:                 gen.prompt,
+      // Use edited prompt from sheet, fall back to stored prompt
+      prompt:                 editedPrompt ?? gen.prompt,
       model:                  chosenModel,
       aspect_ratio:           gen.aspect_ratio,
       duration:               isVideo ? gen.duration : undefined,
       credits_charged:        creditCost,
       output_type:            gen.output_type,
+      // Reuse ORIGINAL input images — never the generated output
       input_image_urls:       gen.input_image_urls?.length ? gen.input_image_urls : null,
       skip_prompt_refinement: gen.skip_prompt_refinement ?? false,
     })
@@ -143,7 +156,8 @@ function makeOnRegenerate(profileId) {
       user_id:         user.id,
       output_type:     gen.output_type,
       filter_applied:  gen.ugc_filter_applied || 'hyper_realistic',
-      scene_prompt:    gen.ugc_scene_prompt || gen.prompt || '',
+      // Store the edited prompt as scene_prompt so it shows correctly in the list
+      scene_prompt:    editedPrompt ?? gen.ugc_scene_prompt ?? gen.prompt ?? '',
       refined_prompt:  null,
       selected_photos: [],
       aspect_ratio:    gen.aspect_ratio || '9:16',
@@ -156,7 +170,72 @@ function makeOnRegenerate(profileId) {
     const optimistic = {
       ...genRow,
       ugc_generation_id:  null,
-      ugc_scene_prompt:   gen.ugc_scene_prompt || gen.prompt || '',
+      ugc_scene_prompt:   editedPrompt ?? gen.ugc_scene_prompt ?? gen.prompt ?? '',
+      ugc_filter_applied: gen.ugc_filter_applied || 'hyper_realistic',
+      ugc_aspect_ratio:   gen.aspect_ratio || '9:16',
+    }
+    setItems((prev) => [optimistic, ...prev])
+    setTotalCount((c) => c + 1)
+    refreshProfile()
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// onEdit
+//
+// Uses the generated OUTPUT as the new I2I input.
+// Also writes a ugc_generations row to keep the UGC history consistent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeOnEdit(profileId) {
+  return async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
+    supabase, user, generationsDb, refreshProfile, setItems, setTotalCount,
+  }) {
+    if (!gen.output_url) throw new Error('No output URL to edit from')
+
+    const { data: genRow, error: genErr } = await generationsDb.create({
+      user_id:                user.id,
+      generation_type:        'image_to_image',
+      status:                 'pending',
+      prompt:                 editedPrompt ?? gen.prompt,
+      model:                  chosenModel,
+      aspect_ratio:           gen.aspect_ratio,
+      credits_charged:        creditCost,
+      output_type:            'image',
+      // Generated output → new input
+      start_frame_url:        gen.output_url,
+      input_image_urls:       [gen.output_url],
+      skip_prompt_refinement: true,
+    })
+    if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+
+    const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+    if (dErr || !deduct?.success) {
+      await generationsDb.update(genRow.id, {
+        status: 'failed', error_message: deduct?.error || 'Insufficient credits',
+      })
+      throw new Error(deduct?.error || 'Not enough credits')
+    }
+
+    await ugcGenerations.create({
+      generation_id:   genRow.id,
+      ugc_profile_id:  profileId,
+      user_id:         user.id,
+      output_type:     'image',
+      filter_applied:  gen.ugc_filter_applied || 'hyper_realistic',
+      scene_prompt:    editedPrompt ?? gen.ugc_scene_prompt ?? gen.prompt ?? '',
+      refined_prompt:  null,
+      selected_photos: [],
+      aspect_ratio:    gen.aspect_ratio || '9:16',
+    })
+
+    supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
+      .catch((e) => console.error('image-generate invoke error', e))
+
+    const optimistic = {
+      ...genRow,
+      ugc_generation_id:  null,
+      ugc_scene_prompt:   editedPrompt ?? gen.ugc_scene_prompt ?? gen.prompt ?? '',
       ugc_filter_applied: gen.ugc_filter_applied || 'hyper_realistic',
       ugc_aspect_ratio:   gen.aspect_ratio || '9:16',
     }
@@ -179,11 +258,7 @@ export default function UGCMediaPage() {
   const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [lightboxGen,    setLightboxGen]    = useState(null)
-
-  // totalCount is tracked locally so header can display it
-  const [totalCount, setTotalCount] = useState(0)
-
-  // ── Load UGC profile ────────────────────────────────────────────────────
+  const [totalCount,     setTotalCount]     = useState(0)
 
   useEffect(() => {
     ;(async () => {
@@ -199,12 +274,10 @@ export default function UGCMediaPage() {
     })()
   }, [profileId, navigate])
 
-  // ── Stable memoised injections ──────────────────────────────────────────
-  // useMemo not needed here because these are created once outside the render
+  // Stable injections (created once outside render)
   const fetcher      = makeFetcher(profileId)
   const onRegenerate = makeOnRegenerate(profileId)
-
-  // ── Loading screen ──────────────────────────────────────────────────────
+  const onEdit       = makeOnEdit(profileId)
 
   if (profileLoading) {
     return (
@@ -219,14 +292,13 @@ export default function UGCMediaPage() {
     )
   }
 
-  // ── Slots ───────────────────────────────────────────────────────────────
+  // ── Slots ────────────────────────────────────────────────────────────────
 
   const headerSlot = ({ viewMode, setViewMode, allowGridView, totalCount: tc, credits: cr }) => (
     <div
       className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
       style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
     >
-      {/* Back */}
       <button
         onClick={() => navigate(`/create/ugc/${profileId}`)}
         className="p-2 -ml-2 rounded-xl"
@@ -235,7 +307,6 @@ export default function UGCMediaPage() {
         <ArrowLeft size={20} />
       </button>
 
-      {/* Profile identity */}
       <button
         onClick={() => navigate(`/create/ugc/${profileId}`)}
         className="flex items-center gap-2.5"
@@ -268,7 +339,6 @@ export default function UGCMediaPage() {
         </div>
       </button>
 
-      {/* Controls */}
       <div className="flex items-center gap-2">
         {allowGridView && (
           <button
@@ -362,8 +432,6 @@ export default function UGCMediaPage() {
     />
   )
 
-  // ── Render ──────────────────────────────────────────────────────────────
-
   return (
     <>
       <MediaPageCore
@@ -374,6 +442,10 @@ export default function UGCMediaPage() {
         onCardClick={(gen) => {
           if (gen.status === 'completed') setLightboxGen(gen)
         }}
+        // Edit flow
+        filterEditModels={filterEditModels}
+        computeEditCreditCost={computeEditCreditCost}
+        onEdit={onEdit}
         headerSlot={headerSlot}
         footerSlot={footerSlot}
         emptySlot={emptySlot}
@@ -389,7 +461,6 @@ export default function UGCMediaPage() {
         allowGridView
       />
 
-      {/* Lightbox lives outside MediaPageCore because it needs page-local state */}
       <AnimatePresence>
         {lightboxGen && (
           <Lightbox
