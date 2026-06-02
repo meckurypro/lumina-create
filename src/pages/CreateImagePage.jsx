@@ -417,7 +417,8 @@ export default function CreateImagePage() {
 
   // ── derived model caps ───────────────────────────────────────────────────
   const selectedModel       = models.find((m) => m.value === model)
-  const modelSupportsImage  = selectedModel?.supports_image !== false
+const modelSupportsImage  = selectedModel?.supports_image !== false
+const modelRequiresImage  = selectedModel?.requires_image === true
 const modelSupportsMulti  = selectedModel?.supports_multi_image === true
 const modelMaxRefImages   = selectedModel?.max_ref_images ?? 1
 const [multiMode, setMultiMode] = useState(false)
@@ -440,7 +441,8 @@ const maxImages = (modelSupportsMulti && multiMode)
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
-  const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
+  const imageRequired  = modelRequiresImage && !hasImages
+const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired
 
   // ── enforce aspect ratio when model changes ──────────────────────────────
   useEffect(() => {
@@ -750,6 +752,11 @@ const maxImages = (modelSupportsMulti && multiMode)
   {!modelSupportsImage && (
     <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
       This model is text-only. Switch models to use a reference image.
+    </p>
+  )}
+  {modelRequiresImage && !hasImages && (
+    <p className="text-xs text-center mt-2" style={{ color: 'var(--tool-image)' }}>
+      This model requires a reference image to generate.
     </p>
   )}
 </div>
