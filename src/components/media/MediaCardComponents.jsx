@@ -68,10 +68,9 @@ export function getFriendlyError(raw) {
 export function getModelDisplayLabel(modelValue, modelsList) {
   if (!modelValue) return null
   const found = modelsList?.find((m) => m.value === modelValue)
-  if (found) return found.aka || found.label
-  return modelValue.replace(/^(fal-ai\/|fal\/|replicate\/|runway-)/i, '')
+  if (found) return found.aka || null
+  return null
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // StatusPill
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,7 +241,7 @@ export const PortalDropup = ({
           >
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {m.aka || m.label}
+                {m.aka}
               </p>
               {m.sublabel && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
@@ -411,7 +410,7 @@ export const RegenerateSheet = ({
           >
             <div className="text-left">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {selectedModel?.aka || selectedModel?.label || model}
+                {selectedModel?.aka}
               </p>
               {selectedModel?.sublabel && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
@@ -634,7 +633,7 @@ export const EditSheet = ({
           >
             <div className="text-left">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {selectedModel?.aka || selectedModel?.label || model}
+                {selectedModel?.aka}
               </p>
               {selectedModel?.sublabel && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
