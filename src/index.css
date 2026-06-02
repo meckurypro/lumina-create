@@ -160,10 +160,10 @@
   --tool-motion-muted:  rgba(52, 211, 153, 0.55);
 
   /* Talking Head — Warm Gold */
-  --tool-talking-head:        #FCD34D;
-  --tool-talking-head-subtle: rgba(252, 211, 77, 0.09);
-  --tool-talking-head-border: rgba(252, 211, 77, 0.20);
-  --tool-talking-head-muted:  rgba(252, 211, 77, 0.55);
+  --tool-talking-head:        #F59E0B;
+  --tool-talking-head-subtle: rgba(245, 158, 11, 0.09);
+  --tool-talking-head-border: rgba(245, 158, 11, 0.20);
+  --tool-talking-head-muted:  rgba(245, 158, 11, 0.55);
 
   /* UGC — Soft Pink */
   --tool-ugc:        #FB7BB8;
