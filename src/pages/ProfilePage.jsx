@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Settings, Zap, Plus, LogOut, Crown, ChevronRight, Gift, Copy, Check, Share2 } from 'lucide-react'
 import { credits as creditsDb, auth, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { useMasterUpgrade } from '@/hooks/useMasterUpgrade'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Modal } from '@/components/ui/Modal'
@@ -187,6 +188,7 @@ const ReferralCard = ({ profile }) => {
 export default function ProfilePage() {
   const navigate                                                  = useNavigate()
   const { user, profile, credits, refreshProfile, isAdmin }      = useAuth()
+  const { upgrade: upgradeToMaster, loading: upgrading, price: masterPrice } = useMasterUpgrade()
 
   const [packages,         setPackages]         = useState([])
   const [showCreditsModal, setShowCreditsModal] = useState(false)
@@ -324,15 +326,14 @@ export default function ProfilePage() {
               )}
             </div>
             {!isMaster && (
-              <a
-                href="https://wa.me/2348162465247?text=Hi%2C%20I%20want%20to%20upgrade%20to%20Master%20on%20Meckury%20AI"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={upgradeToMaster}
+                disabled={upgrading}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
-                style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}
+                style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', opacity: upgrading ? 0.7 : 1 }}
               >
-                ⭐ Go Master
-              </a>
+                ⭐ {upgrading ? 'Opening…' : `Go Master · ₦${masterPrice.toLocaleString()}/mo`}
+              </button>
             )}
           </div>
         </div>
