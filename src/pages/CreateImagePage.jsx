@@ -330,8 +330,9 @@ export default function CreateImagePage() {
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [model,         setModel]         = useState('')
-  const [fullscreenIdx, setFullscreenIdx] = useState(null)
-  const [submitting,    setSubmitting]    = useState(false)
+const [resolution,    setResolution]    = useState('1k')
+const [fullscreenIdx, setFullscreenIdx] = useState(null)
+const [submitting,    setSubmitting]    = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -404,7 +405,7 @@ const modelMaxRefImages   = selectedModel?.max_ref_images ?? 1
 const [multiMode, setMultiMode] = useState(false)
 
 // Reset multiMode when model changes
-useEffect(() => { setMultiMode(false) }, [model])
+useEffect(() => { setMultiMode(false); setResolution('1k') }, [model])
 
 const maxImages = (modelSupportsMulti && multiMode)
   ? modelMaxRefImages
@@ -414,11 +415,14 @@ const maxImages = (modelSupportsMulti && multiMode)
   // generation type: multi always sends as image_to_image when images present
   const hasImages  = images.length > 0
   const type       = hasImages && modelSupportsImage ? 'image_to_image' : 'text_to_image'
-  const creditCost = selectedModel
-    ? (hasImages && modelSupportsImage
+  const resolutionCosts = selectedModel?.credit_cost_resolution ?? null
+const creditCost = selectedModel
+  ? resolutionCosts
+    ? (resolutionCosts[resolution] ?? resolutionCosts['1k'] ?? 0)
+    : (hasImages && modelSupportsImage
         ? selectedModel.credit_cost_i2i
         : selectedModel.credit_cost_t2i) || 0
-    : 0
+  : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const imageRequired  = modelRequiresImage && !hasImages
@@ -565,6 +569,7 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
         prompt,
         model,
         aspect_ratio:           aspectRatio,
+        resolution:             resolutionCosts ? resolution : null,
         credits_charged:        creditCost,
         output_type:            'image',
         start_frame_url:        null,
@@ -767,6 +772,21 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
           </div>
+
+          {/* Resolution — only shown for models with per-resolution pricing */}
+          {resolutionCosts && (
+            <div className="pt-1">
+              <SettingChips
+                label="Quality"
+                options={Object.entries(resolutionCosts).map(([key, cost]) => ({
+                  label: `${key.toUpperCase()} · ${cost} cr`,
+                  value: key,
+                }))}
+                value={resolution}
+                onChange={setResolution}
+              />
+            </div>
+          )}
 
         </div>
       </div>
