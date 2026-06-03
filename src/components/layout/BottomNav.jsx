@@ -57,7 +57,7 @@ const PromptIQButton = ({ onPress }) => (
       className="relative p-3 flex items-center justify-center"
       style={{ borderRadius: '14px', background: 'var(--brand-light)' }}
     >
-      <Zap size={22} strokeWidth={1.5} style={{ color: '#f97316' }} />
+      <Zap size={22} strokeWidth={1.5} style={{ color: 'var(--brand)' }} />
     </span>
   </button>
 )
