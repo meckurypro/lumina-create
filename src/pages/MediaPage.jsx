@@ -153,6 +153,13 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
 }) {
   if (!gen.output_url) throw new Error('No output URL to edit from')
 
+  // Smart edit: send [output, originalInput] so Claude understands both sides.
+  // If no original input existed (pure T2I), output alone is still useful.
+  const originalInputUrl = gen.input_image_urls?.[0] || gen.start_frame_url || null
+  const inputImages = originalInputUrl
+    ? [gen.output_url, originalInputUrl]
+    : [gen.output_url]
+
   const { data: genRow, error: genErr } = await generationsDb.create({
     user_id:                user.id,
     generation_type:        'image_to_image',
@@ -162,10 +169,13 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
     aspect_ratio:           gen.aspect_ratio,
     credits_charged:        creditCost,
     output_type:            'image',
-    // The generated output becomes the new input
     start_frame_url:        gen.output_url,
-    input_image_urls:       [gen.output_url],
-    skip_prompt_refinement: true,
+    input_image_urls:       inputImages,
+    // Carry original prompt so edge function can reason about what changed
+    original_prompt:        gen.prompt || null,
+    // Tell edge function this is a smart edit — do NOT skip prompt engineering
+    skip_prompt_refinement: false,
+    is_smart_edit:          true,
   })
   if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
