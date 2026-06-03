@@ -243,8 +243,8 @@ export const PortalDropup = ({
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {m.aka}
               </p>
-              {m.sublabel && (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+              {m.description && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
@@ -412,8 +412,8 @@ export const RegenerateSheet = ({
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {selectedModel?.aka}
               </p>
-              {selectedModel?.sublabel && (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
+              {selectedModel?.description && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.description}</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -635,8 +635,8 @@ export const EditSheet = ({
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {selectedModel?.aka}
               </p>
-              {selectedModel?.sublabel && (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.sublabel}</p>
+              {selectedModel?.description && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModel.description}</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
