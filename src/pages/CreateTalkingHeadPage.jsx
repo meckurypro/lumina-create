@@ -248,7 +248,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                       style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
-                        <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                        {m.description && <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                         {tags.length > 0 && (
                           <div className="flex gap-1 flex-wrap mt-1">
                             {tags.map((t) => (
