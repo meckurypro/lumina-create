@@ -132,7 +132,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
                       {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                       {!m.supports_image && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>Text only</p>}
                     </div>
