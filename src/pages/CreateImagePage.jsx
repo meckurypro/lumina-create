@@ -225,9 +225,9 @@ const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupport
 
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
   // images = array of { file, url, ar, w, h } | null for empty slots
-  const slots = Array.from({ length: maxImages }, (_, i) => images[i] || null)
   const filledCount = images.filter(Boolean).length
-  const canAdd = filledCount < maxImages
+const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
+const slots = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
 
   return (
     <div className="flex flex-col gap-3">
@@ -250,88 +250,68 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
       </p>
 
       {/* Grid */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxImages, 4)}, 1fr)` }}>
-        {slots.map((img, idx) => (
-          <div key={idx} className="flex flex-col gap-1.5">
-            {img ? (
-              // Filled slot
-              <div className="relative group">
-                <div
-                  className="relative overflow-hidden rounded-xl cursor-pointer"
-                  style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
-                  onClick={() => onFullscreen(idx)}
-                >
-                  <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
-                  {/* Hover overlay */}
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ background: 'rgba(0,0,0,0.45)' }}
-                  >
-                    <Maximize2 size={16} color="white" />
-                  </div>
-                </div>
-                {/* Tag pill */}
-                <button
-                  onClick={() => onTagInsert(tagForSlot(idx))}
-                  className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
-                  style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-                >
-                  {tagForSlot(idx)}
-                </button>
-                {/* Remove */}
-                <button
-                  onClick={() => onRemove(idx)}
-                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
-                  style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
-                >
-                  <X size={11} />
-                </button>
+<div className="flex flex-wrap gap-3">
+  {slots.map((img, idx) => {
+    const isNextSlot = idx === filledCount
+
+    return (
+      <div key={idx} style={{ width: 'calc(25% - 9px)', minWidth: 64 }} className="flex flex-col gap-1.5">
+        {img ? (
+          <div className="relative group">
+            <div
+              className="relative overflow-hidden rounded-xl cursor-pointer"
+              style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
+              onClick={() => onFullscreen(idx)}
+            >
+              <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+              <div
+                className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'rgba(0,0,0,0.45)' }}
+              >
+                <Maximize2 size={16} color="white" />
               </div>
-            ) : (
-              // Empty slot — show if it's the next available slot or first empty
-              idx === filledCount ? (
-                <label className="cursor-pointer">
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
-                  <div
-                    className="flex flex-col items-center justify-center rounded-xl transition-all"
-                    style={{
-                      aspectRatio: '1/1',
-                      border: `1.5px dashed ${ACCENT_BDR}`,
-                      background: ACCENT_SUB,
-                    }}
-                  >
-                    <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
-                    <span className="text-xs font-medium" style={{ color: ACCENT }}>img{idx + 1}</span>
-                  </div>
-                  {/* Placeholder tag pill */}
-                  <div
-                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.4 }}
-                  >
-                    {tagForSlot(idx)}
-                  </div>
-                </label>
-              ) : (
-                // Locked slot — not yet reached
-                <div>
-                  <div
-                    className="flex flex-col items-center justify-center rounded-xl"
-                    style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)', opacity: 0.25 }}
-                  >
-                    <Plus size={14} style={{ color: 'var(--text-muted)' }} />
-                  </div>
-                  <div
-                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.2 }}
-                  >
-                    {tagForSlot(idx)}
-                  </div>
-                </div>
-              )
-            )}
+            </div>
+            <button
+              onClick={() => onTagInsert(tagForSlot(idx))}
+              className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
+              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              {tagForSlot(idx)}
+            </button>
+            <button
+              onClick={() => onRemove(idx)}
+              className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+              style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+            >
+              <X size={11} />
+            </button>
           </div>
-        ))}
+        ) : isNextSlot ? (
+          <label className="cursor-pointer">
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
+            <div
+              className="flex flex-col items-center justify-center rounded-xl transition-all"
+              style={{
+                aspectRatio: '1/1',
+                border: `1.5px dashed ${ACCENT_BDR}`,
+                background: ACCENT_SUB,
+              }}
+            >
+              <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
+              <span className="text-xs font-medium" style={{ color: ACCENT }}>img{idx + 1}</span>
+            </div>
+            <div
+              className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.4 }}
+            >
+              {tagForSlot(idx)}
+            </div>
+          </label>
+        ) : null}
       </div>
+    )
+  })}
+</div>
     </div>
   )
 }
@@ -768,10 +748,10 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={
-              modelSupportsMulti && images.length > 0
-                ? `e.g. Person in ${tagForSlot(0)} hugs person in ${tagForSlot(1)}`
-                : 'What are we creating today?'
-            }
+  modelSupportsMulti && multiMode && images.length > 0
+    ? `e.g. Person in ${tagForSlot(0)} hugs person in ${tagForSlot(1)}`
+    : 'What are we creating today?'
+}
             rows={4}
           />
 
