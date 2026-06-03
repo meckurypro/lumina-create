@@ -193,6 +193,11 @@ function makeOnEdit(profileId) {
   }) {
     if (!gen.output_url) throw new Error('No output URL to edit from')
 
+    const originalInputUrl = gen.input_image_urls?.[0] || gen.start_frame_url || null
+    const inputImages = originalInputUrl
+      ? [gen.output_url, originalInputUrl]
+      : [gen.output_url]
+
     const { data: genRow, error: genErr } = await generationsDb.create({
       user_id:                user.id,
       generation_type:        'image_to_image',
@@ -202,10 +207,11 @@ function makeOnEdit(profileId) {
       aspect_ratio:           gen.aspect_ratio,
       credits_charged:        creditCost,
       output_type:            'image',
-      // Generated output → new input
       start_frame_url:        gen.output_url,
-      input_image_urls:       [gen.output_url],
-      skip_prompt_refinement: true,
+      input_image_urls:       inputImages,
+      original_prompt:        gen.ugc_scene_prompt ?? gen.prompt ?? null,
+      skip_prompt_refinement: false,
+      is_smart_edit:          true,
     })
     if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
