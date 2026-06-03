@@ -181,7 +181,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                       {m.supports_multi_image && (
                         <p className="text-xs mt-0.5" style={{ color: ACCENT, opacity: 0.8 }}>Multi-ref</p>
                       )}
