@@ -58,11 +58,62 @@ export function getCardTitle(gen) {
 
 export function getFriendlyError(raw) {
   if (!raw) return null
-  if (/content|policy|blocked|nsfw|moderat/i.test(raw)) return '⚠️ Content blocked'
+
+  // ── Content/policy blocks (fal structured types + ByteDance raw strings) ──
+  if (
+    /content_policy_violation/i.test(raw)               ||
+    /OutputVideoSensitiveContentDetected/i.test(raw)    ||
+    /OutputAudioSensitiveContentDetected/i.test(raw)    ||
+    /sensitive content/i.test(raw)                      ||
+    /PolicyViolation/i.test(raw)                        ||
+    /copyright/i.test(raw)                              ||
+    /nsfw|moderat|violat|policy|blocked|inappropriate/i.test(raw)
+  ) {
+    // Surface the actual provider message so users know exactly why
+    const clean = raw.replace(/^[A-Za-z]+:\s*/, '') // strip "OutputVideoSensitiveContentDetected: "
+    const trimmed = clean.length > 120 ? clean.slice(0, 117) + '…' : clean
+    return `⚠️ ${trimmed}`
+  }
+
+  // ── Real person / face block (ByteDance hard block) ──
+  if (/real person|human face|real face/i.test(raw)) {
+    return '⚠️ Real faces not permitted — use illustrated or AI-generated characters'
+  }
+
+  // ── fal no_media_generated ──
+  if (/no_media_generated/i.test(raw)) {
+    return '⚠️ Model produced no output — try rephrasing your prompt'
+  }
+
+  // ── Input problems (fal structured types) ──
+  if (/image_too_small/i.test(raw))     return 'Input image too small — use a larger image'
+  if (/image_too_large/i.test(raw))     return 'Input image too large — resize before uploading'
+  if (/image_load_error/i.test(raw))    return 'Could not load input image — check the URL'
+  if (/file_download_error/i.test(raw)) return 'Could not download input file — ensure URL is public'
+  if (/unsupported.*format/i.test(raw)) return 'Unsupported file format — check accepted formats'
+
+  // ── Model / infrastructure ──
   if (/model.*not.*found|unsupported model/i.test(raw)) return 'Model unavailable — try another'
-  if (/timed? ?out/i.test(raw))                         return 'Timed out — please try again'
-  if (/insufficient|not enough|credit/i.test(raw))      return 'Insufficient credits'
-  return 'Generation failed — please try again'
+  if (/downstream_service_unavailable|downstream_service_error/i.test(raw))
+    return 'Provider temporarily unavailable — please try again'
+
+  // ── Timeout ──
+  if (/timed?\s*out|generation_timeout|request_timeout/i.test(raw))
+    return 'Timed out — please try again'
+
+  // ── Credits ──
+  if (/insufficient|not enough|credit/i.test(raw)) return 'Insufficient credits'
+
+  // ── WaveSpeed error codes (1xxx = bad input, 5xxx = server) ──
+  if (/\b1\d{3}\b/.test(raw)) {
+    const trimmed = raw.length > 120 ? raw.slice(0, 117) + '…' : raw
+    return `⚠️ ${trimmed}`
+  }
+  if (/\b5\d{3}\b/.test(raw)) return 'Provider error — please try again'
+
+  // ── Fallback: show the actual message, never a generic lie ──
+  const trimmed = raw.length > 120 ? raw.slice(0, 117) + '…' : raw
+  return `⚠️ ${trimmed}`
 }
 
 export function getModelDisplayLabel(modelValue, modelsList) {
@@ -938,11 +989,11 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, accentColor, accen
             </span>
           )}
         </div>
-        {friendlyError && (
-          <p className="text-xs mt-1 truncate" style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}>
-            {friendlyError}
-          </p>
-        )}
+      {friendlyError && (
+  <p className="text-xs mt-1 line-clamp-2" style={{ color: isPolicy ? '#f59e0b' : '#ef4444' }}>
+    {friendlyError}
+  </p>
+)}
       </div>
 
       {/* More button */}
