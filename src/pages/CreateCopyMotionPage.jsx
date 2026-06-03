@@ -139,7 +139,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                     </div>
                     {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
                   </button>
