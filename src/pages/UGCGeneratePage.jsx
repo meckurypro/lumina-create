@@ -174,7 +174,8 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Add up to {maxImages} reference images. Tap{' '}
+        Add up to {maxImages} reference images. Your uploads are tagged first —
+        tap{' '}
         {Array.from({ length: Math.min(maxImages, 4) }, (_, i) => (
           <span key={i}>
             <button
@@ -187,7 +188,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
             {i < Math.min(maxImages, 4) - 1 ? ' ' : ''}
           </span>
         ))}{' '}
-        to reference each in your scene description.
+        to reference each in your scene description. Character photos are included automatically.
       </p>
 
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxImages, 4)}, 1fr)` }}>
@@ -441,7 +442,7 @@ const isMaster = userProfile?.user_tier === 'master'
         }
       }
 
-      const allInputImages = [...characterPhotos, ...extraUrls]
+      const allInputImages = [...extraUrls, ...characterPhotos]
 
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
