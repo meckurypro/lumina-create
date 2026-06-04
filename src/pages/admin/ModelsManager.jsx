@@ -7,7 +7,13 @@ import {
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WAVESPEED PRICING REFERENCE (per-model, sourced from docs)
+// image: USD per generation at highest quality
+// video: USD per second
+// ─────────────────────────────────────────────────────────────────────────────
 const WAVESPEED_PRICING = {
+  // Image models — per generation (highest quality)
   flux_schnell:           { type: 'image', usd: 0.003  },
   flux_dev_ultra_fast:    { type: 'image', usd: 0.004  },
   flux_dev:               { type: 'image', usd: 0.025  },
@@ -36,10 +42,12 @@ const WAVESPEED_PRICING = {
   ernie_image_turbo:      { type: 'image', usd: 0.012  },
   face_swap:              { type: 'image', usd: 0.060  },
   head_swap:              { type: 'image', usd: 0.060  },
+  // Video models — per second
   wan_2_7:                { type: 'video', usdPerSec: 0.060 },
   grok_video_t2v:         { type: 'video', usdPerSec: 0.040 },
   grok_video_i2v:         { type: 'video', usdPerSec: 0.040 },
   grok_video_ref:         { type: 'video', usdPerSec: 0.040 },
+  grok_imagine_video:     { type: 'video', usdPerSec: 0.040 },
   kling_v3_pro:           { type: 'video', usdPerSec: 0.100 },
   kling_v3_std:           { type: 'video', usdPerSec: 0.060 },
   kling_v3_pro_s2e:       { type: 'video', usdPerSec: 0.130 },
@@ -75,14 +83,59 @@ const WAVESPEED_PRICING = {
   pixverse_v6:            { type: 'video', usdPerSec: 0.025 },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CATEGORY CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { key: 'text_to_image',  label: 'Text → Image',    icon: Image,     features: ['text_to_image'],                              color: '#6366f1' },
-  { key: 'image_to_image', label: 'Image → Image',   icon: Repeat,    features: ['image_to_image','text_image_to_image','image_generation'], color: '#8b5cf6' },
-  { key: 'face_swap',      label: 'Face / Head Swap', icon: Layers,   features: ['face_swap','head_swap'],                      color: '#ec4899' },
-  { key: 'text_to_video',  label: 'Text → Video',    icon: Video,     features: ['text_to_video','prompt_to_video'],            color: '#f59e0b' },
-  { key: 'image_to_video', label: 'Image → Video',   icon: Zap,       features: ['image_to_video','image_text_to_video'],       color: '#10b981' },
-  { key: 'frame_to_frame', label: 'Frame to Frame',  icon: RefreshCw, features: ['frame_to_frame'],                             color: '#06b6d4' },
-  { key: 'motion_transfer',label: 'Motion Transfer', icon: Layers,    features: ['motion_transfer','cinematic'],                color: '#f97316' },
+  {
+    key: 'text_to_image',
+    label: 'Text → Image',
+    icon: Image,
+    features: ['text_to_image'],
+    color: '#6366f1',
+  },
+  {
+    key: 'image_to_image',
+    label: 'Image → Image',
+    icon: Repeat,
+    features: ['image_to_image', 'text_image_to_image', 'image_generation'],
+    color: '#8b5cf6',
+  },
+  {
+    key: 'face_swap',
+    label: 'Face / Head Swap',
+    icon: Layers,
+    features: ['face_swap', 'head_swap'],
+    color: '#ec4899',
+  },
+  {
+    key: 'text_to_video',
+    label: 'Text → Video',
+    icon: Video,
+    features: ['text_to_video', 'prompt_to_video'],
+    color: '#f59e0b',
+  },
+  {
+    key: 'image_to_video',
+    label: 'Image → Video',
+    icon: Zap,
+    features: ['image_to_video', 'image_text_to_video'],
+    color: '#10b981',
+  },
+  {
+    key: 'frame_to_frame',
+    label: 'Frame to Frame',
+    icon: RefreshCw,
+    features: ['frame_to_frame'],
+    color: '#06b6d4',
+  },
+  {
+    key: 'motion_transfer',
+    label: 'Motion Transfer',
+    icon: Layers,
+    features: ['motion_transfer', 'cinematic'],
+    color: '#f97316',
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,8 +171,8 @@ function CostPill({ label, value, onSave, color }) {
             outline: 'none',
           }}
         />
-        <button onClick={commit} style={{ color: '#10b981', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><Check size={12} /></button>
-        <button onClick={cancel} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><X size={12} /></button>
+        <button onClick={commit}  style={{ color: '#10b981', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><Check size={12} /></button>
+        <button onClick={cancel}  style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><X size={12} /></button>
       </span>
     )
   }
@@ -161,6 +214,7 @@ function ModelRow({ model, onUpdate, catColor }) {
     toast.success(`${model.label} — ${field} set to ${!current}`)
   }
 
+  // ── NEW: tier toggle ──────────────────────────────────────────────────────
   const setTier = async (newTier) => {
     if (model.tier_required === newTier) return
     setSaving('tier_required')
@@ -173,6 +227,7 @@ function ModelRow({ model, onUpdate, catColor }) {
     onUpdate(model.id, { tier_required: newTier })
     toast.success(`${model.label} — tier set to ${newTier}`)
   }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const saveCost = async (field, value) => {
     const { error } = await supabase
@@ -184,10 +239,10 @@ function ModelRow({ model, onUpdate, catColor }) {
     toast.success(`${model.label} cost updated`)
   }
 
-  const isActive      = model.is_active
-  const isVerified    = model.is_verified
-  const isLocked      = model.is_locked
-  const isMaster      = model.tier_required === 'master'
+  const isActive   = model.is_active
+  const isVerified = model.is_verified
+  const isLocked   = model.is_locked
+  const isMaster   = model.tier_required === 'master' // ── NEW
 
   return (
     <div
@@ -200,16 +255,19 @@ function ModelRow({ model, onUpdate, catColor }) {
         background: isActive
           ? 'var(--bg-card, rgba(255,255,255,0.04))'
           : 'var(--bg-card-dim, rgba(255,255,255,0.02))',
-        border: `1px solid ${isMaster
-          ? 'rgba(234,179,8,0.3)'
-          : isActive
-            ? 'var(--border-color, rgba(255,255,255,0.08))'
-            : 'rgba(255,255,255,0.04)'}`,
+        // ── NEW: gold border tint for master models
+        border: `1px solid ${
+          isMaster
+            ? 'rgba(234,179,8,0.3)'
+            : isActive
+              ? 'var(--border-color, rgba(255,255,255,0.08))'
+              : 'rgba(255,255,255,0.04)'
+        }`,
         opacity: isActive ? 1 : 0.55,
         transition: 'all 0.2s',
       }}
     >
-      {/* LEFT */}
+      {/* LEFT — model info + costs */}
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #fff)', letterSpacing: '-0.01em' }}>
@@ -227,7 +285,7 @@ function ModelRow({ model, onUpdate, catColor }) {
             )}
           </span>
 
-          {/* Master badge — shown inline on the label row */}
+          {/* ── NEW: master badge ── */}
           {isMaster && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -255,9 +313,22 @@ function ModelRow({ model, onUpdate, catColor }) {
           {model.sublabel}
         </p>
 
+        {/* Cost pills */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
-          <CostPill label="T2I" value={model.credit_cost_t2i} color={catColor} onSave={v => saveCost('credit_cost_t2i', v)} />
-          <CostPill label="I2I" value={model.credit_cost_i2i} color={catColor} onSave={v => saveCost('credit_cost_i2i', v)} />
+          <CostPill
+            label="T2I"
+            value={model.credit_cost_t2i}
+            color={catColor}
+            onSave={v => saveCost('credit_cost_t2i', v)}
+          />
+          <CostPill
+            label="I2I"
+            value={model.credit_cost_i2i}
+            color={catColor}
+            onSave={v => saveCost('credit_cost_i2i', v)}
+          />
+
+          {/* WaveSpeed pricing reference — read only */}
           {ws && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -267,7 +338,11 @@ function ModelRow({ model, onUpdate, catColor }) {
               color: 'var(--text-muted, #888)', fontSize: 10, fontWeight: 600,
               letterSpacing: '0.02em', whiteSpace: 'nowrap',
             }}>
-              WS:&nbsp;{ws.type === 'video' ? `$${ws.usdPerSec}/sec` : `$${ws.usd}/img`}
+              WS:&nbsp;
+              {ws.type === 'video'
+                ? `$${ws.usdPerSec}/sec`
+                : `$${ws.usd}/img`
+              }
             </span>
           )}
         </div>
@@ -276,58 +351,73 @@ function ModelRow({ model, onUpdate, catColor }) {
       {/* RIGHT — toggles */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end', justifyContent: 'center' }}>
 
-        {/* Active */}
+        {/* Active toggle */}
         <button
           onClick={() => toggle('is_active', isActive)}
           disabled={saving === 'is_active'}
+          title={isActive ? 'Deactivate' : 'Activate'}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
             padding: '4px 10px', borderRadius: 10, border: 'none',
             fontSize: 10, fontWeight: 800, cursor: 'pointer',
             letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
             background: isActive ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)',
             color: isActive ? '#10b981' : '#ef4444',
             minWidth: 76, justifyContent: 'center',
           }}
         >
-          {saving === 'is_active' ? '…' : isActive ? <><CheckCircle size={10} /> Active</> : <><XCircle size={10} /> Inactive</>}
+          {saving === 'is_active' ? '…' : isActive
+            ? <><CheckCircle size={10} /> Active</>
+            : <><XCircle size={10} /> Inactive</>
+          }
         </button>
 
-        {/* Verified */}
+        {/* Verified toggle */}
         <button
           onClick={() => toggle('is_verified', isVerified)}
           disabled={saving === 'is_verified'}
+          title={isVerified ? 'Mark unverified' : 'Mark verified'}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
             padding: '4px 10px', borderRadius: 10, border: 'none',
             fontSize: 10, fontWeight: 800, cursor: 'pointer',
             letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
             background: isVerified ? 'rgba(99,102,241,0.15)' : 'rgba(251,191,36,0.12)',
             color: isVerified ? '#818cf8' : '#fbbf24',
             minWidth: 76, justifyContent: 'center',
           }}
         >
-          {saving === 'is_verified' ? '…' : isVerified ? <><CheckCircle size={10} /> Verified</> : <><XCircle size={10} /> Unverified</>}
+          {saving === 'is_verified' ? '…' : isVerified
+            ? <><CheckCircle size={10} /> Verified</>
+            : <><XCircle size={10} /> Unverified</>
+          }
         </button>
 
-        {/* Lock */}
+        {/* Lock toggle */}
         <button
           onClick={() => toggle('is_locked', isLocked)}
           disabled={saving === 'is_locked'}
+          title={isLocked ? 'Unlock' : 'Lock'}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
             padding: '4px 10px', borderRadius: 10, border: 'none',
             fontSize: 10, fontWeight: 800, cursor: 'pointer',
             letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
             background: isLocked ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.06)',
             color: isLocked ? '#ef4444' : 'var(--text-muted, #888)',
             minWidth: 76, justifyContent: 'center',
           }}
         >
-          {saving === 'is_locked' ? '…' : isLocked ? <><Lock size={10} /> Locked</> : <><Unlock size={10} /> Unlocked</>}
+          {saving === 'is_locked' ? '…' : isLocked
+            ? <><Lock size={10} /> Locked</>
+            : <><Unlock size={10} /> Unlocked</>
+          }
         </button>
 
-        {/* Tier toggle — Free ↔ Master */}
+        {/* ── NEW: Tier toggle — Free ↔ Master ── */}
         <button
           onClick={() => setTier(isMaster ? 'free' : 'master')}
           disabled={saving === 'tier_required'}
@@ -337,13 +427,16 @@ function ModelRow({ model, onUpdate, catColor }) {
             padding: '4px 10px', borderRadius: 10, border: 'none',
             fontSize: 10, fontWeight: 800, cursor: 'pointer',
             letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
             background: isMaster ? 'rgba(234,179,8,0.18)' : 'rgba(255,255,255,0.06)',
             color: isMaster ? '#eab308' : 'var(--text-muted, #888)',
             minWidth: 76, justifyContent: 'center',
-            transition: 'all 0.15s',
           }}
         >
-          {saving === 'tier_required' ? '…' : isMaster ? <><Crown size={10} /> Master</> : <><Crown size={10} /> Free</>}
+          {saving === 'tier_required' ? '…' : isMaster
+            ? <><Crown size={10} /> Master</>
+            : <><Crown size={10} /> Free</>
+          }
         </button>
 
       </div>
@@ -360,19 +453,26 @@ function CategorySection({ cat, models, onUpdate }) {
   const catModels = models
     .filter(m => cat.features.includes(m.feature))
     .sort((a, b) => {
+      // Active before inactive, then by sort_order
       if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     })
 
   if (catModels.length === 0) return null
 
-  const activeCount  = catModels.filter(m => m.is_active).length
-  const verifiedCount= catModels.filter(m => m.is_verified).length
-  const masterCount  = catModels.filter(m => m.tier_required === 'master').length
+  const activeCount   = catModels.filter(m => m.is_active).length
+  const verifiedCount = catModels.filter(m => m.is_verified).length
+  const masterCount   = catModels.filter(m => m.tier_required === 'master').length // ── NEW
   const Icon = cat.icon
 
   return (
-    <div style={{ borderRadius: 18, border: `1px solid ${cat.color}22`, overflow: 'hidden', background: `${cat.color}06` }}>
+    <div style={{
+      borderRadius: 18,
+      border: `1px solid ${cat.color}22`,
+      overflow: 'hidden',
+      background: `${cat.color}06`,
+    }}>
+      {/* Header */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
@@ -382,7 +482,11 @@ function CategorySection({ cat, models, onUpdate }) {
           borderBottom: open ? `1px solid ${cat.color}18` : 'none',
         }}
       >
-        <span style={{ width: 32, height: 32, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: `${cat.color}20` }}>
+        <span style={{
+          width: 32, height: 32, borderRadius: 10, display: 'flex',
+          alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          background: `${cat.color}20`,
+        }}>
           <Icon size={16} color={cat.color} />
         </span>
 
@@ -391,14 +495,25 @@ function CategorySection({ cat, models, onUpdate }) {
             <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary, #fff)', letterSpacing: '-0.01em' }}>
               {cat.label}
             </span>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: `${cat.color}20`, color: cat.color, letterSpacing: '0.04em' }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+              background: `${cat.color}20`, color: cat.color, letterSpacing: '0.04em',
+            }}>
               {activeCount}/{catModels.length} active
             </span>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: 'rgba(99,102,241,0.15)', color: '#818cf8', letterSpacing: '0.04em' }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+              background: 'rgba(99,102,241,0.15)', color: '#818cf8', letterSpacing: '0.04em',
+            }}>
               {verifiedCount} verified
             </span>
+            {/* ── NEW: master count pill — only shown when > 0 ── */}
             {masterCount > 0 && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: 'rgba(234,179,8,0.15)', color: '#eab308', letterSpacing: '0.04em' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+                background: 'rgba(234,179,8,0.15)', color: '#eab308', letterSpacing: '0.04em',
+              }}>
                 <Crown size={9} /> {masterCount} master
               </span>
             )}
@@ -410,10 +525,16 @@ function CategorySection({ cat, models, onUpdate }) {
         </span>
       </button>
 
+      {/* Model list */}
       {open && (
         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {catModels.map(model => (
-            <ModelRow key={model.id} model={model} onUpdate={onUpdate} catColor={cat.color} />
+            <ModelRow
+              key={model.id}
+              model={model}
+              onUpdate={onUpdate}
+              catColor={cat.color}
+            />
           ))}
         </div>
       )}
@@ -429,12 +550,16 @@ function StatsBar({ models }) {
   const active   = models.filter(m => m.is_active).length
   const verified = models.filter(m => m.is_verified).length
   const locked   = models.filter(m => m.is_locked).length
-  const masters  = models.filter(m => m.tier_required === 'master').length
+  const masters  = models.filter(m => m.tier_required === 'master').length // ── NEW
 
   const stat = (label, value, color) => (
     <div style={{ textAlign: 'center', padding: '8px 16px' }}>
-      <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: '-0.03em', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted, #888)', marginTop: 2, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: '-0.03em', lineHeight: 1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted, #888)', marginTop: 2, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+        {label}
+      </div>
     </div>
   )
 
@@ -449,7 +574,7 @@ function StatsBar({ models }) {
       {stat('Active',   active,   '#10b981')}
       {stat('Verified', verified, '#818cf8')}
       {stat('Locked',   locked,   '#ef4444')}
-      {stat('Masters',  masters,  '#eab308')}
+      {stat('Masters',  masters,  '#eab308')} {/* ── NEW */}
     </div>
   )
 }
@@ -483,8 +608,8 @@ function FilterBar({ filter, setFilter }) {
       {btn('verified',   'Verified',    '#818cf8' )}
       {btn('unverified', 'Unverified',  '#fbbf24' )}
       {btn('locked',     'Locked',      '#ef4444' )}
-      {btn('master',     'Master only', '#eab308' )}
-      {btn('free',       'Free',        '#aaa'    )}
+      {btn('master',     'Master only', '#eab308' )} {/* ── NEW */}
+      {btn('free',       'Free',        '#aaa'    )} {/* ── NEW */}
       {btn('image',      'Images',      '#6366f1' )}
       {btn('video',      'Videos',      '#f59e0b' )}
     </div>
@@ -492,7 +617,7 @@ function FilterBar({ filter, setFilter }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN
+// MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ModelsManager() {
   const [models,  setModels]  = useState([])
@@ -512,18 +637,20 @@ export default function ModelsManager() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
+  // Optimistic local update — avoids full refetch on every toggle
   const handleUpdate = useCallback((id, patch) => {
     setModels(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m))
   }, [])
 
+  // Apply filter
   const filteredModels = models.filter(m => {
     if (filter === 'active')     return  m.is_active
     if (filter === 'inactive')   return !m.is_active
     if (filter === 'verified')   return  m.is_verified
     if (filter === 'unverified') return !m.is_verified
     if (filter === 'locked')     return  m.is_locked
-    if (filter === 'master')     return  m.tier_required === 'master'
-    if (filter === 'free')       return  m.tier_required !== 'master'
+    if (filter === 'master')     return  m.tier_required === 'master' // ── NEW
+    if (filter === 'free')       return  m.tier_required !== 'master' // ── NEW
     if (filter === 'image')      return  m.type === 'image'
     if (filter === 'video')      return  m.type === 'video'
     return true
@@ -538,6 +665,7 @@ export default function ModelsManager() {
             background: 'var(--bg-card, rgba(255,255,255,0.04))',
             animation: 'pulse 1.4s ease-in-out infinite',
             animationDelay: `${i * 0.07}s`,
+            opacity: 1 - i * 0.12,
           }} />
         ))}
         <style>{`@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }`}</style>
@@ -547,26 +675,36 @@ export default function ModelsManager() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
       <StatsBar models={models} />
       <FilterBar filter={filter} setFilter={setFilter} />
 
+      {/* Helper text */}
       <p style={{ fontSize: 11, color: 'var(--text-muted, #888)', marginBottom: 16, lineHeight: 1.5 }}>
-        <strong style={{ color: 'var(--text-primary, #fff)' }}>Active</strong> enables/disables for all users.&nbsp;
+        Tap <strong style={{ color: 'var(--text-primary, #fff)' }}>Active</strong> to enable/disable a model for users.&nbsp;
         <strong style={{ color: 'var(--text-primary, #fff)' }}>Verified</strong> marks production-ready models.&nbsp;
-        <strong style={{ color: 'var(--text-primary, #fff)' }}>Locked</strong> shows "Coming Soon".&nbsp;
-        <strong style={{ color: '#eab308' }}>Master</strong> restricts to master-tier users only.&nbsp;
-        Tap any <strong style={{ color: 'var(--text-primary, #fff)' }}>credit cost</strong> to edit inline.
+        <strong style={{ color: 'var(--text-primary, #fff)' }}>Locked</strong> shows "Coming Soon" in the UI.&nbsp;
+        <strong style={{ color: '#eab308' }}>Master</strong> restricts the model to master-tier users only.&nbsp;
+        Tap any <strong style={{ color: 'var(--text-primary, #fff)' }}>credit cost</strong> to edit it inline.&nbsp;
+        <em>WS price</em> is the WaveSpeed cost for reference only.
       </p>
 
+      {/* Categories */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {CATEGORIES.map(cat => (
-          <CategorySection key={cat.key} cat={cat} models={filteredModels} onUpdate={handleUpdate} />
+          <CategorySection
+            key={cat.key}
+            cat={cat}
+            models={filteredModels}
+            onUpdate={handleUpdate}
+          />
         ))}
       </div>
 
+      {/* Models not matching any category */}
       {(() => {
         const allCatFeatures = CATEGORIES.flatMap(c => c.features)
-        const uncategorised  = filteredModels.filter(m => !allCatFeatures.includes(m.feature))
+        const uncategorised = filteredModels.filter(m => !allCatFeatures.includes(m.feature))
         if (!uncategorised.length) return null
         return (
           <div style={{ marginTop: 10 }}>
