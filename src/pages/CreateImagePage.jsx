@@ -735,17 +735,16 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
     />
   )}
 
-  {!modelSupportsImage && (
+{!modelSupportsImage && !modelRequiresImage && (
     <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
       This model is text-only. Switch models to use a reference image.
     </p>
   )}
-  {modelRequiresImage && !hasImages && (
+  {modelSupportsImage && modelRequiresImage && !hasImages && (
     <p className="text-xs text-center mt-2" style={{ color: 'var(--tool-image)' }}>
       This model requires a reference image to generate.
     </p>
   )}
-</div>
 
           {/* Prompt */}
           <Textarea
