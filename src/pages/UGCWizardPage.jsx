@@ -4,13 +4,13 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, Check, X,
-  User, Camera, AlertCircle,
+  User, Camera, AlertCircle, Sparkles,
+  CheckCircle, XCircle, Zap, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
-import { supabase } from '@/lib/supabase'
+import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
-
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
@@ -350,10 +350,21 @@ const resumeId = location.state?.resumeProfileId || null
   const loadId   = resumeId || editId
   const isEdit   = !!editId
 
-  const [step,          setStep]          = useState(1)
+const [step,          setStep]          = useState(1)
   const [profileId,     setProfileId]     = useState(loadId)
   const [saving,        setSaving]        = useState(false)
   const [uploadingSlot, setUploadingSlot] = useState(null)
+
+  // ── Photo refinement state ────────────────────────────────
+  const [refineEnabled,   setRefineEnabled]   = useState(false)   // user opted in
+  const [refineDecided,   setRefineDecided]   = useState(false)   // banner dismissed
+  const [refineModel,     setRefineModel]     = useState('')
+  const [refineQuality,   setRefineQuality]   = useState('2k')
+  const [refineModels,    setRefineModels]    = useState([])
+  const [refineSlot,      setRefineSlot]      = useState(null)    // slot key being refined
+  const [refinedSlots,    setRefinedSlots]    = useState({})      // { slotKey: 'approved'|'pending' }
+  const [refineSubmitting, setRefineSubmitting] = useState(false)
+  const [refineResult,    setRefineResult]    = useState(null)    // { url, genId, slotKey }
 
   const [form, setForm] = useState({
     name: '', age: '', gender: '', nationality: '', ethnic_background: '',
@@ -386,6 +397,25 @@ const resumeId = location.state?.resumeProfileId || null
   }, [loadId])
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+
+  // Load i2i-capable models when user reaches step 5
+  useEffect(() => {
+    if (step !== 5 || refineModels.length > 0) return
+    const load = async () => {
+      const { data } = await supabase
+        .from('models')
+        .select('*')
+        .eq('type', 'image')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .eq('supports_image', true)
+        .order('sort_order')
+      const list = (data || []).filter((m) => !m.is_locked)
+      setRefineModels(list)
+      if (list.length > 0) setRefineModel(list[0].value)
+    }
+    load()
+  }, [step])
 
 const buildPayload = () => ({
   name:                 form.name,
@@ -464,6 +494,107 @@ const buildPayload = () => ({
     } finally {
       setUploadingSlot(null)
     }
+  }
+
+  const handleRefineSlot = async (slotKey) => {
+    if (!profileId) return
+    const slotData = form[slotKey]
+    if (!slotData?.url) return
+
+    const selectedModel = refineModels.find((m) => m.value === refineModel)
+    if (!selectedModel) return toast.error('Pick a model first')
+
+    const resolutionCosts = selectedModel.credit_cost_resolution ?? null
+    const creditCost = resolutionCosts
+      ? (resolutionCosts[refineQuality] ?? resolutionCosts['2k'] ?? 0)
+      : (selectedModel.credit_cost_i2i || 0)
+
+    if (credits < creditCost) return toast.error('Not enough credits')
+
+    setRefineSlot(slotKey)
+    setRefineResult(null)
+    setRefineSubmitting(true)
+
+    try {
+      // Determine shot type for prompt hint
+      const isBodyShot = slotKey.includes('body')
+      const promptHint = isBodyShot
+        ? 'full body portrait enhancement — preserve exact body proportions'
+        : 'face portrait enhancement — preserve exact facial identity'
+
+      const { data: genRow, error: genErr } = await generationsDb.create({
+        user_id:                user.id,
+        generation_type:        'image_to_image',
+        status:                 'pending',
+        prompt:                 promptHint,
+        model:                  refineModel,
+        aspect_ratio:           '9:16',
+        resolution:             resolutionCosts ? refineQuality : null,
+        credits_charged:        creditCost,
+        output_type:            'image',
+        input_image_urls:       [slotData.url],
+        skip_prompt_refinement: false,
+        refinement_mode:        'ugc_photo_refine',
+        body_consent_confirmed: !!(profile?.body_consent_confirmed),
+      })
+      if (genErr || !genRow) throw new Error(genErr?.message || 'Could not start refinement')
+
+      const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
+      if (dErr || !deduct?.success) {
+        await generationsDb.update(genRow.id, { status: 'failed', error_message: 'Insufficient credits' })
+        throw new Error('Not enough credits')
+      }
+
+      await supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
+
+      // Poll for completion
+      const poll = async () => {
+        const { data: gen } = await supabase
+          .from('generations')
+          .select('status, output_url, error_message')
+          .eq('id', genRow.id)
+          .single()
+
+        if (!gen) return setTimeout(poll, 3000)
+        if (gen.status === 'completed' && gen.output_url) {
+          setRefineResult({ url: gen.output_url, genId: genRow.id, slotKey })
+          setRefineSubmitting(false)
+          return
+        }
+        if (gen.status === 'failed') {
+          toast.error(gen.error_message || 'Refinement failed')
+          setRefineSubmitting(false)
+          setRefineSlot(null)
+          return
+        }
+        setTimeout(poll, 3000)
+      }
+      setTimeout(poll, 4000)
+
+    } catch (err) {
+      toast.error(err.message || 'Refinement failed')
+      setRefineSubmitting(false)
+      setRefineSlot(null)
+    }
+  }
+
+  const handleRefineApprove = async () => {
+    if (!refineResult) return
+    const { url, slotKey } = refineResult
+    // Save refined URL back to profile
+    set(slotKey, { url })
+    await ugcProfiles.update(profileId, { [slotKey]: url })
+    setRefinedSlots((prev) => ({ ...prev, [slotKey]: 'approved' }))
+    setRefineResult(null)
+    setRefineSlot(null)
+    toast.success('Photo enhanced!')
+  }
+
+  const handleRefineReject = () => {
+    // Discard result, allow user to try again with different model/quality
+    setRefineResult(null)
+    setRefineSubmitting(false)
+    setRefineSlot(null)
   }
 
   const handlePhotoRemove = async (slotKey) => {
@@ -609,9 +740,10 @@ const handleFinish = async () => {
                 </>
               )}
 
-              {/* Step 5: Photos */}
+{/* Step 5: Photos */}
               {step === 5 && (
                 <>
+                  {/* Upload hint */}
                   <div
                     className="flex items-start gap-3 p-3 rounded-xl mb-5"
                     style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
@@ -622,18 +754,240 @@ const handleFinish = async () => {
                       Upload clear, unobstructed shots with neutral backgrounds where possible.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+
+                  {/* Photo slots */}
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 mb-6">
                     {PHOTO_SLOTS.map((slot) => (
-                      <PhotoSlot
-                        key={slot.key}
-                        slot={slot}
-                        value={form[slot.key]}
-                        onChange={handlePhotoUpload}
-                        onRemove={handlePhotoRemove}
-                        uploading={uploadingSlot === slot.key}
-                      />
+                      <div key={slot.key} className="relative">
+                        <PhotoSlot
+                          slot={slot}
+                          value={form[slot.key]}
+                          onChange={handlePhotoUpload}
+                          onRemove={handlePhotoRemove}
+                          uploading={uploadingSlot === slot.key}
+                        />
+                        {/* Approved badge */}
+                        {refinedSlots[slot.key] === 'approved' && (
+                          <div
+                            className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ background: 'rgba(0,0,0,0.65)', color: '#4ade80' }}
+                          >
+                            <CheckCircle size={10} />
+                            Enhanced
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
+
+                  {/* ── Refinement section — appears once at least face front is uploaded ── */}
+                  {form.photo_face_front && (
+                    <>
+                      {/* Decision banner */}
+                      {!refineDecided && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 rounded-2xl mb-4"
+                          style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+                        >
+                          <div className="flex items-start gap-3 mb-4">
+                            <Sparkles size={16} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} />
+                            <div>
+                              <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                Enhance to studio quality?
+                              </p>
+                              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                                AI will relight your photos with Hollywood studio lighting and upgrade to 8K quality.
+                                Your exact face and body are preserved — only the lighting and background improve.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setRefineEnabled(true); setRefineDecided(true) }}
+                              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                              style={{ background: ACCENT, color: '#ffffff' }}
+                            >
+                              Yes, enhance
+                            </button>
+                            <button
+                              onClick={() => { setRefineEnabled(false); setRefineDecided(true) }}
+                              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                            >
+                              Use as-is
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Refinement controls — shown after opting in */}
+                      {refineEnabled && refineDecided && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 rounded-2xl mb-4 flex flex-col gap-4"
+                          style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+                        >
+                          {/* Model selector */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+                              Model
+                            </p>
+                            <div className="relative">
+                              <select
+                                value={refineModel}
+                                onChange={(e) => setRefineModel(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl text-sm outline-none appearance-none"
+                                style={{
+                                  background: 'var(--bg-elevated)',
+                                  border:     '1px solid var(--border-color)',
+                                  color:      'var(--text-primary)',
+                                }}
+                              >
+                                {refineModels.map((m) => (
+                                  <option key={m.value} value={m.value}>
+                                    {m.aka || m.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                            </div>
+                          </div>
+
+                          {/* Quality chips — only for models with resolution pricing */}
+                          {refineModels.find((m) => m.value === refineModel)?.credit_cost_resolution && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+                                Quality
+                              </p>
+                              <div className="flex gap-2 flex-wrap">
+                                {Object.entries(
+                                  refineModels.find((m) => m.value === refineModel).credit_cost_resolution
+                                ).map(([key, cost]) => (
+                                  <button
+                                    key={key}
+                                    onClick={() => setRefineQuality(key)}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                                    style={{
+                                      background: refineQuality === key ? ACCENT : 'var(--bg-elevated)',
+                                      color:      refineQuality === key ? '#ffffff' : 'var(--text-secondary)',
+                                    }}
+                                  >
+                                    {key.toUpperCase()} · {cost} cr
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Per-slot refine buttons */}
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+                              Enhance each photo
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {PHOTO_SLOTS.filter((s) => form[s.key]?.url).map((slot) => {
+                                const isApproved = refinedSlots[slot.key] === 'approved'
+                                const isActive   = refineSlot === slot.key
+                                const selectedM  = refineModels.find((m) => m.value === refineModel)
+                                const resC       = selectedM?.credit_cost_resolution
+                                const cost       = resC
+                                  ? (resC[refineQuality] ?? resC['2k'] ?? 0)
+                                  : (selectedM?.credit_cost_i2i || 0)
+
+                                return (
+                                  <div key={slot.key} className="flex items-center gap-3">
+                                    <p className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>
+                                      {slot.label}
+                                    </p>
+                                    {isApproved ? (
+                                      <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
+                                        style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>
+                                        <CheckCircle size={11} /> Enhanced
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => !isActive && !refineSubmitting && handleRefineSlot(slot.key)}
+                                        disabled={isActive || refineSubmitting}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.97]"
+                                        style={{
+                                          background: isActive ? ACCENT_SUB : ACCENT,
+                                          color:      isActive ? ACCENT : '#ffffff',
+                                          opacity:    refineSubmitting && !isActive ? 0.4 : 1,
+                                        }}
+                                      >
+                                        {isActive && refineSubmitting ? (
+                                          <>
+                                            <motion.div
+                                              animate={{ rotate: 360 }}
+                                              transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                                              className="w-3 h-3 rounded-full border"
+                                              style={{ borderColor: `${ACCENT}44`, borderTopColor: ACCENT }}
+                                            />
+                                            Enhancing…
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Sparkles size={11} />
+                                            Enhance · {cost} cr
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Approve / Reject result */}
+                      <AnimatePresence>
+                        {refineResult && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.96 }}
+                            className="p-4 rounded-2xl mb-4"
+                            style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+                              Review enhanced photo
+                            </p>
+                            <div className="relative rounded-2xl overflow-hidden mb-4"
+                              style={{ aspectRatio: '9/16', maxHeight: 320, background: 'var(--bg-elevated)' }}>
+                              <img
+                                src={refineResult.url}
+                                alt="Enhanced"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={handleRefineReject}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]"
+                                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                              >
+                                <XCircle size={15} style={{ color: '#f87171' }} />
+                                Try again
+                              </button>
+                              <button
+                                onClick={handleRefineApprove}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.97]"
+                                style={{ background: ACCENT, color: '#ffffff' }}
+                              >
+                                <CheckCircle size={15} />
+                                Use this
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </>
+                  )}
                 </>
               )}
 
