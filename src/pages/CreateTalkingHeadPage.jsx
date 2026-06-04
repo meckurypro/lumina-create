@@ -889,7 +889,8 @@ export default function CreateTalkingHeadPage() {
     const { data } = await supabase
       .from('models').select('*').eq('feature', 'lipsync')
       .eq('is_active', true).eq('is_user_facing', true).order('sort_order')
-    const list = data || []
+    const isMaster = profile?.user_tier === 'master'
+    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     setModel(list.find((m) => !m.is_locked)?.value || '')
     setModelsLoading(false)
