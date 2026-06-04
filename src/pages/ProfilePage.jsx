@@ -305,7 +305,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Tier card ── */}
+{/* ── Tier card ── */}
         <div
           className="rounded-2xl p-5 mb-3"
           style={{
@@ -313,29 +313,50 @@ export default function ProfilePage() {
             border:     `1px solid ${isMaster ? 'rgba(245,158,11,0.25)' : 'var(--border-color)'}`,
           }}
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Your plan</p>
-              <p className="text-lg font-black" style={{ color: isMaster ? '#f59e0b' : 'var(--text-primary)' }}>
-                {isMaster ? '⭐ Master' : 'Novice'}
+          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Your plan</p>
+          <p className="text-lg font-black mb-1" style={{ color: isMaster ? '#f59e0b' : 'var(--text-primary)' }}>
+            {isMaster ? '⭐ Master' : 'Novice'}
+          </p>
+          {isMaster && daysRemaining !== null && (
+            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+              {daysRemaining} days remaining
+            </p>
+          )}
+
+          {!isMaster && (
+            <>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Upgrade to unlock everything:
               </p>
-              {isMaster && daysRemaining !== null && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  {daysRemaining} days remaining
-                </p>
-              )}
-            </div>
-            {!isMaster && (
+              <div className="flex flex-col gap-2 mb-4">
+                {[
+                  { icon: '🤖', text: 'Access to all models, including premium ones' },
+                  { icon: '📁', text: 'Your generated media never expires' },
+                  { icon: '🎙️', text: 'Clone your voice and use it as TTS' },
+                  { icon: '🎬', text: 'Unlimited Copy Motion (use your credits freely)' },
+                  { icon: '🧑‍🎤', text: 'Full UGC — unlimited characters and features' },
+                ].map(({ icon, text }) => (
+                  <div key={text} className="flex items-start gap-2.5">
+                    <span style={{ fontSize: 13, lineHeight: '18px', flexShrink: 0 }}>{icon}</span>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>{text}</p>
+                  </div>
+                ))}
+              </div>
               <button
                 onClick={upgradeToMaster}
                 disabled={upgrading}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
-                style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', opacity: upgrading ? 0.7 : 1 }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{
+                  background: upgrading ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.12)',
+                  color:      '#f59e0b',
+                  border:     '1px solid rgba(245,158,11,0.3)',
+                  opacity:    upgrading ? 0.7 : 1,
+                }}
               >
-                ⭐ {upgrading ? 'Opening…' : `Go Master · ₦${masterPrice.toLocaleString()}/mo`}
+                ⭐ {upgrading ? 'Opening…' : 'Upgrade to Master · ₦5,000/mo'}
               </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         {/* ── Referral card ── */}
