@@ -666,8 +666,8 @@ const isMaster = userProfile?.user_tier === 'master'
           </div>
 
           {/* Master-only: extra reference images — renders silently, no explanation */}
-          {isMaster && (
-            <div className="mb-5">
+          {isMaster && selectedModel?.supports_multi_image && (
+  <div className="mb-5">
               <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Reference Images
                 <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
