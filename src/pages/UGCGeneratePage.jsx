@@ -319,7 +319,8 @@ export default function UGCGeneratePage() {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-    const list = data || []
+const isMaster = userProfile?.user_tier === 'master'
+    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
     setModel(firstUnlocked?.value || '')
