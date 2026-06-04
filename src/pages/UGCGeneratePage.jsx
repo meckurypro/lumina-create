@@ -133,11 +133,11 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
                     style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
-                    <div>
+                   <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                         {m.aka || m.label}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                     </div>
                     {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
                   </button>
