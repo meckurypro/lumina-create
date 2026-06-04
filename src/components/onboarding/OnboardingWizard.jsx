@@ -30,6 +30,7 @@ const slide = {
   exit:    { opacity: 0, x: -24 },
 }
 
+// ── Single-select grid ────────────────────────────────────────────────────────
 const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
   <div className={`grid gap-2 ${cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
     {options.map((opt) => {
@@ -64,6 +65,49 @@ const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
   </div>
 )
 
+// ── Multi-select grid — value is string[] ─────────────────────────────────────
+const MultiChoiceGrid = ({ options, value = [], onChange, cols = 2 }) => {
+  const toggle = (val) => {
+    const next = value.includes(val)
+      ? value.filter((v) => v !== val)
+      : [...value, val]
+    onChange(next)
+  }
+  return (
+    <div className={`grid gap-2 ${cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      {options.map((opt) => {
+        const val      = typeof opt === 'string' ? opt : opt.value
+        const label    = typeof opt === 'string' ? opt : opt.label
+        const hint     = typeof opt === 'string' ? null : opt.hint
+        const selected = value.includes(val)
+        return (
+          <button
+            key={val}
+            type="button"
+            onClick={() => toggle(val)}
+            className="text-left p-3.5 rounded-xl transition-all active:scale-[0.98]"
+            style={{
+              background: selected ? 'var(--text-primary)' : 'var(--bg-elevated)',
+              color:      selected ? 'var(--text-inverse)' : 'var(--text-primary)',
+              border:     `1px solid ${selected ? 'var(--text-primary)' : 'var(--border)'}`,
+            }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">{label}</span>
+              {selected && <Check size={14} aria-hidden="true" />}
+            </div>
+            {hint && (
+              <p className="text-xs mt-0.5" style={{ color: selected ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>
+                {hint}
+              </p>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function OnboardingWizard({ onComplete }) {
   const { user, profile, refreshProfile } = useAuth()
 
@@ -74,9 +118,9 @@ export default function OnboardingWizard({ onComplete }) {
   const [data, setData] = useState({
     username:               profile?.username?.startsWith('user_') ? '' : (profile?.username || ''),
     display_name:           profile?.display_name || '',
-    creator_type:           '',
+    creator_type:           [],   // string[]
     team_role:              '',
-    primary_use_case:       '',
+    primary_use_case:       [],   // string[]
     referral_source:        '',
     preferred_aspect_ratio: '9:16',
   })
@@ -119,12 +163,18 @@ export default function OnboardingWizard({ onComplete }) {
     },
     {
       title:    'What kind of creator are you?',
-      subtitle: 'Helps us tailor templates for you.',
-      validate: () => data.creator_type ? true : (setErrors({ creator_type: 'Pick one' }), false),
-      render:   () => (
+      subtitle: 'Pick all that apply.',
+      validate: () =>
+        data.creator_type.length > 0
+          ? true
+          : (setErrors({ creator_type: 'Pick at least one' }), false),
+      render: () => (
         <div className="flex flex-col gap-4">
-          <ChoiceGrid options={CREATOR_TYPES} value={data.creator_type}
-            onChange={(v) => update({ creator_type: v })} />
+          <MultiChoiceGrid
+            options={CREATOR_TYPES}
+            value={data.creator_type}
+            onChange={(v) => update({ creator_type: v })}
+          />
           <Input
             label="What do you do for your team? (optional)"
             value={data.team_role}
@@ -136,11 +186,17 @@ export default function OnboardingWizard({ onComplete }) {
     },
     {
       title:    'What will you use Meckury AI for?',
-      subtitle: 'Pick your main use case.',
-      validate: () => data.primary_use_case ? true : (setErrors({ primary_use_case: 'Pick one' }), false),
-      render:   () => (
-        <ChoiceGrid options={USE_CASES} value={data.primary_use_case}
-          onChange={(v) => update({ primary_use_case: v })} />
+      subtitle: 'Pick all that apply.',
+      validate: () =>
+        data.primary_use_case.length > 0
+          ? true
+          : (setErrors({ primary_use_case: 'Pick at least one' }), false),
+      render: () => (
+        <MultiChoiceGrid
+          options={USE_CASES}
+          value={data.primary_use_case}
+          onChange={(v) => update({ primary_use_case: v })}
+        />
       ),
     },
     {
@@ -156,10 +212,16 @@ export default function OnboardingWizard({ onComplete }) {
     {
       title:    'How did you hear about us?',
       subtitle: 'Last one — promise.',
-      validate: () => data.referral_source ? true : (setErrors({ referral_source: 'Pick one' }), false),
-      render:   () => (
-        <ChoiceGrid options={REFERRAL_SOURCES} value={data.referral_source}
-          onChange={(v) => update({ referral_source: v })} />
+      validate: () =>
+        data.referral_source
+          ? true
+          : (setErrors({ referral_source: 'Pick one' }), false),
+      render: () => (
+        <ChoiceGrid
+          options={REFERRAL_SOURCES}
+          value={data.referral_source}
+          onChange={(v) => update({ referral_source: v })}
+        />
       ),
     },
   ]
@@ -178,9 +240,10 @@ export default function OnboardingWizard({ onComplete }) {
     const { error } = await profiles.completeOnboarding(user.id, {
       username:               data.username,
       display_name:           data.display_name || data.username,
-      creator_type:           data.creator_type,
+      // Serialize arrays as JSON strings for the text columns
+      creator_type:           JSON.stringify(data.creator_type),
       team_role:              data.team_role || null,
-      primary_use_case:       data.primary_use_case,
+      primary_use_case:       JSON.stringify(data.primary_use_case),
       referral_source:        data.referral_source,
       preferred_aspect_ratio: data.preferred_aspect_ratio,
     })
