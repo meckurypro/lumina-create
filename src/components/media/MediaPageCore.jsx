@@ -204,25 +204,25 @@ export default function MediaPageCore({
 
     const afterIso = getTimeRangeStart(tFilter)
 
-    // For in_progress, fetch everything — we filter client-side
-    const fetchStatus = sFilter === 'in_progress' ? 'all' : sFilter
-
+    // Always fetch ALL statuses from DB — status filtering is entirely client-side.
+    // This ensures in-progress items are present in `items` on first load so the
+    // auto-select fires correctly without an extra network request.
     const { data, count } = await fetcher(user, {
-      limit: PAGE_SIZE, offset, afterIso, statusFilter: fetchStatus,
+      limit: PAGE_SIZE, offset, afterIso, statusFilter: 'all',
     })
 
     // Auto-fallback: Today + Completed → This Week
-    if (
-      offset === 0 && tFilter === 'today' && sFilter === 'completed' &&
-      (!data || data.length === 0)
-    ) {
+    // Check how many completed items exist in today's data rather than fetching again.
+    const completedToday = (data || []).filter((g) => g.status === 'completed')
+    if (offset === 0 && tFilter === 'today' && sFilter === 'completed' && completedToday.length === 0) {
       const weekAfter = getTimeRangeStart('this_week')
       const { data: weekData, count: weekCount } = await fetcher(user, {
-        limit: PAGE_SIZE, offset: 0, afterIso: weekAfter, statusFilter: 'completed',
+        limit: PAGE_SIZE, offset: 0, afterIso: weekAfter, statusFilter: 'all',
       })
-      if (weekData && weekData.length > 0) {
+      const completedThisWeek = (weekData || []).filter((g) => g.status === 'completed')
+      if (completedThisWeek.length > 0) {
         setFallbackMsg('Nothing completed today — showing this week')
-        setItems(weekData)
+        setItems(weekData || [])
         setTotalCount(weekCount || 0)
         setHasMore(PAGE_SIZE < (weekCount || 0))
         setLoading(false)
@@ -242,28 +242,12 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetcher, timeFilter, statusFilter])
 
-  // Re-load on filter change — but "in_progress" is client-side only,
-  // so switching to/from it doesn't trigger a network fetch.
-  const prevStatusRef = useRef(statusFilter)
+  // Status filter changes are all client-side — no re-fetch needed since we
+  // always have all statuses in `items`. Only re-fetch on time filter change.
   useEffect(() => {
-    const prev = prevStatusRef.current
-    prevStatusRef.current = statusFilter
-
-    // If we're just toggling the virtual in_progress filter, skip network fetch
-    if (statusFilter === 'in_progress' || prev === 'in_progress') return
-
     setPage(0)
     setItems([])
     load({ offset: 0, reset: true, tFilter: timeFilter, sFilter: statusFilter })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, user])
-
-  // Time filter always re-fetches
-  useEffect(() => {
-    setPage(0)
-    setItems([])
-    const sFilter = statusFilter === 'in_progress' ? 'all' : statusFilter
-    load({ offset: 0, reset: true, tFilter: timeFilter, sFilter })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFilter, user])
 
@@ -448,11 +432,20 @@ export default function MediaPageCore({
     }
   }
 
-  // ── Derived: apply client-side filter for in_progress + extra ────────────
+  // ── Derived: apply all status + extra filters client-side ───────────────
+  //
+  // Since we always fetch 'all' from the DB, every status filter is applied here.
 
   const visibleItems = (() => {
     let list = items
-    if (statusFilter === 'in_progress') list = list.filter(isInProgress)
+    if (statusFilter === 'in_progress') {
+      list = list.filter(isInProgress)
+    } else if (statusFilter === 'completed') {
+      list = list.filter((g) => g.status === 'completed')
+    } else if (statusFilter === 'failed') {
+      list = list.filter((g) => g.status === 'failed')
+    }
+    // 'all' — no status filter applied
     if (extraFilter !== 'all') list = list.filter((g) => g.output_type === extraFilter)
     return list
   })()
