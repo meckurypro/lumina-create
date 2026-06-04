@@ -507,7 +507,8 @@ export default function CreateCopyMotionPage() {
       .eq('is_user_facing', true)
       .eq('feature', 'motion_transfer')
       .order('sort_order')
-    const list = data || []
+    const isMaster = profile?.user_tier === 'master'
+    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked)
     setModel(firstUnlocked?.value || '')
