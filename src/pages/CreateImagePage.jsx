@@ -774,7 +774,7 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
           </div>
 
           {/* Resolution — only shown for models with per-resolution pricing */}
-          {resolutionCosts && (
+     {resolutionCosts && (
             <div className="pt-1">
               <SettingChips
                 label="Quality"
@@ -788,8 +788,9 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
             </div>
           )}
 
-        </div>
-      </div>
+        </div>{/* closes reference image section div */}
+        </div>{/* closes flex flex-col gap-5 */}
+      </div>{/* closes flex-1 overflow-y-auto */}
 
       {/* Generate button */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
