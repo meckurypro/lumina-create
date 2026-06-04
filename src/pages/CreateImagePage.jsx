@@ -385,7 +385,8 @@ const [submitting,    setSubmitting]    = useState(false)
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-    const list     = data || []
+    const isMaster = profile?.user_tier === 'master'
+    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     const unlocked = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
