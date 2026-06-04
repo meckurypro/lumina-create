@@ -1,40 +1,6 @@
 // src/components/media/MediaPageCore.jsx
 //
 // Core logic + layout shared by MediaPage and UGCMediaPage.
-//
-// Props contract (additions marked with NEW):
-//
-//   fetcher(user, { limit, offset, timeRange, statusFilter })
-//     → Promise<{ data: Gen[], count: number }>
-//
-//   onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, ctx)
-//     → Promise<void>
-//     NOTE: now receives editedPrompt as 5th arg (may differ from gen.prompt)
-//
-//   filterRelevantModels(models, gen) → Model[]
-//
-//   computeCreditCost(selectedModel, gen) → number
-//
-//   onCardClick(gen, navigate) → void
-//
-//   -- NEW --
-//   filterEditModels(models, gen) → Model[]
-//     Injected by page. Returns I2I-capable models for the Edit sheet.
-//     Defaults to models where supports_image === true and not locked.
-//
-//   computeEditCreditCost(selectedModel, gen) → number
-//     Injected by page. Defaults to credit_cost_i2i.
-//
-//   onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, ctx)
-//     → Promise<void>
-//     Injected by page. Fires an I2I generation using gen.output_url as input.
-//   -- END NEW --
-//
-//   headerSlot, footerSlot, emptySlot
-//   accentColor, accentSubtle, accentBorder
-//   extraStatusFilters
-//   isNovice
-//   allowGridView
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
@@ -47,7 +13,7 @@ import {
   ActionSheet, RegenerateSheet, EditSheet,
   FallbackBanner,
 } from './MediaCardComponents.jsx'
-import { Film, Grid2X2, List } from 'lucide-react'
+import { Film, Loader2 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -63,6 +29,7 @@ export const TIME_FILTERS = [
   { label: 'All',        value: 'all'       },
 ]
 
+// Base status filters — "In Progress" is injected dynamically
 export const STATUS_FILTERS = [
   { label: 'Completed', value: 'completed' },
   { label: 'All',       value: 'all'       },
@@ -70,7 +37,7 @@ export const STATUS_FILTERS = [
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Time-range → ISO date helper
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getTimeRangeStart(range) {
@@ -88,44 +55,55 @@ function getTimeRangeStart(range) {
   return null
 }
 
+function preserveUGCKeys(existing, fresh) {
+  const ugcKeys = ['ugc_generation_id', 'ugc_scene_prompt', 'ugc_filter_applied', 'ugc_aspect_ratio']
+  const kept = {}
+  for (const k of ugcKeys) {
+    if (existing[k] !== undefined) kept[k] = existing[k]
+  }
+  return kept
+}
+
+function invertText(accentColor) {
+  if (!accentColor || accentColor.startsWith('var(--text')) return 'var(--text-inverse)'
+  return '#ffffff'
+}
+
+function isInProgress(g) {
+  return g.status === 'pending' || g.status === 'processing'
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MediaPageCore
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MediaPageCore({
-  // Data
   fetcher,
   onRegenerate,
   filterRelevantModels,
   computeCreditCost,
   onCardClick,
 
-  // NEW: Edit flow
   filterEditModels      = null,
   computeEditCreditCost = null,
   onEdit                = null,
 
-  // Slots
   headerSlot,
   footerSlot,
   emptySlot,
 
-  // Theme
   accentColor  = 'var(--text-primary)',
   accentSubtle = 'var(--bg-elevated)',
   accentBorder = 'var(--border-color)',
 
-  // Extra filters (output_type — UGC only)
   extraStatusFilters = null,
 
-  // Misc
   isNovice = false,
 
-  // Grid toggle (opt-in)
   allowGridView = false,
 }) {
-  const navigate                                    = useNavigate()
-  const { user, credits, refreshProfile }           = useAuth()
+  const navigate                          = useNavigate()
+  const { user, credits, refreshProfile } = useAuth()
 
   // ── Filter state ─────────────────────────────────────────────────────────
   const [timeFilter,   setTimeFilter]   = useState('today')
@@ -134,27 +112,65 @@ export default function MediaPageCore({
   const [viewMode,     setViewMode]     = useState('list')
 
   // ── Data state ────────────────────────────────────────────────────────────
-  const [items,          setItems]          = useState([])
-  const [loading,        setLoading]        = useState(true)
-  const [loadingMore,    setLoadingMore]    = useState(false)
-  const [hasMore,        setHasMore]        = useState(false)
-  const [totalCount,     setTotalCount]     = useState(0)
-  const [page,           setPage]           = useState(0)
-  const [models,         setModels]         = useState([])
+  const [items,       setItems]       = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore,     setHasMore]     = useState(false)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [page,        setPage]        = useState(0)
+  const [models,      setModels]      = useState([])
 
   // ── Sheet state ───────────────────────────────────────────────────────────
   const [activeGen,      setActiveGen]      = useState(null)
-  // sheetMode: null | 'actions' | 'regenerate' | 'edit'
   const [sheetMode,      setSheetMode]      = useState(null)
   const [regenLoading,   setRegenLoading]   = useState(false)
   const [editLoading,    setEditLoading]    = useState(false)
   const [refreshLoading, setRefreshLoading] = useState(false)
 
   // ── Auto-fallback state ───────────────────────────────────────────────────
-  const [fallbackMsg,    setFallbackMsg]    = useState(null)
+  const [fallbackMsg, setFallbackMsg] = useState(null)
 
   const pollRef       = useRef(null)
   const loadedFilters = useRef({ timeFilter: null, statusFilter: null })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // "In Progress" dynamic tab logic
+  //
+  // hasInProgress  — true when any loaded item is pending/processing
+  // prevHasInProgress — ref so we can detect the transition → false
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const hasInProgress       = items.some(isInProgress)
+  const prevHasInProgress   = useRef(false)
+  const autoSelectedInProgress = useRef(false)  // did WE auto-select it?
+
+  // Auto-select "In Progress" the first time in-progress items appear
+  useEffect(() => {
+    if (hasInProgress && !prevHasInProgress.current) {
+      setStatusFilter('in_progress')
+      autoSelectedInProgress.current = true
+    }
+    prevHasInProgress.current = hasInProgress
+  }, [hasInProgress])
+
+  // When in-progress items all resolve, leave the tab & shift to 'completed'
+  // (or 'all' if nothing completed either), but only if we auto-selected it.
+  useEffect(() => {
+    if (!hasInProgress && statusFilter === 'in_progress') {
+      const hasCompleted = items.some((g) => g.status === 'completed')
+      setStatusFilter(hasCompleted ? 'completed' : 'all')
+      autoSelectedInProgress.current = false
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasInProgress])
+
+  // Build the visible status filter list — prepend "In Progress" when relevant
+  const visibleStatusFilters = hasInProgress || statusFilter === 'in_progress'
+    ? [
+        { label: 'In Progress', value: 'in_progress', dynamic: true },
+        ...STATUS_FILTERS,
+      ]
+    : STATUS_FILTERS
 
   // ── Load models ───────────────────────────────────────────────────────────
 
@@ -169,13 +185,16 @@ export default function MediaPageCore({
   }, [])
 
   // ── Core load ─────────────────────────────────────────────────────────────
+  //
+  // 'in_progress' is a virtual filter — we fetch ALL statuses and filter
+  // client-side so that polling updates work seamlessly without re-fetching.
 
   const load = useCallback(async ({
-    offset    = 0,
-    reset     = false,
-    tFilter   = timeFilter,
-    sFilter   = statusFilter,
-    silent    = false,
+    offset  = 0,
+    reset   = false,
+    tFilter = timeFilter,
+    sFilter = statusFilter,
+    silent  = false,
   } = {}) => {
     if (!user) return
     if (!silent) {
@@ -185,12 +204,18 @@ export default function MediaPageCore({
 
     const afterIso = getTimeRangeStart(tFilter)
 
+    // For in_progress, fetch everything — we filter client-side
+    const fetchStatus = sFilter === 'in_progress' ? 'all' : sFilter
+
     const { data, count } = await fetcher(user, {
-      limit: PAGE_SIZE, offset, afterIso, statusFilter: sFilter,
+      limit: PAGE_SIZE, offset, afterIso, statusFilter: fetchStatus,
     })
 
     // Auto-fallback: Today + Completed → This Week
-    if (offset === 0 && tFilter === 'today' && sFilter === 'completed' && (!data || data.length === 0)) {
+    if (
+      offset === 0 && tFilter === 'today' && sFilter === 'completed' &&
+      (!data || data.length === 0)
+    ) {
       const weekAfter = getTimeRangeStart('this_week')
       const { data: weekData, count: weekCount } = await fetcher(user, {
         limit: PAGE_SIZE, offset: 0, afterIso: weekAfter, statusFilter: 'completed',
@@ -217,13 +242,30 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetcher, timeFilter, statusFilter])
 
-  // Re-load when filters change
+  // Re-load on filter change — but "in_progress" is client-side only,
+  // so switching to/from it doesn't trigger a network fetch.
+  const prevStatusRef = useRef(statusFilter)
   useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = statusFilter
+
+    // If we're just toggling the virtual in_progress filter, skip network fetch
+    if (statusFilter === 'in_progress' || prev === 'in_progress') return
+
     setPage(0)
     setItems([])
     load({ offset: 0, reset: true, tFilter: timeFilter, sFilter: statusFilter })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter, statusFilter, user])
+  }, [statusFilter, user])
+
+  // Time filter always re-fetches
+  useEffect(() => {
+    setPage(0)
+    setItems([])
+    const sFilter = statusFilter === 'in_progress' ? 'all' : statusFilter
+    load({ offset: 0, reset: true, tFilter: timeFilter, sFilter })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter, user])
 
   // ── Polling ───────────────────────────────────────────────────────────────
 
@@ -231,7 +273,7 @@ export default function MediaPageCore({
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
 
     const pendingIds = items
-      .filter((g) => g.status === 'pending' || g.status === 'processing')
+      .filter(isInProgress)
       .map((g) => g.id)
 
     if (!pendingIds.length || !user) return
@@ -370,7 +412,6 @@ export default function MediaPageCore({
     }
   }
 
-  // Regenerate — now receives editedPrompt from the sheet
   const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
     if (!activeGen || !user) return
     const gen = activeGen
@@ -379,8 +420,7 @@ export default function MediaPageCore({
     try {
       await onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
         supabase, user, generationsDb, refreshProfile,
-        setItems, setTotalCount,
-        navigate,
+        setItems, setTotalCount, navigate,
       })
       toast.success('Regenerating! Check back in a moment.', { duration: 4_000 })
     } catch (err) {
@@ -390,7 +430,6 @@ export default function MediaPageCore({
     }
   }
 
-  // Edit — uses output as the new I2I input
   const handleEditConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
     if (!activeGen || !user || !onEdit) return
     const gen = activeGen
@@ -399,8 +438,7 @@ export default function MediaPageCore({
     try {
       await onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
         supabase, user, generationsDb, refreshProfile,
-        setItems, setTotalCount,
-        navigate,
+        setItems, setTotalCount, navigate,
       })
       toast.success('Edit queued! Check back in a moment.', { duration: 4_000 })
     } catch (err) {
@@ -410,11 +448,14 @@ export default function MediaPageCore({
     }
   }
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // ── Derived: apply client-side filter for in_progress + extra ────────────
 
-  const filtered = extraFilter === 'all'
-    ? items
-    : items.filter((g) => g.output_type === extraFilter)
+  const visibleItems = (() => {
+    let list = items
+    if (statusFilter === 'in_progress') list = list.filter(isInProgress)
+    if (extraFilter !== 'all') list = list.filter((g) => g.output_type === extraFilter)
+    return list
+  })()
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -430,7 +471,7 @@ export default function MediaPageCore({
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
-          {/* 7-day warning */}
+          {/* 7-day storage warning */}
           {isNovice && (
             <div
               className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
@@ -462,7 +503,7 @@ export default function MediaPageCore({
                 onClick={() => setTimeFilter(f.value)}
                 className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  background: timeFilter === f.value ? accentColor        : 'var(--bg-elevated)',
+                  background: timeFilter === f.value ? accentColor           : 'var(--bg-elevated)',
                   color:      timeFilter === f.value ? invertText(accentColor) : 'var(--text-muted)',
                 }}
               >
@@ -471,21 +512,47 @@ export default function MediaPageCore({
             ))}
           </div>
 
-          {/* Status filter row */}
-          <div className="flex gap-2 mb-4">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setStatusFilter(f.value)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all"
-                style={{
-                  background: statusFilter === f.value ? 'var(--text-primary)' : 'var(--bg-elevated)',
-                  color:      statusFilter === f.value ? 'var(--text-inverse)'  : 'var(--text-muted)',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+          {/* Status filter row — In Progress appears/disappears with AnimatePresence */}
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+            <AnimatePresence initial={false}>
+              {visibleStatusFilters.map((f) => {
+                const isActive = statusFilter === f.value
+                return (
+                  <motion.button
+                    key={f.value}
+                    layout
+                    initial={f.dynamic ? { opacity: 0, scale: 0.85, width: 0 } : false}
+                    animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                    exit={f.dynamic ? { opacity: 0, scale: 0.85, width: 0 } : undefined}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    onClick={() => setStatusFilter(f.value)}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-colors overflow-hidden"
+                    style={{
+                      background: isActive ? 'var(--text-primary)' : 'var(--bg-elevated)',
+                      color:      isActive ? 'var(--text-inverse)'  : 'var(--text-muted)',
+                      // Amber tint when active + dynamic (in-progress selected)
+                      ...(isActive && f.dynamic ? {
+                        background: 'rgba(234,179,8,0.15)',
+                        color:      '#eab308',
+                        border:     '1px solid rgba(234,179,8,0.3)',
+                      } : {}),
+                    }}
+                  >
+                    {f.dynamic && (
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+                        className="inline-flex"
+                        style={{ color: '#eab308' }}
+                      >
+                        <Loader2 size={12} />
+                      </motion.span>
+                    )}
+                    {f.label}
+                  </motion.button>
+                )
+              })}
+            </AnimatePresence>
           </div>
 
           {/* Extra output-type filter (UGC only) */}
@@ -497,8 +564,8 @@ export default function MediaPageCore({
                   onClick={() => setExtraFilter(o.value)}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
                   style={{
-                    background: extraFilter === o.value ? accentColor        : 'var(--bg-elevated)',
-                    color:      extraFilter === o.value ? '#ffffff'           : 'var(--text-muted)',
+                    background: extraFilter === o.value ? accentColor : 'var(--bg-elevated)',
+                    color:      extraFilter === o.value ? '#ffffff'    : 'var(--text-muted)',
                   }}
                 >
                   {o.label}
@@ -513,7 +580,7 @@ export default function MediaPageCore({
               {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
 
-          ) : filtered.length === 0 ? (
+          ) : visibleItems.length === 0 ? (
             emptySlot
               ? emptySlot({ timeFilter, statusFilter, setTimeFilter, setStatusFilter })
               : <DefaultEmpty
@@ -526,7 +593,7 @@ export default function MediaPageCore({
 
           ) : allowGridView && viewMode === 'grid' ? (
             <div className="grid grid-cols-2 gap-2.5">
-              {filtered.map((gen, i) => (
+              {visibleItems.map((gen, i) => (
                 <GridCard
                   key={gen.id}
                   gen={gen}
@@ -540,7 +607,7 @@ export default function MediaPageCore({
 
           ) : (
             <div className="flex flex-col gap-3">
-              {filtered.map((gen, i) => (
+              {visibleItems.map((gen, i) => (
                 <motion.div
                   key={gen.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -561,7 +628,7 @@ export default function MediaPageCore({
           )}
 
           {/* Load more */}
-          {hasMore && !loadingMore && filtered.length > 0 && (
+          {hasMore && !loadingMore && visibleItems.length > 0 && (
             <button
               onClick={() => {
                 const next = page + 1
@@ -651,30 +718,12 @@ export default function MediaPageCore({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function preserveUGCKeys(existing, fresh) {
-  const ugcKeys = ['ugc_generation_id', 'ugc_scene_prompt', 'ugc_filter_applied', 'ugc_aspect_ratio']
-  const kept = {}
-  for (const k of ugcKeys) {
-    if (existing[k] !== undefined) kept[k] = existing[k]
-  }
-  return kept
-}
-
-function invertText(accentColor) {
-  if (!accentColor || accentColor.startsWith('var(--text')) return 'var(--text-inverse)'
-  return '#ffffff'
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // DefaultEmpty
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DefaultEmpty({ timeFilter, statusFilter, setTimeFilter, setStatusFilter, accentColor }) {
-  const isTimeConstrained  = timeFilter  !== 'all'
-  const isStatusFiltered   = statusFilter !== 'all'
+  const isTimeConstrained = timeFilter  !== 'all'
+  const isStatusFiltered  = statusFilter !== 'all' && statusFilter !== 'in_progress'
 
   return (
     <motion.div
@@ -687,14 +736,18 @@ function DefaultEmpty({ timeFilter, statusFilter, setTimeFilter, setStatusFilter
         <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
           {isTimeConstrained || isStatusFiltered
             ? 'Nothing matches these filters'
-            : 'No creations yet'}
+            : statusFilter === 'in_progress'
+              ? 'Nothing generating right now'
+              : 'No creations yet'}
         </p>
         <p className="text-sm mt-1 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
           {isTimeConstrained
             ? 'Try a wider time range, or switch to All.'
             : isStatusFiltered
               ? 'Try switching to All to see everything.'
-              : 'Start creating something amazing.'}
+              : statusFilter === 'in_progress'
+                ? 'Start a generation and it will appear here.'
+                : 'Start creating something amazing.'}
         </p>
       </div>
       {(isTimeConstrained || isStatusFiltered) && (
