@@ -28,6 +28,7 @@ import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 import UGCMediaPage             from '@/pages/UGCMediaPage'
 import UGCVoicesPage            from '@/pages/UGCVoicesPage'
 import UGCVoiceGeneratePage     from '@/pages/UGCVoiceGeneratePage'
+import CreatePhotoPolishPage from '@/pages/CreatePhotoPolishPage'
 
 import { BottomNav } from '@/components/layout/BottomNav'
 
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="/create/video"       element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
           <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
           <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/photo-polish" element={<RequireAuth><AppLayout><CreatePhotoPolishPage /></AppLayout></RequireAuth>} />
 
           {/* ── Cinematic — before generic /:templateSlug ────────── */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
