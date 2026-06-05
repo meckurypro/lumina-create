@@ -30,6 +30,11 @@
   --input:                 240 6% 90%;
   --ring:                  0 0% 20%;
   --radius:                0.75rem;
+   /* Photo Polish — Warm Amber */
+--tool-polish:        #F59E0B;
+--tool-polish-subtle: rgba(245, 158, 11, 0.10);
+--tool-polish-border: rgba(245, 158, 11, 0.25);
+--tool-polish-muted:  rgba(245, 158, 11, 0.60);
 
   /* Semantic */
   --bg-primary:   #ffffff;
@@ -114,6 +119,11 @@
   --border:                0 0% 15%;
   --input:                 0 0% 10%;
   --ring:                  0 0% 80%;
+   /* Photo Polish — Warm Amber */
+--tool-polish:        #FBBF24;
+--tool-polish-subtle: rgba(251, 191, 36, 0.09);
+--tool-polish-border: rgba(251, 191, 36, 0.20);
+--tool-polish-muted:  rgba(251, 191, 36, 0.55);
 
   /* Semantic */
   --bg-primary:   #000000;
