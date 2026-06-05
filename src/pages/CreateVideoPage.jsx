@@ -466,7 +466,9 @@ export default function CreateVideoPage() {
     }
   }, [model]) // eslint-disable-line
 
-  useEffect(() => { if (!caps.supportsSound) setWithSound(false) }, [caps.supportsSound])
+  useEffect(() => {
+  if (!modelsLoading && !caps.supportsSound) setWithSound(false)
+}, [caps.supportsSound, modelsLoading])
 
   // ── active frame resolution (inactive = unsupported by current model) ────
   const activeStartFrame = startFrame && caps.supportsStartFrame                              ? startFrame : null
