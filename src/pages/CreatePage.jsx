@@ -304,7 +304,7 @@ export default function CreatePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
-            {['tools', 'templates', 'canvas'].map((tab) => (
+            {['tools', 'templates', 'utilities', 'canvas'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -407,6 +407,66 @@ export default function CreatePage() {
                     ))}
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {/* Utilities Tab */}
+            {activeTab === 'utilities' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="overflow-y-auto"
+              >
+                <div className="w-full" style={{ maxWidth: '520px' }}>
+
+                  {/* Section label */}
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+                    style={{ color: 'var(--text-muted)' }}>
+                    Photo Tools
+                  </p>
+
+                  {/* Photo Polish card */}
+                  <motion.button
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.08 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate('/create/photo-polish')}
+                    className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border:     '1px solid var(--tool-polish-border, var(--border-color))',
+                      padding:    '16px 20px',
+                    }}
+                  >
+                    <div
+                      className="rounded-2xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        width:      52,
+                        height:     52,
+                        background: 'var(--tool-polish-subtle, var(--bg-elevated))',
+                        border:     '1px solid var(--tool-polish-border, var(--border-color))',
+                      }}
+                    >
+                      <Sparkles
+                        style={{ width: 22, height: 22, color: 'var(--tool-polish, #f59e0b)' }}
+                        strokeWidth={1.4}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
+                      <span className="text-sm font-bold"
+                        style={{ color: 'var(--tool-polish, #f59e0b)' }}>
+                        Photo Polish
+                      </span>
+                      <span className="text-xs leading-snug"
+                        style={{ color: 'var(--text-muted)' }}>
+                        Transform any photo into a cinematic shot
+                      </span>
+                    </div>
+                    <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  </motion.button>
+
+                </div>
               </motion.div>
             )}
 
