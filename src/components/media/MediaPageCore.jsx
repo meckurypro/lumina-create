@@ -119,11 +119,12 @@ export default function MediaPageCore({
   const [page,        setPage]        = useState(0)
   const [models,      setModels]      = useState([])
 
-  const [activeGen,      setActiveGen]      = useState(null)
-  const [sheetMode,      setSheetMode]      = useState(null)
-  const [regenLoading,   setRegenLoading]   = useState(false)
-  const [editLoading,    setEditLoading]    = useState(false)
-  const [refreshLoading, setRefreshLoading] = useState(false)
+  const [activeGen,        setActiveGen]        = useState(null)
+  const [sheetMode,        setSheetMode]        = useState(null)
+  const [regenLoading,     setRegenLoading]     = useState(false)
+  const [editLoading,      setEditLoading]      = useState(false)
+  const [refreshLoading,   setRefreshLoading]   = useState(false)
+  const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
 
   const [fallbackMsg, setFallbackMsg] = useState(null)
 
@@ -266,8 +267,14 @@ export default function MediaPageCore({
 
   // ── Action handlers ───────────────────────────────────────────────────────
 
-  const handleDelete = async (gen) => {
+  const handleDelete = (gen) => {
     closeSheet()
+    setPendingDeleteGen(gen)
+  }
+
+  const confirmDelete = async () => {
+    const gen = pendingDeleteGen
+    setPendingDeleteGen(null)
     try {
       await generationsDb.delete(gen.id)
       setItems((prev) => prev.filter((g) => g.id !== gen.id))
@@ -368,8 +375,6 @@ export default function MediaPageCore({
     }
   }
 
-  // Re-submit a pre-dispatch failure using the original generation's params.
-  // Credits were already refunded by the cleanup function, so this is a fresh submission.
   const handleRetry = async (gen) => {
     closeSheet()
     if (!onRegenerate) return
@@ -690,6 +695,51 @@ export default function MediaPageCore({
             filterEditModels={filterEditModels}
             computeEditCreditCost={computeEditCreditCost}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── Delete confirmation modal ── */}
+      <AnimatePresence>
+        {pendingDeleteGen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setPendingDeleteGen(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div>
+                <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Delete generation?</p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>This cannot be undone.</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setPendingDeleteGen(null)}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
