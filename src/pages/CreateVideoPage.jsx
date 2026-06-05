@@ -357,7 +357,7 @@ export default function CreateVideoPage() {
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [duration,      setDuration]      = useState('5')
-  const [withSound,     setWithSound]     = useState(false)
+  const [withSound,     setWithSound]     = useState(true)
   const [model,         setModel]         = useState('')
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
@@ -663,7 +663,7 @@ export default function CreateVideoPage() {
       setRefImages([])
       setAutoRatio(false)
       setAspectRatio('9:16')
-      setWithSound(false)
+      setWithSound(true)
       try {
         sessionStorage.removeItem(SS_PROMPT)
         sessionStorage.removeItem(SS_START_FRAME)
