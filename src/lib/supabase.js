@@ -87,6 +87,10 @@ export const templateAssets = {
 export const generations = {
   create: (data) => supabase.from('generations').insert(data).select().single(),
   update: (id, updates) => supabase.from('generations').update(updates).eq('id', id).select().single(),
+  delete: async (id) => {
+    const { error } = await supabase.from('generations').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+  },
   getById: (id) => supabase.from('generations').select('*, templates(name, slug)').eq('id', id).single(),
   getUserGenerations: (userId, { limit = 20, offset = 0 } = {}) => supabase.from('generations').select('*, templates(name, slug, thumbnail_url)', { count: 'exact' }).eq('user_id', userId).order('created_at', { ascending: false }).range(offset, offset + limit - 1),
   deductCredits: (userId, amount, generationId) => supabase.rpc('deduct_credits', { p_user_id: userId, p_amount: amount, p_generation_id: generationId }),
@@ -94,8 +98,6 @@ export const generations = {
 }
 
 export const feed = {
-  // Trending posts — decay-weighted by likes + views + recency
-  // Used on the main FeedPage (limited, no pagination)
   getTrending: ({ limit = 8 } = {}) =>
     supabase
       .from('feed_posts')
@@ -104,8 +106,6 @@ export const feed = {
       .order('likes_count', { ascending: false })
       .order('published_at', { ascending: false })
       .limit(limit),
-  // All community posts — chronological, paginated
-  // Used on CommunityFeedPage (infinite scroll)
   getAllCommunity: ({ limit = 20, offset = 0 } = {}) =>
     supabase
       .from('feed_posts')
@@ -113,7 +113,6 @@ export const feed = {
       .eq('status', 'approved')
       .order('published_at', { ascending: false })
       .range(offset, offset + limit - 1),
-  // Keep getPosts for backward compat (ResultPage etc. may use it)
   getPosts: ({ limit = 20, offset = 0, templateId = null } = {}) => {
     let q = supabase
       .from('feed_posts')
@@ -167,16 +166,13 @@ export const cinematicTransitions = {
       .select('*')
       .eq('is_active', true)
       .order('sort_order'),
-
   getAll: () =>
     supabase
       .from('cinematic_transitions')
       .select('*')
       .order('sort_order'),
-
   create: (data) =>
     supabase.from('cinematic_transitions').insert(data).select().single(),
-
   update: (id, updates) =>
     supabase
       .from('cinematic_transitions')
@@ -184,7 +180,6 @@ export const cinematicTransitions = {
       .eq('id', id)
       .select()
       .single(),
-
   delete: (id) =>
     supabase.from('cinematic_transitions').delete().eq('id', id),
 }
@@ -198,7 +193,6 @@ export const cinematicProjects = {
       .select('*, cinematic_clips(count)')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false }),
-
   getById: (id) =>
     supabase
       .from('cinematic_projects')
@@ -215,10 +209,8 @@ export const cinematicProjects = {
       `)
       .eq('id', id)
       .single(),
-
   create: (data) =>
     supabase.from('cinematic_projects').insert(data).select().single(),
-
   update: (id, updates) =>
     supabase
       .from('cinematic_projects')
@@ -226,7 +218,6 @@ export const cinematicProjects = {
       .eq('id', id)
       .select()
       .single(),
-
   delete: (id) =>
     supabase.from('cinematic_projects').delete().eq('id', id),
 }
@@ -239,7 +230,6 @@ export const cinematicClips = {
       .from('cinematic_clips')
       .upsert(clips, { onConflict: 'project_id,slot_index' })
       .select(),
-
   update: (id, updates) =>
     supabase
       .from('cinematic_clips')
@@ -247,7 +237,6 @@ export const cinematicClips = {
       .eq('id', id)
       .select()
       .single(),
-
   addVersion: (clipId, generationId, versionNumber) =>
     supabase
       .from('cinematic_clip_versions')
@@ -259,7 +248,6 @@ export const cinematicClips = {
       })
       .select()
       .single(),
-
   setActiveVersion: async (clipId, versionId) => {
     await supabase
       .from('cinematic_clip_versions')
