@@ -1,6 +1,4 @@
 // src/components/media/MediaPageCore.jsx
-//
-// Core logic + layout shared by MediaPage and UGCMediaPage.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
@@ -29,7 +27,6 @@ export const TIME_FILTERS = [
   { label: 'All',        value: 'all'       },
 ]
 
-// Base status filters — "In Progress" is injected dynamically
 export const STATUS_FILTERS = [
   { label: 'Completed', value: 'completed' },
   { label: 'All',       value: 'all'       },
@@ -73,6 +70,10 @@ function isInProgress(g) {
   return g.status === 'pending' || g.status === 'processing'
 }
 
+export function isPreDispatchFailure(g) {
+  return g.status === 'failed' && g.error_message === 'pre_dispatch_failure'
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MediaPageCore
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,13 +106,11 @@ export default function MediaPageCore({
   const navigate                          = useNavigate()
   const { user, credits, refreshProfile } = useAuth()
 
-  // ── Filter state ─────────────────────────────────────────────────────────
   const [timeFilter,   setTimeFilter]   = useState('today')
   const [statusFilter, setStatusFilter] = useState('completed')
   const [extraFilter,  setExtraFilter]  = useState('all')
   const [viewMode,     setViewMode]     = useState('list')
 
-  // ── Data state ────────────────────────────────────────────────────────────
   const [items,       setItems]       = useState([])
   const [loading,     setLoading]     = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -120,31 +119,21 @@ export default function MediaPageCore({
   const [page,        setPage]        = useState(0)
   const [models,      setModels]      = useState([])
 
-  // ── Sheet state ───────────────────────────────────────────────────────────
   const [activeGen,      setActiveGen]      = useState(null)
   const [sheetMode,      setSheetMode]      = useState(null)
   const [regenLoading,   setRegenLoading]   = useState(false)
   const [editLoading,    setEditLoading]    = useState(false)
   const [refreshLoading, setRefreshLoading] = useState(false)
 
-  // ── Auto-fallback state ───────────────────────────────────────────────────
   const [fallbackMsg, setFallbackMsg] = useState(null)
 
   const pollRef       = useRef(null)
   const loadedFilters = useRef({ timeFilter: null, statusFilter: null })
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // "In Progress" dynamic tab logic
-  //
-  // hasInProgress  — true when any loaded item is pending/processing
-  // prevHasInProgress — ref so we can detect the transition → false
-  // ─────────────────────────────────────────────────────────────────────────
+  const hasInProgress           = items.some(isInProgress)
+  const prevHasInProgress       = useRef(false)
+  const autoSelectedInProgress  = useRef(false)
 
-  const hasInProgress       = items.some(isInProgress)
-  const prevHasInProgress   = useRef(false)
-  const autoSelectedInProgress = useRef(false)  // did WE auto-select it?
-
-  // Auto-select "In Progress" the first time in-progress items appear
   useEffect(() => {
     if (hasInProgress && !prevHasInProgress.current) {
       setStatusFilter('in_progress')
@@ -153,8 +142,6 @@ export default function MediaPageCore({
     prevHasInProgress.current = hasInProgress
   }, [hasInProgress])
 
-  // When in-progress items all resolve, leave the tab & shift to 'completed'
-  // (or 'all' if nothing completed either), but only if we auto-selected it.
   useEffect(() => {
     if (!hasInProgress && statusFilter === 'in_progress') {
       const hasCompleted = items.some((g) => g.status === 'completed')
@@ -164,15 +151,12 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasInProgress])
 
-  // Build the visible status filter list — prepend "In Progress" when relevant
   const visibleStatusFilters = hasInProgress || statusFilter === 'in_progress'
     ? [
         { label: 'In Progress', value: 'in_progress', dynamic: true },
         ...STATUS_FILTERS,
       ]
     : STATUS_FILTERS
-
-  // ── Load models ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     supabase
@@ -183,11 +167,6 @@ export default function MediaPageCore({
       .order('sort_order')
       .then(({ data }) => setModels(data || []))
   }, [])
-
-  // ── Core load ─────────────────────────────────────────────────────────────
-  //
-  // 'in_progress' is a virtual filter — we fetch ALL statuses and filter
-  // client-side so that polling updates work seamlessly without re-fetching.
 
   const load = useCallback(async ({
     offset  = 0,
@@ -204,15 +183,10 @@ export default function MediaPageCore({
 
     const afterIso = getTimeRangeStart(tFilter)
 
-    // Always fetch ALL statuses from DB — status filtering is entirely client-side.
-    // This ensures in-progress items are present in `items` on first load so the
-    // auto-select fires correctly without an extra network request.
     const { data, count } = await fetcher(user, {
       limit: PAGE_SIZE, offset, afterIso, statusFilter: 'all',
     })
 
-    // Auto-fallback: Today + Completed → This Week
-    // Check how many completed items exist in today's data rather than fetching again.
     const completedToday = (data || []).filter((g) => g.status === 'completed')
     if (offset === 0 && tFilter === 'today' && sFilter === 'completed' && completedToday.length === 0) {
       const weekAfter = getTimeRangeStart('this_week')
@@ -242,8 +216,6 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetcher, timeFilter, statusFilter])
 
-  // Status filter changes are all client-side — no re-fetch needed since we
-  // always have all statuses in `items`. Only re-fetch on time filter change.
   useEffect(() => {
     setPage(0)
     setItems([])
@@ -396,6 +368,25 @@ export default function MediaPageCore({
     }
   }
 
+  // Re-submit a pre-dispatch failure using the original generation's params.
+  // Credits were already refunded by the cleanup function, so this is a fresh submission.
+  const handleRetry = async (gen) => {
+    closeSheet()
+    if (!onRegenerate) return
+    setRegenLoading(true)
+    try {
+      await onRegenerate(gen, gen.model, Number(gen.credits_charged), null, gen.prompt, {
+        supabase, user, generationsDb, refreshProfile,
+        setItems, setTotalCount, navigate,
+      })
+      toast.success('Resubmitted! Check back in a moment.', { duration: 4_000 })
+    } catch (err) {
+      toast.error(err.message || 'Retry failed')
+    } finally {
+      setRegenLoading(false)
+    }
+  }
+
   const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
     if (!activeGen || !user) return
     const gen = activeGen
@@ -432,9 +423,7 @@ export default function MediaPageCore({
     }
   }
 
-  // ── Derived: apply all status + extra filters client-side ───────────────
-  //
-  // Since we always fetch 'all' from the DB, every status filter is applied here.
+  // ── Derived: apply all status + extra filters client-side ─────────────────
 
   const visibleItems = (() => {
     let list = items
@@ -445,7 +434,6 @@ export default function MediaPageCore({
     } else if (statusFilter === 'failed') {
       list = list.filter((g) => g.status === 'failed')
     }
-    // 'all' — no status filter applied
     if (extraFilter !== 'all') list = list.filter((g) => g.output_type === extraFilter)
     return list
   })()
@@ -464,7 +452,6 @@ export default function MediaPageCore({
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
-          {/* 7-day storage warning */}
           {isNovice && (
             <div
               className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
@@ -496,7 +483,7 @@ export default function MediaPageCore({
                 onClick={() => setTimeFilter(f.value)}
                 className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  background: timeFilter === f.value ? accentColor           : 'var(--bg-elevated)',
+                  background: timeFilter === f.value ? accentColor             : 'var(--bg-elevated)',
                   color:      timeFilter === f.value ? invertText(accentColor) : 'var(--text-muted)',
                 }}
               >
@@ -505,7 +492,7 @@ export default function MediaPageCore({
             ))}
           </div>
 
-          {/* Status filter row — In Progress appears/disappears with AnimatePresence */}
+          {/* Status filter row */}
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
             <AnimatePresence initial={false}>
               {visibleStatusFilters.map((f) => {
@@ -523,7 +510,6 @@ export default function MediaPageCore({
                     style={{
                       background: isActive ? 'var(--text-primary)' : 'var(--bg-elevated)',
                       color:      isActive ? 'var(--text-inverse)'  : 'var(--text-muted)',
-                      // Amber tint when active + dynamic (in-progress selected)
                       ...(isActive && f.dynamic ? {
                         background: 'rgba(234,179,8,0.15)',
                         color:      '#eab308',
@@ -614,6 +600,7 @@ export default function MediaPageCore({
                     accentSubtle={accentSubtle}
                     onClick={() => onCardClick(gen, navigate)}
                     onMore={() => openActions(gen)}
+                    onRetry={isPreDispatchFailure(gen) ? () => handleRetry(gen) : undefined}
                   />
                 </motion.div>
               ))}
@@ -653,7 +640,6 @@ export default function MediaPageCore({
         </div>
       </div>
 
-      {/* Footer slot */}
       {footerSlot && !loading && items.length > 0 && (
         <div className="flex-shrink-0">
           {footerSlot()}
@@ -673,6 +659,7 @@ export default function MediaPageCore({
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onAnimate={() => handleAnimate(activeGen)}
+            onRetry={isPreDispatchFailure(activeGen) ? () => handleRetry(activeGen) : undefined}
             refreshLoading={refreshLoading}
           />
         )}
