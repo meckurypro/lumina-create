@@ -1,0 +1,103 @@
+// src/config/photoPolishPresets.js
+
+export const PHOTO_POLISH_PRESETS = [
+  {
+    id:          'hyperrealistic',
+    label:       'Hyper Realistic',
+    description: 'Crystal clear, true-to-life detail',
+    emoji:       '📸',
+    isMaster:    false,
+    prompt:      'Enhance this photo to be hyper-photorealistic. Preserve the exact composition, subject, and framing. Improve lighting to natural soft daylight with gentle fill, remove noise and grain, sharpen fine details, enhance skin texture naturally without over-smoothing, improve color accuracy and white balance, add subtle depth of field. Shot on ARRI Alexa 65 with 85mm prime lens. 8K resolution. Do not alter the subject, pose, background composition or any element — only enhance quality.',
+  },
+  {
+    id:          'cinematic',
+    label:       'Cinematic',
+    description: 'Hollywood film color grade',
+    emoji:       '🎬',
+    isMaster:    false,
+    prompt:      'Apply a cinematic Hollywood color grade to this photo while preserving the exact composition. Add dramatic warm amber and deep shadow tones, increase contrast and saturation, apply anamorphic lens characteristics with subtle horizontal lens flare, add gentle film grain, enhance depth of field with creamy bokeh in background, add cinematic letterbox atmosphere. Color grade like a major Hollywood production. Shot on ARRI Alexa 65 with anamorphic lens. Do not alter the subject, pose or composition — only apply cinematic treatment.',
+  },
+  {
+    id:          'studio',
+    label:       'Studio Pro',
+    description: 'Clean professional studio look',
+    emoji:       '💼',
+    isMaster:    false,
+    prompt:      'Transform this photo into a professional studio portrait. Preserve the exact subject and composition. Apply clean even studio lighting with soft key light and gentle fill, remove background distractions and replace with clean neutral studio backdrop, perfect skin retouching while keeping natural texture, enhance eyes with natural catchlights, professional color correction with clean whites and accurate skin tones. Commercial photography grade. Do not alter the subject, pose or expression — only apply professional studio treatment.',
+  },
+  {
+    id:          'golden_hour',
+    label:       'Golden Hour',
+    description: 'Warm sunset glow',
+    emoji:       '🌅',
+    isMaster:    false,
+    prompt:      'Apply golden hour lighting to this photo while preserving the exact composition. Warm the entire scene with rich amber and golden tones, simulate late afternoon directional sunlight coming from the side, add warm rim lighting on subject edges, enhance sky with warm orange and gold tones if visible, add gentle lens flare from light source direction, increase warmth and saturation in highlights, deepen shadows with warm brown tones. Do not alter the subject, pose or composition — only apply golden hour lighting treatment.',
+  },
+  {
+    id:          'editorial',
+    label:       'Editorial',
+    description: 'Fashion magazine quality',
+    emoji:       '✨',
+    isMaster:    true,
+    prompt:      'Transform this photo into a high-fashion editorial magazine image. Preserve the exact composition and subject. Apply bold high-contrast lighting, enhance colors to be vivid and punchy, add ultra-sharp detail and clarity, apply fashion magazine color grading with rich deep tones, perfect skin to porcelain smoothness while keeping natural features, enhance eyes dramatically, add subtle vignette, elevate clothing and accessories to look luxury grade. Vogue or Harper\'s Bazaar editorial quality. Do not alter subject, pose or composition — only apply editorial treatment.',
+  },
+  {
+    id:          'glossy',
+    label:       'Glossy',
+    description: 'Ultra polished luxury finish',
+    emoji:       '💎',
+    isMaster:    true,
+    prompt:      'Apply an ultra-glossy luxury finish to this photo while preserving the exact composition. Smooth skin to a perfect polished finish, enhance colors to be rich and saturated, add a high-gloss sheen to surfaces, apply luxurious warm lighting with specular highlights, increase contrast for a premium look, enhance details to be razor sharp, add subtle warm color cast. High-end beauty campaign or luxury brand advertisement quality. Do not alter the subject, pose or composition — only apply glossy luxury treatment.',
+  },
+  {
+    id:          'fantasy',
+    label:       'Fantasy',
+    description: 'Ethereal magical atmosphere',
+    emoji:       '🌟',
+    isMaster:    true,
+    prompt:      'Transform this photo into a fantasy ethereal scene while keeping the subject and composition. Add magical atmospheric effects — soft glowing light particles, ethereal mist or fog, dramatic fantasy sky if visible, enhance colors to be otherworldly and dreamlike with purple and teal tones, add subtle magical bokeh lights, apply fantasy color grading with deep rich shadows and luminous highlights, add gentle light rays or god rays if appropriate. Fantasy film or high-fantasy illustration quality. Do not alter the subject or pose — only apply fantasy atmosphere.',
+  },
+  {
+    id:          'noir',
+    label:       'Noir',
+    description: 'Dramatic black and white',
+    emoji:       '🖤',
+    isMaster:    false,
+    prompt:      'Convert this photo to dramatic film noir black and white while preserving the exact composition. Apply high contrast black and white conversion, add dramatic shadows with deep blacks, retain sharp highlights on subject, add subtle film grain texture, apply classic noir lighting style with directional hard light and strong shadows, enhance textures and details to be bold and graphic, add slight vignette for atmosphere. Classic Hollywood noir or fine art black and white photography quality. Do not alter the subject, pose or composition — only apply noir treatment.',
+  },
+  {
+    id:          'restore',
+    label:       'Restore',
+    description: 'Repair and revive old photos',
+    emoji:       '🔄',
+    isMaster:    false,
+    prompt:      'Restore and enhance this old or damaged photo. Remove scratches, tears, dust, spots and blemishes. If black and white, colorize naturally with accurate skin tones and realistic colors for the era. Sharpen blurry or soft areas, reduce noise and grain, restore faded areas to proper exposure, fix color cast or yellowing, repair any damage artifacts. Preserve the original subject and composition completely. Professional photo restoration quality. Make it look like a modern high quality photograph of the same scene.',
+  },
+  {
+    id:          'cartoon',
+    label:       'Cartoon',
+    description: 'Animated illustration style',
+    emoji:       '🎨',
+    isMaster:    false,
+    prompt:      'Transform this photo into a high quality cartoon illustration while preserving the subject, pose and composition. Apply clean bold outlines, simplify textures into smooth color fields, enhance colors to be vibrant and saturated, maintain recognizable facial features in cartoon style, add cel-shading with clean shadow shapes, apply a polished animation studio style. Pixar or Disney animation quality illustration. Keep the background recognizable but stylized to match the cartoon aesthetic.',
+  },
+  {
+    id:          'anime',
+    label:       'Anime',
+    description: 'Japanese animation style',
+    emoji:       '🌸',
+    isMaster:    false,
+    prompt:      'Transform this photo into a high quality anime illustration while preserving the subject, pose and composition. Apply classic anime art style — large expressive eyes with detailed iris, smooth skin with subtle shading, clean line art, vibrant saturated colors, simplified but detailed hair with flow and sheen, soft clean backgrounds in anime style. Studio Ghibli or high-quality anime production quality. Maintain the subject\'s recognizable features translated faithfully into anime aesthetic.',
+  },
+  {
+    id:          '3d',
+    label:       '3D Render',
+    description: 'Photorealistic 3D rendering',
+    emoji:       '🧊',
+    isMaster:    true,
+    prompt:      'Transform this photo into a photorealistic 3D rendered scene while preserving the subject, pose and composition. Apply high-quality 3D rendering aesthetics — perfect subsurface scattering on skin, physically accurate lighting and shadows, ray-traced reflections on surfaces, ultra-smooth textures, professional 3D studio lighting setup, crisp depth of field, clean polished materials. Unreal Engine 5 or Pixar RenderMan cinematic quality 3D render. Maintain the subject\'s likeness accurately in 3D form.',
+  },
+]
+
+export const FREE_PRESETS  = PHOTO_POLISH_PRESETS.filter((p) => !p.isMaster)
+export const MASTER_PRESETS = PHOTO_POLISH_PRESETS.filter((p) => p.isMaster)
