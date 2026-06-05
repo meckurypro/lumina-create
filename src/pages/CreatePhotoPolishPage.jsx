@@ -4,16 +4,13 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, Maximize2, Crown, Lock } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { supabase, generations as generationsDb } from '@/lib/supabase'
+import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import { PHOTO_POLISH_PRESETS } from '@/config/photoPolishPresets'
 import toast from 'react-hot-toast'
 
 const ACCENT     = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
 const ACCENT_BDR = 'var(--tool-polish-border)'
-
-// Fixed model for Photo Polish — best image-to-image enhancement model
-const POLISH_MODEL = 'nano_banana_pro_edit'
 
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
@@ -55,6 +52,83 @@ async function compressImage(file) {
   })
 }
 
+// ── Model Dropdown ────────────────────────────────────────────────────────────
+
+const ModelDropdown = ({ models, value, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const unlocked = models.filter((m) => !m.is_locked)
+  const locked   = models.filter((m) =>  m.is_locked)
+  const selected = models.find((m) => m.value === value) || unlocked[0]
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+      >
+        <span>{selected?.aka || selected?.label || 'Model'}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0,  scale: 1    }}
+              exit={{    opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.13 }}
+              className="absolute right-0 top-9 z-50 w-52 rounded-2xl overflow-hidden"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.28)',
+                maxHeight: '60vh',
+                overflowY: 'auto',
+              }}
+            >
+              <div className="py-1">
+                {unlocked.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => { onChange(m.value); setOpen(false) }}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
+                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka || m.label}</p>
+                      {m.description && (
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
+                      )}
+                    </div>
+                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+              {locked.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
+                  <div className="py-1">
+                    {locked.map((m) => (
+                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.aka || m.label}</p>
+                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── Preset Card ───────────────────────────────────────────────────────────────
 
 const PresetCard = ({ preset, selected, onSelect, locked }) => (
@@ -63,15 +137,12 @@ const PresetCard = ({ preset, selected, onSelect, locked }) => (
     onClick={() => !locked && onSelect(preset.id)}
     className="relative flex flex-col items-center gap-2 p-3 rounded-2xl transition-all text-center"
     style={{
-      background: selected
-        ? ACCENT_SUB
-        : 'var(--bg-elevated)',
+      background: selected ? ACCENT_SUB : 'var(--bg-elevated)',
       border: `1.5px solid ${selected ? ACCENT : 'var(--border-color)'}`,
       opacity: locked ? 0.6 : 1,
       cursor: locked ? 'not-allowed' : 'pointer',
     }}
   >
-    {/* Lock badge */}
     {locked && (
       <div
         className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
@@ -80,8 +151,6 @@ const PresetCard = ({ preset, selected, onSelect, locked }) => (
         <Lock size={10} style={{ color: 'var(--brand)' }} />
       </div>
     )}
-
-    {/* Selected indicator */}
     {selected && (
       <div
         className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
@@ -90,7 +159,6 @@ const PresetCard = ({ preset, selected, onSelect, locked }) => (
         <span style={{ color: 'white', fontSize: 10, fontWeight: 800 }}>✓</span>
       </div>
     )}
-
     <span style={{ fontSize: 22 }}>{preset.emoji}</span>
     <div>
       <p className="text-xs font-bold" style={{ color: selected ? ACCENT : 'var(--text-primary)' }}>
@@ -129,12 +197,9 @@ const BeforeAfterPreview = ({ original, result, onClose }) => {
       >
         <X size={18} />
       </button>
-
       <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.5)' }}>
         Drag to compare
       </p>
-
-      {/* Slider container */}
       <div
         className="relative overflow-hidden rounded-2xl select-none"
         style={{ width: '100%', maxWidth: 400, aspectRatio: '3/4', cursor: 'ew-resize' }}
@@ -144,15 +209,15 @@ const BeforeAfterPreview = ({ original, result, onClose }) => {
         onMouseLeave={() => setDragging(false)}
         onTouchMove={(e) => handleMove(e.touches[0].clientX, e.currentTarget.getBoundingClientRect())}
       >
-        {/* After (bottom layer) */}
         <img src={result} alt="After" className="absolute inset-0 w-full h-full object-cover" />
-
-        {/* Before (clipped top layer) */}
         <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderX}%` }}>
-          <img src={original} alt="Before" className="absolute inset-0 h-full object-cover" style={{ width: `${100 / (sliderX / 100)}%`, maxWidth: 'none' }} />
+          <img
+            src={original}
+            alt="Before"
+            className="absolute inset-0 h-full object-cover"
+            style={{ width: `${100 / (sliderX / 100)}%`, maxWidth: 'none' }}
+          />
         </div>
-
-        {/* Divider line */}
         <div
           className="absolute top-0 bottom-0 w-0.5"
           style={{ left: `${sliderX}%`, background: 'white', transform: 'translateX(-50%)' }}
@@ -164,8 +229,6 @@ const BeforeAfterPreview = ({ original, result, onClose }) => {
             <span style={{ fontSize: 12, color: '#000', fontWeight: 800 }}>⇔</span>
           </div>
         </div>
-
-        {/* Labels */}
         <div className="absolute top-3 left-3 px-2 py-1 rounded-lg text-xs font-bold" style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}>
           Before
         </div>
@@ -184,7 +247,11 @@ export default function CreatePhotoPolishPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const isMaster = profile?.user_tier === 'master'
 
-  const [photo,          setPhoto]          = useState(null)   // { file, url, ar, w, h }
+  const [models,        setModels]        = useState([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [modelValue,    setModelValue]    = useState('')
+
+  const [photo,          setPhoto]          = useState(null)
   const [selectedPreset, setSelectedPreset] = useState('hyperrealistic')
   const [aspectRatio,    setAspectRatio]    = useState('9:16')
   const [autoRatio,      setAutoRatio]      = useState(false)
@@ -192,27 +259,44 @@ export default function CreatePhotoPolishPage() {
   const [fullscreen,     setFullscreen]     = useState(false)
   const [resultUrl,      setResultUrl]      = useState(null)
   const [showCompare,    setShowCompare]    = useState(false)
-  const [model,          setModel]          = useState(null)
-  const [creditCost,     setCreditCost]     = useState(0)
 
-  // Load the polish model to get credit cost
-  useEffect(() => {
-    supabase
+  // ── load i2i-capable models ───────────────────────────────────────────────
+  const loadModels = useCallback(async () => {
+    setModelsLoading(true)
+    const { data } = await supabase
       .from('models')
       .select('*')
-      .eq('value', POLISH_MODEL)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setModel(data)
-          setCreditCost(data.credit_cost_i2i || 16)
-        }
-      })
-  }, [])
+      .eq('type', 'image')
+      .eq('is_active', true)
+      .eq('is_user_facing', true)
+      .eq('supports_image', true)   // i2i only
+      .order('sort_order')
+    const list = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    setModels(list)
+    const unlocked  = list.filter((m) => !m.is_locked)
+    const preferred = profile?.preferred_model
+    const match     = preferred && unlocked.find((m) => m.value === preferred)
+    setModelValue((match || unlocked[0])?.value || '')
+    setModelsLoading(false)
+  }, []) // eslint-disable-line
+
+  useEffect(() => { loadModels() }, [loadModels])
+
+  // ── derived from selected model ───────────────────────────────────────────
+  const selectedModel = models.find((m) => m.value === modelValue)
+  const creditCost    = selectedModel?.credit_cost_i2i ?? 0
 
   const preset      = PHOTO_POLISH_PRESETS.find((p) => p.id === selectedPreset)
   const canAfford   = credits >= creditCost
-  const canGenerate = !!photo && !!preset && canAfford && !submitting
+  const canGenerate = !!photo && !!preset && canAfford && !submitting && !!selectedModel
+
+  // ── model change — persist preference ────────────────────────────────────
+  const handleModelChange = async (value) => {
+    setModelValue(value)
+    if (user && value && value !== profile?.preferred_model) {
+      try { await profilesApi.update(user.id, { preferred_model: value }) } catch { /* noop */ }
+    }
+  }
 
   // ── upload handler ────────────────────────────────────────────────────────
   const handleUpload = async (e) => {
@@ -234,12 +318,12 @@ export default function CreatePhotoPolishPage() {
 
   // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (!photo)   return toast.error('Upload a photo first')
-    if (!preset)  return toast.error('Select a preset')
-    if (!canAfford) return toast.error('Not enough credits')
-    if (!user)    return toast.error('Please sign in')
+    if (!photo)         return toast.error('Upload a photo first')
+    if (!preset)        return toast.error('Select a preset')
+    if (!selectedModel) return toast.error('Select a model')
+    if (!canAfford)     return toast.error('Not enough credits')
+    if (!user)          return toast.error('Please sign in')
 
-    // Master gate
     if (preset.isMaster && !isMaster) {
       toast.error('This preset requires Master plan')
       return
@@ -249,7 +333,6 @@ export default function CreatePhotoPolishPage() {
     setResultUrl(null)
 
     try {
-      // Upload photo
       const contentType = photo.file.type || 'image/jpeg'
       const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`
@@ -261,37 +344,33 @@ export default function CreatePhotoPolishPage() {
         .from('generation-uploads')
         .getPublicUrl(uploadData.path)
 
-      // Create generation
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'image_to_image',
         status:                 'pending',
         prompt:                 preset.prompt,
-        model:                  POLISH_MODEL,
+        model:                  modelValue,
         aspect_ratio:           aspectRatio,
         credits_charged:        creditCost,
         output_type:            'image',
         input_image_urls:       [publicUrl],
-        skip_prompt_refinement: true,   // preset prompts are already optimised
+        skip_prompt_refinement: true,
         title:                  `Photo Polish — ${preset.label}`,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Fire edge function
       supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('image-generate invoke error', e))
 
       refreshProfile()
       toast.success('Polishing your photo… Check your Media page.', { duration: 4000 })
 
-      // Poll for result to show before/after
       let attempts = 0
       const poll = setInterval(async () => {
         attempts++
@@ -337,9 +416,7 @@ export default function CreatePhotoPolishPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
-              Polishing…
-            </p>
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Polishing…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -373,8 +450,7 @@ export default function CreatePhotoPolishPage() {
             </button>
             <motion.img
               initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-              src={photo.url} alt="Original"
-              className="rounded-2xl"
+              src={photo.url} alt="Original" className="rounded-2xl"
               style={{ maxWidth: '100%', maxHeight: '90dvh', objectFit: 'contain' }}
               onClick={(e) => e.stopPropagation()}
             />
@@ -394,12 +470,17 @@ export default function CreatePhotoPolishPage() {
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Photo Polish</h1>
           <span className="text-xs font-medium" style={{ color: ACCENT }}>AI Photo Enhancement</span>
         </div>
-        <div
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-          {Math.floor(credits)}
+        <div className="flex items-center gap-2">
+          {!modelsLoading && (
+            <ModelDropdown models={models} value={modelValue} onChange={handleModelChange} />
+          )}
+          <div
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
+            {Math.floor(credits)}
+          </div>
         </div>
       </div>
 
@@ -412,7 +493,6 @@ export default function CreatePhotoPolishPage() {
             <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Your Photo
             </p>
-
             {photo ? (
               <div className="relative flex justify-center">
                 <div style={{ width: '100%', maxWidth: photo.w > photo.h ? '100%' : '220px' }}>
@@ -428,8 +508,6 @@ export default function CreatePhotoPolishPage() {
                     >
                       <Maximize2 size={11} />
                     </div>
-
-                    {/* Result ready badge */}
                     {resultUrl && (
                       <motion.button
                         initial={{ opacity: 0, scale: 0.9 }}
@@ -454,11 +532,7 @@ export default function CreatePhotoPolishPage() {
             ) : (
               <label
                 className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-                style={{
-                  height: '180px',
-                  border: `1.5px dashed ${ACCENT_BDR}`,
-                  background: ACCENT_SUB,
-                }}
+                style={{ height: '180px', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
               >
                 <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
                 <ImagePlus size={28} style={{ color: ACCENT, marginBottom: 10 }} />
@@ -483,7 +557,6 @@ export default function CreatePhotoPolishPage() {
                 </div>
               )}
             </div>
-
             <div className="grid grid-cols-3 gap-2.5">
               {PHOTO_POLISH_PRESETS.map((p) => {
                 const locked = p.isMaster && !isMaster
@@ -512,8 +585,8 @@ export default function CreatePhotoPolishPage() {
                   onClick={() => { setAspectRatio(opt.value); setAutoRatio(false) }}
                   className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
                   style={{
-                    background: aspectRatio === opt.value ? ACCENT       : 'var(--bg-elevated)',
-                    color:      aspectRatio === opt.value ? '#ffffff'    : 'var(--text-secondary)',
+                    background: aspectRatio === opt.value ? ACCENT    : 'var(--bg-elevated)',
+                    color:      aspectRatio === opt.value ? '#ffffff' : 'var(--text-secondary)',
                   }}
                 >
                   {opt.label}
@@ -521,9 +594,7 @@ export default function CreatePhotoPolishPage() {
               ))}
             </div>
             {autoRatio && (
-              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                Auto-set from your photo
-              </p>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Auto-set from your photo</p>
             )}
           </div>
 
