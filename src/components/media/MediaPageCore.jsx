@@ -306,30 +306,36 @@ export default function MediaPageCore({
     }
   }
 
-  const handleAnimate = async (gen) => {
+  const handleSaveAsset = async (gen) => {
     closeSheet()
-    if (!gen.output_url) return toast.error('No image URL found')
+    if (!gen.output_url) return toast.error('No media URL found')
+    if (!user?.id) return toast.error('Not signed in')
+
+    const isVideo = gen.output_type === 'video'
+    const ext = isVideo ? 'mp4' : 'png'
+    const defaultName = `meckury-${gen.id.slice(0, 8)}`
+    const name = window.prompt('Name this asset (or leave blank to keep default):', defaultName)
+    if (name === null) return // user cancelled
+    const displayName = (name || defaultName).trim() || defaultName
+
+    setSavingAsset(true)
+    const toastId = toast.loading('Saving to your Assets…')
     try {
-      const res    = await fetch(gen.output_url)
-      const blob   = await res.blob()
-      const file   = new File([blob], `frame-${gen.id.slice(0, 8)}.png`, { type: blob.type || 'image/png' })
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        try {
-          sessionStorage.setItem('meckury_video_start_frame', JSON.stringify({
-            base64: ev.target.result,
-            name:   file.name,
-            type:   file.type,
-          }))
-          sessionStorage.removeItem('meckury_video_end_frame')
-          navigate('/create/video')
-        } catch {
-          toast.error('Could not seed frame')
-        }
-      }
-      reader.readAsDataURL(file)
-    } catch {
-      toast.error('Failed to load image')
+      const res = await fetch(gen.output_url)
+      if (!res.ok) throw new Error('Could not fetch media')
+      const blob = await res.blob()
+      const fallbackType = isVideo ? 'video/mp4' : 'image/png'
+      const file = new File(
+        [blob],
+        `${displayName}.${ext}`,
+        { type: blob.type || fallbackType },
+      )
+      await uploadAsset(user.id, file, displayName)
+      toast.success('Saved to Assets', { id: toastId })
+    } catch (e) {
+      toast.error(e?.message || 'Failed to save asset', { id: toastId })
+    } finally {
+      setSavingAsset(false)
     }
   }
 
