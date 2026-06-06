@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Zap, Search, ChevronRight, Lock, Sparkles } from 'lucide-react'
+import { X, Zap, Search, ChevronRight, Lock, Sparkles, Clapperboard } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TemplateCard } from '@/components/templates/TemplateCard'
@@ -20,6 +20,37 @@ const CategoryPill = ({ label, active, onClick }) => (
   >
     {label}
   </button>
+)
+
+// ── Filma entry card ──────────────────────────────────────
+const FilmaEntryCard = ({ onClick }) => (
+  <motion.button
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    whileTap={{ scale: 0.97 }}
+    onClick={onClick}
+    className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all mb-4"
+    style={{
+      background: 'linear-gradient(135deg, var(--tool-filma-subtle) 0%, var(--bg-elevated) 100%)',
+      border:     '1px solid var(--tool-filma-border)',
+    }}
+  >
+    <div
+      className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+      style={{ background: 'var(--tool-filma-subtle)', border: '1px solid var(--tool-filma-border)' }}
+    >
+      <Clapperboard size={22} style={{ color: 'var(--tool-filma)' }} />
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-black leading-tight" style={{ color: 'var(--text-primary)' }}>
+        Filma
+      </p>
+      <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+        Africa's AI filmmaking machine — scripts, shots &amp; generation
+      </p>
+    </div>
+    <ChevronRight size={16} style={{ color: 'var(--tool-filma)', flexShrink: 0 }} />
+  </motion.button>
 )
 
 // ── Empty state ────────────────────────────────────────────
@@ -53,41 +84,39 @@ const SkeletonCard = ({ i }) => (
     <div style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }} />
     <div className="p-4 flex flex-col gap-2">
       <div className="h-4 w-3/4 rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
-      <div className="h-3 w-full rounded-lg" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-3 w-full rounded-lg"  style={{ background: 'var(--bg-elevated)' }} />
     </div>
   </motion.div>
 )
 
 export default function PromptIQPage({ onClose }) {
-  const navigate              = useNavigate()
-  const { isStaff, isAdmin }  = useAuth()
-  const [templates, setTemplates] = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
+  const navigate             = useNavigate()
+  const { isStaff, isAdmin } = useAuth()
+
+  const [templates,      setTemplates]      = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [search,         setSearch]         = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
   const searchRef = useRef(null)
 
-  // ── Guard: non-staff sees a locked screen ──────────────
+  // ── Guard ──────────────────────────────────────────────
   const hasAccess = isStaff || isAdmin
 
-  // ── Fetch only promptiq-visibility templates ───────────
+  // ── Fetch promptiq templates ───────────────────────────
   useEffect(() => {
     if (!hasAccess) return
     const load = async () => {
       setLoading(true)
-      // getAll() returns all templates (admin/staff route)
       const { data } = await templatesDb.getAll()
-      const piq = (data || []).filter((t) => t.visibility === 'promptiq' && t.is_active)
-      setTemplates(piq)
+      setTemplates((data || []).filter((t) => t.visibility === 'promptiq' && t.is_active))
       setLoading(false)
     }
     load()
   }, [hasAccess])
 
-  // ── Derive unique categories from loaded templates ─────
+  // ── Derived ────────────────────────────────────────────
   const categories = ['All', ...new Set(templates.map((t) => t.category).filter(Boolean))]
 
-  // ── Filter by search + category ───────────────────────
   const filtered = templates.filter((t) => {
     const matchesSearch =
       !search ||
@@ -97,7 +126,7 @@ export default function PromptIQPage({ onClose }) {
     return matchesSearch && matchesCat
   })
 
-  // ── Navigate to template runner, passing promptiq flag ─
+  // ── Handlers ───────────────────────────────────────────
   const handleSelect = (template) => {
     onClose?.()
     navigate(`/create/${template.slug}`, {
@@ -105,7 +134,12 @@ export default function PromptIQPage({ onClose }) {
     })
   }
 
-  // ── Locked view for non-staff ──────────────────────────
+  const handleFilma = () => {
+    onClose?.()
+    navigate('/filma')
+  }
+
+  // ── Locked view ────────────────────────────────────────
   if (!hasAccess) {
     return (
       <div
@@ -144,17 +178,15 @@ export default function PromptIQPage({ onClose }) {
       <div
         className="sticky top-0 z-10 flex-shrink-0"
         style={{
-          background:         'color-mix(in srgb, var(--bg-primary) 90%, transparent)',
-          backdropFilter:     'blur(16px)',
+          background:           'color-mix(in srgb, var(--bg-primary) 90%, transparent)',
+          backdropFilter:       'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          borderBottom:       '1px solid var(--border-color)',
+          borderBottom:         '1px solid var(--border-color)',
         }}
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
           <div className="flex items-center gap-2">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-xl brand-gradient"
-            >
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl brand-gradient">
               <Zap size={16} className="text-white" />
             </div>
             <div>
@@ -214,8 +246,13 @@ export default function PromptIQPage({ onClose }) {
         )}
       </div>
 
-      {/* ── Template grid ── */}
+      {/* ── Content ── */}
       <div className="flex-1 px-4 py-4">
+
+        {/* Filma suite entry */}
+        <FilmaEntryCard onClick={handleFilma} />
+
+        {/* Template grid */}
         {loading ? (
           <div className="grid grid-cols-2 gap-3">
             {[...Array(4)].map((_, i) => <SkeletonCard key={i} i={i} />)}
@@ -239,7 +276,7 @@ export default function PromptIQPage({ onClose }) {
         )}
       </div>
 
-      {/* ── Footer note ── */}
+      {/* ── Footer ── */}
       <div className="flex-shrink-0 px-4 py-4 text-center">
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
           ⚡ PromptIQ templates do not consume credits
