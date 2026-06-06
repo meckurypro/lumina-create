@@ -11,7 +11,7 @@ import {
   Download, RefreshCw, Trash2,
   MoreHorizontal, ChevronDown,
   Copy, Check, Sparkles, Zap,
-  Pencil,
+  Pencil, Bookmark,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -759,7 +759,7 @@ export const EditSheet = ({
 
 export const ActionSheet = ({
   gen, onClose,
-  onDelete, onRegenerate, onEdit, onRefresh, onDownload, onAnimate,
+  onDelete, onRegenerate, onEdit, onRefresh, onDownload, onSaveAsset,
   refreshLoading = false,
 }) => (
   <motion.div
