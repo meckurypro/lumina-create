@@ -128,7 +128,34 @@ export default function MediaPageCore({
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
   const [savingAsset, setSavingAsset] = useState(false)
 
+  const FALLBACK_DISMISSED_KEY = 'meckury_fallback_dismissed_date'
+
+  const wasDismissedToday = () => {
+    try {
+      const stored = localStorage.getItem(FALLBACK_DISMISSED_KEY)
+      return stored === new Date().toDateString()
+    } catch { return false }
+  }
+
+  const dismissFallback = () => {
+    try { localStorage.setItem(FALLBACK_DISMISSED_KEY, new Date().toDateString()) } catch {}
+    setFallbackMsg(null)
+  }
+
   const [fallbackMsg, setFallbackMsg] = useState(null)
+
+  const NOVICE_WARNED_KEY = 'meckury_novice_warned_date'
+  const [noviceModalOpen, setNoviceModalOpen] = useState(() => {
+    if (!isNovice) return false
+    try {
+      return localStorage.getItem(NOVICE_WARNED_KEY) !== new Date().toDateString()
+    } catch { return false }
+  })
+
+  const dismissNoviceModal = () => {
+    try { localStorage.setItem(NOVICE_WARNED_KEY, new Date().toDateString()) } catch {}
+    setNoviceModalOpen(false)
+  }
 
   const pollRef       = useRef(null)
   const loadedFilters = useRef({ timeFilter: null, statusFilter: null })
@@ -198,7 +225,7 @@ export default function MediaPageCore({
       })
       const completedThisWeek = (weekData || []).filter((g) => g.status === 'completed')
       if (completedThisWeek.length > 0) {
-        setFallbackMsg('Nothing completed today — showing this week')
+        if (!wasDismissedToday()) setFallbackMsg('Nothing completed today — showing this week')
         setItems(weekData || [])
         setTotalCount(weekCount || 0)
         setHasMore(PAGE_SIZE < (weekCount || 0))
@@ -209,8 +236,8 @@ export default function MediaPageCore({
       }
     }
 
-    setFallbackMsg(null)
-    setTotalCount(count || 0)
+    if (!wasDismissedToday()) setFallbackMsg(null)
+      setTotalCount(count || 0)
     setItems((prev) => reset ? (data || []) : [...prev, ...(data || [])])
     setHasMore((offset + PAGE_SIZE) < (count || 0))
     setLoading(false)
@@ -465,31 +492,19 @@ export default function MediaPageCore({
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
-          {isNovice && (
-            <div
-              className="flex items-center gap-2 px-4 py-3 rounded-2xl mb-4 text-xs"
-              style={{
-                background: 'rgba(234,179,8,0.08)',
-                border:     '1px solid rgba(234,179,8,0.2)',
-                color:      '#eab308',
-              }}
-            >
-              <span>⚠️</span>
-              Your outputs are stored for 7 days only. Download and save them before they expire.
-            </div>
-          )}
+
 
           <AnimatePresence>
-            {fallbackMsg && (
+            {fallbackMsg && !wasDismissedToday() && (
               <FallbackBanner
                 message={fallbackMsg}
-                onDismiss={() => setFallbackMsg(null)}
+                onDismiss={dismissFallback}
               />
             )}
           </AnimatePresence>
 
           {/* Time filter dropdown */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 justify-end">
             <div className="relative">
               <select
                 value={timeFilter}
@@ -518,7 +533,7 @@ export default function MediaPageCore({
           </div>
 
                    {/* Status filter dots */}
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-4 justify-end">
             <AnimatePresence initial={false}>
               {visibleStatusFilters.map((f) => {
                 const isActive = statusFilter === f.value
@@ -547,20 +562,20 @@ export default function MediaPageCore({
                         animate={{ scale: [1, 1.3, 1] }}
                         transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
                         style={{
-                          width:        10,
-                          height:       10,
-                          borderRadius: '50%',
+                          width:        14,
+                          height:       14,
+                          borderRadius: 4,
                           background:   dotColor,
-                          opacity:      isActive ? 1 : 0.3,
+                          opacity:      isActive ? 1 : 0.25,
                           boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
                         }}
                       />
                     ) : (
                       <div
                         style={{
-                          width:        10,
-                          height:       10,
-                          borderRadius: '50%',
+                          width:        14,
+                          height:       14,
+                          borderRadius: 4,
                           background:   dotColor,
                           opacity:      isActive ? 1 : 0.25,
                           boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
@@ -752,6 +767,49 @@ export default function MediaPageCore({
                 Saving to your Assets…
               </p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Novice storage warning modal ── */}
+      <AnimatePresence>
+        {noviceModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={dismissNoviceModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(234,179,8,0.25)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-xl flex-shrink-0">⚠️</span>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Your media expires in 7 days
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Download or save your outputs before they're gone. Upgrade your plan to keep them permanently.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={dismissNoviceModal}
+                className="w-full py-3 rounded-xl text-sm font-semibold"
+                style={{ background: 'rgba(234,179,8,0.12)', color: '#eab308', border: '1px solid rgba(234,179,8,0.25)' }}
+              >
+                Got it
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
