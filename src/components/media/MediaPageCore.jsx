@@ -12,6 +12,7 @@ import {
   FallbackBanner,
 } from './MediaCardComponents.jsx'
 import { Film, Loader2 } from 'lucide-react'
+import { uploadAsset } from '@/lib/assets'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -125,6 +126,7 @@ export default function MediaPageCore({
   const [editLoading,      setEditLoading]      = useState(false)
   const [refreshLoading,   setRefreshLoading]   = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
+  const [savingAsset, setSavingAsset] = useState(false)
 
   const [fallbackMsg, setFallbackMsg] = useState(null)
 
@@ -304,30 +306,36 @@ export default function MediaPageCore({
     }
   }
 
-  const handleAnimate = async (gen) => {
+  const handleSaveAsset = async (gen) => {
     closeSheet()
-    if (!gen.output_url) return toast.error('No image URL found')
+    if (!gen.output_url) return toast.error('No media URL found')
+    if (!user?.id) return toast.error('Not signed in')
+
+    const isVideo = gen.output_type === 'video'
+    const ext = isVideo ? 'mp4' : 'png'
+    const defaultName = `meckury-${gen.id.slice(0, 8)}`
+    const name = window.prompt('Name this asset (or leave blank to keep default):', defaultName)
+    if (name === null) return // user cancelled
+    const displayName = (name || defaultName).trim() || defaultName
+
+    setSavingAsset(true)
+    const toastId = toast.loading('Saving to your Assets…')
     try {
-      const res    = await fetch(gen.output_url)
-      const blob   = await res.blob()
-      const file   = new File([blob], `frame-${gen.id.slice(0, 8)}.png`, { type: blob.type || 'image/png' })
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        try {
-          sessionStorage.setItem('meckury_video_start_frame', JSON.stringify({
-            base64: ev.target.result,
-            name:   file.name,
-            type:   file.type,
-          }))
-          sessionStorage.removeItem('meckury_video_end_frame')
-          navigate('/create/video')
-        } catch {
-          toast.error('Could not seed frame')
-        }
-      }
-      reader.readAsDataURL(file)
-    } catch {
-      toast.error('Failed to load image')
+      const res = await fetch(gen.output_url)
+      if (!res.ok) throw new Error('Could not fetch media')
+      const blob = await res.blob()
+      const fallbackType = isVideo ? 'video/mp4' : 'image/png'
+      const file = new File(
+        [blob],
+        `${displayName}.${ext}`,
+        { type: blob.type || fallbackType },
+      )
+      await uploadAsset(user.id, file, displayName)
+      toast.success('Saved to Assets', { id: toastId })
+    } catch (e) {
+      toast.error(e?.message || 'Failed to save asset', { id: toastId })
+    } finally {
+      setSavingAsset(false)
     }
   }
 
@@ -663,7 +671,7 @@ export default function MediaPageCore({
             onEdit={onEdit ? openEdit : undefined}
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
-            onAnimate={() => handleAnimate(activeGen)}
+            onSaveAsset={() => handleSaveAsset(activeGen)}
             onRetry={isPreDispatchFailure(activeGen) ? () => handleRetry(activeGen) : undefined}
             refreshLoading={refreshLoading}
           />
@@ -695,6 +703,29 @@ export default function MediaPageCore({
             filterEditModels={filterEditModels}
             computeEditCreditCost={computeEditCreditCost}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── Save-as-asset loading overlay ── */}
+      <AnimatePresence>
+        {savingAsset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          >
+            <div
+              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+            >
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--text-primary)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Saving to your Assets…
+              </p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
