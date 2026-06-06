@@ -848,7 +848,8 @@ export default function CreateTalkingHeadPage() {
   const [autoRatio,   setAutoRatio]   = useState(false)
   const [duration,    setDuration]    = useState('5')
 
-  const [submitting,  setSubmitting]  = useState(false)
+  const [submitting,     setSubmitting]     = useState(false)
+  const [pendingVideoSubject, setPendingVideoSubject] = useState(false)
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   const durationNum = parseInt(duration || '5', 10)
@@ -863,7 +864,11 @@ export default function CreateTalkingHeadPage() {
       img.onload = () => { setAspectRatio(detectAspectRatio(img.width, img.height)); setAutoRatio(true) }
       img.src = f.url
     })
-    restoreFile(SS_SUBJECT_VID).then((f) => { if (f) setVideoFile(f) })
+    restoreFile(SS_SUBJECT_VID).then((f) => {
+      if (!f) return
+      setVideoFile(f)
+      setPendingVideoSubject(true)
+    })
   }, [])
 
   useEffect(() => {
@@ -900,8 +905,18 @@ export default function CreateTalkingHeadPage() {
     const isMaster = profile?.user_tier === 'master'
     const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
-    setModel(list.find((m) => !m.is_locked)?.value || '')
     setModelsLoading(false)
+    setPendingVideoSubject((isPending) => {
+      if (isPending) {
+        const videoModel = list.find((m) => !m.is_locked && (m.supports_video_input ?? false))
+                        || list.find((m) => !m.is_locked)
+        setModel(videoModel?.value || '')
+        setSubjectMode('video')
+      } else {
+        setModel(list.find((m) => !m.is_locked)?.value || '')
+      }
+      return false
+    })
   }, [])
 
   useEffect(() => { loadModels() }, [loadModels])
