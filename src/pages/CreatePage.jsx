@@ -1,13 +1,12 @@
 // src/pages/CreatePage.jsx
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock } from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
-import { Skeleton } from '@/components/ui/Modal'
 
 const TYPE_LABELS = {
   text_to_image:   'Text to Image',
@@ -19,7 +18,6 @@ const TYPE_LABELS = {
   motion_transfer: 'Motion Transfer',
 }
 
-// Each tool carries its own accent token name so ToolCard reads from CSS vars
 const TOOLS = [
   {
     id:        'create_image',
@@ -44,6 +42,7 @@ const TOOLS = [
     icon:      Layers,
     route:     '/create/copy-motion',
     accentVar: '--tool-motion',
+    comingSoonForPublic: true,
   },
   {
     id:        'talking_head',
@@ -52,6 +51,7 @@ const TOOLS = [
     icon:      Mic,
     route:     '/create/talking-head',
     accentVar: '--tool-talking-head',
+    comingSoonForPublic: true,
   },
   {
     id:        'create_ugc',
@@ -115,7 +115,7 @@ const TemplateCard = ({ template, index, onClick }) => (
   </motion.button>
 )
 
-// ── Square tool card (used in 2-col row) ──────────────────────────────────────
+// ── Square tool card (first 2 tools) ─────────────────────────────────────────
 function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate }) {
   return (
     <motion.button
@@ -168,18 +168,18 @@ function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, na
   )
 }
 
-// ── Wide tool card (used for 3rd tool and beyond) ─────────────────────────────
-
-function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate, locked, weeklyBadge }) {
+// ── Wide tool card (remaining tools) ─────────────────────────────────────────
+function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate, locked, weeklyBadge, comingSoon }) {
   const handleClick = () => {
-    if (!locked) navigate(route)
+    if (!locked && !comingSoon) navigate(route)
   }
+
   return (
     <motion.button
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: locked ? 1 : 0.97 }}
+      whileTap={{ scale: locked || comingSoon ? 1 : 0.97 }}
       onClick={handleClick}
       className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
       style={{
@@ -187,7 +187,7 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
         border:     `1px solid var(${accentVar}-border, var(--border-color))`,
         padding:    '16px 20px',
         opacity:    locked ? 0.75 : 1,
-        cursor:     locked ? 'default' : 'pointer',
+        cursor:     locked || comingSoon ? 'default' : 'pointer',
       }}
     >
       <div
@@ -203,22 +203,35 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
           style={{
             width:  22,
             height: 22,
-            color:  `var(${accentVar}, var(--text-primary))`,
+            color:  comingSoon
+              ? 'var(--text-muted)'
+              : `var(${accentVar}, var(--text-primary))`,
           }}
           strokeWidth={1.4}
         />
       </div>
+
       <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
         <span
           className="text-sm font-bold"
-          style={{ color: `var(${accentVar}, var(--text-primary))` }}
+          style={{
+            color: comingSoon
+              ? 'var(--text-muted)'
+              : `var(${accentVar}, var(--text-primary))`,
+          }}
         >
           {label}
         </span>
+
         {locked ? (
           <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--brand)' }}>
             <Crown size={10} />
             Upgrade to Master
+          </span>
+        ) : comingSoon ? (
+          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+            <Clock size={10} />
+            Coming soon
           </span>
         ) : weeklyBadge ? (
           <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
@@ -236,16 +249,18 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
           </span>
         )}
       </div>
+
       {locked
         ? <Crown size={15} style={{ color: 'var(--brand)', flexShrink: 0 }} />
-        : <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        : comingSoon
+          ? <Clock size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          : <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
       }
     </motion.button>
   )
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-
 export default function CreatePage() {
   const navigate                        = useNavigate()
   const location                        = useLocation()
@@ -257,6 +272,9 @@ export default function CreatePage() {
   const [weeklyUsed, setWeeklyUsed]     = useState(null)
   const [weeklyLimit, setWeeklyLimit]   = useState(20)
 
+  // Admins and staff bypass coming-soon gates
+  const isPrivileged = isAdmin || isStaff
+
   useEffect(() => {
     const fetchTemplates = async () => {
       setLoading(true)
@@ -267,9 +285,9 @@ export default function CreatePage() {
     fetchTemplates()
   }, [])
 
-  // Fetch weekly Copy Motion count + limit for Novices
+  // Fetch weekly Copy Motion usage for Novices (only when Copy Motion is live for them)
   useEffect(() => {
-    if (!isNovice || !profile?.id) return
+    if (!isNovice || !profile?.id || !isPrivileged) return
     const fetchWeekly = async () => {
       const [{ data: settingRow }, { count }] = await Promise.all([
         supabase.from('app_settings').select('value').eq('key', 'novice_copy_motion_weekly_limit').single(),
@@ -284,7 +302,7 @@ export default function CreatePage() {
       setWeeklyUsed(count ?? 0)
     }
     fetchWeekly()
-  }, [isNovice, profile?.id])
+  }, [isNovice, profile?.id, isPrivileged])
 
   const handleTemplateSelect = (template) => {
     navigate(`/create/${template.slug}`)
@@ -323,7 +341,7 @@ export default function CreatePage() {
           {/* Tab content */}
           <div className="flex flex-col flex-1 min-h-0">
 
-            {/* Tools Tab */}
+            {/* ── Tools Tab ── */}
             {activeTab === 'tools' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -331,7 +349,8 @@ export default function CreatePage() {
                 className="flex flex-1 items-center justify-center"
               >
                 <div className="w-full" style={{ maxWidth: '520px' }}>
-                  {/* First row — 2 columns */}
+
+                  {/* First row — 2 square cards */}
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     {TOOLS.slice(0, 2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => (
                       <ToolCard
@@ -347,13 +366,17 @@ export default function CreatePage() {
                       />
                     ))}
                   </div>
-                  {/* Remaining tools — full width each */}
-                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => {
-                    const isCopyMotion  = id === 'copy_motion'
-                    const locked        = false
-                    const weeklyBadge   = isCopyMotion && isNovice && weeklyUsed !== null
+
+                  {/* Remaining tools — full-width wide cards */}
+                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar, comingSoonForPublic }, i) => {
+                    const isCopyMotion = id === 'copy_motion'
+                    const comingSoon   = !!comingSoonForPublic && !isPrivileged
+                    const locked       = false
+                    // Only show weekly badge when Copy Motion is live (privileged) and user is novice
+                    const weeklyBadge  = isCopyMotion && isNovice && isPrivileged && weeklyUsed !== null
                       ? `${weeklyUsed}/${weeklyLimit} this week`
                       : null
+
                     return (
                       <ToolCardWide
                         key={id}
@@ -366,6 +389,7 @@ export default function CreatePage() {
                         index={i + 2}
                         navigate={navigate}
                         locked={locked}
+                        comingSoon={comingSoon}
                         weeklyBadge={weeklyBadge}
                       />
                     )
@@ -374,7 +398,7 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Templates Tab */}
+            {/* ── Templates Tab ── */}
             {activeTab === 'templates' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -410,7 +434,7 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Utilities Tab */}
+            {/* ── Utilities Tab ── */}
             {activeTab === 'utilities' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -419,13 +443,11 @@ export default function CreatePage() {
               >
                 <div className="w-full" style={{ maxWidth: '520px' }}>
 
-                  {/* Section label */}
                   <p className="text-xs font-semibold uppercase tracking-widest mb-4"
                     style={{ color: 'var(--text-muted)' }}>
                     Photo Tools
                   </p>
 
-                  {/* Photo Polish card */}
                   <motion.button
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -470,7 +492,7 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* Canvas Tab — Coming Soon */}
+            {/* ── Canvas Tab — Coming Soon ── */}
             {activeTab === 'canvas' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -480,18 +502,18 @@ export default function CreatePage() {
                 <div
                   className="rounded-2xl flex items-center justify-center mb-5"
                   style={{
-                    width: 64,
-                    height: 64,
+                    width:      64,
+                    height:     64,
                     background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-color)',
+                    border:     '1px solid var(--border-color)',
                   }}
                 >
-                 <img
-  src="/icon-192.png"
-  alt="Canvas"
-  className="logo-icon"
-  style={{ width: 36, height: 36 }}
-/>
+                  <img
+                    src="/icon-192.png"
+                    alt="Canvas"
+                    className="logo-icon"
+                    style={{ width: 36, height: 36 }}
+                  />
                 </div>
                 <h2 className="text-lg font-black mb-2" style={{ color: 'var(--text-primary)' }}>
                   Coming Soon
