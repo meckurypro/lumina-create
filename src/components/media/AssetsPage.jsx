@@ -73,6 +73,87 @@ async function extractLastFrame(videoUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// urlToBase64Payload — fetch a remote asset and return the { base64, name, type }
+// payload expected by destination create-pages (they call atob(base64.split(',')[1]))
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function urlToBase64Payload(url, name, fallbackType) {
+  const res  = await fetch(url)
+  if (!res.ok) throw new Error('Could not fetch asset')
+  const blob = await res.blob()
+  const type = blob.type || fallbackType || 'application/octet-stream'
+  const ext  = (type.split('/')[1] || 'bin').split(';')[0]
+  const safeName = /\.[a-z0-9]+$/i.test(name) ? name : `${name}.${ext}`
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload  = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Could not read asset'))
+    reader.readAsDataURL(blob)
+  })
+  return { base64, name: safeName, type }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VideoThumb — generates a first-frame thumbnail from a remote video URL
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _thumbCache = new Map()
+
+function VideoThumb({ asset }) {
+  const [src, setSrc] = useState(() => _thumbCache.get(asset.id) || null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (src || failed) return
+    let cancelled = false
+    let objUrl    = null
+
+    ;(async () => {
+      try {
+        const res  = await fetch(asset.file_url)
+        if (!res.ok) throw new Error('fetch failed')
+        const blob = await res.blob()
+        objUrl     = URL.createObjectURL(blob)
+
+        const video = document.createElement('video')
+        video.muted       = true
+        video.preload     = 'auto'
+        video.crossOrigin = 'anonymous'
+        video.playsInline = true
+
+        await new Promise((resolve, reject) => {
+          video.onloadedmetadata = () => {
+            video.currentTime = Math.min(0.1, Math.max(0, (video.duration || 1) * 0.05))
+          }
+          video.onseeked = resolve
+          video.onerror  = () => reject(new Error('video load failed'))
+          video.src = objUrl
+        })
+
+        const canvas = document.createElement('canvas')
+        const maxW   = 240
+        const scale  = Math.min(1, maxW / (video.videoWidth || maxW))
+        canvas.width  = Math.max(1, Math.round((video.videoWidth || maxW) * scale))
+        canvas.height = Math.max(1, Math.round((video.videoHeight || maxW) * scale))
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
+        _thumbCache.set(asset.id, dataUrl)
+        if (!cancelled) setSrc(dataUrl)
+      } catch {
+        if (!cancelled) setFailed(true)
+      } finally {
+        if (objUrl) URL.revokeObjectURL(objUrl)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [asset.id, asset.file_url, src, failed])
+
+  if (src) return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
+  return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AssetsPage
 // ─────────────────────────────────────────────────────────────────────────────
 
