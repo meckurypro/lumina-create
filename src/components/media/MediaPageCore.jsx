@@ -488,59 +488,86 @@ export default function MediaPageCore({
             )}
           </AnimatePresence>
 
-          {/* Time filter row */}
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
-            {TIME_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setTimeFilter(f.value)}
-                className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+          {/* Time filter dropdown */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative">
+              <select
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value)}
+                className="appearance-none pl-3 pr-7 py-2 rounded-xl text-sm font-semibold outline-none transition-all cursor-pointer"
                 style={{
-                  background: timeFilter === f.value ? accentColor             : 'var(--bg-elevated)',
-                  color:      timeFilter === f.value ? invertText(accentColor) : 'var(--text-muted)',
+                  background:  'var(--bg-elevated)',
+                  color:       'var(--text-secondary)',
+                  border:      '1px solid var(--border-color)',
+                  WebkitAppearance: 'none',
                 }}
               >
-                {f.label}
-              </button>
-            ))}
+                {TIME_FILTERS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+              <div
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </div>
           </div>
 
-          {/* Status filter row */}
-          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+                   {/* Status filter dots */}
+          <div className="flex items-center gap-3 mb-4">
             <AnimatePresence initial={false}>
               {visibleStatusFilters.map((f) => {
                 const isActive = statusFilter === f.value
+                const dotColor = {
+                  completed:   '#10b981',
+                  failed:      '#ef4444',
+                  in_progress: '#eab308',
+                  all:         'var(--text-primary)',
+                }[f.value] ?? 'var(--text-muted)'
+
                 return (
                   <motion.button
                     key={f.value}
                     layout
-                    initial={f.dynamic ? { opacity: 0, scale: 0.85, width: 0 } : false}
-                    animate={{ opacity: 1, scale: 1, width: 'auto' }}
-                    exit={f.dynamic ? { opacity: 0, scale: 0.85, width: 0 } : undefined}
+                    initial={f.dynamic ? { opacity: 0, scale: 0 } : false}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={f.dynamic ? { opacity: 0, scale: 0 } : undefined}
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                     onClick={() => setStatusFilter(f.value)}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-colors overflow-hidden"
-                    style={{
-                      background: isActive ? 'var(--text-primary)' : 'var(--bg-elevated)',
-                      color:      isActive ? 'var(--text-inverse)'  : 'var(--text-muted)',
-                      ...(isActive && f.dynamic ? {
-                        background: 'rgba(234,179,8,0.15)',
-                        color:      '#eab308',
-                        border:     '1px solid rgba(234,179,8,0.3)',
-                      } : {}),
-                    }}
+                    title={f.label}
+                    className="flex items-center justify-center transition-all active:scale-90"
+                    style={{ padding: '4px' }}
                   >
-                    {f.dynamic && (
-                      <motion.span
-                        animate={{ rotate: 360 }}
-                        transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
-                        className="inline-flex"
-                        style={{ color: '#eab308' }}
-                      >
-                        <Loader2 size={12} />
-                      </motion.span>
+                    {f.dynamic ? (
+                      <motion.div
+                        animate={{ scale: [1, 1.3, 1] }}
+                        transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+                        style={{
+                          width:        10,
+                          height:       10,
+                          borderRadius: '50%',
+                          background:   dotColor,
+                          opacity:      isActive ? 1 : 0.3,
+                          boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width:        10,
+                          height:       10,
+                          borderRadius: '50%',
+                          background:   dotColor,
+                          opacity:      isActive ? 1 : 0.25,
+                          boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
+                          transition:   'opacity 0.15s, box-shadow 0.15s',
+                        }}
+                      />
                     )}
-                    {f.label}
                   </motion.button>
                 )
               })}
