@@ -78,6 +78,39 @@ export type Database = {
           },
         ]
       }
+      assets: {
+        Row: {
+          created_at: string | null
+          file_path: string
+          file_url: string
+          id: string
+          mime_type: string | null
+          name: string
+          size_bytes: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_path: string
+          file_url: string
+          id?: string
+          mime_type?: string | null
+          name: string
+          size_bytes?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_path?: string
+          file_url?: string
+          id?: string
+          mime_type?: string | null
+          name?: string
+          size_bytes?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       cinematic_clip_versions: {
         Row: {
           clip_id: string
@@ -526,6 +559,7 @@ export type Database = {
       generations: {
         Row: {
           aspect_ratio: Database["public"]["Enums"]["aspect_ratio"] | null
+          body_consent_confirmed: boolean | null
           created_at: string | null
           credits_charged: number
           duration: Database["public"]["Enums"]["video_duration"] | null
@@ -537,9 +571,11 @@ export type Database = {
           id: string
           input_image_urls: string[] | null
           is_published: boolean | null
+          is_smart_edit: boolean
           is_staff_generation: boolean | null
           model: string | null
           novice_accumulated_days: number
+          original_prompt: string | null
           output_thumbnail_url: string | null
           output_type: string | null
           output_url: string | null
@@ -547,6 +583,8 @@ export type Database = {
           prompt: string | null
           prompt_engineering_used: boolean | null
           provider_request_id: string | null
+          refinement_mode: string | null
+          resolution: string | null
           skip_prompt_refinement: boolean
           start_frame_url: string | null
           status: Database["public"]["Enums"]["generation_status"] | null
@@ -560,6 +598,7 @@ export type Database = {
         }
         Insert: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
+          body_consent_confirmed?: boolean | null
           created_at?: string | null
           credits_charged?: number
           duration?: Database["public"]["Enums"]["video_duration"] | null
@@ -571,9 +610,11 @@ export type Database = {
           id?: string
           input_image_urls?: string[] | null
           is_published?: boolean | null
+          is_smart_edit?: boolean
           is_staff_generation?: boolean | null
           model?: string | null
           novice_accumulated_days?: number
+          original_prompt?: string | null
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
@@ -581,6 +622,8 @@ export type Database = {
           prompt?: string | null
           prompt_engineering_used?: boolean | null
           provider_request_id?: string | null
+          refinement_mode?: string | null
+          resolution?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
@@ -594,6 +637,7 @@ export type Database = {
         }
         Update: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
+          body_consent_confirmed?: boolean | null
           created_at?: string | null
           credits_charged?: number
           duration?: Database["public"]["Enums"]["video_duration"] | null
@@ -605,9 +649,11 @@ export type Database = {
           id?: string
           input_image_urls?: string[] | null
           is_published?: boolean | null
+          is_smart_edit?: boolean
           is_staff_generation?: boolean | null
           model?: string | null
           novice_accumulated_days?: number
+          original_prompt?: string | null
           output_thumbnail_url?: string | null
           output_type?: string | null
           output_url?: string | null
@@ -615,6 +661,8 @@ export type Database = {
           prompt?: string | null
           prompt_engineering_used?: boolean | null
           provider_request_id?: string | null
+          refinement_mode?: string | null
+          resolution?: string | null
           skip_prompt_refinement?: boolean
           start_frame_url?: string | null
           status?: Database["public"]["Enums"]["generation_status"] | null
@@ -670,8 +718,10 @@ export type Database = {
           created_at: string | null
           credit_cost_i2i: number
           credit_cost_per_second: number | null
+          credit_cost_resolution: Json | null
           credit_cost_t2i: number
           credit_multiplier: number
+          description: string | null
           feature: string
           id: string
           is_active: boolean | null
@@ -683,6 +733,7 @@ export type Database = {
           max_ref_images: number
           min_billable_seconds: number | null
           provider: string
+          requires_image: boolean
           sort_order: number | null
           sound_cost_multiplier: number
           sublabel: string | null
@@ -696,6 +747,7 @@ export type Database = {
           supports_start_frame: boolean
           supports_text_script: boolean
           supports_video_input: boolean
+          tier_required: Database["public"]["Enums"]["model_tier"]
           type: string
           updated_at: string | null
           value: string
@@ -705,8 +757,10 @@ export type Database = {
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_per_second?: number | null
+          credit_cost_resolution?: Json | null
           credit_cost_t2i?: number
           credit_multiplier?: number
+          description?: string | null
           feature?: string
           id?: string
           is_active?: boolean | null
@@ -718,6 +772,7 @@ export type Database = {
           max_ref_images?: number
           min_billable_seconds?: number | null
           provider?: string
+          requires_image?: boolean
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
@@ -731,6 +786,7 @@ export type Database = {
           supports_start_frame?: boolean
           supports_text_script?: boolean
           supports_video_input?: boolean
+          tier_required?: Database["public"]["Enums"]["model_tier"]
           type: string
           updated_at?: string | null
           value: string
@@ -740,8 +796,10 @@ export type Database = {
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_per_second?: number | null
+          credit_cost_resolution?: Json | null
           credit_cost_t2i?: number
           credit_multiplier?: number
+          description?: string | null
           feature?: string
           id?: string
           is_active?: boolean | null
@@ -753,6 +811,7 @@ export type Database = {
           max_ref_images?: number
           min_billable_seconds?: number | null
           provider?: string
+          requires_image?: boolean
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
@@ -766,6 +825,7 @@ export type Database = {
           supports_start_frame?: boolean
           supports_text_script?: boolean
           supports_video_input?: boolean
+          tier_required?: Database["public"]["Enums"]["model_tier"]
           type?: string
           updated_at?: string | null
           value?: string
@@ -938,20 +998,6 @@ export type Database = {
           username?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "fk_profiles_preferred_model"
-            columns: ["preferred_model"]
-            isOneToOne: false
-            referencedRelation: "model_usage_stats"
-            referencedColumns: ["value"]
-          },
-          {
-            foreignKeyName: "fk_profiles_preferred_model"
-            columns: ["preferred_model"]
-            isOneToOne: false
-            referencedRelation: "models"
-            referencedColumns: ["value"]
-          },
           {
             foreignKeyName: "profiles_referred_by_fkey"
             columns: ["referred_by"]
@@ -1731,6 +1777,7 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_get_user_email: { Args: { p_user_id: string }; Returns: string }
       admin_grant_credits: {
         Args: {
           p_admin_id: string
@@ -1903,6 +1950,7 @@ export type Database = {
         | "template"
         | "motion_transfer"
         | "lipsync"
+      model_tier: "free" | "master"
       payment_provider: "paystack" | "google" | "admin"
       subscription_tier: "free" | "starter" | "pro" | "enterprise"
       template_category:
@@ -2129,6 +2177,7 @@ export const Constants = {
         "motion_transfer",
         "lipsync",
       ],
+      model_tier: ["free", "master"],
       payment_provider: ["paystack", "google", "admin"],
       subscription_tier: ["free", "starter", "pro", "enterprise"],
       template_category: [
