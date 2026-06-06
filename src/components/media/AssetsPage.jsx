@@ -37,6 +37,7 @@ export default function AssetsPage() {
   const [search,        setSearch]        = useState('')
   const [searchQuery,   setSearchQuery]   = useState('')
   const [uploading,     setUploading]     = useState(false)
+  const [previewAsset,  setPreviewAsset]  = useState(null)
   const [activeAsset,   setActiveAsset]   = useState(null)
   const [sheetOpen,     setSheetOpen]     = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
@@ -272,6 +273,7 @@ export default function AssetsPage() {
                     setRenameValue={setRenameValue}
                     onStartRename={() => startRename(asset)}
                     onCommitRename={() => commitRename(asset)}
+                    onPreview={() => setPreviewAsset(asset)}
                     onMore={() => openSheet(asset)}
                   />
                 </motion.div>
@@ -280,6 +282,63 @@ export default function AssetsPage() {
           </div>
         )}
       </div>
+
+      {/* ── Asset preview modal ── */}
+      <AnimatePresence>
+        {previewAsset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+            onClick={() => setPreviewAsset(null)}
+          >
+            {/* Close */}
+            <button
+              onClick={() => setPreviewAsset(null)}
+              className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
+            >
+              <X size={18} />
+            </button>
+
+            {/* Name */}
+            <p className="absolute top-5 left-1/2 -translate-x-1/2 text-sm font-semibold truncate max-w-[60vw]" style={{ color: 'rgba(255,255,255,0.7)' }}>
+              {previewAsset.name}
+            </p>
+
+            {/* Media */}
+            {isVideoAsset(previewAsset) ? (
+              <motion.video
+                key={previewAsset.id}
+                initial={{ scale: 0.93, opacity: 0 }}
+                animate={{ scale: 1,    opacity: 1 }}
+                exit={{    scale: 0.93, opacity: 0 }}
+                src={previewAsset.file_url}
+                controls
+                autoPlay
+                className="rounded-2xl"
+                style={{ maxWidth: '100%', maxHeight: '85dvh', outline: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <motion.img
+                key={previewAsset.id}
+                initial={{ scale: 0.93, opacity: 0 }}
+                animate={{ scale: 1,    opacity: 1 }}
+                exit={{    scale: 0.93, opacity: 0 }}
+                src={previewAsset.file_url}
+                alt={previewAsset.name}
+                className="rounded-2xl"
+                style={{ maxWidth: '100%', maxHeight: '85dvh', objectFit: 'contain' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Action sheet ── */}
       <AnimatePresence>
@@ -341,7 +400,7 @@ export default function AssetsPage() {
 // AssetCard
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onMore }) {
+function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
   const inputRef = useRef(null)
   const isVideo  = isVideoAsset(asset)
   const [imgErr, setImgErr] = useState(false)
@@ -355,9 +414,10 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
       className="flex items-center gap-3 px-4 py-3 rounded-2xl"
       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
     >
-      {/* Thumbnail */}
-      <div
-        className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+      {/* Thumbnail — clickable */}
+      <button
+        onClick={onPreview}
+        className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center relative group"
         style={{ background: 'var(--bg-primary)' }}
       >
         {isVideo ? (
@@ -372,7 +432,16 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
             onError={() => setImgErr(true)}
           />
         )}
-      </div>
+        {/* hover overlay */}
+        <div
+          className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </div>
+      </button>
 
       {/* Name + meta */}
       <div className="flex-1 min-w-0">
