@@ -269,7 +269,7 @@ export default function CreatePhotoPolishPage() {
       .eq('type', 'image')
       .eq('is_active', true)
       .eq('is_user_facing', true)
-      .eq('supports_image', true)   // i2i only
+      .eq('supports_image', true)
       .order('sort_order')
     const list = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
@@ -281,6 +281,47 @@ export default function CreatePhotoPolishPage() {
   }, []) // eslint-disable-line
 
   useEffect(() => { loadModels() }, [loadModels])
+
+  // ── Restore photo seeded from Assets page ─────────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('meckury_polish_image')
+      if (!saved) return
+      sessionStorage.removeItem('meckury_polish_image')
+      const item = JSON.parse(saved)
+      if (item.url && !item.base64) {
+        // URL payload from Assets — display-only, no file needed
+        const img = new Image()
+        img.onload = () => {
+          const ar = detectAspectRatio(img.width, img.height)
+          setPhoto({ file: null, url: item.url, ar, w: img.width, h: img.height })
+          setAspectRatio(ar)
+          setAutoRatio(true)
+        }
+        img.onerror = () => {
+          setPhoto({ file: null, url: item.url, ar: '9:16', w: null, h: null })
+        }
+        img.src = item.url
+      } else if (item.base64) {
+        // Legacy base64 payload
+        const byteString = atob(item.base64.split(',')[1])
+        const ab = new ArrayBuffer(byteString.length)
+        const ia = new Uint8Array(ab)
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+        const blob = new Blob([ab], { type: item.type })
+        const url  = URL.createObjectURL(blob)
+        const file = new File([blob], item.name, { type: item.type })
+        const imgEl = new Image()
+        imgEl.onload = () => {
+          const ar = detectAspectRatio(imgEl.width, imgEl.height)
+          setPhoto({ file, url, ar, w: imgEl.width, h: imgEl.height })
+          setAspectRatio(ar)
+          setAutoRatio(true)
+        }
+        imgEl.src = url
+      }
+    } catch { /* corrupt storage — ignore */ }
+  }, [])
 
   // ── derived from selected model ───────────────────────────────────────────
   const selectedModel = models.find((m) => m.value === modelValue)
@@ -298,7 +339,7 @@ export default function CreatePhotoPolishPage() {
     }
   }
 
-  // ── upload handler ────────────────────────────────────────────────────────
+  // ── upload handler (local file) ───────────────────────────────────────────
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -333,16 +374,23 @@ export default function CreatePhotoPolishPage() {
     setResultUrl(null)
 
     try {
-      const contentType = photo.file.type || 'image/jpeg'
-      const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-      const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-      const { data: uploadData, error: upErr } = await supabase.storage
-        .from('generation-uploads')
-        .upload(path, photo.file, { upsert: false, cacheControl: '3600', contentType })
-      if (upErr) throw new Error(`Upload failed: ${upErr.message}`)
-      const { data: { publicUrl } } = supabase.storage
-        .from('generation-uploads')
-        .getPublicUrl(uploadData.path)
+      // Get the public URL — either direct from Assets or upload the local file
+      let publicUrl
+      if (!photo.file) {
+        // URL-only asset from Assets page — use directly
+        publicUrl = photo.url
+      } else {
+        const contentType = photo.file.type || 'image/jpeg'
+        const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+        const { data: uploadData, error: upErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(path, photo.file, { upsert: false, cacheControl: '3600', contentType })
+        if (upErr) throw new Error(`Upload failed: ${upErr.message}`)
+        ;({ data: { publicUrl } } = supabase.storage
+          .from('generation-uploads')
+          .getPublicUrl(uploadData.path))
+      }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
@@ -495,10 +543,14 @@ export default function CreatePhotoPolishPage() {
             </p>
             {photo ? (
               <div className="relative flex justify-center">
-                <div style={{ width: '100%', maxWidth: photo.w > photo.h ? '100%' : '220px' }}>
+                <div style={{ width: '100%', maxWidth: photo.w && photo.h ? (photo.w > photo.h ? '100%' : '220px') : '220px' }}>
                   <div
                     className="relative overflow-hidden rounded-2xl cursor-pointer"
-                    style={{ aspectRatio: `${photo.w} / ${photo.h}`, maxHeight: '320px', background: 'var(--bg-elevated)' }}
+                    style={{
+                      aspectRatio: photo.w && photo.h ? `${photo.w} / ${photo.h}` : '1 / 1',
+                      maxHeight: '320px',
+                      background: 'var(--bg-elevated)',
+                    }}
                     onClick={() => setFullscreen(true)}
                   >
                     <img src={photo.url} alt="Upload" className="w-full h-full" style={{ objectFit: 'contain' }} />
