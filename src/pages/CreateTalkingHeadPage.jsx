@@ -184,12 +184,20 @@ const restoreFile = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
     if (!saved) return resolve(null)
-    const { base64, name, type } = JSON.parse(saved)
+    sessionStorage.removeItem(key)
+    const item = JSON.parse(saved)
+    // New: URL payload from Assets { url, name, type }
+    if (item.url && !item.base64) {
+      return resolve({ file: null, url: item.url, name: item.name })
+    }
+    // Legacy: base64 payload
+    const { base64, name, type } = item
     const byteString = atob(base64.split(',')[1])
     const ab = new ArrayBuffer(byteString.length)
     const ia = new Uint8Array(ab)
     for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-    resolve({ file: new File([new Blob([ab], { type }), name, { type }]), url: URL.createObjectURL(new Blob([ab], { type })) })
+    const blob = new Blob([ab], { type })
+    resolve({ file: new File([blob], name, { type }), url: URL.createObjectURL(blob) })
   } catch { resolve(null) }
 })
 
@@ -1087,8 +1095,16 @@ export default function CreateTalkingHeadPage() {
       let startFrameUrl   = null
       let subjectVideoUrl = null
 
-      if (subjectMode === 'face'  && faceImage?.file)  startFrameUrl   = await uploadToStorage(faceImage.file, faceImage.file.name, 'generation-uploads')
-      if (subjectMode === 'video' && videoFile?.file)   subjectVideoUrl = await uploadToStorage(videoFile.file, videoFile.file.name, 'generation-uploads')
+      if (subjectMode === 'face' && faceImage) {
+        startFrameUrl = faceImage.file
+          ? await uploadToStorage(faceImage.file, faceImage.file.name, 'generation-uploads')
+          : faceImage.url
+      }
+      if (subjectMode === 'video' && videoFile) {
+        subjectVideoUrl = videoFile.file
+          ? await uploadToStorage(videoFile.file, videoFile.file.name, 'generation-uploads')
+          : videoFile.url
+      }
 
       let audio1Url = null
       let audio2Url = null
