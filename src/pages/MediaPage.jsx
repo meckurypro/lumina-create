@@ -1,7 +1,9 @@
 // src/pages/MediaPage.jsx
 //
-// Thin wrapper. All heavy lifting is in MediaPageCore.
+// Thin wrapper. All heavy lifting is in MediaPageCore (generations)
+// and AssetsPage (user uploads).
 
+import { useState }                              from 'react'
 import { useNavigate }                           from 'react-router-dom'
 import { useAuth }                               from '@/context/AuthContext'
 import { TopBar }                                from '@/components/layout/TopBar'
@@ -9,6 +11,16 @@ import { generations as generationsDb, supabase } from '@/lib/supabase'
 import { Film }                                  from 'lucide-react'
 import MediaPageCore                             from '@/components/media/MediaPageCore.jsx'
 import { MediaEmptyState }                       from '@/components/media/MediaCardComponents.jsx'
+import AssetsPage                                from '@/components/media/AssetsPage.jsx'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tabs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { value: 'generations', label: 'Generations' },
+  { value: 'assets',      label: 'Assets'      },
+]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fetcher
@@ -56,8 +68,6 @@ function filterRelevantModels(models, gen) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterEditModels(models, gen) {
-  // Edit always produces an image (output → I2I input).
-  // Only surface unlocked image models that support image-to-image input.
   return models.filter(
     (m) => !m.is_locked && m.type === 'image' && m.supports_image === true
   )
@@ -69,7 +79,6 @@ function filterEditModels(models, gen) {
 
 function computeCreditCost(selectedModel, gen) {
   if (!selectedModel) return 0
-  // If the original generation had any input image, treat as I2I
   const hadInputImage = !!(gen.input_image_urls?.length || gen.start_frame_url)
   return (hadInputImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
 }
@@ -85,11 +94,6 @@ function computeEditCreditCost(selectedModel) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
-//
-// Now receives editedPrompt (5th positional arg) so the user's prompt
-// changes in the sheet are honoured.
-// The ORIGINAL INPUT images (input_image_urls / start_frame_url) are reused —
-// NOT the generated output.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
@@ -104,14 +108,12 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
     user_id:                user.id,
     generation_type:        gen.generation_type,
     status:                 'pending',
-    // Use the (possibly edited) prompt from the sheet
     prompt:                 editedPrompt ?? gen.prompt,
     model:                  chosenModel,
     aspect_ratio:           gen.aspect_ratio,
     duration:               gen.duration,
     credits_charged:        creditCost,
     output_type:            gen.output_type,
-    // Reuse the ORIGINAL INPUT images — never the generated output
     start_frame_url:        null,
     input_image_urls:       gen.input_image_urls?.length
                               ? gen.input_image_urls
@@ -143,9 +145,6 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onEdit
-//
-// Takes the GENERATED OUTPUT (gen.output_url) as the new start_frame_url,
-// fires an image-to-image generation with the user's (possibly edited) prompt.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
@@ -153,8 +152,6 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
 }) {
   if (!gen.output_url) throw new Error('No output URL to edit from')
 
-  // Smart edit: send [output, originalInput] so Claude understands both sides.
-  // If no original input existed (pure T2I), output alone is still useful.
   const originalInputUrl = gen.input_image_urls?.[0] || gen.start_frame_url || null
   const inputImages = originalInputUrl
     ? [gen.output_url, originalInputUrl]
@@ -171,9 +168,7 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
     output_type:            'image',
     start_frame_url:        gen.output_url,
     input_image_urls:       inputImages,
-    // Carry original prompt so edge function can reason about what changed
     original_prompt:        gen.prompt || null,
-    // Tell edge function this is a smart edit — do NOT skip prompt engineering
     skip_prompt_refinement: false,
     is_smart_edit:          true,
   })
@@ -200,17 +195,48 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MediaPage() {
-  const { profile, credits } = useAuth()
-  const isNovice = profile?.user_tier === 'novice'
+  const { profile, credits }     = useAuth()
+  const isNovice                 = profile?.user_tier === 'novice'
+  const [activeTab, setActiveTab] = useState('generations')
 
   const headerSlot = ({ totalCount }) => (
     <>
       <TopBar showLogo showCredits />
       <div className="mx-auto w-full max-w-xl px-4 lg:px-0 pt-5 pb-1">
         <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Media</h1>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {totalCount} generation{totalCount !== 1 ? 's' : ''}
-        </p>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 mt-3 mb-1 p-1 rounded-2xl w-fit" style={{ background: 'var(--bg-elevated)' }}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.value
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setActiveTab(tab.value)}
+                className="px-4 py-1.5 rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  background: isActive ? 'var(--bg-primary)' : 'transparent',
+                  color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  boxShadow:  isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Sub-heading */}
+        {activeTab === 'generations' && (
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            {totalCount} generation{totalCount !== 1 ? 's' : ''}
+          </p>
+        )}
+        {activeTab === 'assets' && (
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            Your uploaded images & videos
+          </p>
+        )}
       </div>
     </>
   )
@@ -258,6 +284,42 @@ export default function MediaPage() {
   )
 
   return (
+    // Outer wrapper needed so AssetsPage (which is not inside MediaPageCore)
+    // can share the same full-height layout.
+    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* Header is always rendered; it owns the tab switcher */}
+      <div className="flex-shrink-0">
+        {headerSlot({ totalCount: 0 })}
+      </div>
+
+      {activeTab === 'generations' ? (
+        // MediaPageCore renders its own flex column with overflow-y-auto.
+        // We re-use it as a flex child here, so we need it to fill remaining space.
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          <MediaPageCoreInner
+            isNovice={isNovice}
+            emptySlot={emptySlot}
+          />
+        </div>
+      ) : (
+        <AssetsPage />
+      )}
+
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaPageCoreInner
+//
+// Thin shim: MediaPageCore renders its own h-dvh wrapper which conflicts
+// when nested. We pass a no-op headerSlot so the outer header is the one
+// that renders, and MediaPageCore just renders its content + sheets.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MediaPageCoreInner({ isNovice, emptySlot }) {
+  return (
     <MediaPageCore
       fetcher={fetchGenerations}
       onRegenerate={onRegenerate}
@@ -266,11 +328,11 @@ export default function MediaPage() {
       onCardClick={(gen, navigate) => {
         if (gen.status === 'completed') navigate(`/result/${gen.id}`)
       }}
-      // Edit flow
       filterEditModels={filterEditModels}
       computeEditCreditCost={computeEditCreditCost}
       onEdit={onEdit}
-      headerSlot={headerSlot}
+      // No headerSlot — header already rendered above
+      headerSlot={null}
       emptySlot={emptySlot}
       isNovice={isNovice}
       allowGridView={false}
