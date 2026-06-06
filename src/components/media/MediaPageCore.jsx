@@ -671,7 +671,7 @@ export default function MediaPageCore({
             onEdit={onEdit ? openEdit : undefined}
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
-            onAnimate={() => handleAnimate(activeGen)}
+            onSaveAsset={() => handleSaveAsset(activeGen)}
             onRetry={isPreDispatchFailure(activeGen) ? () => handleRetry(activeGen) : undefined}
             refreshLoading={refreshLoading}
           />
