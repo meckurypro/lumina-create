@@ -82,7 +82,7 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
             </span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
             <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
-              {film.genre?.replace(/_/g, ' ')}
+              {(film.genre ?? '').replace(/_/g, ' ')}
             </span>
           </div>
         </button>
