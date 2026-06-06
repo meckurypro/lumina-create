@@ -102,11 +102,18 @@ const persistFrame = (key, file) => {
   } catch {}
 }
 
+
 const restoreFrame = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
     if (!saved) return resolve(null)
-    const { base64, name, type } = JSON.parse(saved)
+    const item = JSON.parse(saved)
+    // URL-only payload from Assets { url, name, type }
+    if (item.url && !item.base64) {
+      return resolve({ file: null, url: item.url, name: item.name })
+    }
+    // Legacy base64 payload
+    const { base64, name, type } = item
     const byteString = atob(base64.split(',')[1])
     const ab = new ArrayBuffer(byteString.length)
     const ia = new Uint8Array(ab)
