@@ -73,15 +73,7 @@ async function extractLastFrame(videoUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// buildUrlPayload — lightweight URL-based payload instead of base64.
-//
-// Destination pages that previously received { base64, name, type } now
-// receive { url, name, type } — they should prefer `url` over `base64`
-// and fetch/display directly from the CDN link.
-//
-// For destination pages that still require base64 (legacy), the page itself
-// can do a one-time fetch on mount. That keeps this file simple and avoids
-// the sessionStorage size limit entirely.
+// buildUrlPayload
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildUrlPayload(asset, fallbackType) {
@@ -90,13 +82,20 @@ function buildUrlPayload(asset, fallbackType) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VideoThumb — generates a first-frame thumbnail from a remote video URL
+// Module-level cache for extracted-frame fallbacks
+// Only used when thumbnail_url is null on a video asset.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _thumbCache = new Map()
+const _extractedThumbCache = new Map()
 
-function VideoThumb({ asset }) {
-  const [src, setSrc] = useState(() => _thumbCache.get(asset.id) || null)
+// ─────────────────────────────────────────────────────────────────────────────
+// VideoThumbFallback
+// Used only when a video asset has no thumbnail_url yet (pre-backfill).
+// Fetches the full video blob and extracts a frame via canvas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function VideoThumbFallback({ asset }) {
+  const [src,    setSrc]    = useState(() => _extractedThumbCache.get(asset.id) || null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -129,11 +128,11 @@ function VideoThumb({ asset }) {
         const canvas = document.createElement('canvas')
         const maxW   = 240
         const scale  = Math.min(1, maxW / (video.videoWidth || maxW))
-        canvas.width  = Math.max(1, Math.round((video.videoWidth || maxW) * scale))
+        canvas.width  = Math.max(1, Math.round((video.videoWidth  || maxW) * scale))
         canvas.height = Math.max(1, Math.round((video.videoHeight || maxW) * scale))
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
         const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
-        _thumbCache.set(asset.id, dataUrl)
+        _extractedThumbCache.set(asset.id, dataUrl)
         if (!cancelled) setSrc(dataUrl)
       } catch {
         if (!cancelled) setFailed(true)
@@ -147,6 +146,50 @@ function VideoThumb({ asset }) {
 
   if (src) return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
   return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssetThumb
+//
+// Priority order:
+//   1. thumbnail_url (tiny WebP from asset-thumbs bucket) — instant, no fetch
+//   2. file_url directly for images (small enough in most cases)
+//   3. VideoThumbFallback for videos with no thumbnail (frame extraction)
+//
+// onError propagates up to AssetCard so it can swap in the icon fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AssetThumb({ asset, onError }) {
+  const isVideo = isVideoAsset(asset)
+
+  // Best case: pre-generated thumbnail exists
+  if (asset.thumbnail_url) {
+    return (
+      <img
+        src={asset.thumbnail_url}
+        alt={asset.name}
+        className="w-full h-full object-cover"
+        loading="lazy"
+        onError={onError}
+      />
+    )
+  }
+
+  // Image with no thumbnail — render from file_url directly
+  if (!isVideo) {
+    return (
+      <img
+        src={asset.file_url}
+        alt={asset.name}
+        className="w-full h-full object-cover"
+        loading="lazy"
+        onError={onError}
+      />
+    )
+  }
+
+  // Video with no thumbnail — fallback to frame extraction
+  return <VideoThumbFallback asset={asset} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,11 +297,7 @@ export default function AssetsPage() {
     } catch { toast.error('Download failed') }
   }
 
-  // ── Navigate with URL payload — no base64, no size limit ─────────────────
-  //
-  // Writes { url, name, type } to sessionStorage and navigates.
-  // Destination pages read `payload.url` and use it directly (img src, video
-  // src, or pass to API as a URL rather than uploading base64).
+  // ── Navigate with URL payload ──────────────────────────────────────────────
 
   const prepareAndNavigate = (asset, key, route, { wrapAsArray = false, alsoRemove = [], fallbackType } = {}) => {
     closeSheet()
@@ -267,7 +306,6 @@ export default function AssetsPage() {
       sessionStorage.setItem(key, JSON.stringify(wrapAsArray ? [payload] : payload))
       for (const k of alsoRemove) sessionStorage.removeItem(k)
     } catch (err) {
-      // sessionStorage still full somehow (shouldn't happen with URL-only payloads)
       console.error('sessionStorage write failed', err)
       toast.error('Could not pass asset to page — try again')
       return
@@ -287,7 +325,6 @@ export default function AssetsPage() {
 
   const handleEditVideo = (asset) => {
     closeSheet()
-    // Video reference pages already work with URLs — store url directly
     try {
       sessionStorage.setItem(SS_VIDEO_OMNI_REF, JSON.stringify({
         url: asset.file_url, name: asset.name,
@@ -586,8 +623,7 @@ export default function AssetsPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
-  const inputRef = useRef(null)
-  const isVideo  = isVideoAsset(asset)
+  const inputRef          = useRef(null)
   const [imgErr, setImgErr] = useState(false)
 
   useEffect(() => {
@@ -599,17 +635,16 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
       className="flex items-center gap-3 px-4 py-3 rounded-2xl"
       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
     >
+      {/* Thumbnail */}
       <button
         onClick={onPreview}
         className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center relative group"
         style={{ background: 'var(--bg-primary)' }}
       >
-        {isVideo ? (
-          <VideoThumb asset={asset} />
-        ) : imgErr ? (
+        {imgErr ? (
           <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
         ) : (
-          <img src={asset.file_url} alt={asset.name} className="w-full h-full object-cover" onError={() => setImgErr(true)} />
+          <AssetThumb asset={asset} onError={() => setImgErr(true)} />
         )}
         <div
           className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -621,6 +656,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
         </div>
       </button>
 
+      {/* Name + meta */}
       <div className="flex-1 min-w-0">
         {isRenaming ? (
           <div className="flex items-center gap-1.5">
@@ -650,7 +686,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
         )}
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
           {[
-            isVideo ? 'Video' : 'Image',
+            isVideoAsset(asset) ? 'Video' : 'Image',
             formatBytes(asset.size_bytes),
             asset.created_at
               ? new Date(asset.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -659,6 +695,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
         </p>
       </div>
 
+      {/* More button */}
       {!isRenaming && (
         <button
           onClick={onMore}
