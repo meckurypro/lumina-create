@@ -24,45 +24,28 @@ const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
 
 // ── SessionStorage keys (must match destination pages) ────────────────────────
-const SS_IMAGE_POLISH    = 'meckury_polish_image'          // CreatePhotoPolishPage
-const SS_IMAGE_EDIT      = 'meckury_create_images'         // CreateImagePage  (array)
-const SS_VIDEO_START     = 'meckury_video_start_frame'     // CreateVideoPage  start frame
-const SS_TH_SUBJECT_IMG  = 'meckury_th_subject_img'        // CreateTalkingHeadPage face
-const SS_TH_SUBJECT_VID  = 'meckury_th_subject_vid'        // CreateTalkingHeadPage video
-const SS_COPY_SUBJECT    = 'meckury_copymotion_subject'    // CreateCopyMotionPage subject image
-const SS_VIDEO_OMNI_REF  = 'meckury_video_omni_ref'        // CreateVideoPage  omni video ref (plain URL)
+const SS_IMAGE_POLISH   = 'meckury_polish_image'
+const SS_IMAGE_EDIT     = 'meckury_create_images'
+const SS_VIDEO_START    = 'meckury_video_start_frame'
+const SS_TH_SUBJECT_IMG = 'meckury_th_subject_img'
+const SS_TH_SUBJECT_VID = 'meckury_th_subject_vid'
+const SS_COPY_SUBJECT   = 'meckury_copymotion_subject'
+const SS_VIDEO_OMNI_REF = 'meckury_video_omni_ref'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers
+// extractLastFrame — canvas-based, lossless PNG, native resolution
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Fetch a remote URL → base64 data-URL string */
-async function urlToBase64(url) {
-  const res  = await fetch(url)
-  const blob = await res.blob()
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload  = () => resolve(reader.result)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}
-
-/**
- * Extract the very last frame of a remote video at native resolution.
- * Returns a Blob (image/png) — lossless, no quality change.
- */
 async function extractLastFrame(videoUrl) {
-  // 1. Fetch video into an object URL so the browser can decode it
-  const res     = await fetch(videoUrl)
-  const blob    = await res.blob()
-  const objUrl  = URL.createObjectURL(blob)
+  const res    = await fetch(videoUrl)
+  const blob   = await res.blob()
+  const objUrl = URL.createObjectURL(blob)
 
   return new Promise((resolve, reject) => {
-    const video        = document.createElement('video')
-    video.muted        = true
-    video.preload      = 'auto'
-    video.crossOrigin  = 'anonymous'
+    const video       = document.createElement('video')
+    video.muted       = true
+    video.preload     = 'auto'
+    video.crossOrigin = 'anonymous'
 
     video.onerror = () => {
       URL.revokeObjectURL(objUrl)
@@ -70,7 +53,6 @@ async function extractLastFrame(videoUrl) {
     }
 
     video.onloadedmetadata = () => {
-      // Seek to last possible frame (duration - tiny epsilon)
       video.currentTime = Math.max(0, video.duration - 0.001)
     }
 
@@ -78,18 +60,12 @@ async function extractLastFrame(videoUrl) {
       const canvas  = document.createElement('canvas')
       canvas.width  = video.videoWidth
       canvas.height = video.videoHeight
-
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-      canvas.toBlob(
-        (pngBlob) => {
-          URL.revokeObjectURL(objUrl)
-          if (pngBlob) resolve(pngBlob)
-          else reject(new Error('Canvas toBlob failed'))
-        },
-        'image/png'   // lossless — exact pixel values preserved
-      )
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob((pngBlob) => {
+        URL.revokeObjectURL(objUrl)
+        if (pngBlob) resolve(pngBlob)
+        else reject(new Error('Canvas toBlob failed'))
+      }, 'image/png')
     }
 
     video.src = objUrl
@@ -106,18 +82,18 @@ export default function AssetsPage() {
   const fileInputRef = useRef(null)
   const debounceRef  = useRef(null)
 
-  const [assets,          setAssets]          = useState([])
-  const [loading,         setLoading]         = useState(true)
-  const [search,          setSearch]          = useState('')
-  const [searchQuery,     setSearchQuery]     = useState('')
-  const [uploading,       setUploading]       = useState(false)
-  const [previewAsset,    setPreviewAsset]    = useState(null)
-  const [activeAsset,     setActiveAsset]     = useState(null)
-  const [sheetOpen,       setSheetOpen]       = useState(false)
-  const [pendingDelete,   setPendingDelete]   = useState(null)
-  const [renamingId,      setRenamingId]      = useState(null)
-  const [renameValue,     setRenameValue]     = useState('')
-  const [extractingId,    setExtractingId]    = useState(null)   // asset.id being extracted
+  const [assets,        setAssets]        = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [search,        setSearch]        = useState('')
+  const [searchQuery,   setSearchQuery]   = useState('')
+  const [uploading,     setUploading]     = useState(false)
+  const [previewAsset,  setPreviewAsset]  = useState(null)
+  const [activeAsset,   setActiveAsset]   = useState(null)
+  const [sheetOpen,     setSheetOpen]     = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [renamingId,    setRenamingId]    = useState(null)
+  const [renameValue,   setRenameValue]   = useState('')
+  const [extractingId,  setExtractingId]  = useState(null)
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -201,153 +177,94 @@ export default function AssetsPage() {
     } catch { toast.error('Download failed') }
   }
 
-  // ── IMAGE actions ──────────────────────────────────────────────────────────
+  // ── IMAGE actions — URL-only storage (no base64, no fetch) ────────────────
 
-  /** Polish: preload into CreatePhotoPolishPage */
   const handlePolish = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.jpg`, { type: blob.type || 'image/jpeg' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(SS_IMAGE_POLISH, JSON.stringify({
-            base64: ev.target.result, name: file.name, type: file.type,
-          }))
-          navigate('/create/photo-polish')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_IMAGE_POLISH, JSON.stringify({
+        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
+      }))
+    } catch { /* quota — destination page will handle missing key gracefully */ }
+    navigate('/create/photo-polish')
   }
 
-  /** Edit: preload as reference image into CreateImagePage */
   const handleEditImage = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.jpg`, { type: blob.type || 'image/jpeg' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          // SS_IMAGE_EDIT stores an array of images
-          sessionStorage.setItem(SS_IMAGE_EDIT, JSON.stringify([{
-            base64: ev.target.result, name: file.name, type: file.type,
-          }]))
-          sessionStorage.removeItem('meckury_create_prompt')
-          navigate('/create/image')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_IMAGE_EDIT, JSON.stringify([{
+        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
+      }]))
+      sessionStorage.removeItem('meckury_create_prompt')
+    } catch {}
+    navigate('/create/image')
   }
 
-  /** Animate: preload as start frame into CreateVideoPage */
   const handleAnimate = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.png`, { type: blob.type || 'image/png' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(SS_VIDEO_START, JSON.stringify({
-            base64: ev.target.result, name: file.name, type: file.type,
-          }))
-          sessionStorage.removeItem('meckury_video_end_frame')
-          navigate('/create/video')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_VIDEO_START, JSON.stringify({
+        url: asset.file_url, name: asset.name, type: 'image/png', fromAsset: true,
+      }))
+      sessionStorage.removeItem('meckury_video_end_frame')
+    } catch {}
+    navigate('/create/video')
   }
 
-  /** Lipsync (image): preload as face photo into CreateTalkingHeadPage */
   const handleLipsyncImage = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.jpg`, { type: blob.type || 'image/jpeg' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(SS_TH_SUBJECT_IMG, JSON.stringify({
-            base64: ev.target.result, name: file.name, type: file.type,
-          }))
-          sessionStorage.removeItem(SS_TH_SUBJECT_VID)
-          navigate('/create/talking-head')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_TH_SUBJECT_IMG, JSON.stringify({
+        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
+      }))
+      sessionStorage.removeItem(SS_TH_SUBJECT_VID)
+    } catch {}
+    navigate('/create/talking-head')
   }
 
-  /** Set to Motion: preload as subject image into CreateCopyMotionPage */
   const handleSetToMotion = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.jpg`, { type: blob.type || 'image/jpeg' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(SS_COPY_SUBJECT, JSON.stringify({
-            base64: ev.target.result, name: file.name, type: file.type,
-          }))
-          navigate('/create/copy-motion')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_COPY_SUBJECT, JSON.stringify({
+        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
+      }))
+    } catch {}
+    navigate('/create/copy-motion')
   }
 
   // ── VIDEO actions ──────────────────────────────────────────────────────────
 
-  /** Edit (video): preload as omni reference into CreateVideoPage */
   const handleEditVideo = (asset) => {
     closeSheet()
-    // Store the plain public URL — CreateVideoPage reads SS_VIDEO_OMNI_REF on mount
-    sessionStorage.setItem(SS_VIDEO_OMNI_REF, JSON.stringify({
-      url:  asset.file_url,
-      name: asset.name,
-    }))
-    // Clear conflicting frame keys so the page starts clean
-    sessionStorage.removeItem(SS_VIDEO_START)
-    sessionStorage.removeItem('meckury_video_end_frame')
-    sessionStorage.removeItem('meckury_video_ref_images')
+    try {
+      sessionStorage.setItem(SS_VIDEO_OMNI_REF, JSON.stringify({
+        url: asset.file_url, name: asset.name,
+      }))
+      sessionStorage.removeItem(SS_VIDEO_START)
+      sessionStorage.removeItem('meckury_video_end_frame')
+      sessionStorage.removeItem('meckury_video_ref_images')
+    } catch {}
     navigate('/create/video')
   }
 
-  /** Lipsync (video): preload as subject video into CreateTalkingHeadPage */
   const handleLipsyncVideo = (asset) => {
     closeSheet()
-    fetch(asset.file_url)
-      .then((r) => r.blob())
-      .then((blob) => {
-        const file   = new File([blob], `${asset.name}.mp4`, { type: blob.type || 'video/mp4' })
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(SS_TH_SUBJECT_VID, JSON.stringify({
-            base64: ev.target.result, name: file.name, type: file.type,
-          }))
-          sessionStorage.removeItem(SS_TH_SUBJECT_IMG)
-          navigate('/create/talking-head')
-        }
-        reader.readAsDataURL(file)
-      })
-      .catch(() => toast.error('Failed to load asset'))
+    try {
+      sessionStorage.setItem(SS_TH_SUBJECT_VID, JSON.stringify({
+        url: asset.file_url, name: asset.name, type: 'video/mp4', fromAsset: true,
+      }))
+      sessionStorage.removeItem(SS_TH_SUBJECT_IMG)
+    } catch {}
+    navigate('/create/talking-head')
   }
 
-  /** Extract End Frame: canvas-grab last frame → save as PNG asset */
   const handleExtractEndFrame = async (asset) => {
     closeSheet()
     setExtractingId(asset.id)
     try {
       const frameBlob = await extractLastFrame(asset.file_url)
-      const frameName = `${asset.name} — end frame`
-      await uploadAsset(user.id, frameBlob, frameName)
-      await load()   // refresh asset list in place
+      await uploadAsset(user.id, frameBlob, `${asset.name} — end frame`)
+      await load()
       toast.success('End frame saved to Assets')
     } catch (err) {
       console.error('Extract end frame error:', err)
@@ -391,7 +308,7 @@ export default function AssetsPage() {
   return (
     <div className="flex-1 overflow-y-auto">
 
-      {/* ── Uploading overlay ── */}
+      {/* Uploading overlay */}
       <AnimatePresence>
         {uploading && (
           <motion.div
@@ -401,8 +318,7 @@ export default function AssetsPage() {
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
           >
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
@@ -411,7 +327,7 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Extracting end frame overlay ── */}
+      {/* Extracting end frame overlay */}
       <AnimatePresence>
         {extractingId && (
           <motion.div
@@ -421,8 +337,7 @@ export default function AssetsPage() {
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
@@ -434,7 +349,7 @@ export default function AssetsPage() {
 
       <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
-        {/* ── Search + upload row ── */}
+        {/* Search + upload row */}
         <div className="flex items-center gap-2 mb-5">
           <div
             className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-2xl"
@@ -472,7 +387,7 @@ export default function AssetsPage() {
           />
         </div>
 
-        {/* ── Content ── */}
+        {/* Content */}
         {loading ? (
           <div className="flex flex-col gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -509,7 +424,7 @@ export default function AssetsPage() {
         )}
       </div>
 
-      {/* ── Asset preview modal ── */}
+      {/* Asset preview modal */}
       <AnimatePresence>
         {previewAsset && (
           <motion.div
@@ -551,7 +466,7 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Action sheet ── */}
+      {/* Action sheet */}
       <AnimatePresence>
         {sheetOpen && activeAsset && (
           <AssetActionSheet
@@ -559,14 +474,12 @@ export default function AssetsPage() {
             onClose={closeSheet}
             onRename={() => { closeSheet(); startRename(activeAsset) }}
             onDownload={() => handleDownload(activeAsset)}
-            // image-only
-            onPolish={!isVideoAsset(activeAsset)     ? () => handlePolish(activeAsset)       : undefined}
-            onEditImage={!isVideoAsset(activeAsset)  ? () => handleEditImage(activeAsset)    : undefined}
-            onAnimate={!isVideoAsset(activeAsset)    ? () => handleAnimate(activeAsset)      : undefined}
-            onLipsyncImage={!isVideoAsset(activeAsset) ? () => handleLipsyncImage(activeAsset) : undefined}
-            onSetToMotion={!isVideoAsset(activeAsset) ? () => handleSetToMotion(activeAsset) : undefined}
-            // video-only
-            onEditVideo={isVideoAsset(activeAsset)   ? () => handleEditVideo(activeAsset)   : undefined}
+            onPolish={!isVideoAsset(activeAsset)      ? () => handlePolish(activeAsset)       : undefined}
+            onEditImage={!isVideoAsset(activeAsset)   ? () => handleEditImage(activeAsset)    : undefined}
+            onAnimate={!isVideoAsset(activeAsset)     ? () => handleAnimate(activeAsset)      : undefined}
+            onLipsyncImage={!isVideoAsset(activeAsset)? () => handleLipsyncImage(activeAsset) : undefined}
+            onSetToMotion={!isVideoAsset(activeAsset) ? () => handleSetToMotion(activeAsset)  : undefined}
+            onEditVideo={isVideoAsset(activeAsset)    ? () => handleEditVideo(activeAsset)    : undefined}
             onLipsyncVideo={isVideoAsset(activeAsset) ? () => handleLipsyncVideo(activeAsset) : undefined}
             onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
             onDelete={() => handleDelete(activeAsset)}
@@ -574,7 +487,7 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Delete confirm ── */}
+      {/* Delete confirm */}
       <AnimatePresence>
         {pendingDelete && (
           <motion.div
@@ -617,7 +530,7 @@ export default function AssetsPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetCard  (unchanged)
+// AssetCard
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
@@ -663,9 +576,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
               ref={inputRef}
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === 'Escape') onCommitRename()
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') onCommitRename() }}
               className="flex-1 text-sm font-semibold rounded-lg px-2 py-1 outline-none"
               style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid #5B6EF7' }}
             />
@@ -715,37 +626,30 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
 
 function AssetActionSheet({
   asset, onClose, onRename, onDownload, onDelete,
-  // image
   onPolish, onEditImage, onAnimate, onLipsyncImage, onSetToMotion,
-  // video
   onEditVideo, onLipsyncVideo, onExtractEndFrame,
 }) {
   const isVideo = isVideoAsset(asset)
 
-  const baseActions = [
-    { icon: Pencil,   label: 'Rename',   onClick: onRename   },
-    { icon: Download, label: 'Download', onClick: onDownload },
+  const actions = [
+    { icon: Pencil,      label: 'Rename',            onClick: onRename   },
+    { icon: Download,    label: 'Download',           onClick: onDownload },
+    // image actions
+    ...(!isVideo ? [
+      { icon: Sparkles,     label: 'Polish',        sub: 'AI photo enhancement',    onClick: onPolish       },
+      { icon: Wand2,        label: 'Edit',          sub: 'Use as reference image',  onClick: onEditImage    },
+      { icon: Film,         label: 'Animate',       sub: 'Send to video generator', onClick: onAnimate      },
+      { icon: Mic2,         label: 'Lipsync',       sub: 'Create talking avatar',   onClick: onLipsyncImage },
+      { icon: Clapperboard, label: 'Set to Motion', sub: 'Use in Copy Motion',      onClick: onSetToMotion  },
+    ] : []),
+    // video actions
+    ...(isVideo ? [
+      { icon: Wand2,    label: 'Edit',              sub: 'Use as video reference',  onClick: onEditVideo       },
+      { icon: Mic2,     label: 'Lipsync',           sub: 'Re-animate with audio',   onClick: onLipsyncVideo    },
+      { icon: ScanLine, label: 'Extract End Frame', sub: 'Save last frame as image',onClick: onExtractEndFrame },
+    ] : []),
+    { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
   ]
-
-  const imageActions = [
-    { icon: Sparkles,    label: 'Polish',        sub: 'AI photo enhancement',      onClick: onPolish       },
-    { icon: Wand2,       label: 'Edit',          sub: 'Use as reference image',    onClick: onEditImage    },
-    { icon: Film,        label: 'Animate',       sub: 'Send to video generator',   onClick: onAnimate      },
-    { icon: Mic2,        label: 'Lipsync',       sub: 'Create talking avatar',     onClick: onLipsyncImage },
-    { icon: Clapperboard,label: 'Set to Motion', sub: 'Use in Copy Motion',        onClick: onSetToMotion  },
-  ]
-
-  const videoActions = [
-    { icon: Wand2,    label: 'Edit',              sub: 'Use as video reference',    onClick: onEditVideo       },
-    { icon: Mic2,     label: 'Lipsync',           sub: 'Re-animate with audio',     onClick: onLipsyncVideo    },
-    { icon: ScanLine, label: 'Extract End Frame', sub: 'Save last frame as image',  onClick: onExtractEndFrame },
-  ]
-
-  const mediaActions = isVideo ? videoActions : imageActions
-
-  const deleteAction = { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete }
-
-  const allActions = [...baseActions, ...mediaActions, deleteAction]
 
   return (
     <>
@@ -771,7 +675,7 @@ function AssetActionSheet({
             {asset.name}
           </p>
           <div className="flex flex-col gap-2">
-            {allActions.map((action) => (
+            {actions.map((action) => (
               <button
                 key={action.label}
                 onClick={action.onClick}
@@ -781,10 +685,7 @@ function AssetActionSheet({
                   border:     `1px solid ${action.danger ? 'rgba(239,68,68,0.2)' : 'var(--border-color)'}`,
                 }}
               >
-                <action.icon
-                  size={18}
-                  style={{ color: action.danger ? '#ef4444' : 'var(--text-secondary)', flexShrink: 0 }}
-                />
+                <action.icon size={18} style={{ color: action.danger ? '#ef4444' : 'var(--text-secondary)', flexShrink: 0 }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold" style={{ color: action.danger ? '#ef4444' : 'var(--text-primary)' }}>
                     {action.label}
@@ -810,7 +711,7 @@ function AssetActionSheet({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetsEmpty  (unchanged)
+// AssetsEmpty
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetsEmpty({ search, onUpload }) {
