@@ -55,7 +55,14 @@ const restoreImage = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
     if (!saved) return resolve(null)
-    const { base64, name, type } = JSON.parse(saved)
+    sessionStorage.removeItem(key)
+    const item = JSON.parse(saved)
+    // New: URL payload from Assets { url, name, type }
+    if (item.url && !item.base64) {
+      return resolve({ file: null, url: item.url, name: item.name })
+    }
+    // Legacy: base64 payload
+    const { base64, name, type } = item
     const bytes = atob(base64.split(',')[1])
     const ab    = new ArrayBuffer(bytes.length)
     const ia    = new Uint8Array(ab)
@@ -718,19 +725,25 @@ export default function CreateCopyMotionPage() {
         .getPublicUrl(vidPath)
 
       // Upload image
-      const imgExt  = subjectImage.file.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const imgPath = `${user.id}/${crypto.randomUUID()}.${imgExt}`
-      const { error: imgErr } = await supabase.storage
-        .from('generation-uploads')
-        .upload(imgPath, subjectImage.file, {
-          upsert: false,
-          cacheControl: '3600',
-          contentType: subjectImage.file.type,
-        })
-      if (imgErr) throw new Error('Image upload failed')
-      const { data: { publicUrl: subjectImageUrl } } = supabase.storage
-        .from('generation-uploads')
-        .getPublicUrl(imgPath)
+     // Upload image (or use URL directly if from Assets)
+      let subjectImageUrl
+      if (!subjectImage.file) {
+        subjectImageUrl = subjectImage.url
+      } else {
+        const imgExt  = subjectImage.file.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const imgPath = `${user.id}/${crypto.randomUUID()}.${imgExt}`
+        const { error: imgErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(imgPath, subjectImage.file, {
+            upsert: false,
+            cacheControl: '3600',
+            contentType: subjectImage.file.type,
+          })
+        if (imgErr) throw new Error('Image upload failed')
+        ;({ data: { publicUrl: subjectImageUrl } } = supabase.storage
+          .from('generation-uploads')
+          .getPublicUrl(imgPath))
+      }
 
       // Create generation record
       const { data: genRow, error: genErr } = await generationsDb.create({
