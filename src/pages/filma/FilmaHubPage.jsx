@@ -54,10 +54,8 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
         <div className="absolute inset-0 flex items-center justify-center">
           <Clapperboard size={32} style={{ color: ACCENT, opacity: 0.25 }} />
         </div>
-        {/* Gradient overlay */}
         <div className="absolute inset-0"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)' }} />
-        {/* Genre badge */}
         <div className="absolute bottom-2 left-3 flex items-center gap-1.5">
           <span className="text-xs font-bold px-2 py-0.5 rounded-full"
             style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
@@ -82,7 +80,7 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
             </span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
             <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
-              {(film.genre ?? '').replace(/_/g, ' ')}
+              {(film.genre ?? '').split('_').join(' ')}
             </span>
           </div>
         </button>
@@ -102,8 +100,12 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
                   exit={{ opacity: 0, scale: 0.92, y: -4 }}
                   transition={{ duration: 0.12 }}
                   className="absolute right-0 bottom-8 z-50 rounded-xl overflow-hidden"
-                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)', minWidth: 130 }}
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                    minWidth: 130,
+                  }}
                 >
                   <button onClick={() => { onDelete(film); setMenuOpen(false) }}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
@@ -159,10 +161,7 @@ export default function FilmaHubPage() {
     setLoading(false)
   }
 
-  const handleOpen = (film) => {
-    navigate(`/filma/${film.id}/structure`)
-  }
-
+  const handleOpen = (film) => navigate(`/filma/${film.id}/structure`)
   const handleDelete = (film) => setPending(film)
 
   const confirmDelete = async () => {
@@ -176,6 +175,7 @@ export default function FilmaHubPage() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
@@ -205,20 +205,21 @@ export default function FilmaHubPage() {
                 <Film size={36} style={{ color: ACCENT, opacity: 0.6 }} />
               </div>
               <div className="text-center">
-                <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>No films yet</p>
+                <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                  No films yet
+                </p>
                 <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--text-muted)' }}>
                   Start your first AI film production on Filma.
                 </p>
               </div>
-             <button onClick={() => navigate('/filma/new')}
-  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-  style={{
-    background: ACCENT,
-    color: '#000',
-    boxShadow: '0 0 0 1px var(--tool-filma-border)',  // visible ring if ACCENT is transparent
-  }}>
-  <Plus size={16} /> New Film
-</button>
+              <button
+                onClick={() => navigate('/filma/new')}
+                className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{ background: ACCENT, color: '#000' }}
+              >
+                <Plus size={16} /> New Film
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {films.map((film, i) => (
@@ -228,25 +229,29 @@ export default function FilmaHubPage() {
               <CreateCard onClick={() => navigate('/filma/new')} index={films.length} />
             </div>
           )}
+
         </div>
       </div>
 
       {/* Delete confirm */}
       <AnimatePresence>
         {pending && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
             style={{ background: 'rgba(0,0,0,0.6)' }}
-            onClick={() => setPending(null)}>
+            onClick={() => setPending(null)}
+          >
             <motion.div
               initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
               className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-              onClick={(e) => e.stopPropagation()}>
+              onClick={(e) => e.stopPropagation()}
+            >
               <div>
                 <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                  Delete "{pending?.title}"?
+                  Delete &ldquo;{pending?.title}&rdquo;?
                 </p>
                 <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                   All scenes, shots and actors will be permanently removed.
@@ -256,16 +261,21 @@ export default function FilmaHubPage() {
                 <button onClick={() => setPending(null)}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold"
                   style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)',
-                    border: '1px solid var(--border-color)' }}>Cancel</button>
+                    border: '1px solid var(--border-color)' }}>
+                  Cancel
+                </button>
                 <button onClick={confirmDelete}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold"
                   style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444',
-                    border: '1px solid rgba(239,68,68,0.3)' }}>Delete</button>
+                    border: '1px solid rgba(239,68,68,0.3)' }}>
+                  Delete
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   )
 }
