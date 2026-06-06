@@ -15,6 +15,7 @@ const SS_PROMPT      = 'meckury_video_prompt'
 const SS_START_FRAME = 'meckury_video_start_frame'
 const SS_END_FRAME   = 'meckury_video_end_frame'
 const SS_REF_IMAGES  = 'meckury_video_ref_images'
+const SS_OMNI_REF    = 'meckury_video_omni_ref'   // plain-URL video reference from Assets
 
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
@@ -30,6 +31,7 @@ function getModelCaps(model) {
     supportsEndFrame:      false,
     supportsFrameToFrame:  false,
     supportsMultiImage:    false,
+    supportsVideoInput:    false,
     maxRefImages:          1,
     supportedDurations:    ['5', '8', '10'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
@@ -40,6 +42,7 @@ function getModelCaps(model) {
     supportsEndFrame:      model.supports_end_frame      ?? false,
     supportsFrameToFrame:  model.supports_frame_to_frame ?? false,
     supportsMultiImage:    model.supports_multi_image    ?? false,
+    supportsVideoInput:    model.supports_video_input    ?? false,
     maxRefImages:          model.max_ref_images          ?? 1,
     supportedDurations:    model.supported_durations     ?? ['5', '8', '10'],
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
@@ -254,10 +257,10 @@ const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inact
   </div>
 )
 
-// ─── multi-ref grid (Kling O3 / Seedance 2.0) ───────────────────────────────
+// ─── multi-ref grid ──────────────────────────────────────────────────────────
 
 const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
-  const slots      = Array.from({ length: maxImages }, (_, i) => images[i] || null)
+  const slots       = Array.from({ length: maxImages }, (_, i) => images[i] || null)
   const filledCount = images.filter(Boolean).length
 
   return (
@@ -289,11 +292,28 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
                   style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
                   onClick={() => onFullscreen(idx)}
                 >
-                  <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+                  {/* Video refs show a video tag; image refs show img */}
+                  {img.isVideo ? (
+                    <video
+                      src={img.url}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  ) : (
+                    <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+                  )}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ background: 'rgba(0,0,0,0.45)' }}>
                     <Maximize2 size={16} color="white" />
                   </div>
+                  {img.isVideo && (
+                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-xs font-bold"
+                      style={{ background: 'rgba(0,0,0,0.65)', color: '#fff' }}>
+                      Video
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => onTagInsert(tagForSlot(idx))}
@@ -312,7 +332,7 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
               </div>
             ) : idx === filledCount ? (
               <label className="cursor-pointer">
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
                 <div className="flex flex-col items-center justify-center rounded-xl transition-all"
                   style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
                   <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
@@ -352,7 +372,7 @@ export default function CreateVideoPage() {
   const [prompt,        setPrompt]        = useState('')
   const [startFrame,    setStartFrame]    = useState(null)
   const [endFrame,      setEndFrame]      = useState(null)
-  const [refImages,     setRefImages]     = useState([])   // multi-ref for Kling O3 / Seedance 2.0
+  const [refImages,     setRefImages]     = useState([])
   const [multiMode,     setMultiMode]     = useState(false)
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
@@ -364,15 +384,34 @@ export default function CreateVideoPage() {
   const [submitting,    setSubmitting]    = useState(false)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
+  // Track whether we arrived from Assets with an omni video ref
+  const [omniRefLoaded, setOmniRefLoaded] = useState(false)
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // ── session restore ──────────────────────────────────────────────────────
+
   useEffect(() => {
+    // Prompt
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
       if (savedPrompt) setPrompt(savedPrompt)
     } catch {}
 
+    // Check for omni video ref (from Assets "Edit video")
+    try {
+      const omniRaw = sessionStorage.getItem(SS_OMNI_REF)
+      if (omniRaw) {
+        const { url, name } = JSON.parse(omniRaw)
+        sessionStorage.removeItem(SS_OMNI_REF)
+        // Will be applied once models load — store pending ref
+        // Use a ref-like approach: set state that loadModels will pick up
+        setOmniRefLoaded({ url, name })
+        return   // skip normal frame restore — omni path takes over
+      }
+    } catch {}
+
+    // Normal frame restores
     restoreFrame(SS_START_FRAME).then((frame) => {
       if (!frame) return
       setStartFrame(frame)
@@ -416,14 +455,19 @@ export default function CreateVideoPage() {
     try {
       if (!imgs.length) { sessionStorage.removeItem(SS_REF_IMAGES); return }
       Promise.all(imgs.map(({ file }) => new Promise((res) => {
+        if (!file) return res(null)  // URL-only ref — skip persisting
         const reader = new FileReader()
         reader.onload = (ev) => res({ base64: ev.target.result, name: file.name, type: file.type })
         reader.readAsDataURL(file)
-      }))).then((arr) => sessionStorage.setItem(SS_REF_IMAGES, JSON.stringify(arr)))
+      }))).then((arr) => {
+        const filtered = arr.filter(Boolean)
+        if (filtered.length) sessionStorage.setItem(SS_REF_IMAGES, JSON.stringify(filtered))
+      })
     } catch {}
   }
 
   // ── load models ──────────────────────────────────────────────────────────
+
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -436,17 +480,51 @@ export default function CreateVideoPage() {
     const isMaster = profile?.user_tier === 'master'
     const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
-    const firstUnlocked = list.find((m) => !m.is_locked)
-    setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
+    return list
   }, [])
 
-  useEffect(() => { loadModels() }, [loadModels])
+  useEffect(() => {
+    loadModels().then((list) => {
+      const unlocked = list.filter((m) => !m.is_locked)
+
+      // If we have a pending omni video ref, auto-select the first
+      // model that supports both multi_image and video_input
+      setOmniRefLoaded((pending) => {
+        if (pending && pending.url) {
+          const omniModel = unlocked.find(
+            (m) => m.supports_multi_image && m.supports_video_input
+          ) || unlocked[0]
+
+          if (omniModel) {
+            setModel(omniModel.value)
+            setMultiMode(true)
+            // Inject the video URL as the first ref slot (no file — URL-only)
+            setRefImages([{
+              file:    null,
+              url:     pending.url,
+              ar:      '9:16',
+              isVideo: true,
+              name:    pending.name,
+            }])
+          }
+          return false  // clear pending
+        }
+
+        // Normal model selection
+        const preferred = profile?.preferred_model
+        const match     = preferred && unlocked.find((m) => m.value === preferred)
+        setModel((match || unlocked[0])?.value || '')
+        return false
+      })
+    })
+  }, [loadModels])
 
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
   // ── reset multi-mode when model loses multi-image support ────────────────
+
   useEffect(() => {
     if (!caps.supportsMultiImage) {
       setMultiMode(false)
@@ -456,6 +534,7 @@ export default function CreateVideoPage() {
   }, [model]) // eslint-disable-line
 
   // ── duration / ratio enforcement on model change ─────────────────────────
+
   useEffect(() => {
     if (!selectedModel) return
     if (!caps.supportedDurations.includes(duration)) {
@@ -467,15 +546,16 @@ export default function CreateVideoPage() {
   }, [model]) // eslint-disable-line
 
   useEffect(() => {
-  if (!modelsLoading && !caps.supportsSound) setWithSound(false)
-}, [caps.supportsSound, modelsLoading])
+    if (!modelsLoading && !caps.supportsSound) setWithSound(false)
+  }, [caps.supportsSound, modelsLoading])
 
-  // ── active frame resolution (inactive = unsupported by current model) ────
+  // ── active frames ────────────────────────────────────────────────────────
+
   const activeStartFrame = startFrame && caps.supportsStartFrame                              ? startFrame : null
   const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame) ? endFrame   : null
 
-  // ── generation type derivation ───────────────────────────────────────────
-  // Multi-ref mode: type is image_to_video (input_image_urls populated)
+  // ── generation type ──────────────────────────────────────────────────────
+
   const type = multiMode && refImages.length > 0
     ? 'image_to_video'
     : deriveVideoType(activeStartFrame, activeEndFrame)
@@ -485,6 +565,7 @@ export default function CreateVideoPage() {
     : !!(activeStartFrame || activeEndFrame)
 
   // ── credit cost ──────────────────────────────────────────────────────────
+
   const creditsPerSecond = selectedModel
     ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
@@ -502,6 +583,7 @@ export default function CreateVideoPage() {
   const promptEmpty = !prompt.trim()
 
   // ── frame upload handlers ────────────────────────────────────────────────
+
   const handleFrameUpload = (setter, ssKey) => (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -522,19 +604,36 @@ export default function CreateVideoPage() {
     if (!otherFrame) { setAutoRatio(false); setAspectRatio('9:16') }
   }
 
-  // ── multi-ref image handlers ─────────────────────────────────────────────
+  // ── multi-ref image/video handlers ──────────────────────────────────────
+
   const handleAddRefImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const compressed = await compressImage(file)
-    setRefImages((prev) => {
-      const next = [...prev]
-      next[slotIdx] = compressed
-      const trimmed = next.filter((_, i) => i <= slotIdx || next[i] != null)
-      persistRefImages(trimmed)
-      if (slotIdx === 0) { setAspectRatio(compressed.ar); setAutoRatio(true) }
-      return trimmed
-    })
+
+    const isVideoFile = file.type.startsWith('video/')
+
+    if (isVideoFile) {
+      // Video ref: use object URL directly, no compression
+      const url = URL.createObjectURL(file)
+      setRefImages((prev) => {
+        const next = [...prev]
+        next[slotIdx] = { file, url, ar: '9:16', isVideo: true, name: file.name }
+        const trimmed = next.filter((_, i) => i <= slotIdx || next[i] != null)
+        persistRefImages(trimmed)
+        return trimmed
+      })
+    } else {
+      // Image ref: compress as before
+      const compressed = await compressImage(file)
+      setRefImages((prev) => {
+        const next = [...prev]
+        next[slotIdx] = { ...compressed, isVideo: false }
+        const trimmed = next.filter((_, i) => i <= slotIdx || next[i] != null)
+        persistRefImages(trimmed)
+        if (slotIdx === 0) { setAspectRatio(compressed.ar); setAutoRatio(true) }
+        return trimmed
+      })
+    }
   }
 
   const handleRemoveRefImage = (idx) => {
@@ -547,6 +646,7 @@ export default function CreateVideoPage() {
   }
 
   // ── tag insertion ────────────────────────────────────────────────────────
+
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
@@ -565,8 +665,9 @@ export default function CreateVideoPage() {
   }
 
   // ── mode label ───────────────────────────────────────────────────────────
+
   const modeLabel = multiMode && refImages.length > 0
-    ? `Multi-Ref · ${refImages.length} image${refImages.length > 1 ? 's' : ''}`
+    ? `Multi-Ref · ${refImages.length} ref${refImages.length > 1 ? 's' : ''}`
     : {
         text_to_video:   'Text to Video',
         image_to_video:  'Image to Video',
@@ -575,6 +676,7 @@ export default function CreateVideoPage() {
       }[type]
 
   // ── generate ─────────────────────────────────────────────────────────────
+
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
@@ -611,11 +713,16 @@ export default function CreateVideoPage() {
         endFrameUrl = publicUrl
       }
 
-      // Upload multi-ref images
+      // Upload multi-ref images/videos
       const uploadedRefUrls = []
       if (multiMode && refImages.length > 0) {
         for (const img of refImages) {
-          if (!img?.file) continue
+          if (!img) continue
+          // URL-only refs (e.g. from Assets) — use the URL directly
+          if (!img.file) {
+            uploadedRefUrls.push(img.url)
+            continue
+          }
           const contentType = img.file.type || 'image/jpeg'
           const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
           const path = `${user.id}/${crypto.randomUUID()}.${ext}`
@@ -717,12 +824,21 @@ export default function CreateVideoPage() {
               style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}>
               <X size={18} />
             </button>
-            <motion.img
-              initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-              src={fullscreenImage.url} alt="Reference full" className="rounded-2xl"
-              style={{ maxWidth: '100%', maxHeight: '90dvh', objectFit: 'contain' }}
-              onClick={(e) => e.stopPropagation()}
-            />
+            {fullscreenImage.isVideo ? (
+              <motion.video
+                initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
+                src={fullscreenImage.url} controls autoPlay className="rounded-2xl"
+                style={{ maxWidth: '100%', maxHeight: '90dvh' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <motion.img
+                initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
+                src={fullscreenImage.url} alt="Reference full" className="rounded-2xl"
+                style={{ maxWidth: '100%', maxHeight: '90dvh', objectFit: 'contain' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -755,17 +871,16 @@ export default function CreateVideoPage() {
 
           {/* Frame / Reference section */}
           <div>
-            {/* Section header with multi-ref toggle */}
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                {caps.supportsMultiImage && multiMode ? 'Reference Images' : 'Frames'}
+                {caps.supportsMultiImage && multiMode ? 'Reference' : 'Frames'}
                 <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
               </p>
 
               {caps.supportsMultiImage && (
                 <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                   {[
-                    { value: false, label: 'Frames'   },
+                    { value: false, label: 'Frames'    },
                     { value: true,  label: 'Multi-ref' },
                   ].map((opt) => (
                     <button
@@ -790,7 +905,6 @@ export default function CreateVideoPage() {
               )}
             </div>
 
-            {/* Multi-ref grid */}
             {caps.supportsMultiImage && multiMode ? (
               <MultiRefGrid
                 images={refImages}
@@ -801,7 +915,6 @@ export default function CreateVideoPage() {
                 onFullscreen={(idx) => setFullscreenIdx(idx)}
               />
             ) : (
-              /* Standard start/end frame slots */
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <FrameUpload
@@ -858,11 +971,7 @@ export default function CreateVideoPage() {
             />
             <SettingChips
               label="Duration"
-              options={caps.supportedDurations.map((d) => ({
-                label:    `${d}s`,
-                value:    d,
-                disabled: false,
-              }))}
+              options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d, disabled: false }))}
               value={duration}
               onChange={setDuration}
             />
@@ -890,10 +999,8 @@ export default function CreateVideoPage() {
             disabled={submitting || !canAfford || promptEmpty || !selectedModel}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: (submitting || !canAfford || promptEmpty || !selectedModel)
-                ? 'var(--bg-elevated)' : ACCENT,
-              color: (submitting || !canAfford || promptEmpty || !selectedModel)
-                ? 'var(--text-muted)' : '#ffffff',
+              background: (submitting || !canAfford || promptEmpty || !selectedModel) ? 'var(--bg-elevated)' : ACCENT,
+              color:      (submitting || !canAfford || promptEmpty || !selectedModel) ? 'var(--text-muted)'  : '#ffffff',
             }}
           >
             <Zap size={15} fill="currentColor" />
