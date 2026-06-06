@@ -36,7 +36,7 @@ export default function AssetsPage() {
   const [loading,       setLoading]       = useState(true)
   const [search,        setSearch]        = useState('')
   const [searchQuery,   setSearchQuery]   = useState('')
-  const [uploads,       setUploads]       = useState([])   // { id, name, progress, error }
+  const [uploading,     setUploading]     = useState(false)
   const [activeAsset,   setActiveAsset]   = useState(null)
   const [sheetOpen,     setSheetOpen]     = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
@@ -87,32 +87,22 @@ export default function AssetsPage() {
       if (err) { toast.error(err); return }
     }
 
-    const slots = fileList.map((f) => ({
-      id: crypto.randomUUID(), name: f.name.replace(/\.[^.]+$/, ''), progress: 0, error: null,
-    }))
-    setUploads((prev) => [...prev, ...slots])
-
-    await Promise.all(fileList.map(async (file, i) => {
-      const slotId = slots[i].id
-      try {
-        const asset = await uploadAsset(
-          user.id,
-          file,
-          file.name.replace(/\.[^.]+$/, ''),
-          (pct) => setUploads((prev) =>
-            prev.map((u) => u.id === slotId ? { ...u, progress: pct } : u)
-          ),
-        )
-        setAssets((prev) => [asset, ...prev])
-        setUploads((prev) => prev.filter((u) => u.id !== slotId))
-      } catch (err) {
-        setUploads((prev) =>
-          prev.map((u) => u.id === slotId ? { ...u, error: err.message } : u)
-        )
-        toast.error(err.message || 'Upload failed')
-        setTimeout(() => setUploads((prev) => prev.filter((u) => u.id !== slotId)), 3000)
-      }
-    }))
+    setUploading(true)
+    try {
+      const results = await Promise.all(
+        fileList.map((file) => uploadAsset(user.id, file, file.name.replace(/\.[^.]+$/, '')))
+      )
+      setAssets((prev) => [...[...results].reverse(), ...prev])
+      toast.success(
+        results.length === 1
+          ? `${results[0].name} uploaded`
+          : `${results.length} assets uploaded`
+      )
+    } catch (err) {
+      toast.error(err.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -183,35 +173,30 @@ export default function AssetsPage() {
   return (
     <div className="flex-1 overflow-y-auto">
 
-      {/* ── Slim upload progress bar — fixed at top, non-blocking ── */}
+      {/* ── Upload overlay — same pattern as CreateImagePage submitting state ── */}
       <AnimatePresence>
-        {uploads.some((u) => !u.error) && (
+        {uploading && (
           <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className="sticky top-0 z-30 px-4 py-2 flex flex-col gap-1.5"
-            style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{
+              backdropFilter:         'blur(12px)',
+              WebkitBackdropFilter:   'blur(12px)',
+              background:             'rgba(0,0,0,0.4)',
+            }}
           >
-            {uploads.filter((u) => !u.error).map((u) => (
-              <div key={u.id} className="flex items-center gap-3">
-                {/* track */}
-                <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--border-color)' }}>
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: '#5B6EF7' }}
-                    animate={{ width: `${u.progress}%` }}
-                    transition={{ ease: 'linear', duration: 0.15 }}
-                  />
-                </div>
-                <span className="text-xs tabular-nums flex-shrink-0" style={{ color: 'var(--text-muted)', minWidth: '2.5rem', textAlign: 'right' }}>
-                  {u.progress < 100 ? `${u.progress}%` : 'Saving…'}
-                </span>
-                <span className="text-xs truncate flex-shrink-0 max-w-[120px]" style={{ color: 'var(--text-muted)' }}>
-                  {u.name}
-                </span>
-              </div>
-            ))}
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
+            />
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+              Uploading…
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -266,7 +251,7 @@ export default function AssetsPage() {
             ))}
           </div>
 
-        ) : assets.length === 0 && !uploads.length ? (
+        ) : assets.length === 0 ? (
           <AssetsEmpty search={search} onUpload={() => fileInputRef.current?.click()} />
 
         ) : (
