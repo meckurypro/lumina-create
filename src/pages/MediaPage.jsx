@@ -206,7 +206,7 @@ export default function MediaPage() {
         <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Media</h1>
 
         {/* Tab switcher */}
-        <div className="flex gap-1 mt-3 mb-1 p-1 rounded-2xl w-fit" style={{ background: 'var(--bg-elevated)' }}>
+        <div className="flex gap-1 mt-3 mb-1 p-1 rounded-2xl w-fit ml-auto" style={{ background: 'var(--bg-elevated)' }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.value
             return (
