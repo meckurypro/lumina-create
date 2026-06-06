@@ -404,6 +404,25 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
+      {/* Preparing asset overlay */}
+      <AnimatePresence>
+        {preparing && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
+            />
+            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Loading asset…</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
         {/* Search + upload row */}
@@ -610,7 +629,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
         style={{ background: 'var(--bg-primary)' }}
       >
         {isVideo ? (
-          <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
+          <VideoThumb asset={asset} />
         ) : imgErr ? (
           <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
         ) : (
