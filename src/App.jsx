@@ -28,7 +28,14 @@ import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 import UGCMediaPage             from '@/pages/UGCMediaPage'
 import UGCVoicesPage            from '@/pages/UGCVoicesPage'
 import UGCVoiceGeneratePage     from '@/pages/UGCVoiceGeneratePage'
-import CreatePhotoPolishPage from '@/pages/CreatePhotoPolishPage'
+import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
+
+import FilmaHubPage             from '@/pages/filma/FilmaHubPage'
+import FilmaSetupPage           from '@/pages/filma/FilmaSetupPage'
+import FilmaCastPage            from '@/pages/filma/FilmaCastPage'
+import FilmaStructurePage       from '@/pages/filma/FilmaStructurePage'
+import FilmaScenePage           from '@/pages/filma/FilmaScenePage'
+import FilmaShotPage            from '@/pages/filma/FilmaShotPage'
 
 import { BottomNav } from '@/components/layout/BottomNav'
 
@@ -89,29 +96,30 @@ export default function App() {
           <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
 
           {/* ── Create — base tools ──────────────────────────────── */}
-          <Route path="/create"             element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/image"       element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/video"       element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/copy-motion" element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
+          <Route path="/create"              element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/image"        element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
+          <Route path="/create/video"        element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/copy-motion"  element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
           <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
           <Route path="/create/photo-polish" element={<RequireAuth><AppLayout><CreatePhotoPolishPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Cinematic — before generic /:templateSlug ────────── */}
+          {/* ── Cinematic ────────────────────────────────────────── */}
           <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
           <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
 
-          {/* ── UGC — most specific first, before /:templateSlug ─── */}
-          {/* Hub */}
-          <Route path="/create/ugc"      element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
+          {/* ── Filma — full-screen, no AppLayout/BottomNav ──────── */}
+          <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
+          <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+          <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
+          <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
+          <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
+          <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
 
-          {/* Character wizard */}
-          <Route path="/create/ugc/new"  element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
-
-          {/* Voices hub — must come before /:profileId wildcard */}
+          {/* ── UGC ──────────────────────────────────────────────── */}
+          <Route path="/create/ugc"                    element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
+          <Route path="/create/ugc/new"                element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
           <Route path="/create/ugc/voices"             element={<RequireAuth><AppLayout><UGCVoicesPage /></AppLayout></RequireAuth>} />
           <Route path="/create/ugc/voice/:voiceId"     element={<RequireAuth><AppLayout><UGCVoiceGeneratePage /></AppLayout></RequireAuth>} />
-
-          {/* Character generate + media — /:profileId last */}
           <Route path="/create/ugc/:profileId/media"   element={<RequireAuth><AppLayout><UGCMediaPage /></AppLayout></RequireAuth>} />
           <Route path="/create/ugc/:profileId"         element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
 
