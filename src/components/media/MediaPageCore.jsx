@@ -12,6 +12,7 @@ import {
   FallbackBanner,
 } from './MediaCardComponents.jsx'
 import { Film, Loader2 } from 'lucide-react'
+import { uploadAsset } from '@/lib/assets'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
