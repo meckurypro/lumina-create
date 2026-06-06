@@ -126,6 +126,7 @@ export default function MediaPageCore({
   const [editLoading,      setEditLoading]      = useState(false)
   const [refreshLoading,   setRefreshLoading]   = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
+  const [savingAsset, setSavingAsset] = useState(false)
 
   const [fallbackMsg, setFallbackMsg] = useState(null)
 
