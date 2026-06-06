@@ -706,6 +706,29 @@ export default function MediaPageCore({
         )}
       </AnimatePresence>
 
+      {/* ── Save-as-asset loading overlay ── */}
+      <AnimatePresence>
+        {savingAsset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          >
+            <div
+              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+            >
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--text-primary)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Saving to your Assets…
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Delete confirmation modal ── */}
       <AnimatePresence>
         {pendingDeleteGen && (
