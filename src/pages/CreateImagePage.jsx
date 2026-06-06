@@ -345,14 +345,25 @@ const [submitting,    setSubmitting]    = useState(false)
       const savedImages = sessionStorage.getItem(SS_IMAGES)
       if (savedImages) {
         const arr = JSON.parse(savedImages)
-        Promise.all(arr.map(async ({ base64, name, type }) => {
-          const byteString = atob(base64.split(',')[1])
+        Promise.all(arr.map(async (item) => {
+          // New: URL payload from Assets { url, name, type }
+          if (item.url && !item.base64) {
+            const ar = await new Promise((res) => {
+              const img = new Image()
+              img.onload = () => res(detectAspectRatio(img.width, img.height))
+              img.onerror = () => res('1:1')
+              img.src = item.url
+            })
+            return { file: null, url: item.url, ar, w: null, h: null }
+          }
+          // Legacy: base64 payload
+          const byteString = atob(item.base64.split(',')[1])
           const ab = new ArrayBuffer(byteString.length)
           const ia = new Uint8Array(ab)
           for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-          const blob = new Blob([ab], { type })
+          const blob = new Blob([ab], { type: item.type })
           const url  = URL.createObjectURL(blob)
-          const file = new File([blob], name, { type })
+          const file = new File([blob], item.name, { type: item.type })
           const ar   = await new Promise((res) => {
             const img = new Image()
             img.onload = () => res(detectAspectRatio(img.width, img.height))
@@ -547,9 +558,14 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
     setSubmitting(true)
     try {
       // Upload all reference images to storage
-      const uploadedUrls = []
+const uploadedUrls = []
       for (const img of images) {
-        if (!img?.file) continue
+        if (!img) continue
+        if (!img.file) {
+          // URL-only ref from Assets — use directly
+          uploadedUrls.push(img.url)
+          continue
+        }
         const contentType = img.file.type || 'image/jpeg'
         const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
