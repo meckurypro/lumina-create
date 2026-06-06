@@ -822,14 +822,19 @@ export const ActionSheet = ({
           </button>
         )}
 
-        {gen.status === 'completed' && gen.output_type === 'image' && (
+        {gen.status === 'completed' && gen.output_url && onSaveAsset && (
           <button
-            onClick={onAnimate}
+            onClick={onSaveAsset}
             className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
             style={{ background: 'var(--bg-elevated)' }}
           >
-            <Film size={18} style={{ color: 'var(--text-primary)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Animate</span>
+            <Bookmark size={18} style={{ color: 'var(--text-primary)' }} />
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Save as Asset</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Add to your Assets library
+              </span>
+            </div>
           </button>
         )}
 
