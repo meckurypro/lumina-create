@@ -175,6 +175,7 @@ export default function AssetsPage() {
   const [renamingId,    setRenamingId]    = useState(null)
   const [renameValue,   setRenameValue]   = useState('')
   const [extractingId,  setExtractingId]  = useState(null)
+  const [preparing,     setPreparing]     = useState(false)
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -258,60 +259,35 @@ export default function AssetsPage() {
     } catch { toast.error('Download failed') }
   }
 
-  // ── IMAGE actions — URL-only storage (no base64, no fetch) ────────────────
+  // ── IMAGE actions — destination pages expect { base64, name, type } ───────
 
-  const handlePolish = (asset) => {
+  const prepareAndNavigate = async (asset, key, route, { wrapAsArray = false, alsoRemove = [], fallbackType } = {}) => {
     closeSheet()
+    setPreparing(true)
     try {
-      sessionStorage.setItem(SS_IMAGE_POLISH, JSON.stringify({
-        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
-      }))
-    } catch { /* quota — destination page will handle missing key gracefully */ }
-    navigate('/create/photo-polish')
+      const payload = await urlToBase64Payload(asset.file_url, asset.name, fallbackType)
+      try {
+        sessionStorage.setItem(key, JSON.stringify(wrapAsArray ? [payload] : payload))
+        for (const k of alsoRemove) sessionStorage.removeItem(k)
+      } catch {
+        toast.error('Asset too large to send to that page')
+        setPreparing(false)
+        return
+      }
+      navigate(route)
+    } catch (err) {
+      console.error('Prepare asset error:', err)
+      toast.error(err.message || 'Could not load asset')
+    } finally {
+      setPreparing(false)
+    }
   }
 
-  const handleEditImage = (asset) => {
-    closeSheet()
-    try {
-      sessionStorage.setItem(SS_IMAGE_EDIT, JSON.stringify([{
-        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
-      }]))
-      sessionStorage.removeItem('meckury_create_prompt')
-    } catch {}
-    navigate('/create/image')
-  }
-
-  const handleAnimate = (asset) => {
-    closeSheet()
-    try {
-      sessionStorage.setItem(SS_VIDEO_START, JSON.stringify({
-        url: asset.file_url, name: asset.name, type: 'image/png', fromAsset: true,
-      }))
-      sessionStorage.removeItem('meckury_video_end_frame')
-    } catch {}
-    navigate('/create/video')
-  }
-
-  const handleLipsyncImage = (asset) => {
-    closeSheet()
-    try {
-      sessionStorage.setItem(SS_TH_SUBJECT_IMG, JSON.stringify({
-        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
-      }))
-      sessionStorage.removeItem(SS_TH_SUBJECT_VID)
-    } catch {}
-    navigate('/create/talking-head')
-  }
-
-  const handleSetToMotion = (asset) => {
-    closeSheet()
-    try {
-      sessionStorage.setItem(SS_COPY_SUBJECT, JSON.stringify({
-        url: asset.file_url, name: asset.name, type: 'image/jpeg', fromAsset: true,
-      }))
-    } catch {}
-    navigate('/create/copy-motion')
-  }
+  const handlePolish        = (asset) => prepareAndNavigate(asset, SS_IMAGE_POLISH,   '/create/photo-polish', { fallbackType: 'image/jpeg' })
+  const handleEditImage     = (asset) => prepareAndNavigate(asset, SS_IMAGE_EDIT,     '/create/image',        { wrapAsArray: true, alsoRemove: ['meckury_create_prompt'], fallbackType: 'image/jpeg' })
+  const handleAnimate       = (asset) => prepareAndNavigate(asset, SS_VIDEO_START,    '/create/video',        { alsoRemove: ['meckury_video_end_frame'], fallbackType: 'image/png' })
+  const handleLipsyncImage  = (asset) => prepareAndNavigate(asset, SS_TH_SUBJECT_IMG, '/create/talking-head', { alsoRemove: [SS_TH_SUBJECT_VID], fallbackType: 'image/jpeg' })
+  const handleSetToMotion   = (asset) => prepareAndNavigate(asset, SS_COPY_SUBJECT,   '/create/copy-motion',  { fallbackType: 'image/jpeg' })
 
   // ── VIDEO actions ──────────────────────────────────────────────────────────
 
@@ -328,28 +304,28 @@ export default function AssetsPage() {
     navigate('/create/video')
   }
 
-  const handleLipsyncVideo = (asset) => {
-    closeSheet()
-    try {
-      sessionStorage.setItem(SS_TH_SUBJECT_VID, JSON.stringify({
-        url: asset.file_url, name: asset.name, type: 'video/mp4', fromAsset: true,
-      }))
-      sessionStorage.removeItem(SS_TH_SUBJECT_IMG)
-    } catch {}
-    navigate('/create/talking-head')
-  }
+  const handleLipsyncVideo = (asset) =>
+    prepareAndNavigate(asset, SS_TH_SUBJECT_VID, '/create/talking-head', {
+      alsoRemove: [SS_TH_SUBJECT_IMG],
+      fallbackType: 'video/mp4',
+    })
 
   const handleExtractEndFrame = async (asset) => {
     closeSheet()
     setExtractingId(asset.id)
     try {
       const frameBlob = await extractLastFrame(asset.file_url)
-      await uploadAsset(user.id, frameBlob, `${asset.name} — end frame`)
-      await load()
+      const frameFile = new File(
+        [frameBlob],
+        `${asset.name.replace(/[^\w\-]+/g, '_')}_end_frame.png`,
+        { type: 'image/png' },
+      )
+      const saved = await uploadAsset(user.id, frameFile, `${asset.name} — end frame`)
+      setAssets((prev) => [saved, ...prev])
       toast.success('End frame saved to Assets')
     } catch (err) {
       console.error('Extract end frame error:', err)
-      toast.error('Could not extract end frame')
+      toast.error(err.message || 'Could not extract end frame')
     } finally {
       setExtractingId(null)
     }
