@@ -210,12 +210,15 @@ export default function FilmaHubPage() {
                   Start your first AI film production on Filma.
                 </p>
               </div>
-              <button onClick={() => navigate('/filma/new')}
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-                style={{ background: ACCENT, color: '#000' }}>
-                <Plus size={16} /> New Film
-              </button>
-            </div>
+             <button onClick={() => navigate('/filma/new')}
+  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+  style={{
+    background: ACCENT,
+    color: '#000',
+    boxShadow: '0 0 0 1px var(--tool-filma-border)',  // visible ring if ACCENT is transparent
+  }}>
+  <Plus size={16} /> New Film
+</button>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {films.map((film, i) => (
