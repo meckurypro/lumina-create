@@ -1,23 +1,56 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ── Primary meta ── -->
     <title>Meckury AI</title>
+    <meta name="description" content="AI-powered content creation — imagine it, create it." />
+    <meta name="application-name" content="Meckury AI" />
+    <meta name="author" content="Meckury AI" />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/icon.png" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-
-    <!-- PWA -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- ── PWA / Theme ── -->
     <meta name="theme-color" content="#000000" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Meckury AI" />
+    <meta name="apple-mobile-web-app-title" content="Meck AI" />
 
-    <!-- SEO -->
-    <meta name="description" content="Cinematic AI videos and images in seconds. No skills required." />
+    <!-- ── Manifest (vite-plugin-pwa injects this automatically in prod) ── -->
+    <!-- Kept here as fallback -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- ── Apple touch icons ── -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icon-144.png" />
+    <link rel="apple-touch-icon" sizes="128x128" href="/icon-128.png" />
+
+    <!-- ── Apple splash screens (black bg matches brand) ── -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <!-- ── Favicon ── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-96.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-72.png" />
+    <link rel="shortcut icon" href="/icon.png" />
+
+    <!-- ── Open Graph ── -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="Meckury AI" />
+    <meta property="og:description" content="AI-powered content creation — imagine it, create it." />
+    <meta property="og:image"       content="/icon-512.png" />
+    <meta property="og:url"         content="https://meckury-ai.vercel.app" />
+
+    <!-- ── Twitter ── -->
+    <meta name="twitter:card"        content="summary" />
+    <meta name="twitter:title"       content="Meckury AI" />
+    <meta name="twitter:description" content="AI-powered content creation — imagine it, create it." />
+    <meta name="twitter:image"       content="/icon-512.png" />
+
+    <!-- ── MS Tile (Windows / Edge) ── -->
+    <meta name="msapplication-TileColor" content="#000000" />
+    <meta name="msapplication-TileImage" content="/icon-144.png" />
   </head>
   <body>
     <div id="root"></div>
