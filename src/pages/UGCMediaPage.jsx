@@ -86,8 +86,6 @@ function filterRelevantModels(models /*, gen */) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterEditModels(models, gen) {
-  // UGC edit: allow multi-image models that also support regular image input,
-  // plus regular I2I image models.
   return models.filter(
     (m) => !m.is_locked && m.type === 'image' && m.supports_image === true
   )
@@ -114,9 +112,6 @@ function computeEditCreditCost(selectedModel) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
-//
-// Now receives editedPrompt (5th positional arg).
-// Reuses original INPUT images (input_image_urls), NOT the generated output.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeOnRegenerate(profileId) {
@@ -129,14 +124,12 @@ function makeOnRegenerate(profileId) {
       user_id:                user.id,
       generation_type:        isVideo ? 'text_to_video' : 'text_to_image',
       status:                 'pending',
-      // Use edited prompt from sheet, fall back to stored prompt
       prompt:                 editedPrompt ?? gen.prompt,
       model:                  chosenModel,
       aspect_ratio:           gen.aspect_ratio,
       duration:               isVideo ? gen.duration : undefined,
       credits_charged:        creditCost,
       output_type:            gen.output_type,
-      // Reuse ORIGINAL input images — never the generated output
       input_image_urls:       gen.input_image_urls?.length ? gen.input_image_urls : null,
       skip_prompt_refinement: gen.skip_prompt_refinement ?? false,
     })
@@ -156,7 +149,6 @@ function makeOnRegenerate(profileId) {
       user_id:         user.id,
       output_type:     gen.output_type,
       filter_applied:  gen.ugc_filter_applied || 'hyper_realistic',
-      // Store the edited prompt as scene_prompt so it shows correctly in the list
       scene_prompt:    editedPrompt ?? gen.ugc_scene_prompt ?? gen.prompt ?? '',
       refined_prompt:  null,
       selected_photos: [],
@@ -182,9 +174,6 @@ function makeOnRegenerate(profileId) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onEdit
-//
-// Uses the generated OUTPUT as the new I2I input.
-// Also writes a ugc_generations row to keep the UGC history consistent.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeOnEdit(profileId) {
@@ -264,7 +253,10 @@ export default function UGCMediaPage() {
   const [profile,        setProfile]        = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [lightboxGen,    setLightboxGen]    = useState(null)
-  const [totalCount,     setTotalCount]     = useState(0)
+
+  // FIX: totalCount is now driven by onTotalCountChange from MediaPageCore,
+  // not hardcoded. It flows: Supabase → MediaPageCore → here → headerSlot.
+  const [totalCount, setTotalCount] = useState(0)
 
   useEffect(() => {
     ;(async () => {
@@ -448,7 +440,6 @@ export default function UGCMediaPage() {
         onCardClick={(gen) => {
           if (gen.status === 'completed') setLightboxGen(gen)
         }}
-        // Edit flow
         filterEditModels={filterEditModels}
         computeEditCreditCost={computeEditCreditCost}
         onEdit={onEdit}
@@ -465,6 +456,8 @@ export default function UGCMediaPage() {
         ]}
         isNovice={isNovice}
         allowGridView
+        // FIX: wire real count back up to local state so headerSlot shows it
+        onTotalCountChange={setTotalCount}
       />
 
       <AnimatePresence>
