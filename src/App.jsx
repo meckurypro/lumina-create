@@ -22,6 +22,7 @@ import SettingsPage             from '@/pages/SettingsPage'
 import AdminPage                from '@/pages/AdminPage'
 import TemplateRunnerPage       from '@/pages/TemplateRunnerPage'
 import AuthCallbackPage         from '@/pages/AuthCallbackPage'
+import PaymentCallbackPage      from '@/pages/PaymentCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 import CreateUGCPage            from '@/pages/CreateUGCPage'
@@ -78,6 +79,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/auth/callback"  element={<AuthCallbackPage />} />
+      <Route path="/payment/callback" element={<PaymentCallbackPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {loading ? (

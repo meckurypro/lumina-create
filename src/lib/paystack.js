@@ -1,44 +1,23 @@
 // src/lib/paystack.js
 //
-// Paystack payment integration for Meckury AI.
-// Handles credit pack purchases and master subscription.
+// Paystack REDIRECT flow (no iframe / no PaystackPop).
 //
-// Flow:
-//   1. initializePayment → opens Paystack iframe
-//   2. On Paystack callback → stores reference in localStorage immediately
-//   3. verifyPayment → calls verify-payment edge function
-//   4. On app load → AuthContext checks for pending_payment and retries if needed
+//   1. initializePayment → calls `initialize-payment` edge function
+//      which creates the transaction server-side and returns
+//      authorization_url. We store a `meckury_pending_payment`
+//      localStorage record and redirect the browser.
+//   2. Paystack redirects back to /payment/callback?reference=...
+//   3. PaymentCallbackPage reads ref + localStorage and calls
+//      verifyPayment(). The verify-payment edge function is
+//      idempotent so the parallel webhook is safe.
+//   4. AuthContext re-runs verifyPayment as a safety net if the
+//      user lands anywhere with a pending_payment record (≤1h TTL).
 
-const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
-const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY   = import.meta.env.VITE_SUPABASE_ANON_KEY
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const PENDING_KEY         = 'meckury_pending_payment'
-const PENDING_TTL_MS      = 60 * 60 * 1000  // 1 hour
-
-// ─────────────────────────────────────────────────────────────────────────────
-// loadPaystackScript
-// Loads the Paystack inline JS exactly once.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const loadPaystackScript = () =>
-  new Promise((resolve, reject) => {
-    if (window.PaystackPop) { resolve(); return }
-
-    const existing = document.querySelector('script[src="https://js.paystack.co/v1/inline.js"]')
-    if (existing) {
-      existing.addEventListener('load',  resolve)
-      existing.addEventListener('error', reject)
-      return
-    }
-
-    const script    = document.createElement('script')
-    script.src      = 'https://js.paystack.co/v1/inline.js'
-    script.onload   = resolve
-    script.onerror  = () => reject(new Error('Could not load Paystack script'))
-    document.head.appendChild(script)
-  })
-
+const PENDING_KEY    = 'meckury_pending_payment'
+const PENDING_TTL_MS = 60 * 60 * 1000  // 1 hour
 
 // ─────────────────────────────────────────────────────────────────────────────
 // verifyPayment
@@ -116,82 +95,34 @@ export const getPendingPayment = () => {
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
-// initializePayment
-// Opens the Paystack popup, stores reference immediately on callback,
-// then verifies with the edge function.
+// initializePayment — REDIRECT flow
+// Server-side creates the transaction, then we navigate to the hosted page.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const initializePayment = async ({
-  email,
-  amountNgn,
-  userId,
-  packageSlug,
-  credits,
-  bonusCredits = 0,
-  onSuccess,
-  onClose,
-}) => {
-  if (!PAYSTACK_PUBLIC_KEY) throw new Error('Missing VITE_PAYSTACK_PUBLIC_KEY')
+export const initializePayment = async ({ email, userId, packageSlug }) => {
+  if (!email || !userId || !packageSlug) throw new Error('email, userId, packageSlug required')
 
-  await loadPaystackScript()
+  const callbackUrl = `${window.location.origin}/payment/callback`
 
-  const amountKobo = Math.round(amountNgn * 100)
-  const reference  = `MECKURY_${Date.now()}_${Math.random().toString(36).slice(2, 11).toUpperCase()}`
-
-  // Paystack callback must be a plain synchronous function
-  function handleCallback(response) {
-    const ref = response.reference
-
-    // ── Store immediately before any async work ──
-    // If the verification fetch gets killed mid-flight (mobile browser,
-    // navigation, etc.), AuthContext will pick this up on next load.
-    storePendingPayment({ reference: ref, userId, packageSlug })
-
-    verifyPayment({ reference: ref, userId, packageSlug })
-      .then((result) => {
-        if (result?.success || result?.already_processed) {
-          clearPendingPayment()
-          onSuccess?.({
-            reference:    ref,
-            creditsAdded: result.credits_added ?? null,
-            balanceAfter: result.balance_after  ?? null,
-            alreadyProcessed: result.already_processed ?? false,
-          })
-        } else {
-          console.error('[initializePayment] verification failed:', result?.error)
-          // Don't clear pending — AuthContext will retry
-          onSuccess?.({ error: result?.error || 'Verification failed' })
-        }
-      })
-      .catch((err) => {
-        console.error('[initializePayment] verification error:', err)
-        // Don't clear pending — AuthContext will retry
-      })
-  }
-
-  function handleClose() {
-    onClose?.()
-  }
-
-  const handler = window.PaystackPop.setup({
-    key:      PAYSTACK_PUBLIC_KEY,
-    email,
-    amount:   amountKobo,
-    currency: 'NGN',
-    ref:      reference,
-    metadata: {
-      custom_fields: [
-        { display_name: 'User ID',       variable_name: 'user_id',       value: userId       },
-        { display_name: 'Package',       variable_name: 'package_slug',  value: packageSlug  },
-        { display_name: 'Credits',       variable_name: 'credits',       value: credits      },
-        { display_name: 'Bonus Credits', variable_name: 'bonus_credits', value: bonusCredits },
-      ],
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/initialize-payment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    callback: handleCallback,
-    onClose:  handleClose,
+    body: JSON.stringify({ email, userId, packageSlug, callbackUrl }),
   })
 
-  handler.openIframe()
+  let data
+  try { data = await res.json() } catch { data = null }
+  if (!res.ok || !data?.success || !data?.authorization_url) {
+    throw new Error(data?.error || `initialize-payment failed (HTTP ${res.status})`)
+  }
+
+  // Persist intent before navigating away — safety net for AuthContext retry.
+  storePendingPayment({ reference: data.reference, userId, packageSlug })
+
+  window.location.href = data.authorization_url
+  // No return; the browser is leaving.
 }

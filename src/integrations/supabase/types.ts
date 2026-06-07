@@ -87,6 +87,7 @@ export type Database = {
           mime_type: string | null
           name: string
           size_bytes: number | null
+          thumbnail_url: string | null
           user_id: string
         }
         Insert: {
@@ -97,6 +98,7 @@ export type Database = {
           mime_type?: string | null
           name: string
           size_bytes?: number | null
+          thumbnail_url?: string | null
           user_id: string
         }
         Update: {
@@ -107,6 +109,7 @@ export type Database = {
           mime_type?: string | null
           name?: string
           size_bytes?: number | null
+          thumbnail_url?: string | null
           user_id?: string
         }
         Relationships: []
@@ -552,6 +555,529 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_actors: {
+        Row: {
+          age_range: string | null
+          body_reference_url: string | null
+          created_at: string
+          ethnic_background: string | null
+          face_reference_url: string | null
+          film_id: string
+          gender: Database["public"]["Enums"]["filma_actor_gender"] | null
+          id: string
+          name: string
+          nationality: string | null
+          physique: Database["public"]["Enums"]["filma_physique"] | null
+          role_description: string | null
+          sort_order: number
+          thumbnail_url: string | null
+          ugc_profile_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age_range?: string | null
+          body_reference_url?: string | null
+          created_at?: string
+          ethnic_background?: string | null
+          face_reference_url?: string | null
+          film_id: string
+          gender?: Database["public"]["Enums"]["filma_actor_gender"] | null
+          id?: string
+          name: string
+          nationality?: string | null
+          physique?: Database["public"]["Enums"]["filma_physique"] | null
+          role_description?: string | null
+          sort_order?: number
+          thumbnail_url?: string | null
+          ugc_profile_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          age_range?: string | null
+          body_reference_url?: string | null
+          created_at?: string
+          ethnic_background?: string | null
+          face_reference_url?: string | null
+          film_id?: string
+          gender?: Database["public"]["Enums"]["filma_actor_gender"] | null
+          id?: string
+          name?: string
+          nationality?: string | null
+          physique?: Database["public"]["Enums"]["filma_physique"] | null
+          role_description?: string | null
+          sort_order?: number
+          thumbnail_url?: string | null
+          ugc_profile_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_actors_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_actors_ugc_profile_id_fkey"
+            columns: ["ugc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_actors_ugc_profile_id_fkey"
+            columns: ["ugc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_profiles_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_actors_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_dropdown_customs: {
+        Row: {
+          created_at: string
+          field_name: string
+          film_id: string | null
+          id: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          field_name: string
+          film_id?: string | null
+          id?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          field_name?: string
+          film_id?: string | null
+          id?: string
+          user_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_dropdown_customs_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_dropdown_customs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_films: {
+        Row: {
+          aspect_ratio: Database["public"]["Enums"]["filma_aspect_ratio"]
+          color_grading: Database["public"]["Enums"]["filma_color_grading"]
+          color_grading_custom: string | null
+          created_at: string
+          film_type: Database["public"]["Enums"]["filma_film_type"]
+          film_type_custom: string | null
+          genre: Database["public"]["Enums"]["filma_genre"]
+          genre_custom: string | null
+          id: string
+          setting: Database["public"]["Enums"]["filma_setting"]
+          setting_custom: string | null
+          status: Database["public"]["Enums"]["filma_film_status"]
+          structure_type: Database["public"]["Enums"]["filma_structure_type"]
+          title: string
+          total_parts: number | null
+          total_seasons: number | null
+          updated_at: string
+          user_id: string
+          visual_style: Database["public"]["Enums"]["filma_visual_style"]
+          visual_style_custom: string | null
+        }
+        Insert: {
+          aspect_ratio?: Database["public"]["Enums"]["filma_aspect_ratio"]
+          color_grading: Database["public"]["Enums"]["filma_color_grading"]
+          color_grading_custom?: string | null
+          created_at?: string
+          film_type: Database["public"]["Enums"]["filma_film_type"]
+          film_type_custom?: string | null
+          genre: Database["public"]["Enums"]["filma_genre"]
+          genre_custom?: string | null
+          id?: string
+          setting: Database["public"]["Enums"]["filma_setting"]
+          setting_custom?: string | null
+          status?: Database["public"]["Enums"]["filma_film_status"]
+          structure_type?: Database["public"]["Enums"]["filma_structure_type"]
+          title: string
+          total_parts?: number | null
+          total_seasons?: number | null
+          updated_at?: string
+          user_id: string
+          visual_style: Database["public"]["Enums"]["filma_visual_style"]
+          visual_style_custom?: string | null
+        }
+        Update: {
+          aspect_ratio?: Database["public"]["Enums"]["filma_aspect_ratio"]
+          color_grading?: Database["public"]["Enums"]["filma_color_grading"]
+          color_grading_custom?: string | null
+          created_at?: string
+          film_type?: Database["public"]["Enums"]["filma_film_type"]
+          film_type_custom?: string | null
+          genre?: Database["public"]["Enums"]["filma_genre"]
+          genre_custom?: string | null
+          id?: string
+          setting?: Database["public"]["Enums"]["filma_setting"]
+          setting_custom?: string | null
+          status?: Database["public"]["Enums"]["filma_film_status"]
+          structure_type?: Database["public"]["Enums"]["filma_structure_type"]
+          title?: string
+          total_parts?: number | null
+          total_seasons?: number | null
+          updated_at?: string
+          user_id?: string
+          visual_style?: Database["public"]["Enums"]["filma_visual_style"]
+          visual_style_custom?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_films_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_parts: {
+        Row: {
+          created_at: string
+          film_id: string
+          id: string
+          label: string
+          part_number: number
+          season_number: number | null
+          total_scenes: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          film_id: string
+          id?: string
+          label: string
+          part_number: number
+          season_number?: number | null
+          total_scenes?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          film_id?: string
+          id?: string
+          label?: string
+          part_number?: number
+          season_number?: number | null
+          total_scenes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_parts_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_scene_actors: {
+        Row: {
+          actor_id: string
+          film_id: string
+          id: string
+          outfit_image_url: string | null
+          scene_id: string
+        }
+        Insert: {
+          actor_id: string
+          film_id: string
+          id?: string
+          outfit_image_url?: string | null
+          scene_id: string
+        }
+        Update: {
+          actor_id?: string
+          film_id?: string
+          id?: string
+          outfit_image_url?: string | null
+          scene_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_scene_actors_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "filma_actors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_scene_actors_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_scene_actors_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "filma_scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_scenes: {
+        Row: {
+          actor_ids: string[]
+          created_at: string
+          film_id: string
+          id: string
+          master_image_url: string | null
+          part_id: string
+          scaffolded: boolean
+          scene_number: number
+          script_text: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          actor_ids?: string[]
+          created_at?: string
+          film_id: string
+          id?: string
+          master_image_url?: string | null
+          part_id: string
+          scaffolded?: boolean
+          scene_number: number
+          script_text?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actor_ids?: string[]
+          created_at?: string
+          film_id?: string
+          id?: string
+          master_image_url?: string | null
+          part_id?: string
+          scaffolded?: boolean
+          scene_number?: number
+          script_text?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_scenes_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_scenes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "filma_parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_shot_refs: {
+        Row: {
+          created_at: string
+          description: string
+          film_id: string
+          id: string
+          image_url: string
+          scene_id: string
+          shot_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          film_id: string
+          id?: string
+          image_url: string
+          scene_id: string
+          shot_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          film_id?: string
+          id?: string
+          image_url?: string
+          scene_id?: string
+          shot_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_shot_refs_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_shot_refs_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "filma_scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_shot_refs_shot_id_fkey"
+            columns: ["shot_id"]
+            isOneToOne: false
+            referencedRelation: "filma_shots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      filma_shots: {
+        Row: {
+          actor_ids: string[]
+          audio_duration_seconds: number | null
+          audio_first_word: string | null
+          audio_last_word: string | null
+          audio_mode: Database["public"]["Enums"]["filma_audio_mode"]
+          audio_url: string | null
+          camera_note: string | null
+          created_at: string
+          description: string | null
+          dialogue_text: string | null
+          direction_note: string | null
+          duration_seconds: number | null
+          emotion_note: string | null
+          end_frame_url: string | null
+          film_id: string
+          generation_id: string | null
+          id: string
+          output_thumbnail_url: string | null
+          output_url: string | null
+          scene_id: string
+          shot_number: number
+          shot_type: Database["public"]["Enums"]["filma_shot_type"]
+          speaking_actor_id: string | null
+          start_frame_url: string | null
+          status: Database["public"]["Enums"]["filma_shot_status"]
+          updated_at: string
+        }
+        Insert: {
+          actor_ids?: string[]
+          audio_duration_seconds?: number | null
+          audio_first_word?: string | null
+          audio_last_word?: string | null
+          audio_mode?: Database["public"]["Enums"]["filma_audio_mode"]
+          audio_url?: string | null
+          camera_note?: string | null
+          created_at?: string
+          description?: string | null
+          dialogue_text?: string | null
+          direction_note?: string | null
+          duration_seconds?: number | null
+          emotion_note?: string | null
+          end_frame_url?: string | null
+          film_id: string
+          generation_id?: string | null
+          id?: string
+          output_thumbnail_url?: string | null
+          output_url?: string | null
+          scene_id: string
+          shot_number: number
+          shot_type?: Database["public"]["Enums"]["filma_shot_type"]
+          speaking_actor_id?: string | null
+          start_frame_url?: string | null
+          status?: Database["public"]["Enums"]["filma_shot_status"]
+          updated_at?: string
+        }
+        Update: {
+          actor_ids?: string[]
+          audio_duration_seconds?: number | null
+          audio_first_word?: string | null
+          audio_last_word?: string | null
+          audio_mode?: Database["public"]["Enums"]["filma_audio_mode"]
+          audio_url?: string | null
+          camera_note?: string | null
+          created_at?: string
+          description?: string | null
+          dialogue_text?: string | null
+          direction_note?: string | null
+          duration_seconds?: number | null
+          emotion_note?: string | null
+          end_frame_url?: string | null
+          film_id?: string
+          generation_id?: string | null
+          id?: string
+          output_thumbnail_url?: string | null
+          output_url?: string | null
+          scene_id?: string
+          shot_number?: number
+          shot_type?: Database["public"]["Enums"]["filma_shot_type"]
+          speaking_actor_id?: string | null
+          start_frame_url?: string | null
+          status?: Database["public"]["Enums"]["filma_shot_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_shots_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_shots_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_shots_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "filma_scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_shots_speaking_actor_id_fkey"
+            columns: ["speaking_actor_id"]
+            isOneToOne: false
+            referencedRelation: "filma_actors"
             referencedColumns: ["id"]
           },
         ]
@@ -1825,6 +2351,11 @@ export type Database = {
         Args: { p_admin_id: string; p_user_id: string }
         Returns: Json
       }
+      filma_push_end_frame: { Args: { p_shot_id: string }; Returns: Json }
+      filma_scaffold_scene: {
+        Args: { p_scene_id: string; p_shots: Json }
+        Returns: Json
+      }
       generate_referral_code: { Args: never; Returns: string }
       get_active_prompt: { Args: { p_template_slug: string }; Returns: string }
       get_admin_stats: { Args: never; Returns: Json }
@@ -1939,6 +2470,107 @@ export type Database = {
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
       audio_gen_status: "pending" | "processing" | "completed" | "failed"
       feed_status: "pending" | "approved" | "rejected" | "published"
+      filma_actor_gender: "male" | "female" | "non_binary" | "other"
+      filma_aspect_ratio: "9:16" | "16:9" | "1:1" | "4:3" | "21:9"
+      filma_audio_mode: "ai_voice" | "uploaded"
+      filma_color_grading:
+        | "teal_and_orange"
+        | "hollywood_blockbuster"
+        | "netflix_dark"
+        | "bleach_bypass"
+        | "warm_cinematic"
+        | "cold_thriller"
+        | "nollywood_vibrant"
+        | "high_contrast_drama"
+        | "desaturated_indie"
+        | "kodak_film_emulation"
+        | "fuji_film_emulation"
+        | "blue_hour_moody"
+        | "green_cast_tension"
+        | "earthy_natural"
+        | "airy_and_soft"
+        | "other"
+      filma_film_status: "draft" | "in_production" | "completed"
+      filma_film_type:
+        | "feature_film"
+        | "short_film"
+        | "epic"
+        | "mini_series"
+        | "series"
+        | "documentary"
+        | "anthology"
+        | "web_series"
+        | "other"
+      filma_genre:
+        | "action"
+        | "adventure"
+        | "comedy"
+        | "crime"
+        | "drama"
+        | "fantasy"
+        | "horror"
+        | "musical"
+        | "mystery"
+        | "romance"
+        | "sci_fi"
+        | "thriller"
+        | "western"
+        | "war"
+        | "historical"
+        | "animation"
+        | "film_noir"
+        | "supernatural"
+        | "biographical"
+        | "sports"
+        | "other"
+      filma_physique:
+        | "slim"
+        | "athletic"
+        | "average"
+        | "muscular"
+        | "plus_size"
+        | "petite"
+      filma_setting:
+        | "contemporary"
+        | "historical"
+        | "futuristic"
+        | "period_drama"
+        | "post_apocalyptic"
+        | "fantasy_world"
+        | "alternate_reality"
+        | "other"
+      filma_shot_status:
+        | "pending"
+        | "ready"
+        | "generating"
+        | "completed"
+        | "failed"
+      filma_shot_type:
+        | "establishing"
+        | "wide"
+        | "medium"
+        | "close_up"
+        | "extreme_close_up"
+        | "over_the_shoulder"
+        | "point_of_view"
+        | "aerial"
+        | "two_shot"
+        | "insert"
+        | "action"
+        | "dialogue"
+        | "reaction"
+        | "transition"
+        | "montage"
+        | "other"
+      filma_structure_type: "single" | "multi_part" | "series"
+      filma_visual_style:
+        | "cinematic"
+        | "handheld_documentary"
+        | "noir"
+        | "avant_garde"
+        | "neorealism"
+        | "surrealist"
+        | "other"
       generation_status: "pending" | "processing" | "completed" | "failed"
       generation_type:
         | "text_to_image"
@@ -2165,6 +2797,115 @@ export const Constants = {
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
       audio_gen_status: ["pending", "processing", "completed", "failed"],
       feed_status: ["pending", "approved", "rejected", "published"],
+      filma_actor_gender: ["male", "female", "non_binary", "other"],
+      filma_aspect_ratio: ["9:16", "16:9", "1:1", "4:3", "21:9"],
+      filma_audio_mode: ["ai_voice", "uploaded"],
+      filma_color_grading: [
+        "teal_and_orange",
+        "hollywood_blockbuster",
+        "netflix_dark",
+        "bleach_bypass",
+        "warm_cinematic",
+        "cold_thriller",
+        "nollywood_vibrant",
+        "high_contrast_drama",
+        "desaturated_indie",
+        "kodak_film_emulation",
+        "fuji_film_emulation",
+        "blue_hour_moody",
+        "green_cast_tension",
+        "earthy_natural",
+        "airy_and_soft",
+        "other",
+      ],
+      filma_film_status: ["draft", "in_production", "completed"],
+      filma_film_type: [
+        "feature_film",
+        "short_film",
+        "epic",
+        "mini_series",
+        "series",
+        "documentary",
+        "anthology",
+        "web_series",
+        "other",
+      ],
+      filma_genre: [
+        "action",
+        "adventure",
+        "comedy",
+        "crime",
+        "drama",
+        "fantasy",
+        "horror",
+        "musical",
+        "mystery",
+        "romance",
+        "sci_fi",
+        "thriller",
+        "western",
+        "war",
+        "historical",
+        "animation",
+        "film_noir",
+        "supernatural",
+        "biographical",
+        "sports",
+        "other",
+      ],
+      filma_physique: [
+        "slim",
+        "athletic",
+        "average",
+        "muscular",
+        "plus_size",
+        "petite",
+      ],
+      filma_setting: [
+        "contemporary",
+        "historical",
+        "futuristic",
+        "period_drama",
+        "post_apocalyptic",
+        "fantasy_world",
+        "alternate_reality",
+        "other",
+      ],
+      filma_shot_status: [
+        "pending",
+        "ready",
+        "generating",
+        "completed",
+        "failed",
+      ],
+      filma_shot_type: [
+        "establishing",
+        "wide",
+        "medium",
+        "close_up",
+        "extreme_close_up",
+        "over_the_shoulder",
+        "point_of_view",
+        "aerial",
+        "two_shot",
+        "insert",
+        "action",
+        "dialogue",
+        "reaction",
+        "transition",
+        "montage",
+        "other",
+      ],
+      filma_structure_type: ["single", "multi_part", "series"],
+      filma_visual_style: [
+        "cinematic",
+        "handheld_documentary",
+        "noir",
+        "avant_garde",
+        "neorealism",
+        "surrealist",
+        "other",
+      ],
       generation_status: ["pending", "processing", "completed", "failed"],
       generation_type: [
         "text_to_image",
