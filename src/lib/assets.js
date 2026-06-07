@@ -152,9 +152,6 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
   if (insertErr) throw new Error(insertErr.message || 'Could not save asset')
 
   // ── Generate + upload thumbnail in background (non-blocking) ──────────────
-  // We do this after insert so we have asset.id for the thumb path.
-  // The row gets updated with thumbnail_url once done.
-  // If it fails, the asset is still usable — thumb will be backfilled by cron.
   ;(async () => {
     try {
       let thumbBlob = null
@@ -171,7 +168,6 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
         .update({ thumbnail_url: thumbUrl })
         .eq('id', asset.id)
     } catch (err) {
-      // Non-fatal — cron will backfill
       console.warn('[uploadAsset] thumbnail generation failed (will be backfilled):', err.message)
     }
   })()
@@ -180,23 +176,41 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// list
+// listAssets
+// Supports pagination, time filtering, type filtering, and search.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function listAssets(userId, { search = '' } = {}) {
+export async function listAssets(userId, {
+  search    = '',
+  limit     = 20,
+  offset    = 0,
+  afterIso  = null,   // created_at >= afterIso
+  typeFilter = 'all', // 'all' | 'image' | 'video'
+} = {}) {
   let query = supabase
     .from('assets')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   if (search.trim()) {
     query = query.ilike('name', `%${search.trim()}%`)
   }
 
-  const { data, error } = await query
+  if (afterIso) {
+    query = query.gte('created_at', afterIso)
+  }
+
+  if (typeFilter === 'image') {
+    query = query.ilike('mime_type', 'image/%')
+  } else if (typeFilter === 'video') {
+    query = query.ilike('mime_type', 'video/%')
+  }
+
+  const { data, count, error } = await query
   if (error) throw new Error(error.message || 'Failed to load assets')
-  return data || []
+  return { data: data || [], count: count || 0 }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,7 +238,6 @@ export async function deleteAsset(asset) {
     .remove([asset.file_path])
   if (storageErr) console.warn('[deleteAsset] storage remove:', storageErr.message)
 
-  // Also delete thumbnail if it exists
   if (asset.thumbnail_url) {
     const thumbPath = `${asset.user_id}/${asset.id}.webp`
     await supabase.storage.from(THUMB_BUCKET).remove([thumbPath]).catch(() => {})
