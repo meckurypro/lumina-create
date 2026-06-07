@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Plus, Mic, Zap, Play, Pause,
   MoreVertical, Archive, Search, X, Loader2,
-  Upload, Radio, Lock, Crown,
+  Upload, Radio, Lock, Crown, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcVoices, VOICE_CREDITS } from '@/lib/ugcVoices'
@@ -27,12 +27,10 @@ function useAudioPreview() {
   const [loading, setLoading] = useState(null)
 
   const play = async (voiceId, previewUrl, elevenlabsVoiceId, userId, onPreviewUrlSaved) => {
-    // Stop whatever is playing globally
     if (sharedAudio.ref) {
       sharedAudio.ref.pause()
       sharedAudio.ref = null
     }
-    // Toggle off if same voice
     if (playing === voiceId) { setPlaying(null); return }
 
     const playUrl = (url) => {
@@ -43,18 +41,13 @@ function useAudioPreview() {
       setPlaying(voiceId)
     }
 
-    // 1. Persistent preview_url already set (library voices or previously cached clones)
     if (previewUrl) { playUrl(previewUrl); return }
     if (!elevenlabsVoiceId || !userId) return
-
-    // 2. Session cache hit
     if (cacheRef.current[voiceId]) { playUrl(cacheRef.current[voiceId]); return }
 
-    // 3. First time — fetch, play, then persist to storage + DB
     setLoading(voiceId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-proxy`,
         {
@@ -76,40 +69,22 @@ function useAudioPreview() {
       cacheRef.current[voiceId] = blobUrl
       playUrl(blobUrl)
 
-      // ── Persist to storage in background ──────────────────────
       const storagePath = `${userId}/voice-previews/${voiceId}.mp3`
-
       const { error: uploadError } = await supabase.storage
         .from('ugc-profiles')
-        .upload(storagePath, blob, {
-          contentType:  'audio/mpeg',
-          upsert:       true,
-          cacheControl: '31536000',
-        })
+        .upload(storagePath, blob, { contentType: 'audio/mpeg', upsert: true, cacheControl: '31536000' })
 
-      if (uploadError) {
-        console.error('[voice-preview] storage upload failed:', uploadError.message)
-        return
-      }
+      if (uploadError) { console.error('[voice-preview] storage upload failed:', uploadError.message); return }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('ugc-profiles')
-        .getPublicUrl(storagePath)
-
+      const { data: { publicUrl } } = supabase.storage.from('ugc-profiles').getPublicUrl(storagePath)
       const { error: dbError } = await supabase
         .from('ugc_voices')
         .update({ preview_url: publicUrl, updated_at: new Date().toISOString() })
         .eq('id', voiceId)
         .eq('user_id', userId)
 
-      if (dbError) {
-        console.error('[voice-preview] DB update failed:', dbError.message)
-        return
-      }
-
-      // Notify parent only when both storage and DB succeeded
+      if (dbError) { console.error('[voice-preview] DB update failed:', dbError.message); return }
       onPreviewUrlSaved?.(voiceId, publicUrl)
-
     } catch (err) {
       console.error('[voice-preview] error:', err.message)
       toast.error('Could not load voice preview')
@@ -119,29 +94,28 @@ function useAudioPreview() {
   }
 
   useEffect(() => () => {
-    // Don't touch sharedAudio on unmount — another instance may still be using it
     Object.values(cacheRef.current).forEach((url) => URL.revokeObjectURL(url))
   }, [])
 
   return { playing, loading, play }
 }
 
-// ── Skeleton card ─────────────────────────────────────────────
+// ── Skeleton card — matches ProfileCard grid skeleton ─────────
 const SkeletonCard = () => (
   <div
-    className="flex items-center gap-3 p-4 rounded-2xl animate-pulse"
+    className="rounded-2xl overflow-hidden animate-pulse"
     style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
   >
-    <div className="w-12 h-12 rounded-2xl flex-shrink-0" style={{ background: 'var(--bg-elevated)' }} />
-    <div className="flex-1 flex flex-col gap-2">
-      <div className="h-3 rounded-full w-1/2" style={{ background: 'var(--bg-elevated)' }} />
-      <div className="h-2.5 rounded-full w-1/3" style={{ background: 'var(--bg-elevated)' }} />
+    <div style={{ aspectRatio: '3/4', background: 'var(--bg-elevated)' }} />
+    <div className="p-3 flex flex-col gap-2">
+      <div className="h-3 rounded-full w-2/3" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-2.5 rounded-full w-1/2" style={{ background: 'var(--bg-elevated)' }} />
     </div>
   </div>
 )
 
-// ── Saved voice card ──────────────────────────────────────────
-const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, onPlay, muted, onMutedClick }) => {
+// ── Voice card — portrait grid card matching ProfileCard ──────
+const VoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, onPlay, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const isPlaying = playing === voice.id
   const isLoading = loading === voice.id
@@ -152,97 +126,189 @@ const SavedVoiceCard = ({ voice, index, onSelect, onArchive, playing, loading, o
     professional_clone: 'Pro Clone',
   }[voice.source] || 'Library'
 
+  const isClone = voice.source === 'instant_clone' || voice.source === 'professional_clone'
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className="flex items-center gap-3 p-4 rounded-2xl relative"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', opacity: muted ? 0.55 : 1 }}
+      transition={{ delay: index * 0.06 }}
+      className="relative rounded-2xl overflow-hidden flex flex-col"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
+      {/* Portrait area */}
       <button
-        onClick={() => onPlay(voice.id, voice.preview_url, voice.elevenlabs_voice_id)}
-        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
-        style={{ background: isPlaying ? ACCENT : ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+        onClick={() => muted ? onMutedClick?.() : onSelect(voice)}
+        className="w-full relative overflow-hidden flex-shrink-0 flex items-center justify-center"
+        style={{ aspectRatio: '3/4', background: ACCENT_SUB }}
       >
-        {isLoading
-          ? <Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" />
-          : isPlaying
-            ? <Pause size={18} style={{ color: '#ffffff' }} fill="currentColor" />
-            : <Play  size={18} style={{ color: ACCENT   }} fill="currentColor" />
-        }
+        {/* Waveform / mic visual */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex items-end gap-[3px] h-16 opacity-20">
+            {[4, 7, 12, 9, 14, 8, 5, 11, 7, 13, 6, 10].map((h, i) => (
+              <div
+                key={i}
+                className="w-[3px] rounded-full"
+                style={{
+                  height: `${h * (isPlaying ? (Math.sin(Date.now() / 200 + i) * 0.3 + 0.7) : 1) * 4}px`,
+                  background: ACCENT,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Mic icon centered */}
+        <div
+          className="relative z-10 w-16 h-16 rounded-3xl flex items-center justify-center"
+          style={{
+            background: isClone ? ACCENT : 'var(--bg-elevated)',
+            border: `1px solid ${ACCENT_BDR}`,
+            opacity: muted ? 0.5 : 1,
+          }}
+        >
+          <Mic size={28} style={{ color: isClone ? '#fff' : ACCENT, opacity: 0.8 }} />
+        </div>
+
+        {/* Gradient overlay */}
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)' }}
+        />
+
+        {/* Master-only lock overlay */}
+        {muted && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+          >
+            <Lock size={20} style={{ color: '#fff' }} />
+            <span className="text-xs font-bold flex items-center gap-1" style={{ color: '#fff' }}>
+              <Crown size={10} /> Master only
+            </span>
+          </div>
+        )}
+
+        {/* Generation count badge */}
+        {voice.generation_count > 0 && (
+          <div
+            className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+            style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
+          >
+            <Sparkles size={9} />
+            {voice.generation_count}
+          </div>
+        )}
+
+        {/* Play / pause button — bottom right */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!muted) onPlay(voice.id, voice.preview_url, voice.elevenlabs_voice_id)
+          }}
+          className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90"
+          style={{
+            background: isPlaying ? ACCENT : 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          {isLoading
+            ? <Loader2 size={13} style={{ color: '#fff' }} className="animate-spin" />
+            : isPlaying
+              ? <Pause size={13} style={{ color: '#fff' }} fill="currentColor" />
+              : <Play  size={13} style={{ color: '#fff' }} fill="currentColor" />
+          }
+        </button>
       </button>
 
-      <button onClick={() => muted ? onMutedClick?.() : onSelect(voice)} className="flex-1 min-w-0 text-left">
-        <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-          {voice.name}
-        </p>
-        <div className="flex items-center gap-2 mt-0.5">
+      {/* Bottom info row */}
+      <div className="px-3 py-2.5 flex items-center justify-between">
+        <button
+          onClick={() => muted ? onMutedClick?.() : onSelect(voice)}
+          className="flex flex-col min-w-0 flex-1 text-left"
+        >
+          <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+            {voice.name}
+          </p>
           <span
-            className="text-xs px-1.5 py-0.5 rounded-lg font-medium"
-            style={{ background: ACCENT_SUB, color: ACCENT }}
+            className="text-xs px-1.5 py-0.5 rounded-lg font-medium mt-0.5 inline-block"
+            style={{ background: ACCENT_SUB, color: ACCENT, fontSize: '10px' }}
           >
             {sourceLabel}
           </span>
-          {muted && (
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-lg font-medium inline-flex items-center gap-1"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-            >
-              <Lock size={9} /> Master only
-            </span>
-          )}
-          {voice.generation_count > 0 && (
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {voice.generation_count} gen{voice.generation_count !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      </button>
-
-      <div className="relative flex-shrink-0">
-        <button
-          onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          className="p-2 rounded-xl"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          <MoreVertical size={15} />
         </button>
-        <AnimatePresence>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.92, y: -4 }}
-                animate={{ opacity: 1, scale: 1,    y: 0  }}
-                exit={{    opacity: 0, scale: 0.92, y: -4 }}
-                transition={{ duration: 0.12 }}
-                className="absolute right-0 bottom-8 z-50 rounded-xl overflow-hidden"
-                style={{
-                  background: 'var(--bg-card)',
-                  border:     '1px solid var(--border-color)',
-                  boxShadow:  '0 8px 24px rgba(0,0,0,0.3)',
-                  minWidth:   130,
-                }}
-              >
-                <button
-                  onClick={() => { onArchive(voice); setMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
-                  style={{ color: 'var(--text-secondary)' }}
+
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+            className="p-1.5 rounded-lg"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <MoreVertical size={13} />
+          </button>
+          <AnimatePresence>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92, y: -4 }}
+                  animate={{ opacity: 1, scale: 1,    y: 0  }}
+                  exit={{    opacity: 0, scale: 0.92, y: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 bottom-8 z-50 rounded-xl overflow-hidden"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border:     '1px solid var(--border-color)',
+                    boxShadow:  '0 8px 24px rgba(0,0,0,0.3)',
+                    minWidth:   130,
+                  }}
                 >
-                  <Archive size={12} />
-                  Remove
-                </button>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+                  <button
+                    onClick={() => { onArchive(voice); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <Archive size={12} />
+                    Remove
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </motion.div>
   )
 }
 
-// ── Add voice sheet ───────────────────────────────────────────
+// ── Create new voice card — matches CreateCard in Characters ──
+const AddVoiceCard = ({ onClick, index }) => (
+  <motion.button
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: index * 0.06 }}
+    whileTap={{ scale: 0.97 }}
+    onClick={onClick}
+    className="rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3 transition-all"
+    style={{
+      aspectRatio: '3/4',
+      border:      `1.5px dashed ${ACCENT_BDR}`,
+      background:  ACCENT_SUB,
+    }}
+  >
+    <div
+      className="w-10 h-10 rounded-2xl flex items-center justify-center"
+      style={{ background: ACCENT_BDR }}
+    >
+      <Plus size={20} style={{ color: ACCENT }} />
+    </div>
+    <span className="text-xs font-semibold" style={{ color: ACCENT }}>
+      Add Voice
+    </span>
+  </motion.button>
+)
+
+// ── Add voice sheet (unchanged logic, same UI) ────────────────
 const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   const [tab,           setTab]           = useState('browse')
   const [cloneMode,     setCloneMode]     = useState('upload')
@@ -670,15 +736,15 @@ export default function UGCVoicesPage() {
     play(voiceId, previewUrl, elevenlabsVoiceId, user?.id, handlePreviewUrlSaved)
   }
 
-  const handleSelect   = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
-  const isMaster       = profile?.user_tier === 'master'
-  const isVoiceMuted   = (v) => !isMaster && v.source !== 'elevenlabs_library'
-  const hasMutedVoices = voices.some(isVoiceMuted)
+  const handleSelect    = (voice) => navigate(`/create/ugc/voice/${voice.id}`)
+  const isMaster        = profile?.user_tier === 'master'
+  const isVoiceMuted    = (v) => !isMaster && v.source !== 'elevenlabs_library'
+  const hasMutedVoices  = voices.some(isVoiceMuted)
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
+      {/* Header — identical to CreateUGCPage */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
@@ -702,15 +768,19 @@ export default function UGCVoicesPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6">
+
           {loading ? (
-            <div className="flex flex-col gap-3">
-              {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
+            /* Skeleton grid — matches Characters skeleton */
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
+
           ) : voices.length === 0 ? (
+            /* Empty state — matches Brands empty state exactly */
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-20 gap-5 text-center"
+              className="flex flex-col items-center justify-center py-16 gap-5 text-center"
             >
               <div
                 className="w-20 h-20 rounded-3xl flex items-center justify-center"
@@ -733,24 +803,37 @@ export default function UGCVoicesPage() {
                 Add Voice
               </button>
             </motion.div>
+
           ) : (
-            <div className="flex flex-col gap-3 mb-5">
-              {voices.map((voice, i) => (
-                <SavedVoiceCard
-                  key={voice.id}
-                  voice={voice}
-                  index={i}
-                  onSelect={handleSelect}
-                  onArchive={handleArchive}
-                  playing={playing}
-                  loading={previewLoading}
-                  onPlay={handlePlay}
-                  muted={isVoiceMuted(voice)}
-                  onMutedClick={() =>
-                    toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
-                  }
-                />
-              ))}
+            <>
+              {/* Voices section label */}
+              <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+                Voices
+              </p>
+
+              {/* Card grid — matches Characters 2-col grid */}
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                {voices.map((voice, i) => (
+                  <VoiceCard
+                    key={voice.id}
+                    voice={voice}
+                    index={i}
+                    onSelect={handleSelect}
+                    onArchive={handleArchive}
+                    playing={playing}
+                    loading={previewLoading}
+                    onPlay={handlePlay}
+                    muted={isVoiceMuted(voice)}
+                    onMutedClick={() =>
+                      toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
+                    }
+                  />
+                ))}
+                {/* Add voice inline card at end of grid */}
+                <AddVoiceCard onClick={() => setShowAdd(true)} index={voices.length} />
+              </div>
+
+              {/* Master upsell banner — matches Characters muted banner */}
               {hasMutedVoices && (
                 <div
                   className="flex items-start gap-2.5 p-3 rounded-2xl mt-1"
@@ -763,14 +846,17 @@ export default function UGCVoicesPage() {
                   </p>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* Add voice FAB */}
+      {/* Sticky footer CTA — matches Brands "+ Create Brand" button */}
       {voices.length > 0 && (
-        <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
+        <div
+          className="flex-shrink-0 px-4 lg:px-8 py-4"
+          style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
+        >
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={() => setShowAdd(true)}
