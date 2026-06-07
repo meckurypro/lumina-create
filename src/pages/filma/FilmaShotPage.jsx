@@ -12,6 +12,9 @@ import {
   filmaShots, filmaShotRefs, filmaFilms,
   filmaUpload, filmaGenerateShot, getAudioDuration,
 } from '@/lib/filma'
+
+// filmaShots.syncFromGeneration is called on load to pick up results from
+// any generation that completed while the user was away.
 import toast from 'react-hot-toast'
 
 const ACCENT     = 'var(--tool-filma)'
@@ -190,12 +193,21 @@ export default function FilmaShotPage() {
       filmaFilms.getById(filmId),
       filmaShotRefs.getByShot(shotId),
     ])
-    if (shotRes.data) {
-      setShot(shotRes.data)
-      setAudioMode(shotRes.data.audio_mode || 'ai_voice')
-      setFirstWord(shotRes.data.audio_first_word || '')
-      setLastWord(shotRes.data.audio_last_word || '')
-      setDuration(shotRes.data.duration_seconds || null)
+
+    let shotData = shotRes.data
+
+    // If the shot was generating when we left, sync from the linked generation now
+    if (shotData && (shotData.status === 'generating' || shotData.status === 'processing')) {
+      const synced = await filmaShots.syncFromGeneration(shotId)
+      if (synced) shotData = synced
+    }
+
+    if (shotData) {
+      setShot(shotData)
+      setAudioMode(shotData.audio_mode || 'ai_voice')
+      setFirstWord(shotData.audio_first_word || '')
+      setLastWord(shotData.audio_last_word || '')
+      setDuration(shotData.duration_seconds || null)
     }
     if (filmRes.data) setFilm(filmRes.data)
     setRefs(refsRes.data || [])
