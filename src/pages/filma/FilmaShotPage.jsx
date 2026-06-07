@@ -4,12 +4,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ImagePlus, X, Mic, FileText, Play, Pause,
-  Plus, Trash2, ChevronRight, Zap, RotateCcw, Check,
+  Plus, Trash2, Zap, RotateCcw, Check,
   ArrowRight, Loader2, ScanLine,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
-  filmaShots, filmaShotRefs, filmaFilms, filmaScenes,
+  filmaShots, filmaShotRefs, filmaFilms,
   filmaUpload, filmaGenerateShot, getAudioDuration,
 } from '@/lib/filma'
 import toast from 'react-hot-toast'
@@ -20,17 +20,16 @@ const ACCENT_BDR = 'var(--tool-filma-border)'
 
 const DURATION_OPTIONS = [5, 8, 10, 15]
 
-// ── Shot type badge ───────────────────────────────────────────────────────
 const TYPE_COLOR = {
-  dialogue:    '#E8A020',
-  action:      '#ef4444',
-  establishing:'#34D399',
-  wide:        '#7C9EFF',
-  close_up:    '#FB7BB8',
-  medium:      '#A78BFA',
-  reaction:    '#60A5FA',
-  aerial:      '#34D399',
-  default:     'var(--text-muted)',
+  dialogue:     '#E8A020',
+  action:       '#ef4444',
+  establishing: '#34D399',
+  wide:         '#7C9EFF',
+  close_up:     '#FB7BB8',
+  medium:       '#A78BFA',
+  reaction:     '#60A5FA',
+  aerial:       '#34D399',
+  default:      'var(--text-muted)',
 }
 
 // ── Frame upload slot ─────────────────────────────────────────────────────
@@ -41,15 +40,19 @@ const FrameSlot = ({ label, url, onUpload, onRemove, uploading }) => (
     {url ? (
       <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1' }}>
         <img src={url} alt={label} className="w-full h-full object-cover" />
-        <button onClick={onRemove}
+        <button
+          onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}>
+          style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
+        >
           <X size={12} />
         </button>
       </div>
     ) : (
-      <label className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-        style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
+      <label
+        className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
+        style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+      >
         <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
         {uploading ? (
           <Loader2 size={18} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
@@ -66,7 +69,7 @@ const FrameSlot = ({ label, url, onUpload, onRemove, uploading }) => (
 
 // ── Extra ref card ────────────────────────────────────────────────────────
 const ExtraRefCard = ({ ref: refItem, onUpdateDesc, onDelete }) => {
-  const [desc, setDesc] = useState(refItem.description)
+  const [desc,    setDesc]    = useState(refItem.description)
   const [editing, setEditing] = useState(!refItem.description)
 
   return (
@@ -84,8 +87,7 @@ const ExtraRefCard = ({ ref: refItem, onUpdateDesc, onDelete }) => {
               onChange={(e) => setDesc(e.target.value)}
               placeholder="Describe what this reference is…"
               className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
-              style={{ background: 'var(--bg-primary)', border: `1px solid ${ACCENT_BDR}`,
-                color: 'var(--text-primary)' }}
+              style={{ background: 'var(--bg-primary)', border: `1px solid ${ACCENT_BDR}`, color: 'var(--text-primary)' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && desc.trim()) {
                   onUpdateDesc(refItem.id, desc.trim())
@@ -93,9 +95,11 @@ const ExtraRefCard = ({ ref: refItem, onUpdateDesc, onDelete }) => {
                 }
               }}
             />
-            <button onClick={() => { if (desc.trim()) { onUpdateDesc(refItem.id, desc.trim()); setEditing(false) } }}
+            <button
+              onClick={() => { if (desc.trim()) { onUpdateDesc(refItem.id, desc.trim()); setEditing(false) } }}
               className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: ACCENT }}>
+              style={{ background: ACCENT }}
+            >
               <Check size={11} color="#000" />
             </button>
           </div>
@@ -106,9 +110,11 @@ const ExtraRefCard = ({ ref: refItem, onUpdateDesc, onDelete }) => {
           </button>
         )}
       </div>
-      <button onClick={() => onDelete(refItem.id)}
+      <button
+        onClick={() => onDelete(refItem.id)}
         className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ color: 'rgba(239,68,68,0.6)' }}>
+        style={{ color: 'rgba(239,68,68,0.6)' }}
+      >
         <Trash2 size={11} />
       </button>
     </div>
@@ -130,9 +136,11 @@ const AudioPreview = ({ url }) => {
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
       style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
       <audio ref={audioRef} src={url} onEnded={() => setPlaying(false)} />
-      <button onClick={toggle}
+      <button
+        onClick={toggle}
         className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: ACCENT, color: '#000' }}>
+        style={{ background: ACCENT, color: '#000' }}
+      >
         {playing ? <Pause size={13} /> : <Play size={13} />}
       </button>
       <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
@@ -144,9 +152,9 @@ const AudioPreview = ({ url }) => {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 export default function FilmaShotPage() {
-  const navigate = useNavigate()
+  const navigate           = useNavigate()
   const { filmId, shotId } = useParams()
-  const { user } = useAuth()
+  const { user }           = useAuth()
 
   const [film,          setFilm]         = useState(null)
   const [shot,          setShot]         = useState(null)
@@ -155,21 +163,25 @@ export default function FilmaShotPage() {
   const [generating,    setGenerating]   = useState(false)
   const [extractingEnd, setExtractingEnd]= useState(false)
 
-  // Frame upload states
   const [uploadingStart, setUploadingStart] = useState(false)
   const [uploadingEnd,   setUploadingEnd]   = useState(false)
   const [uploadingRef,   setUploadingRef]   = useState(false)
   const [uploadingAudio, setUploadingAudio] = useState(false)
 
-  // Audio mode local state
-  const [audioMode,     setAudioMode]    = useState('ai_voice')
-  const [firstWord,     setFirstWord]    = useState('')
-  const [lastWord,      setLastWord]     = useState('')
+  const [audioMode,  setAudioMode]  = useState('ai_voice')
+  const [firstWord,  setFirstWord]  = useState('')
+  const [lastWord,   setLastWord]   = useState('')
+  const [duration,   setDuration]   = useState(null)
 
-  // Duration (for non-dialogue or uploaded audio shots)
-  const [duration,      setDuration]     = useState(null)
+  // Holds the poll stop-function so we can cancel on unmount or re-generate
+  const stopPollRef = useRef(null)
 
-  useEffect(() => { load() }, [shotId])
+  // ── Cleanup poll on unmount ───────────────────────────────────────────────
+  useEffect(() => {
+    return () => { stopPollRef.current?.() }
+  }, [])
+
+  useEffect(() => { load() }, [shotId]) // eslint-disable-line
 
   const load = async () => {
     setLoading(true)
@@ -219,18 +231,14 @@ export default function FilmaShotPage() {
     }
   }
 
-  // ── Audio upload ──────────────────────────────────────────────────────────
+  // ── Audio ─────────────────────────────────────────────────────────────────
   const handleAudioUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     let dur
-    try {
-      dur = await getAudioDuration(file)
-    } catch {
-      toast.error('Could not read audio file')
-      return
-    }
+    try { dur = await getAudioDuration(file) }
+    catch { toast.error('Could not read audio file'); return }
 
     if (dur < 1)  { toast.error('Audio must be at least 1 second'); return }
     if (dur > 15) { toast.error('Audio must be 15 seconds or less'); return }
@@ -261,14 +269,14 @@ export default function FilmaShotPage() {
   const handleClearAudio = async () => {
     await filmaShots.clearAudio(shotId)
     setShot((prev) => ({
-      ...prev, audio_url: null, audio_mode: 'ai_voice',
+      ...prev,
+      audio_url: null, audio_mode: 'ai_voice',
       audio_duration_seconds: null, duration_seconds: null,
     }))
     setAudioMode('ai_voice')
     setDuration(null)
   }
 
-  // ── Save first/last word ──────────────────────────────────────────────────
   const handleSaveAnchorWords = async () => {
     if (!shot?.audio_url) return
     await filmaShots.update(shotId, {
@@ -307,37 +315,34 @@ export default function FilmaShotPage() {
     setRefs((prev) => prev.filter((r) => r.id !== refId))
   }
 
-  // ── Generate ──────────────────────────────────────────────────────────────
+  // ── Generate — uses filmaShots.poll(), cleaned up on unmount ─────────────
   const handleGenerate = async () => {
+    // Cancel any existing poll before starting a new one
+    stopPollRef.current?.()
+    stopPollRef.current = null
+
     setGenerating(true)
     try {
-      const result = await filmaGenerateShot(shotId)
+      await filmaGenerateShot(shotId)
       toast.success('Generation started')
 
-      // Poll for result — reuse existing poll logic
-      const { supabase } = await import('@/lib/supabase')
-      const poll = setInterval(async () => {
-        const { data } = await supabase
-          .from('filma_shots')
-          .select('status, output_url, output_thumbnail_url')
-          .eq('id', shotId)
-          .single()
-
-        if (data?.status === 'completed' || data?.output_url) {
-          clearInterval(poll)
+      stopPollRef.current = filmaShots.poll(shotId, {
+        intervalMs: 5000,
+        timeoutMs:  600000,
+        onUpdate: (data) => {
           setShot((prev) => ({ ...prev, ...data }))
+        },
+        onDone: ({ success, data, error }) => {
+          stopPollRef.current = null
           setGenerating(false)
-          toast.success('Shot generated!')
-        } else if (data?.status === 'failed') {
-          clearInterval(poll)
-          setGenerating(false)
-          toast.error('Generation failed. Try again.')
-        }
-      }, 5000)
-
-      // Max 10 min timeout
-      setTimeout(() => { clearInterval(poll); setGenerating(false) }, 600000)
-
+          if (success) {
+            setShot((prev) => ({ ...prev, ...data }))
+            toast.success('Shot generated!')
+          } else {
+            toast.error(error || 'Generation failed. Try again.')
+          }
+        },
+      })
     } catch (err) {
       toast.error(err.message || 'Generation failed')
       setGenerating(false)
@@ -349,7 +354,6 @@ export default function FilmaShotPage() {
     if (!shot?.output_url) return
     setExtractingEnd(true)
     try {
-      // Extract last frame from generated video (same logic as AssetsPage)
       const frameBlob = await extractLastFrame(shot.output_url)
       const result    = await filmaShots.pushEndFrame(user.id, shotId, frameBlob)
       toast.success('End frame pushed to next shot')
@@ -361,7 +365,7 @@ export default function FilmaShotPage() {
     }
   }
 
-  // ── Extract last frame (from AssetsPage logic) ────────────────────────────
+  // ── Extract last frame ────────────────────────────────────────────────────
   async function extractLastFrame(videoUrl) {
     const res    = await fetch(videoUrl)
     const blob   = await res.blob()
@@ -372,11 +376,9 @@ export default function FilmaShotPage() {
       video.preload     = 'auto'
       video.crossOrigin = 'anonymous'
       video.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Video load failed')) }
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.max(0, video.duration - 0.001)
-      }
+      video.onloadedmetadata = () => { video.currentTime = Math.max(0, video.duration - 0.001) }
       video.onseeked = () => {
-        const canvas = document.createElement('canvas')
+        const canvas  = document.createElement('canvas')
         canvas.width  = video.videoWidth
         canvas.height = video.videoHeight
         canvas.getContext('2d').drawImage(video, 0, 0)
@@ -389,6 +391,7 @@ export default function FilmaShotPage() {
     })
   }
 
+  // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) return (
     <div className="h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
       <Loader2 size={24} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
@@ -402,11 +405,17 @@ export default function FilmaShotPage() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
-        <button onClick={() => navigate(`/filma/${filmId}/scene/${shot?.scene_id}`)}
-          className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+      <div
+        className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
+        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
+      >
+        <button
+          onClick={() => navigate(`/filma/${filmId}/scene/${shot?.scene_id}`)}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
@@ -423,14 +432,17 @@ export default function FilmaShotPage() {
       {/* Generating overlay */}
       <AnimatePresence>
         {(generating || extractingEnd) && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-              background: 'rgba(0,0,0,0.6)' }}>
-            <motion.div animate={{ rotate: 360 }}
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.6)' }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }} />
+              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
+            />
             <p className="text-sm font-semibold" style={{ color: '#fff' }}>
               {extractingEnd ? 'Extracting end frame…' : 'AI is generating your shot…'}
             </p>
@@ -447,12 +459,16 @@ export default function FilmaShotPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── AI Director notes (read-only, from scaffold) ── */}
-          <div className="px-4 py-3 rounded-2xl flex flex-col gap-1"
-            style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+          {/* ── AI Director notes ── */}
+          <div
+            className="px-4 py-3 rounded-2xl flex flex-col gap-1"
+            style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+          >
             <div className="flex items-center gap-2 mb-1">
-              <div className="px-2 py-0.5 rounded-full text-xs font-bold capitalize"
-                style={{ background: `${typeColor}20`, color: typeColor }}>
+              <div
+                className="px-2 py-0.5 rounded-full text-xs font-bold capitalize"
+                style={{ background: `${typeColor}20`, color: typeColor }}
+              >
                 {shot?.shot_type?.replace(/_/g, ' ')}
               </div>
               {shot?.duration_seconds && (
@@ -461,9 +477,7 @@ export default function FilmaShotPage() {
                 </span>
               )}
               {!shot?.duration_seconds && isDialogue && (
-                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Flexible duration
-                </span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Flexible duration</span>
               )}
             </div>
             {shot?.description && (
@@ -489,7 +503,6 @@ export default function FilmaShotPage() {
               <p className="text-xs font-semibold uppercase tracking-widest mb-3"
                 style={{ color: 'var(--text-muted)' }}>Dialogue</p>
 
-              {/* Dialogue text */}
               {shot?.dialogue_text && (
                 <div className="px-4 py-3 rounded-xl mb-3"
                   style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
@@ -502,20 +515,22 @@ export default function FilmaShotPage() {
                 </div>
               )}
 
-              {/* Audio mode radio */}
+              {/* Audio mode toggle */}
               <div className="flex gap-2 mb-4">
                 {[
-                  { value: 'ai_voice', label: 'AI Voice', icon: FileText },
-                  { value: 'uploaded', label: 'Upload Audio', icon: Mic },
+                  { value: 'ai_voice', label: 'AI Voice',      icon: FileText },
+                  { value: 'uploaded', label: 'Upload Audio',  icon: Mic      },
                 ].map(({ value, label, icon: Icon }) => (
-                  <button key={value}
+                  <button
+                    key={value}
                     onClick={() => { setAudioMode(value); if (value === 'ai_voice') handleClearAudio() }}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all"
                     style={{
-                      background: audioMode === value ? ACCENT_SUB   : 'var(--bg-elevated)',
-                      color:      audioMode === value ? ACCENT        : 'var(--text-muted)',
+                      background: audioMode === value ? ACCENT_SUB : 'var(--bg-elevated)',
+                      color:      audioMode === value ? ACCENT     : 'var(--text-muted)',
                       border:     `1px solid ${audioMode === value ? ACCENT_BDR : 'var(--border-color)'}`,
-                    }}>
+                    }}
+                  >
                     <Icon size={13} />{label}
                   </button>
                 ))}
@@ -536,73 +551,75 @@ export default function FilmaShotPage() {
                   {shot?.audio_url ? (
                     <>
                       <AudioPreview url={shot.audio_url} />
-                      {/* First / last word anchors */}
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <p className="text-xs font-semibold mb-1.5 uppercase tracking-widest"
                             style={{ color: 'var(--text-muted)' }}>First Word</p>
-                          <input type="text" value={firstWord}
+                          <input
+                            type="text" value={firstWord}
                             onChange={(e) => setFirstWord(e.target.value)}
                             placeholder="e.g. Kofi"
                             className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                            style={{ background: 'var(--bg-elevated)',
-                              border: `1px solid var(--border-color)`, color: 'var(--text-primary)' }} />
+                            style={{ background: 'var(--bg-elevated)', border: `1px solid var(--border-color)`, color: 'var(--text-primary)' }}
+                          />
                         </div>
                         <div>
                           <p className="text-xs font-semibold mb-1.5 uppercase tracking-widest"
                             style={{ color: 'var(--text-muted)' }}>Last Word</p>
-                          <input type="text" value={lastWord}
+                          <input
+                            type="text" value={lastWord}
                             onChange={(e) => setLastWord(e.target.value)}
                             placeholder="e.g. tonight"
                             className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                            style={{ background: 'var(--bg-elevated)',
-                              border: `1px solid var(--border-color)`, color: 'var(--text-primary)' }} />
+                            style={{ background: 'var(--bg-elevated)', border: `1px solid var(--border-color)`, color: 'var(--text-primary)' }}
+                          />
                         </div>
                       </div>
                       <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
                         First and last word help AI anchor lipsync precisely to your audio.
                       </p>
                       <div className="flex gap-2">
-                        <button onClick={handleSaveAnchorWords}
+                        <button
+                          onClick={handleSaveAnchorWords}
                           className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
-                          style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                          style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+                        >
                           Save Anchors
                         </button>
-                        <button onClick={handleClearAudio}
+                        <button
+                          onClick={handleClearAudio}
                           className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold"
-                          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)',
-                            border: '1px solid var(--border-color)' }}>
+                          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}
+                        >
                           <Trash2 size={11} /> Remove
                         </button>
                       </div>
                     </>
                   ) : (
-                    <>
-                      <label className="flex flex-col items-center justify-center py-6 rounded-2xl cursor-pointer"
-                        style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
-                        <input type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
-                        {uploadingAudio ? (
-                          <Loader2 size={20} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
-                        ) : (
-                          <>
-                            <Mic size={20} style={{ color: ACCENT, marginBottom: 6 }} />
-                            <span className="text-sm font-semibold" style={{ color: ACCENT }}>
-                              Upload Audio
-                            </span>
-                            <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                              1–15 seconds · MP3, WAV, M4A
-                            </span>
-                          </>
-                        )}
-                      </label>
-                    </>
+                    <label
+                      className="flex flex-col items-center justify-center py-6 rounded-2xl cursor-pointer"
+                      style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+                    >
+                      <input type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
+                      {uploadingAudio ? (
+                        <Loader2 size={20} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <>
+                          <Mic size={20} style={{ color: ACCENT, marginBottom: 6 }} />
+                          <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload Audio</span>
+                          <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                            1–15 seconds · MP3, WAV, M4A
+                          </span>
+                        </>
+                      )}
+                    </label>
                   )}
                 </div>
               )}
             </div>
           )}
 
-          {/* ── Duration (non-dialogue or uploaded audio) ── */}
+          {/* ── Duration ── */}
           {(!isDialogue || audioMode === 'uploaded') && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest mb-3"
@@ -616,16 +633,18 @@ export default function FilmaShotPage() {
               </p>
               <div className="flex gap-2 flex-wrap">
                 {DURATION_OPTIONS.map((d) => (
-                  <button key={d}
+                  <button
+                    key={d}
                     onClick={() => audioMode !== 'uploaded' && handleDurationChange(d)}
                     disabled={audioMode === 'uploaded'}
                     className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
                     style={{
-                      background: duration === d ? ACCENT    : 'var(--bg-elevated)',
-                      color:      duration === d ? '#000'    : 'var(--text-secondary)',
-                      opacity:    audioMode === 'uploaded' ? 0.5 : 1,
+                      background: duration === d ? ACCENT           : 'var(--bg-elevated)',
+                      color:      duration === d ? '#000'           : 'var(--text-secondary)',
+                      opacity:    audioMode === 'uploaded' ? 0.5    : 1,
                       cursor:     audioMode === 'uploaded' ? 'not-allowed' : 'pointer',
-                    }}>
+                    }}
+                  >
                     {d}s
                   </button>
                 ))}
@@ -638,16 +657,20 @@ export default function FilmaShotPage() {
             <p className="text-xs font-semibold uppercase tracking-widest mb-3"
               style={{ color: 'var(--text-muted)' }}>Frames — optional</p>
             <div className="grid grid-cols-2 gap-3">
-              <FrameSlot label="Start Frame"
+              <FrameSlot
+                label="Start Frame"
                 url={shot?.start_frame_url}
                 onUpload={(e) => handleFrameUpload(e, 'start')}
                 onRemove={() => handleRemoveFrame('start')}
-                uploading={uploadingStart} />
-              <FrameSlot label="End Frame"
+                uploading={uploadingStart}
+              />
+              <FrameSlot
+                label="End Frame"
                 url={shot?.end_frame_url}
                 onUpload={(e) => handleFrameUpload(e, 'end')}
                 onRemove={() => handleRemoveFrame('end')}
-                uploading={uploadingEnd} />
+                uploading={uploadingEnd}
+              />
             </div>
           </div>
 
@@ -660,12 +683,17 @@ export default function FilmaShotPage() {
             </p>
             <div className="flex flex-col gap-2">
               {refs.map((ref) => (
-                <ExtraRefCard key={ref.id} ref={ref}
+                <ExtraRefCard
+                  key={ref.id}
+                  ref={ref}
                   onUpdateDesc={handleRefDescUpdate}
-                  onDelete={handleRefDelete} />
+                  onDelete={handleRefDelete}
+                />
               ))}
-              <label className="flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer transition-all"
-                style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
+              <label
+                className="flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer transition-all"
+                style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+              >
                 <input type="file" accept="image/*" className="hidden" onChange={handleRefUpload} />
                 {uploadingRef ? (
                   <Loader2 size={14} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
@@ -687,10 +715,16 @@ export default function FilmaShotPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest mb-3"
                 style={{ color: 'var(--text-muted)' }}>Generated Output</p>
-              <div className="relative w-full rounded-2xl overflow-hidden"
-                style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}>
-                <video src={shot.output_url} controls className="w-full h-full object-cover"
-                  style={{ outline: 'none' }} />
+              <div
+                className="relative w-full rounded-2xl overflow-hidden"
+                style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}
+              >
+                <video
+                  src={shot.output_url}
+                  controls
+                  className="w-full h-full object-cover"
+                  style={{ outline: 'none' }}
+                />
               </div>
             </div>
           )}
@@ -700,17 +734,21 @@ export default function FilmaShotPage() {
       </div>
 
       {/* Bottom actions */}
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4 flex flex-col gap-2"
-        style={{ borderTop: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-primary)' }}>
+      <div
+        className="flex-shrink-0 px-4 lg:px-8 py-4 flex flex-col gap-2"
+        style={{ borderTop: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-primary)' }}
+      >
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
 
-          {/* Generate / Regenerate */}
-          <button onClick={handleGenerate} disabled={generating}
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
               background: generating ? 'var(--bg-elevated)' : ACCENT,
               color:      generating ? 'var(--text-muted)'  : '#000',
-            }}>
+            }}
+          >
             {generating ? (
               <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
             ) : hasOutput ? (
@@ -720,11 +758,13 @@ export default function FilmaShotPage() {
             )}
           </button>
 
-          {/* Push end frame button — only after generation */}
           {hasOutput && (
-            <button onClick={handlePushEnd} disabled={extractingEnd}
+            <button
+              onClick={handlePushEnd}
+              disabled={extractingEnd}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
-              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+            >
               <ScanLine size={15} />
               {extractingEnd ? 'Extracting…' : 'Push End Frame → Next Shot'}
               <ArrowRight size={14} />
