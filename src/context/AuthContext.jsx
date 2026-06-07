@@ -1,8 +1,14 @@
+// src/context/AuthContext.jsx
 import {
   createContext, useCallback, useContext,
   useEffect, useMemo, useRef, useState,
 } from 'react'
 import { supabase, profiles as profilesApi, userRoles } from '@/lib/supabase'
+import {
+  getPendingPayment,
+  clearPendingPayment,
+  verifyPayment,
+} from '@/lib/paystack'
 
 const PROFILE_RETRY_ATTEMPTS = 3
 const PROFILE_RETRY_DELAY_MS = 600
@@ -60,11 +66,47 @@ export const AuthProvider = ({ children }) => {
     } finally {
       if (activeProfileLoad.current === userId) {
         activeProfileLoad.current = null
-        // ── KEY FIX: always clear loading after profile load ──
         setLoading(false)
       }
     }
   }, [])
+
+  // ── Retry any payment that was killed mid-flight ──────────────────────────
+  // Runs once after user loads. If localStorage has a pending_payment within
+  // TTL, we re-call verify-payment. The edge function is idempotent so a
+  // double-fire is safe — it returns already_processed: true on duplicates.
+  const retryPendingPayment = useCallback(async (userId) => {
+    const pending = getPendingPayment()
+    if (!pending) return
+
+    // Guard: only retry for the logged-in user
+    if (pending.userId !== userId) {
+      clearPendingPayment()
+      return
+    }
+
+    console.info('[AuthContext] retrying pending payment:', pending.reference)
+
+    try {
+      const result = await verifyPayment({
+        reference:   pending.reference,
+        userId:      pending.userId,
+        packageSlug: pending.packageSlug,
+      })
+
+      if (result?.success || result?.already_processed) {
+        clearPendingPayment()
+        // Re-fetch profile so credits reflect immediately
+        activeProfileLoad.current = null
+        await loadProfile({ id: userId })
+      } else {
+        console.warn('[AuthContext] pending payment retry failed:', result?.error)
+        // Leave in localStorage — will retry on next load until TTL expires
+      }
+    } catch (err) {
+      console.error('[AuthContext] pending payment retry error:', err)
+    }
+  }, [loadProfile])
 
   useEffect(() => {
     let mounted = true
@@ -82,6 +124,8 @@ export const AuthProvider = ({ children }) => {
           setUser(session.user)
           await loadProfile(session.user)
           // loadProfile's finally sets loading = false
+          // Retry pending payment after profile is loaded
+          if (mounted) await retryPendingPayment(session.user.id)
         } else {
           setLoading(false)
         }
@@ -112,10 +156,11 @@ export const AuthProvider = ({ children }) => {
           session?.user
         ) {
           setUser(session.user)
-          // Defer out of the Supabase auth callback to avoid deadlocks
           setTimeout(() => {
-            if (mounted) loadProfile(session.user)
-            // loadProfile's finally sets loading = false
+            if (!mounted) return
+            loadProfile(session.user).then(() => {
+              if (mounted) retryPendingPayment(session.user.id)
+            })
           }, 0)
         }
       }
@@ -125,7 +170,7 @@ export const AuthProvider = ({ children }) => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [loadProfile])
+  }, [loadProfile, retryPendingPayment])
 
   const refreshProfile = useCallback(async () => {
     if (!user) return
