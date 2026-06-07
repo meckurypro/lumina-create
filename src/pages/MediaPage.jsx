@@ -272,11 +272,15 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MediaPage() {
-  const { profile, credits }      = useAuth()
+  const { profile }               = useAuth()
   const isNovice                  = profile?.user_tier === 'novice'
   const [activeTab, setActiveTab] = useState('generations')
 
-  const headerSlot = ({ totalCount }) => (
+  // FIX: totalCount is now real state, updated by MediaPageCore via
+  // onTotalCountChange, then passed into headerSlot for display.
+  const [totalCount, setTotalCount] = useState(0)
+
+  const headerSlot = ({ totalCount: count }) => (
     <>
       <TopBar showLogo showCredits />
       <div className="mx-auto w-full max-w-xl px-4 lg:px-0 pt-5 pb-1">
@@ -306,7 +310,7 @@ export default function MediaPage() {
         {/* Sub-heading */}
         {activeTab === 'generations' && (
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            {totalCount} generation{totalCount !== 1 ? 's' : ''}
+            {count} generation{count !== 1 ? 's' : ''}
           </p>
         )}
         {activeTab === 'assets' && (
@@ -363,9 +367,9 @@ export default function MediaPage() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header is always rendered; it owns the tab switcher */}
+      {/* Header renders with live totalCount from state */}
       <div className="flex-shrink-0">
-        {headerSlot({ totalCount: 0 })}
+        {headerSlot({ totalCount })}
       </div>
 
       {activeTab === 'generations' ? (
@@ -373,6 +377,7 @@ export default function MediaPage() {
           <MediaPageCoreInner
             isNovice={isNovice}
             emptySlot={emptySlot}
+            onTotalCountChange={setTotalCount}
           />
         </div>
       ) : (
@@ -387,7 +392,7 @@ export default function MediaPage() {
 // MediaPageCoreInner
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MediaPageCoreInner({ isNovice, emptySlot }) {
+function MediaPageCoreInner({ isNovice, emptySlot, onTotalCountChange }) {
   return (
     <MediaPageCore
       fetcher={fetchGenerations}
@@ -404,6 +409,7 @@ function MediaPageCoreInner({ isNovice, emptySlot }) {
       emptySlot={emptySlot}
       isNovice={isNovice}
       allowGridView={false}
+      onTotalCountChange={onTotalCountChange}
     />
   )
 }
