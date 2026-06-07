@@ -74,6 +74,7 @@ export async function filmaRefreshUrl(filePath) {
 
 export const filmaFilms = {
 
+  /** Get all films for a user, ordered by most recent */
   async getAll(userId) {
     const { data, error } = await supabase
       .from('filma_films')
@@ -83,6 +84,7 @@ export const filmaFilms = {
     return { data, error }
   },
 
+  /** Get a single film by id */
   async getById(filmId) {
     const { data, error } = await supabase
       .from('filma_films')
@@ -92,6 +94,7 @@ export const filmaFilms = {
     return { data, error }
   },
 
+  /** Create a new film project */
   async create(userId, payload) {
     const { data, error } = await supabase
       .from('filma_films')
@@ -101,6 +104,7 @@ export const filmaFilms = {
     return { data, error }
   },
 
+  /** Update film fields */
   async update(filmId, payload) {
     const { data, error } = await supabase
       .from('filma_films')
@@ -111,6 +115,7 @@ export const filmaFilms = {
     return { data, error }
   },
 
+  /** Delete a film and all related records (cascade) */
   async delete(filmId) {
     const { error } = await supabase
       .from('filma_films')
@@ -119,6 +124,7 @@ export const filmaFilms = {
     return { error }
   },
 
+  /** Update film status */
   async setStatus(filmId, status) {
     return filmaFilms.update(filmId, { status })
   },
@@ -131,6 +137,7 @@ export const filmaFilms = {
 
 export const filmaActors = {
 
+  /** Get all actors for a film */
   async getByFilm(filmId) {
     const { data, error } = await supabase
       .from('filma_actors')
@@ -140,6 +147,7 @@ export const filmaActors = {
     return { data, error }
   },
 
+  /** Create a new actor record */
   async create(userId, filmId, payload) {
     const { data, error } = await supabase
       .from('filma_actors')
@@ -149,6 +157,9 @@ export const filmaActors = {
     return { data, error }
   },
 
+  /**
+   * Import from UGC profile — copies key fields into filma_actors.
+   */
   async importFromUGC(userId, filmId, ugcProfile, characterName, roleDescription) {
     const payload = {
       name:               characterName || ugcProfile.name,
@@ -164,6 +175,7 @@ export const filmaActors = {
     return filmaActors.create(userId, filmId, payload)
   },
 
+  /** Update an actor */
   async update(actorId, payload) {
     const { data, error } = await supabase
       .from('filma_actors')
@@ -174,6 +186,7 @@ export const filmaActors = {
     return { data, error }
   },
 
+  /** Delete an actor */
   async delete(actorId) {
     const { error } = await supabase
       .from('filma_actors')
@@ -182,6 +195,7 @@ export const filmaActors = {
     return { error }
   },
 
+  /** Reorder actors */
   async reorder(actorId, sortOrder) {
     const { error } = await supabase
       .from('filma_actors')
@@ -190,6 +204,7 @@ export const filmaActors = {
     return { error }
   },
 
+  /** Upload actor face/body reference image */
   async uploadReference(userId, file, type = 'face') {
     return filmaUpload(userId, file, `actors/${type}`)
   },
@@ -202,6 +217,7 @@ export const filmaActors = {
 
 export const filmaParts = {
 
+  /** Get all parts for a film, ordered by season + part number */
   async getByFilm(filmId) {
     const { data, error } = await supabase
       .from('filma_parts')
@@ -212,6 +228,7 @@ export const filmaParts = {
     return { data, error }
   },
 
+  /** Create a part */
   async create(filmId, payload) {
     const { data, error } = await supabase
       .from('filma_parts')
@@ -221,6 +238,7 @@ export const filmaParts = {
     return { data, error }
   },
 
+  /** Bulk create parts (e.g. when user sets "3 episodes") */
   async bulkCreate(filmId, parts) {
     const rows = parts.map((p) => ({ film_id: filmId, ...p }))
     const { data, error } = await supabase
@@ -230,6 +248,7 @@ export const filmaParts = {
     return { data, error }
   },
 
+  /** Update a part (rename, change scene count) */
   async update(partId, payload) {
     const { data, error } = await supabase
       .from('filma_parts')
@@ -240,6 +259,7 @@ export const filmaParts = {
     return { data, error }
   },
 
+  /** Delete a part */
   async delete(partId) {
     const { error } = await supabase
       .from('filma_parts')
@@ -256,6 +276,7 @@ export const filmaParts = {
 
 export const filmaScenes = {
 
+  /** Get all scenes for a part */
   async getByPart(partId) {
     const { data, error } = await supabase
       .from('filma_scenes')
@@ -265,6 +286,7 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Get all scenes for a film (with part info) */
   async getByFilm(filmId) {
     const { data, error } = await supabase
       .from('filma_scenes')
@@ -274,6 +296,7 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Get a single scene with scene_actors + shots count */
   async getById(sceneId) {
     const { data, error } = await supabase
       .from('filma_scenes')
@@ -289,6 +312,7 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Create scenes for a part (bulk, based on total_scenes) */
   async bulkCreate(filmId, partId, totalScenes) {
     const rows = Array.from({ length: totalScenes }, (_, i) => ({
       film_id:      filmId,
@@ -303,6 +327,7 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Update scene fields */
   async update(sceneId, payload) {
     const { data, error } = await supabase
       .from('filma_scenes')
@@ -322,10 +347,12 @@ export const filmaScenes = {
     return { error }
   },
 
+  /** Upload master image for scene */
   async uploadMasterImage(userId, file) {
     return filmaUpload(userId, file, 'scenes/master')
   },
 
+  /** Save script text + reset scaffolded flag */
   async saveScript(sceneId, scriptText) {
     const { data, error } = await supabase
       .from('filma_scenes')
@@ -336,6 +363,7 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Mark scene as scaffolded (called after edge fn inserts shots) */
   async markScaffolded(sceneId) {
     const { error } = await supabase
       .from('filma_scenes')
@@ -347,11 +375,12 @@ export const filmaScenes = {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCENE ACTORS
+// SCENE ACTORS (junction: actors in a specific scene + outfit)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const filmaSceneActors = {
 
+  /** Get all scene-actor records for a scene */
   async getByScene(sceneId) {
     const { data, error } = await supabase
       .from('filma_scene_actors')
@@ -363,6 +392,7 @@ export const filmaSceneActors = {
     return { data, error }
   },
 
+  /** Add an actor to a scene */
   async add(filmId, sceneId, actorId) {
     const { data, error } = await supabase
       .from('filma_scene_actors')
@@ -372,6 +402,7 @@ export const filmaSceneActors = {
     return { data, error }
   },
 
+  /** Remove an actor from a scene */
   async remove(sceneId, actorId) {
     const { error } = await supabase
       .from('filma_scene_actors')
@@ -381,10 +412,12 @@ export const filmaSceneActors = {
     return { error }
   },
 
+  /** Upload outfit image for an actor in a scene */
   async uploadOutfit(userId, file) {
     return filmaUpload(userId, file, 'scenes/outfits')
   },
 
+  /** Save outfit image URL to scene_actor record */
   async setOutfit(sceneId, actorId, outfitImageUrl) {
     const { data, error } = await supabase
       .from('filma_scene_actors')
@@ -404,6 +437,7 @@ export const filmaSceneActors = {
 
 export const filmaShots = {
 
+  /** Get all shots for a scene, ordered by shot_number */
   async getByScene(sceneId) {
     const { data, error } = await supabase
       .from('filma_shots')
@@ -417,6 +451,7 @@ export const filmaShots = {
     return { data, error }
   },
 
+  /** Get a single shot with all refs */
   async getById(shotId) {
     const { data, error } = await supabase
       .from('filma_shots')
@@ -430,6 +465,7 @@ export const filmaShots = {
     return { data, error }
   },
 
+  /** Update shot fields */
   async update(shotId, payload) {
     const { data, error } = await supabase
       .from('filma_shots')
@@ -440,22 +476,33 @@ export const filmaShots = {
     return { data, error }
   },
 
+  /** Set shot status */
   async setStatus(shotId, status) {
     return filmaShots.update(shotId, { status })
   },
 
+  /** Upload start frame */
   async uploadStartFrame(userId, file) {
     return filmaUpload(userId, file, 'shots/frames')
   },
 
+  /** Upload end frame */
   async uploadEndFrame(userId, file) {
     return filmaUpload(userId, file, 'shots/frames')
   },
 
+  /**
+   * Upload audio for a dialogue shot.
+   * max 15s validated client-side before calling this.
+   */
   async uploadAudio(userId, file) {
     return filmaUpload(userId, file, 'shots/audio')
   },
 
+  /**
+   * Save audio metadata to shot.
+   * Call after uploading audio.
+   */
   async setAudio(shotId, { audioUrl, firstWord, lastWord, durationSeconds }) {
     return filmaShots.update(shotId, {
       audio_mode:             'uploaded',
@@ -467,6 +514,7 @@ export const filmaShots = {
     })
   },
 
+  /** Clear audio — revert to AI voice */
   async clearAudio(shotId) {
     return filmaShots.update(shotId, {
       audio_mode:             'ai_voice',
@@ -478,14 +526,21 @@ export const filmaShots = {
     })
   },
 
+  /** Set start frame */
   async setStartFrame(shotId, url) {
     return filmaShots.update(shotId, { start_frame_url: url })
   },
 
+  /** Set end frame */
   async setEndFrame(shotId, url) {
     return filmaShots.update(shotId, { end_frame_url: url })
   },
 
+  /**
+   * Push end frame from shot N to shot N+1.
+   * extractedFrameBlob: Blob from canvas extraction.
+   * Returns the next shot id.
+   */
   async pushEndFrame(userId, currentShotId, extractedFrameBlob) {
     const { url } = await filmaUploadBlob(
       userId,
@@ -505,6 +560,7 @@ export const filmaShots = {
     return { nextShotId: fnData.next_shot_id, frameUrl: url }
   },
 
+  /** Save generation output to shot */
   async setOutput(shotId, { generationId, outputUrl, thumbnailUrl }) {
     return filmaShots.update(shotId, {
       generation_id:        generationId,
@@ -514,6 +570,7 @@ export const filmaShots = {
     })
   },
 
+  /** Delete a shot */
   async delete(shotId) {
     const { error } = await supabase
       .from('filma_shots')
@@ -523,35 +580,163 @@ export const filmaShots = {
   },
 
   /**
+   * One-shot sync: checks the linked generation row and updates filma_shots
+   * if it has resolved. Call on load when shot status is 'generating' or
+   * 'processing' to pick up results from while the user was away.
+   * Returns the latest shot state (updated or original).
+   */
+  async syncFromGeneration(shotId) {
+    const { data: shot } = await supabase
+      .from('filma_shots')
+      .select('id, status, generation_id, output_url')
+      .eq('id', shotId)
+      .single()
+
+    if (!shot?.generation_id) return shot
+
+    // Already resolved — nothing to do
+    if (shot.status === 'completed' || shot.status === 'failed') return shot
+
+    // Drive video-poll-single to resolve the WaveSpeed result
+    await supabase.functions.invoke('video-poll-single', {
+      body: { generationId: shot.generation_id },
+    }).catch(() => {})
+
+    // Re-fetch the generation to see if it resolved
+    const { data: gen } = await supabase
+      .from('generations')
+      .select('status, output_url, output_thumbnail_url, error_message')
+      .eq('id', shot.generation_id)
+      .single()
+
+    if (!gen) return shot
+
+    if (gen.status === 'completed' && gen.output_url) {
+      const { data: updated } = await supabase
+        .from('filma_shots')
+        .update({
+          status:               'completed',
+          output_url:           gen.output_url,
+          output_thumbnail_url: gen.output_thumbnail_url || gen.output_url,
+        })
+        .eq('id', shotId)
+        .select()
+        .single()
+      return updated || shot
+    }
+
+    if (gen.status === 'failed') {
+      await supabase
+        .from('filma_shots')
+        .update({ status: 'failed' })
+        .eq('id', shotId)
+      return { ...shot, status: 'failed' }
+    }
+
+    return shot
+  },
+
+  /**
    * Poll a shot's status until completed/failed or timeout.
-   * Returns a cleanup function — call it to stop polling early.
-   * onUpdate(shotData) called on each poll tick with fresh data.
-   * onDone({ success, data, error }) called when polling ends.
+   * Each tick drives video-poll-single (which resolves WaveSpeed and writes
+   * to generations), then syncs the result back to filma_shots.
+   *
+   * Returns a stop function — call it to cancel polling (e.g. on unmount).
+   * onUpdate(shotData) — called each tick with the latest shot state.
+   * onDone({ success, data, error }) — called when polling ends.
    */
   poll(shotId, { onUpdate, onDone, intervalMs = 5000, timeoutMs = 600000 }) {
     let stopped = false
 
     const interval = setInterval(async () => {
       if (stopped) return
+
       try {
-        const { data, error } = await supabase
+        // ── Fetch current shot state ───────────────────────────────────────
+        const { data: shot, error } = await supabase
           .from('filma_shots')
-          .select('status, output_url, output_thumbnail_url')
+          .select('id, status, generation_id, output_url, output_thumbnail_url')
           .eq('id', shotId)
           .single()
 
-        if (stopped) return
-        if (error) return
+        if (stopped || error || !shot) return
 
-        onUpdate?.(data)
+        onUpdate?.(shot)
 
-        if (data?.status === 'completed' || data?.output_url) {
+        // ── Already resolved directly ──────────────────────────────────────
+        if (shot.status === 'completed' && shot.output_url) {
           stop()
-          onDone?.({ success: true, data })
-        } else if (data?.status === 'failed') {
+          onDone?.({ success: true, data: shot })
+          return
+        }
+
+        if (shot.status === 'failed') {
           stop()
           onDone?.({ success: false, error: 'Generation failed' })
+          return
         }
+
+        // ── Drive video-poll-single to resolve WaveSpeed ───────────────────
+        if (shot.generation_id) {
+          try {
+            await supabase.functions.invoke('video-poll-single', {
+              body: { generationId: shot.generation_id },
+            })
+          } catch (invokeErr) {
+            console.warn('[filmaShots.poll] invoke error:', invokeErr)
+            return
+          }
+
+          if (stopped) return
+
+          // ── Re-fetch generation to check resolved state ──────────────────
+          const { data: gen } = await supabase
+            .from('generations')
+            .select('status, output_url, output_thumbnail_url, error_message')
+            .eq('id', shot.generation_id)
+            .single()
+
+          if (stopped || !gen) return
+
+          if (gen.status === 'completed' && gen.output_url) {
+            // Sync output back to filma_shots
+            await supabase
+              .from('filma_shots')
+              .update({
+                status:               'completed',
+                output_url:           gen.output_url,
+                output_thumbnail_url: gen.output_thumbnail_url || gen.output_url,
+              })
+              .eq('id', shotId)
+
+            const resolvedShot = {
+              ...shot,
+              status:               'completed',
+              output_url:           gen.output_url,
+              output_thumbnail_url: gen.output_thumbnail_url || gen.output_url,
+            }
+
+            onUpdate?.(resolvedShot)
+            stop()
+            onDone?.({ success: true, data: resolvedShot })
+            return
+          }
+
+          if (gen.status === 'failed') {
+            await supabase
+              .from('filma_shots')
+              .update({ status: 'failed' })
+              .eq('id', shotId)
+
+            stop()
+            onDone?.({ success: false, error: gen.error_message || 'Generation failed' })
+            return
+          }
+
+          // Still processing — call onUpdate with latest shot state
+          onUpdate?.(shot)
+        }
+
       } catch (err) {
         if (!stopped) console.warn('[filmaShots.poll]', err)
       }
@@ -570,17 +755,18 @@ export const filmaShots = {
       clearTimeout(timeout)
     }
 
-    return stop  // caller can invoke to cancel early (e.g. on unmount)
+    return stop
   },
 }
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHOT REFS
+// SHOT REFS (extra reference images per shot)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const filmaShotRefs = {
 
+  /** Get all refs for a shot */
   async getByShot(shotId) {
     const { data, error } = await supabase
       .from('filma_shot_refs')
@@ -590,6 +776,7 @@ export const filmaShotRefs = {
     return { data, error }
   },
 
+  /** Add a reference image to a shot */
   async add(filmId, sceneId, shotId, imageUrl, description, sortOrder = 0) {
     const { data, error } = await supabase
       .from('filma_shot_refs')
@@ -606,6 +793,7 @@ export const filmaShotRefs = {
     return { data, error }
   },
 
+  /** Update description */
   async updateDescription(refId, description) {
     const { data, error } = await supabase
       .from('filma_shot_refs')
@@ -616,6 +804,7 @@ export const filmaShotRefs = {
     return { data, error }
   },
 
+  /** Delete a ref */
   async delete(refId) {
     const { error } = await supabase
       .from('filma_shot_refs')
@@ -624,6 +813,7 @@ export const filmaShotRefs = {
     return { error }
   },
 
+  /** Upload reference image */
   async upload(userId, file) {
     return filmaUpload(userId, file, 'shots/refs')
   },
@@ -631,11 +821,12 @@ export const filmaShotRefs = {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DROPDOWN CUSTOMS
+// DROPDOWN CUSTOMS (research log for "Other" entries)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const filmaDropdownCustoms = {
 
+  /** Log a custom "Other" entry */
   async log(userId, fieldName, value, filmId = null) {
     const { error } = await supabase
       .from('filma_dropdown_customs')
@@ -643,6 +834,7 @@ export const filmaDropdownCustoms = {
     if (error) console.warn('[filmaDropdownCustoms.log]', error.message)
   },
 
+  /** Admin: get all custom entries for a field */
   async getByField(fieldName) {
     const { data, error } = await supabase
       .from('filma_dropdown_customs')
@@ -655,9 +847,14 @@ export const filmaDropdownCustoms = {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCAFFOLD
+// SCAFFOLD — trigger AI scene scaffolding via edge function
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Call the filma-scaffold edge function.
+ * Sends scene context (script, cast, film details) to AI.
+ * AI returns shot array; edge function calls filma_scaffold_scene RPC.
+ */
 export async function filmaScaffoldScene(sceneId) {
   const { data, error } = await supabase.functions.invoke('filma-scaffold', {
     body: { sceneId },
@@ -669,9 +866,15 @@ export async function filmaScaffoldScene(sceneId) {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GENERATE
+// GENERATE — trigger shot generation via edge function
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Call the filma-generate edge function for a single shot.
+ * Edge function reads all context from DB, builds the director prompt,
+ * submits to WaveSpeed (Kling O3 Pro), and creates a generations row.
+ * Polling is handled by filmaShots.poll() which drives video-poll-single.
+ */
 export async function filmaGenerateShot(shotId) {
   const { data, error } = await supabase.functions.invoke('filma-generate', {
     body: { shotId },
@@ -686,6 +889,10 @@ export async function filmaGenerateShot(shotId) {
 // COMPOSITE HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Get full film with parts, scenes (no shots — too heavy).
+ * Used for the structure overview page.
+ */
 export async function filmaGetFilmStructure(filmId) {
   const [filmRes, partsRes, actorsRes] = await Promise.all([
     filmaFilms.getById(filmId),
@@ -710,6 +917,10 @@ export async function filmaGetFilmStructure(filmId) {
   }
 }
 
+/**
+ * Get scene workspace data — scene + actors + shots + shot refs.
+ * Used for FilmaScenePage and FilmaShotPage.
+ */
 export async function filmaGetSceneWorkspace(sceneId) {
   const [sceneRes, shotsRes] = await Promise.all([
     filmaScenes.getById(sceneId),
@@ -729,6 +940,10 @@ export async function filmaGetSceneWorkspace(sceneId) {
 // AUDIO DURATION HELPER (client-side)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Get duration of an audio File in seconds.
+ * Used to validate 1s–15s constraint before upload.
+ */
 export function getAudioDuration(file) {
   return new Promise((resolve, reject) => {
     const url   = URL.createObjectURL(file)
