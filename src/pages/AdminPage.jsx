@@ -171,7 +171,7 @@ export default function AdminPage() {
               </div>
             ) : stats ? (
               <>
-                <>
+           
                 <div className="grid grid-cols-2 gap-3">
                   <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}             sub={`+${stats.new_users_today} new today`}                    />
                   <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}        sub={`${stats.generations_today} today`}    color="#8b5cf6"    />
