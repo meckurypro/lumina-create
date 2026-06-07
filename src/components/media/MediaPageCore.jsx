@@ -710,7 +710,7 @@ export default function MediaPageCore({
             onClose={closeSheet}
             onDelete={() => handleDelete(activeGen)}
             onRegenerate={openRegenerate}
-            onEdit={onEdit ? openEdit : undefined}
+            onEdit={onEdit && activeGen?.output_type !== 'video' ? openEdit : undefined}
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onSaveAsset={() => handleSaveAsset(activeGen)}
