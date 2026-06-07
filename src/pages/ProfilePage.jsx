@@ -204,20 +204,11 @@ export default function ProfilePage() {
     try {
       const { initializePayment } = await import('@/lib/paystack')
       await initializePayment({
-        email:        user.email,
-        amountNgn:    pkg.price_ngn,
-        credits:      pkg.credits,
-        bonusCredits: pkg.bonus_credits || 0,
-        packageSlug:  pkg.slug,
-        userId:       user.id,
-        onSuccess: async () => {
-          await refreshProfile()
-          setShowCreditsModal(false)
-          toast.success(`${pkg.credits + (pkg.bonus_credits || 0)} credits added!`)
-          setPurchaseLoading(false)
-        },
-        onClose: () => setPurchaseLoading(false),
+        email:       user.email,
+        userId:      user.id,
+        packageSlug: pkg.slug,
       })
+      // Browser navigates to Paystack hosted page; nothing more to do here.
     } catch (err) {
       console.error('Paystack error:', err)
       toast.error(err.message || 'Could not launch payment. Try again.')
