@@ -44,21 +44,40 @@ async function fetchGenerations(user, { limit, offset, afterIso, statusFilter })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // filterRelevantModels  (for Regenerate)
+//
+// Routes model filtering by generation_type — the source of truth.
+// This ensures lipsync never shows image/video models, motion_transfer
+// never shows lipsync models, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterRelevantModels(models, gen) {
-  const isUGC            = gen.prompt_engineering_used && gen.input_image_urls?.length > 0
-  const isMotionTransfer = gen.generation_type === 'motion_transfer'
-  const isVideo          = [
-    'text_to_video', 'image_to_video', 'start_end_frame',
-    'end_frame_text', 'motion_transfer', 'template',
-  ].includes(gen.generation_type)
+  const type = gen.generation_type
 
   return models.filter((m) => {
     if (m.is_locked) return false
-    if (isUGC)            return m.supports_multi_image === true
-    if (isMotionTransfer) return m.type === 'video' && m.feature === 'motion_transfer'
-    if (isVideo)          return m.type === 'video' && m.feature !== 'motion_transfer'
+
+    // Lipsync — only lipsync feature models (same as CreateTalkingHeadPage)
+    if (type === 'lipsync') {
+      return m.feature === 'lipsync'
+    }
+
+    // Motion transfer — only motion_transfer feature models
+    if (type === 'motion_transfer') {
+      return m.type === 'video' && m.feature === 'motion_transfer'
+    }
+
+    // UGC (multi-image generations) — only multi-image capable models
+    const isUGC = gen.prompt_engineering_used && gen.input_image_urls?.length > 0
+    if (isUGC) return m.supports_multi_image === true
+
+    // Video types — video models, excluding motion_transfer feature
+    const isVideo = [
+      'text_to_video', 'image_to_video', 'start_end_frame',
+      'end_frame_text', 'template',
+    ].includes(type)
+    if (isVideo) return m.type === 'video' && m.feature !== 'motion_transfer'
+
+    // Image types (text_to_image, image_to_image)
     return m.type === 'image'
   })
 }
@@ -75,10 +94,50 @@ function filterEditModels(models, gen) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // computeCreditCost  (for Regenerate)
+//
+// Each generation_type has its own credit logic matching the create page.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCreditCost(selectedModel, gen) {
   if (!selectedModel) return 0
+
+  // Lipsync: flat-rate or base × duration — mirrors CreateTalkingHeadPage
+  if (gen.generation_type === 'lipsync') {
+    const base = selectedModel.credit_cost_i2i || selectedModel.credit_cost_t2i || 0
+    if (selectedModel.is_flat_rate) return base
+    return Math.ceil(base * parseInt(gen.duration || '5', 10))
+  }
+
+  // Motion transfer: always I2I cost × duration multiplier
+  if (gen.generation_type === 'motion_transfer') {
+    const base = selectedModel.credit_cost_i2i || 0
+    const dur  = parseInt(gen.duration || '5', 10)
+    const multiplier = (() => {
+      if (dur <= 5)  return 1
+      if (dur <= 8)  return 1.6
+      if (dur <= 10) return 2
+      if (dur <= 12) return 2.4
+      if (dur <= 15) return 3
+      if (dur <= 20) return 4
+      if (dur <= 30) return 6
+      return Math.ceil(dur / 5)
+    })()
+    return Math.ceil(base * multiplier)
+  }
+
+  // Video types: per-second pricing
+  const isVideo = [
+    'text_to_video', 'image_to_video', 'start_end_frame',
+    'end_frame_text', 'template',
+  ].includes(gen.generation_type)
+  if (isVideo) {
+    const hadInput = !!(gen.input_image_urls?.length || gen.start_frame_url || gen.end_frame_url)
+    const base     = (hadInput ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    if (selectedModel.is_flat_rate) return base
+    return Math.ceil(base * parseInt(gen.duration || '5', 10))
+  }
+
+  // Image types
   const hadInputImage = !!(gen.input_image_urls?.length || gen.start_frame_url)
   return (hadInputImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
 }
@@ -94,19 +153,25 @@ function computeEditCreditCost(selectedModel) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
+//
+// Routes the edge function call by generation_type — never guesses based
+// on output_type. Lipsync → talking-head-generate, video → video-generate,
+// image → image-generate.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
   supabase, user, generationsDb, refreshProfile, setItems, setTotalCount,
 }) {
-  const isVideo = [
+  const type      = gen.generation_type
+  const isLipsync = type === 'lipsync'
+  const isVideo   = [
     'text_to_video', 'image_to_video', 'start_end_frame',
     'end_frame_text', 'motion_transfer', 'template',
-  ].includes(gen.generation_type)
+  ].includes(type)
 
   const { data: genRow, error: genErr } = await generationsDb.create({
     user_id:                user.id,
-    generation_type:        gen.generation_type,
+    generation_type:        type,
     status:                 'pending',
     prompt:                 editedPrompt ?? gen.prompt,
     model:                  chosenModel,
@@ -114,14 +179,16 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
     duration:               gen.duration,
     credits_charged:        creditCost,
     output_type:            gen.output_type,
-    start_frame_url:        null,
+    // Preserve all original inputs verbatim — regeneration replays exactly
+    start_frame_url:        gen.start_frame_url  || null,
+    end_frame_url:          gen.end_frame_url     || null,
     input_image_urls:       gen.input_image_urls?.length
                               ? gen.input_image_urls
                               : gen.start_frame_url
                                 ? [gen.start_frame_url]
                                 : null,
-    end_frame_url:          gen.end_frame_url   || null,
-    template_id:            gen.template_id     || null,
+    template_id:            gen.template_id      || null,
+    with_sound:             gen.with_sound        ?? false,
     skip_prompt_refinement: gen.skip_prompt_refinement ?? false,
   })
   if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -134,8 +201,18 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
     throw new Error(deduct?.error || 'Not enough credits')
   }
 
-  const fnName = isVideo ? 'video-generate' : 'image-generate'
-  supabase.functions.invoke(fnName, { body: { generationId: genRow.id } })
+  // Route to the correct edge function — strictly by generation_type
+  const fnName = isLipsync ? 'talking-head-generate'
+               : isVideo   ? 'video-generate'
+               :              'image-generate'
+
+  // For lipsync: pass regenFromId so the edge function can reconstruct
+  // the original meta (audio URLs, subject mode, etc.) from the source row.
+  const body = isLipsync
+    ? { generationId: genRow.id, meta: { lipsync: true, regenFromId: gen.id } }
+    : { generationId: genRow.id }
+
+  supabase.functions.invoke(fnName, { body })
     .catch((e) => console.error(`${fnName} invoke error`, e))
 
   setItems((prev) => [genRow, ...prev])
@@ -195,8 +272,8 @@ async function onEdit(gen, chosenModel, creditCost, selectedModelObj, editedProm
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MediaPage() {
-  const { profile, credits }     = useAuth()
-  const isNovice                 = profile?.user_tier === 'novice'
+  const { profile, credits }      = useAuth()
+  const isNovice                  = profile?.user_tier === 'novice'
   const [activeTab, setActiveTab] = useState('generations')
 
   const headerSlot = ({ totalCount }) => (
@@ -284,8 +361,6 @@ export default function MediaPage() {
   )
 
   return (
-    // Outer wrapper needed so AssetsPage (which is not inside MediaPageCore)
-    // can share the same full-height layout.
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header is always rendered; it owns the tab switcher */}
@@ -294,8 +369,6 @@ export default function MediaPage() {
       </div>
 
       {activeTab === 'generations' ? (
-        // MediaPageCore renders its own flex column with overflow-y-auto.
-        // We re-use it as a flex child here, so we need it to fill remaining space.
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           <MediaPageCoreInner
             isNovice={isNovice}
@@ -312,10 +385,6 @@ export default function MediaPage() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MediaPageCoreInner
-//
-// Thin shim: MediaPageCore renders its own h-dvh wrapper which conflicts
-// when nested. We pass a no-op headerSlot so the outer header is the one
-// that renders, and MediaPageCore just renders its content + sheets.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MediaPageCoreInner({ isNovice, emptySlot }) {
@@ -331,7 +400,6 @@ function MediaPageCoreInner({ isNovice, emptySlot }) {
       filterEditModels={filterEditModels}
       computeEditCreditCost={computeEditCreditCost}
       onEdit={onEdit}
-      // No headerSlot — header already rendered above
       headerSlot={null}
       emptySlot={emptySlot}
       isNovice={isNovice}
