@@ -1,4 +1,6 @@
 // src/App.jsx
+//
+// Routing only. Auth state and pending payment retry live in AuthContext.
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 
