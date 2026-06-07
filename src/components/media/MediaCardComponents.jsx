@@ -915,6 +915,7 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, accentColor, accen
   const isComplete    = gen.status === 'completed'
   const isPending     = gen.status === 'pending' || gen.status === 'processing'
   const thumbUrl      = gen.output_thumbnail_url || gen.output_url
+  const thumbIsImage  = !!gen.output_thumbnail_url
   const cardTitle     = getCardTitle(gen)
   const friendlyError = gen.status === 'failed' ? getFriendlyError(gen.error_message) : null
   const isPolicy      = friendlyError?.startsWith('⚠️')
@@ -937,9 +938,9 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, accentColor, accen
         onClick={isComplete ? onClick : undefined}
       >
         {thumbUrl ? (
-          isVideo
-            ? <video src={thumbUrl} className="w-full h-full object-cover" muted preload="metadata" />
-            : <img   src={thumbUrl} alt={cardTitle} className="w-full h-full object-cover" />
+          (thumbIsImage || !isVideo)
+            ? <img   src={thumbUrl} alt={cardTitle} className="w-full h-full object-cover" />
+            : <video src={thumbUrl} className="w-full h-full object-cover" muted preload="metadata" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo
@@ -1022,6 +1023,7 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   const isPending  = gen.status === 'pending' || gen.status === 'processing'
   const isComplete = gen.status === 'completed'
   const thumbUrl   = gen.output_thumbnail_url || gen.output_url
+  const thumbIsImage = !!gen.output_thumbnail_url
   const filterEmoji = gen.ugc_filter_applied === 'cinematic' ? '🎬' : '📱'
   const arStyle    = gen.aspect_ratio === '16:9' ? '16/9' : gen.aspect_ratio === '1:1' ? '1/1' : '9/16'
 
@@ -1039,9 +1041,9 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
         style={{ cursor: isComplete ? 'pointer' : 'default' }}
       >
         {thumbUrl ? (
-          isVideo
-            ? <video src={thumbUrl} className="w-full h-full object-cover" muted preload="metadata" />
-            : <img   src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" />
+          (thumbIsImage || !isVideo)
+            ? <img   src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" />
+            : <video src={thumbUrl} className="w-full h-full object-cover" muted preload="metadata" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo
