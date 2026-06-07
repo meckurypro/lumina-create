@@ -22,8 +22,9 @@ const ACCEPTED_MIME = [
 ]
 const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
+const PAGE_SIZE   = 20
 
-// ── SessionStorage keys (must match destination pages) ────────────────────────
+// ── SessionStorage keys ───────────────────────────────────────────────────────
 const SS_IMAGE_POLISH   = 'meckury_polish_image'
 const SS_IMAGE_EDIT     = 'meckury_create_images'
 const SS_VIDEO_START    = 'meckury_video_start_frame'
@@ -32,8 +33,38 @@ const SS_TH_SUBJECT_VID = 'meckury_th_subject_vid'
 const SS_COPY_SUBJECT   = 'meckury_copymotion_subject'
 const SS_VIDEO_OMNI_REF = 'meckury_video_omni_ref'
 
+// ── Time filter config (mirrors MediaPageCore) ────────────────────────────────
+const TIME_FILTERS = [
+  { label: 'Today',      value: 'today'      },
+  { label: 'This Week',  value: 'this_week'  },
+  { label: 'This Month', value: 'this_month' },
+  { label: 'All',        value: 'all'        },
+]
+
+// ── Type filter config ────────────────────────────────────────────────────────
+const TYPE_FILTERS = [
+  { label: 'All',    value: 'all'   },
+  { label: 'Images', value: 'image' },
+  { label: 'Videos', value: 'video' },
+]
+
+function getTimeRangeStart(range) {
+  if (range === 'all') return null
+  const now = new Date()
+  if (range === 'today') {
+    const d = new Date(now); d.setHours(0, 0, 0, 0); return d.toISOString()
+  }
+  if (range === 'this_week') {
+    const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0, 0, 0, 0); return d.toISOString()
+  }
+  if (range === 'this_month') {
+    const d = new Date(now); d.setDate(1); d.setHours(0, 0, 0, 0); return d.toISOString()
+  }
+  return null
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// extractLastFrame — canvas-based, lossless PNG, native resolution
+// extractLastFrame
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function extractLastFrame(videoUrl) {
@@ -72,26 +103,15 @@ async function extractLastFrame(videoUrl) {
   })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// buildUrlPayload
-// ─────────────────────────────────────────────────────────────────────────────
-
 function buildUrlPayload(asset, fallbackType) {
   const type = fallbackType || (isVideoAsset(asset) ? 'video/mp4' : 'image/jpeg')
   return { url: asset.file_url, name: asset.name, type }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Module-level cache for extracted-frame fallbacks
-// Only used when thumbnail_url is null on a video asset.
-// ─────────────────────────────────────────────────────────────────────────────
-
 const _extractedThumbCache = new Map()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VideoThumbFallback
-// Used only when a video asset has no thumbnail_url yet (pre-backfill).
-// Fetches the full video blob and extracts a frame via canvas.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VideoThumbFallback({ asset }) {
@@ -150,19 +170,11 @@ function VideoThumbFallback({ asset }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AssetThumb
-//
-// Priority order:
-//   1. thumbnail_url (tiny WebP from asset-thumbs bucket) — instant, no fetch
-//   2. file_url directly for images (small enough in most cases)
-//   3. VideoThumbFallback for videos with no thumbnail (frame extraction)
-//
-// onError propagates up to AssetCard so it can swap in the icon fallback.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetThumb({ asset, onError }) {
   const isVideo = isVideoAsset(asset)
 
-  // Best case: pre-generated thumbnail exists
   if (asset.thumbnail_url) {
     return (
       <img
@@ -175,7 +187,6 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
-  // Image with no thumbnail — render from file_url directly
   if (!isVideo) {
     return (
       <img
@@ -188,8 +199,20 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
-  // Video with no thumbnail — fallback to frame extraction
   return <VideoThumbFallback asset={asset} />
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SkeletonCard
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div
+      className="h-[72px] rounded-2xl animate-pulse"
+      style={{ background: 'var(--bg-elevated)' }}
+    />
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,35 +225,71 @@ export default function AssetsPage() {
   const fileInputRef = useRef(null)
   const debounceRef  = useRef(null)
 
-  const [assets,        setAssets]        = useState([])
-  const [loading,       setLoading]       = useState(true)
-  const [search,        setSearch]        = useState('')
-  const [searchQuery,   setSearchQuery]   = useState('')
-  const [uploading,     setUploading]     = useState(false)
-  const [previewAsset,  setPreviewAsset]  = useState(null)
-  const [activeAsset,   setActiveAsset]   = useState(null)
-  const [sheetOpen,     setSheetOpen]     = useState(false)
-  const [pendingDelete, setPendingDelete] = useState(null)
-  const [renamingId,    setRenamingId]    = useState(null)
-  const [renameValue,   setRenameValue]   = useState('')
-  const [extractingId,  setExtractingId]  = useState(null)
+  const [assets,       setAssets]       = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [loadingMore,  setLoadingMore]  = useState(false)
+  const [hasMore,      setHasMore]      = useState(false)
+  const [totalCount,   setTotalCount]   = useState(0)
+  const [page,         setPage]         = useState(0)
+
+  const [timeFilter,   setTimeFilter]   = useState('all')
+  const [typeFilter,   setTypeFilter]   = useState('all')
+  const [search,       setSearch]       = useState('')
+  const [searchQuery,  setSearchQuery]  = useState('')
+
+  const [uploading,    setUploading]    = useState(false)
+  const [previewAsset, setPreviewAsset] = useState(null)
+  const [activeAsset,  setActiveAsset]  = useState(null)
+  const [sheetOpen,    setSheetOpen]    = useState(false)
+  const [pendingDelete,setPendingDelete]= useState(null)
+  const [renamingId,   setRenamingId]   = useState(null)
+  const [renameValue,  setRenameValue]  = useState('')
+  const [extractingId, setExtractingId] = useState(null)
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
-  const load = useCallback(async (q = searchQuery) => {
+  const load = useCallback(async ({
+    offset     = 0,
+    reset      = false,
+    tFilter    = timeFilter,
+    tyFilter   = typeFilter,
+    q          = searchQuery,
+    silent     = false,
+  } = {}) => {
     if (!user) return
-    setLoading(true)
+    if (!silent) {
+      offset === 0 ? setLoading(true) : setLoadingMore(true)
+    }
+
+    const afterIso = getTimeRangeStart(tFilter)
+
     try {
-      const data = await listAssets(user.id, { search: q })
-      setAssets(data)
+      const { data, count } = await listAssets(user.id, {
+        search:     q,
+        limit:      PAGE_SIZE,
+        offset,
+        afterIso,
+        typeFilter: tyFilter,
+      })
+
+      setTotalCount(count || 0)
+      setAssets((prev) => reset ? (data || []) : [...prev, ...(data || [])])
+      setHasMore((offset + PAGE_SIZE) < (count || 0))
     } catch (err) {
       toast.error(err.message || 'Failed to load assets')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
-  }, [user, searchQuery])
+  }, [user, timeFilter, typeFilter, searchQuery])
 
-  useEffect(() => { load() }, [user])
+  // Initial load + reload on filter change
+  useEffect(() => {
+    setPage(0)
+    setAssets([])
+    load({ offset: 0, reset: true, tFilter: timeFilter, tyFilter: typeFilter, q: searchQuery })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter, typeFilter, user])
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -239,7 +298,9 @@ export default function AssetsPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       setSearchQuery(val)
-      load(val)
+      setPage(0)
+      setAssets([])
+      load({ offset: 0, reset: true, tFilter: timeFilter, tyFilter: typeFilter, q: val })
     }, 350)
   }
 
@@ -264,6 +325,7 @@ export default function AssetsPage() {
         fileList.map((file) => uploadAsset(user.id, file, file.name.replace(/\.[^.]+$/, '')))
       )
       setAssets((prev) => [...[...results].reverse(), ...prev])
+      setTotalCount((c) => c + results.length)
       toast.success(
         results.length === 1
           ? `${results[0].name} uploaded`
@@ -354,6 +416,7 @@ export default function AssetsPage() {
       )
       const saved = await uploadAsset(user.id, frameFile, `${asset.name} — end frame`)
       setAssets((prev) => [saved, ...prev])
+      setTotalCount((c) => c + 1)
       toast.success('End frame saved to Assets')
     } catch (err) {
       console.error('Extract end frame error:', err)
@@ -373,6 +436,7 @@ export default function AssetsPage() {
     try {
       await deleteAsset(asset)
       setAssets((prev) => prev.filter((a) => a.id !== asset.id))
+      setTotalCount((c) => c - 1)
       toast.success('Deleted')
     } catch (err) { toast.error(err.message || 'Delete failed') }
   }
@@ -439,7 +503,7 @@ export default function AssetsPage() {
       <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-5">
 
         {/* Search + upload row */}
-        <div className="flex items-center gap-2 mb-5">
+        <div className="flex items-center gap-2 mb-4">
           <div
             className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-2xl"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
@@ -476,40 +540,145 @@ export default function AssetsPage() {
           />
         </div>
 
+        {/* Time filter dropdown — right aligned, matches generations */}
+        <div className="flex items-center gap-2 mb-3 justify-end">
+          <div className="relative">
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="appearance-none pl-3 pr-7 py-2 rounded-xl text-sm font-semibold outline-none transition-all cursor-pointer"
+              style={{
+                background:       'var(--bg-elevated)',
+                color:            'var(--text-secondary)',
+                border:           '1px solid var(--border-color)',
+                WebkitAppearance: 'none',
+              }}
+            >
+              {TIME_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+            <div
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Type filter dots — right aligned, mirrors status dots in generations */}
+        <div className="flex items-center gap-3 mb-4 justify-end">
+          {TYPE_FILTERS.map((f) => {
+            const isActive = typeFilter === f.value
+            const dotColor = {
+              all:   'var(--text-primary)',
+              image: '#3b82f6',
+              video: '#a855f7',
+            }[f.value]
+
+            return (
+              <button
+                key={f.value}
+                onClick={() => setTypeFilter(f.value)}
+                title={f.label}
+                className="flex items-center justify-center transition-all active:scale-90"
+                style={{ padding: '4px' }}
+              >
+                <div
+                  style={{
+                    width:        14,
+                    height:       14,
+                    borderRadius: 4,
+                    background:   dotColor,
+                    opacity:      isActive ? 1 : 0.25,
+                    boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
+                    transition:   'opacity 0.15s, box-shadow 0.15s',
+                  }}
+                />
+              </button>
+            )
+          })}
+        </div>
+
         {/* Content */}
         {loading ? (
           <div className="flex flex-col gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[72px] rounded-2xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
-            ))}
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
+
         ) : assets.length === 0 ? (
-          <AssetsEmpty search={search} onUpload={() => fileInputRef.current?.click()} />
+          <AssetsEmpty
+            search={search}
+            timeFilter={timeFilter}
+            typeFilter={typeFilter}
+            onUpload={() => fileInputRef.current?.click()}
+            onClearFilters={() => {
+              setTimeFilter('all')
+              setTypeFilter('all')
+              handleSearchChange('')
+            }}
+          />
+
         ) : (
-          <div className="flex flex-col gap-3">
-            <AnimatePresence initial={false}>
-              {assets.map((asset, i) => (
+          <>
+            <div className="flex flex-col gap-3">
+              <AnimatePresence initial={false}>
+                {assets.map((asset, i) => (
+                  <motion.div
+                    key={asset.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ delay: i * 0.025 }}
+                  >
+                    <AssetCard
+                      asset={asset}
+                      isRenaming={renamingId === asset.id}
+                      renameValue={renameValue}
+                      setRenameValue={setRenameValue}
+                      onStartRename={() => startRename(asset)}
+                      onCommitRename={() => commitRename(asset)}
+                      onPreview={() => setPreviewAsset(asset)}
+                      onMore={() => openSheet(asset)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            {/* Load more */}
+            {hasMore && !loadingMore && (
+              <button
+                onClick={() => {
+                  const next = page + 1
+                  setPage(next)
+                  load({ offset: next * PAGE_SIZE, tFilter: timeFilter, tyFilter: typeFilter, q: searchQuery })
+                }}
+                className="w-full mt-4 py-4 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  color:      'var(--text-secondary)',
+                  border:     '1px solid var(--border-color)',
+                }}
+              >
+                Load more
+              </button>
+            )}
+
+            {loadingMore && (
+              <div className="flex justify-center py-5">
                 <motion.div
-                  key={asset.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ delay: i * 0.025 }}
-                >
-                  <AssetCard
-                    asset={asset}
-                    isRenaming={renamingId === asset.id}
-                    renameValue={renameValue}
-                    setRenameValue={setRenameValue}
-                    onStartRename={() => startRename(asset)}
-                    onCommitRename={() => commitRename(asset)}
-                    onPreview={() => setPreviewAsset(asset)}
-                    onMore={() => openSheet(asset)}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+                  className="w-6 h-6 rounded-full border-2"
+                  style={{ borderColor: 'var(--border-color)', borderTopColor: '#5B6EF7' }}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -563,14 +732,14 @@ export default function AssetsPage() {
             onClose={closeSheet}
             onRename={() => { closeSheet(); startRename(activeAsset) }}
             onDownload={() => handleDownload(activeAsset)}
-            onPolish={!isVideoAsset(activeAsset)       ? () => handlePolish(activeAsset)       : undefined}
-            onEditImage={!isVideoAsset(activeAsset)    ? () => handleEditImage(activeAsset)    : undefined}
-            onAnimate={!isVideoAsset(activeAsset)      ? () => handleAnimate(activeAsset)      : undefined}
-            onLipsyncImage={!isVideoAsset(activeAsset) ? () => handleLipsyncImage(activeAsset) : undefined}
-            onSetToMotion={!isVideoAsset(activeAsset)  ? () => handleSetToMotion(activeAsset)  : undefined}
-            onEditVideo={isVideoAsset(activeAsset)     ? () => handleEditVideo(activeAsset)    : undefined}
-            onLipsyncVideo={isVideoAsset(activeAsset)  ? () => handleLipsyncVideo(activeAsset) : undefined}
-            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
+            onPolish={!isVideoAsset(activeAsset)         ? () => handlePolish(activeAsset)         : undefined}
+            onEditImage={!isVideoAsset(activeAsset)      ? () => handleEditImage(activeAsset)      : undefined}
+            onAnimate={!isVideoAsset(activeAsset)        ? () => handleAnimate(activeAsset)        : undefined}
+            onLipsyncImage={!isVideoAsset(activeAsset)   ? () => handleLipsyncImage(activeAsset)   : undefined}
+            onSetToMotion={!isVideoAsset(activeAsset)    ? () => handleSetToMotion(activeAsset)    : undefined}
+            onEditVideo={isVideoAsset(activeAsset)       ? () => handleEditVideo(activeAsset)      : undefined}
+            onLipsyncVideo={isVideoAsset(activeAsset)    ? () => handleLipsyncVideo(activeAsset)   : undefined}
+            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset): undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -623,7 +792,7 @@ export default function AssetsPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
-  const inputRef          = useRef(null)
+  const inputRef            = useRef(null)
   const [imgErr, setImgErr] = useState(false)
 
   useEffect(() => {
@@ -721,8 +890,8 @@ function AssetActionSheet({
   const isVideo = isVideoAsset(asset)
 
   const actions = [
-    { icon: Pencil,      label: 'Rename',            onClick: onRename   },
-    { icon: Download,    label: 'Download',           onClick: onDownload },
+    { icon: Pencil,   label: 'Rename',   onClick: onRename   },
+    { icon: Download, label: 'Download', onClick: onDownload },
     ...(!isVideo ? [
       { icon: Sparkles,     label: 'Polish',        sub: 'AI photo enhancement',    onClick: onPolish       },
       { icon: Wand2,        label: 'Edit',          sub: 'Use as reference image',  onClick: onEditImage    },
@@ -801,7 +970,9 @@ function AssetActionSheet({
 // AssetsEmpty
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AssetsEmpty({ search, onUpload }) {
+function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters }) {
+  const isFiltered = search || timeFilter !== 'all' || typeFilter !== 'all'
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -811,13 +982,23 @@ function AssetsEmpty({ search, onUpload }) {
       <FolderOpen size={40} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
       <div>
         <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-          {search ? 'No assets match that search' : 'No assets yet'}
+          {isFiltered ? 'Nothing matches these filters' : 'No assets yet'}
         </p>
         <p className="text-sm mt-1 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
-          {search ? 'Try a different name.' : 'Upload images or videos to reuse across your creations.'}
+          {isFiltered
+            ? 'Try adjusting your filters or search.'
+            : 'Upload images or videos to reuse across your creations.'}
         </p>
       </div>
-      {!search && (
+      {isFiltered ? (
+        <button
+          onClick={onClearFilters}
+          className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+        >
+          Clear filters
+        </button>
+      ) : (
         <button
           onClick={onUpload}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
