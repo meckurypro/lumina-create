@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
 import { motion, AnimatePresence }                  from 'framer-motion'
 import { useAuth }                                  from '@/context/AuthContext'
+import { supabase }                                 from '@/lib/supabase'
 import toast                                        from 'react-hot-toast'
 import {
   Plus, Search, X, MoreHorizontal,
@@ -24,6 +25,8 @@ const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
 const PAGE_SIZE   = 20
 
+const EXTRACT_END_FRAME_COST = 3
+
 // ── SessionStorage keys ───────────────────────────────────────────────────────
 const SS_IMAGE_POLISH   = 'meckury_polish_image'
 const SS_IMAGE_EDIT     = 'meckury_create_images'
@@ -33,7 +36,7 @@ const SS_TH_SUBJECT_VID = 'meckury_th_subject_vid'
 const SS_COPY_SUBJECT   = 'meckury_copymotion_subject'
 const SS_VIDEO_OMNI_REF = 'meckury_video_omni_ref'
 
-// ── Time filter config (mirrors MediaPageCore) ────────────────────────────────
+// ── Time filter config ────────────────────────────────────────────────────────
 const TIME_FILTERS = [
   { label: 'Today',      value: 'today'      },
   { label: 'This Week',  value: 'this_week'  },
@@ -220,10 +223,12 @@ function SkeletonCard() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AssetsPage() {
-  const navigate     = useNavigate()
-  const { user }     = useAuth()
-  const fileInputRef = useRef(null)
-  const debounceRef  = useRef(null)
+  const navigate                          = useNavigate()
+  const { user, profile, credits, refreshProfile } = useAuth()
+  const fileInputRef                      = useRef(null)
+  const debounceRef                       = useRef(null)
+
+  const isMaster = profile?.user_tier === 'master'
 
   const [assets,       setAssets]       = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -283,7 +288,6 @@ export default function AssetsPage() {
     }
   }, [user, timeFilter, typeFilter, searchQuery])
 
-  // Initial load + reload on filter change
   useEffect(() => {
     setPage(0)
     setAssets([])
@@ -404,10 +408,28 @@ export default function AssetsPage() {
       fallbackType: 'video/mp4',
     })
 
+  // ── Extract end frame ──────────────────────────────────────────────────────
+  // Free for master users. Costs EXTRACT_END_FRAME_COST credits for novice.
+  // Deduction happens AFTER successful extraction to avoid charging on failure.
+
   const handleExtractEndFrame = async (asset) => {
     closeSheet()
+
+    if (!isMaster) {
+      if (credits < EXTRACT_END_FRAME_COST) {
+        toast.error(`Not enough credits — extracting end frame costs ${EXTRACT_END_FRAME_COST} credits`)
+        return
+      }
+      const confirmed = window.confirm(
+        `Extract end frame?\n\nThis costs ${EXTRACT_END_FRAME_COST} credits.`
+      )
+      if (!confirmed) return
+    }
+
     setExtractingId(asset.id)
+
     try {
+      // Extract + upload first — only charge on success
       const frameBlob = await extractLastFrame(asset.file_url)
       const frameFile = new File(
         [frameBlob],
@@ -417,7 +439,27 @@ export default function AssetsPage() {
       const saved = await uploadAsset(user.id, frameFile, `${asset.name} — end frame`)
       setAssets((prev) => [saved, ...prev])
       setTotalCount((c) => c + 1)
-      toast.success('End frame saved to Assets')
+
+      if (!isMaster) {
+        const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
+          p_user_id:       user.id,
+          p_amount:        EXTRACT_END_FRAME_COST,
+          p_generation_id: null,
+          p_description:   'End frame extraction',
+        })
+
+        if (dErr || !deduct?.success) {
+          // Asset already saved — deduction failed. Log it, don't block user.
+          console.error('[handleExtractEndFrame] credit deduction failed:', dErr || deduct?.error)
+          toast.success('End frame saved to Assets')
+          toast.error('Credit deduction failed — contact support if this persists', { duration: 6000 })
+        } else {
+          refreshProfile()
+          toast.success(`End frame saved — ${EXTRACT_END_FRAME_COST} credits used`)
+        }
+      } else {
+        toast.success('End frame saved to Assets')
+      }
     } catch (err) {
       console.error('Extract end frame error:', err)
       toast.error(err.message || 'Could not extract end frame')
@@ -540,7 +582,7 @@ export default function AssetsPage() {
           />
         </div>
 
-        {/* Time filter dropdown — right aligned, matches generations */}
+        {/* Time filter dropdown */}
         <div className="flex items-center gap-2 mb-3 justify-end">
           <div className="relative">
             <select
@@ -569,7 +611,7 @@ export default function AssetsPage() {
           </div>
         </div>
 
-        {/* Type filter dots — right aligned, mirrors status dots in generations */}
+        {/* Type filter dots */}
         <div className="flex items-center gap-3 mb-4 justify-end">
           {TYPE_FILTERS.map((f) => {
             const isActive = typeFilter === f.value
@@ -729,6 +771,7 @@ export default function AssetsPage() {
         {sheetOpen && activeAsset && (
           <AssetActionSheet
             asset={activeAsset}
+            isMaster={isMaster}
             onClose={closeSheet}
             onRename={() => { closeSheet(); startRename(activeAsset) }}
             onDownload={() => handleDownload(activeAsset)}
@@ -883,7 +926,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetActionSheet({
-  asset, onClose, onRename, onDownload, onDelete,
+  asset, isMaster, onClose, onRename, onDownload, onDelete,
   onPolish, onEditImage, onAnimate, onLipsyncImage, onSetToMotion,
   onEditVideo, onLipsyncVideo, onExtractEndFrame,
 }) {
@@ -900,9 +943,9 @@ function AssetActionSheet({
       { icon: Clapperboard, label: 'Set to Motion', sub: 'Use in Copy Motion',      onClick: onSetToMotion  },
     ] : []),
     ...(isVideo ? [
-      { icon: Wand2,    label: 'Edit',              sub: 'Use as video reference',   onClick: onEditVideo       },
-      { icon: Mic2,     label: 'Lipsync',           sub: 'Re-animate with audio',    onClick: onLipsyncVideo    },
-      { icon: ScanLine, label: 'Extract End Frame', sub: 'Save last frame as image', onClick: onExtractEndFrame },
+      { icon: Wand2,    label: 'Edit',              sub: 'Use as video reference',                                                          onClick: onEditVideo       },
+      { icon: Mic2,     label: 'Lipsync',           sub: 'Re-animate with audio',                                                          onClick: onLipsyncVideo    },
+      { icon: ScanLine, label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`, onClick: onExtractEndFrame },
     ] : []),
     { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
   ]
