@@ -23,6 +23,7 @@ import CinematicTransitionsManager from '@/pages/admin/CinematicTransitionsManag
 import ModelsAnalytics             from '@/pages/admin/ModelsAnalytics'
 import ModelUsageManager           from '@/pages/admin/ModelUsageManager'
 import GenerationsManager from '@/pages/admin/GenerationsManager'
+import EmailManager from '@/pages/admin/EmailManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ const TABS = (pendingCount) => [
   { id: 'feed',      label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed'  },
   { id: 'users',     label: 'Users'                                                },
   { id: 'generations', label: 'Generations'                                        },
+  { id: 'email',       label: 'Email'                                               },
   { id: 'settings',  label: 'Tier Settings'                                        },
   
 ]
@@ -310,7 +312,11 @@ export default function AdminPage() {
 <GenerationsManager />
 </motion.div>
 )}
-
+{activeTab === 'email' && (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <EmailManager />
+  </motion.div>
+)}
         {/* ── Tier Settings ── */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
