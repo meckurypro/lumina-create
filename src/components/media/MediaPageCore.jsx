@@ -237,7 +237,13 @@ export default function MediaPageCore({
     }
 
     if (!wasDismissedToday()) setFallbackMsg(null)
-      setTotalCount(count || 0)
+      const visibleCount = (data || []).filter((g) =>
+  sFilter === 'completed' ? g.status === 'completed' :
+  sFilter === 'failed'    ? g.status === 'failed'    :
+  sFilter === 'in_progress' ? (g.status === 'pending' || g.status === 'processing') :
+  true
+).length
+setTotalCount(count || visibleCount || 0)
     setItems((prev) => reset ? (data || []) : [...prev, ...(data || [])])
     setHasMore((offset + PAGE_SIZE) < (count || 0))
     setLoading(false)
