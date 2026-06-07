@@ -10,7 +10,7 @@ import {
   Plus, Search, X, MoreHorizontal,
   Download, Trash2, Film, Pencil, Check,
   ImageIcon, VideoIcon, FolderOpen,
-  Sparkles, Wand2, Mic2, Clapperboard, ScanLine,
+  Sparkles, Wand2, Mic2, Clapperboard, ScanLine, Zap,
 } from 'lucide-react'
 import {
   uploadAsset, listAssets, renameAsset,
@@ -26,6 +26,7 @@ const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
 const PAGE_SIZE   = 20
 
 const EXTRACT_END_FRAME_COST = 3
+const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
 
 // ── SessionStorage keys ───────────────────────────────────────────────────────
 const SS_IMAGE_POLISH   = 'meckury_polish_image'
@@ -242,14 +243,15 @@ export default function AssetsPage() {
   const [search,       setSearch]       = useState('')
   const [searchQuery,  setSearchQuery]  = useState('')
 
-  const [uploading,    setUploading]    = useState(false)
-  const [previewAsset, setPreviewAsset] = useState(null)
-  const [activeAsset,  setActiveAsset]  = useState(null)
-  const [sheetOpen,    setSheetOpen]    = useState(false)
-  const [pendingDelete,setPendingDelete]= useState(null)
-  const [renamingId,   setRenamingId]   = useState(null)
-  const [renameValue,  setRenameValue]  = useState('')
-  const [extractingId, setExtractingId] = useState(null)
+  const [uploading,       setUploading]       = useState(false)
+  const [previewAsset,    setPreviewAsset]    = useState(null)
+  const [activeAsset,     setActiveAsset]     = useState(null)
+  const [sheetOpen,       setSheetOpen]       = useState(false)
+  const [pendingDelete,   setPendingDelete]   = useState(null)
+  const [renamingId,      setRenamingId]      = useState(null)
+  const [renameValue,     setRenameValue]     = useState('')
+  const [extractingId,    setExtractingId]    = useState(null)
+  const [extractConfirmAsset, setExtractConfirmAsset] = useState(null)
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -410,26 +412,29 @@ export default function AssetsPage() {
 
   // ── Extract end frame ──────────────────────────────────────────────────────
   // Free for master users. Costs EXTRACT_END_FRAME_COST credits for novice.
-  // Deduction happens AFTER successful extraction to avoid charging on failure.
+  // Shows a confirm modal unless user has ticked "don't remind me again".
+  // Deduction fires AFTER successful extraction to avoid charging on failure.
 
-  const handleExtractEndFrame = async (asset) => {
+  const handleExtractEndFrame = (asset) => {
     closeSheet()
-
     if (!isMaster) {
       if (credits < EXTRACT_END_FRAME_COST) {
         toast.error(`Not enough credits — extracting end frame costs ${EXTRACT_END_FRAME_COST} credits`)
         return
       }
-      const confirmed = window.confirm(
-        `Extract end frame?\n\nThis costs ${EXTRACT_END_FRAME_COST} credits.`
-      )
-      if (!confirmed) return
+      const skipConfirm = localStorage.getItem(LS_SKIP_EXTRACT_CONFIRM) === 'true'
+      if (!skipConfirm) {
+        setExtractConfirmAsset(asset)
+        return
+      }
     }
+    runExtractEndFrame(asset)
+  }
 
+  const runExtractEndFrame = async (asset) => {
+    setExtractConfirmAsset(null)
     setExtractingId(asset.id)
-
     try {
-      // Extract + upload first — only charge on success
       const frameBlob = await extractLastFrame(asset.file_url)
       const frameFile = new File(
         [frameBlob],
@@ -447,12 +452,11 @@ export default function AssetsPage() {
           p_generation_id: null,
           p_description:   'End frame extraction',
         })
-
         if (dErr || !deduct?.success) {
-          // Asset already saved — deduction failed. Log it, don't block user.
-          console.error('[handleExtractEndFrame] credit deduction failed:', dErr || deduct?.error)
+          const errMsg = dErr?.message || deduct?.error || 'Unknown error'
+          console.error('[handleExtractEndFrame] credit deduction failed:', errMsg)
           toast.success('End frame saved to Assets')
-          toast.error('Credit deduction failed — contact support if this persists', { duration: 6000 })
+          toast.error(`Credit deduction failed (${errMsg}) — contact support`, { duration: 8000 })
         } else {
           refreshProfile()
           toast.success(`End frame saved — ${EXTRACT_END_FRAME_COST} credits used`)
@@ -826,12 +830,23 @@ export default function AssetsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Extract end frame confirm modal */}
+      <AnimatePresence>
+        {extractConfirmAsset && (
+          <ExtractEndFrameConfirmModal
+            cost={EXTRACT_END_FRAME_COST}
+            onConfirm={(skipNext) => {
+              if (skipNext) localStorage.setItem(LS_SKIP_EXTRACT_CONFIRM, 'true')
+              runExtractEndFrame(extractConfirmAsset)
+            }}
+            onCancel={() => setExtractConfirmAsset(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AssetCard
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
@@ -1006,6 +1021,108 @@ function AssetActionSheet({
         </div>
       </motion.div>
     </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExtractEndFrameConfirmModal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
+  const [skipNext, setSkipNext] = useState(false)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Icon + title */}
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(91,110,247,0.12)' }}
+          >
+            <ScanLine size={18} style={{ color: '#5B6EF7' }} />
+          </div>
+          <div>
+            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+              Extract End Frame
+            </p>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              The last frame of this video will be saved to your Assets.
+            </p>
+          </div>
+        </div>
+
+        {/* Cost callout */}
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl"
+          style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}
+        >
+          <Zap size={15} style={{ color: '#5B6EF7', flexShrink: 0 }} />
+          <p className="text-sm font-semibold" style={{ color: '#5B6EF7' }}>
+            {cost} credits will be deducted
+          </p>
+        </div>
+
+        {/* Master plan upsell */}
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl"
+          style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}
+        >
+          <Sparkles size={15} style={{ color: '#eab308', flexShrink: 0 }} />
+          <p className="text-xs" style={{ color: '#eab308', lineHeight: 1.5 }}>
+            <span className="font-bold">Master plan</span> unlocks this feature for free — no credits charged.
+          </p>
+        </div>
+
+        {/* Don't remind me */}
+        <button
+          onClick={() => setSkipNext((v) => !v)}
+          className="flex items-center gap-2.5 w-fit"
+        >
+          <div
+            className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
+            style={{
+              background: skipNext ? '#5B6EF7' : 'transparent',
+              border:     `1.5px solid ${skipNext ? '#5B6EF7' : 'var(--border-color)'}`,
+            }}
+          >
+            {skipNext && <Check size={10} color="#fff" strokeWidth={3} />}
+          </div>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Don't ask me again
+          </span>
+        </button>
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(skipNext)}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
+            style={{ background: '#5B6EF7', color: '#fff' }}
+          >
+            Extract · {cost} cr
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
