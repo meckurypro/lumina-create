@@ -171,15 +171,17 @@ export default function AdminPage() {
               </div>
             ) : stats ? (
               <>
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}             sub={`+${stats.new_users_today} today`}                        />
+                <>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}             sub={`+${stats.new_users_today} new today`}                    />
                   <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}        sub={`${stats.generations_today} today`}    color="#8b5cf6"    />
                   <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                  sub="Today"                                 color="#10b981"    />
                   <StatCard icon={AlertTriangle} label="Failed today"      value={stats.failed_today}                              sub="Auto-refunded"                         color="#ef4444"    />
                   <StatCard icon={DollarSign}    label="Revenue (NGN)"     value={`₦${stats.total_revenue_ngn?.toLocaleString()}`} sub={`₦${stats.revenue_today_ngn?.toLocaleString()} today`} color="#10b981" />
                   <StatCard icon={Clock}         label="Pending feed"      value={stats.pending_feed_posts}                        sub="Awaiting review"                       color="#eab308"    />
+                  <StatCard icon={Users}         label="Seen today"        value={stats.seen_today}                                sub="Opened the app"                        color="#06b6d4"    />
+                  <StatCard icon={TrendingUp}    label="Active today"      value={stats.active_users_today}                        sub="Spent credits"                         color="#f97316"    />
                 </div>
-                <StatCard icon={Users} label="Active users today" value={stats.active_users_today} color="#06b6d4" />
               </>
             ) : (
               <p style={{ color: 'var(--text-muted)' }}>Failed to load stats.</p>
