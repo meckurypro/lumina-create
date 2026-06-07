@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, ImagePlus, VideoIcon, Mic, FileText,
-  Users, User, Library, Play, Pause, Loader2, ChevronDown, Plus,
+  Users, User, Library, Play, Pause, Loader2, ChevronDown,
+  AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
@@ -25,27 +26,59 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ─── Duration helpers ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CAPABILITY HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Sum of all filled slot durations (seconds). Falls back to 0 for unknown durations. */
+function getModelCaps(model) {
+  if (!model) return {
+    faceInput:       true,
+    videoInput:      false,
+    textScript:      false,
+    multiChar:       false,
+    maxRefImages:    1,
+    supportedDurations:    ['5', '10'],
+    supportedAspectRatios: ['9:16', '16:9', '1:1'],
+    supportsSound:   false,
+    isFlatRate:      false,
+    requiresImage:   false,
+    requiresAudio:   false,
+    requiresVideo:   false,
+    requiresVoiceId: false,
+  }
+  return {
+    faceInput:             model.supports_start_frame    ?? true,
+    videoInput:            model.supports_video_input    ?? false,
+    textScript:            model.supports_text_script    ?? false,
+    multiChar:             model.supports_multi_image    ?? false,
+    maxRefImages:          model.max_ref_images          ?? 1,
+    supportedDurations:    model.supported_durations     ?? ['5', '10'],
+    supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
+    supportsSound:         model.supports_sound          ?? false,
+    isFlatRate:            model.is_flat_rate            ?? false,
+    // Required-input flags — populated by migration
+    requiresImage:         model.requires_image          ?? false,
+    requiresAudio:         model.requires_audio          ?? false,
+    requiresVideo:         model.requires_video          ?? false,
+    requiresVoiceId:       model.requires_voice_id       ?? false,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DURATION / AUDIO BUDGET HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
 function totalSlotDuration(slots) {
   return slots.filter(Boolean).reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0)
 }
 
-/**
- * Trim a slots array so the cumulative duration never exceeds limitS.
- * Returns { kept, dropped } — kept is the trimmed array, dropped is count removed.
- */
 function trimSlotsToLimit(slots, limitS) {
   let cumulative = 0
   let cutIndex   = null
   for (let i = 0; i < slots.length; i++) {
     if (!slots[i]) continue
     const dur = slots[i].duration_seconds ?? 0
-    if (cumulative + dur > limitS + 0.25) {   // 0.25s tolerance for float imprecision
-      cutIndex = i
-      break
-    }
+    if (cumulative + dur > limitS + 0.25) { cutIndex = i; break }
     cumulative += dur
   }
   if (cutIndex === null) return { kept: slots, dropped: 0 }
@@ -54,7 +87,9 @@ function trimSlotsToLimit(slots, limitS) {
   return { kept, dropped }
 }
 
-// ─── Audio utilities ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIO UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
 
 function audioBufferToWav(buffer) {
   const numChannels    = buffer.numberOfChannels
@@ -120,31 +155,15 @@ async function concatenateAudioBlobs(blobs) {
   return audioBufferToWav(rendered)
 }
 
-// ─── caps helper ──────────────────────────────────────────────────────────────
-function getModelCaps(model) {
-  if (!model) return {
-    faceInput: true, videoInput: false, textScript: false, multiChar: false,
-    maxRefImages: 1, supportedDurations: ['5', '10'],
-    supportedAspectRatios: ['9:16', '16:9', '1:1'],
-    supportsSound: false, isFlatRate: false,
-  }
-  return {
-    faceInput:             model.supports_start_frame    ?? true,
-    videoInput:            model.supports_video_input    ?? false,
-    textScript:            model.supports_text_script    ?? false,
-    multiChar:             model.supports_multi_image    ?? false,
-    maxRefImages:          model.max_ref_images          ?? 1,
-    supportedDurations:    model.supported_durations     ?? ['5', '10'],
-    supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    supportsSound:         model.supports_sound          ?? false,
-    isFlatRate:            model.is_flat_rate            ?? false,
-  }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// IMAGE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
 function detectAspectRatio(w, h) {
   const r = w / h
-  if (r > 1.6) return '16:9'; if (r < 0.75) return '9:16'; return '1:1'
+  if (r > 1.6) return '16:9'
+  if (r < 0.75) return '9:16'
+  return '1:1'
 }
 
 async function compressImage(file) {
@@ -161,14 +180,18 @@ async function compressImage(file) {
       canvas.toBlob((blob) => {
         resolve({
           file: new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }),
-          url: URL.createObjectURL(blob),
-          ar: detectAspectRatio(canvas.width, canvas.height),
+          url:  URL.createObjectURL(blob),
+          ar:   detectAspectRatio(canvas.width, canvas.height),
         })
       }, 'image/jpeg', 0.92)
     }
     img.src = url
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────────────
 
 const persistFile = (key, file) => {
   if (!file) { try { sessionStorage.removeItem(key) } catch {} ; return }
@@ -186,11 +209,7 @@ const restoreFile = (key) => new Promise((resolve) => {
     if (!saved) return resolve(null)
     sessionStorage.removeItem(key)
     const item = JSON.parse(saved)
-    // New: URL payload from Assets { url, name, type }
-    if (item.url && !item.base64) {
-      return resolve({ file: null, url: item.url, name: item.name })
-    }
-    // Legacy: base64 payload
+    if (item.url && !item.base64) return resolve({ file: null, url: item.url, name: item.name })
     const { base64, name, type } = item
     const byteString = atob(base64.split(',')[1])
     const ab = new ArrayBuffer(byteString.length)
@@ -201,18 +220,27 @@ const restoreFile = (key) => new Promise((resolve) => {
   } catch { resolve(null) }
 })
 
-// ─── SettingChips ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTING CHIPS
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
+    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+      {label}
+    </p>
     <div className="flex gap-2 flex-wrap">
       {options.map((opt) => (
-        <button key={opt.value} onClick={() => !opt.disabled && onChange(opt.value)} disabled={opt.disabled}
+        <button
+          key={opt.value}
+          onClick={() => !opt.disabled && onChange(opt.value)}
+          disabled={opt.disabled}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
           style={{
-            background: value === opt.value ? ACCENT    : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff'  : 'var(--text-secondary)',
-            opacity: opt.disabled ? 0.3 : 1, cursor: opt.disabled ? 'not-allowed' : 'pointer',
+            background: value === opt.value ? ACCENT : 'var(--bg-elevated)',
+            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
+            opacity:    opt.disabled ? 0.3 : 1,
+            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
           }}>
           {opt.label}
         </button>
@@ -221,15 +249,20 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ─── ModelDropdown ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MODEL DROPDOWN
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
   const locked   = models.filter((m) =>  m.is_locked)
   const selected = models.find((m) => m.value === value) || unlocked[0]
+
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)}
+      <button
+        onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
         <span>{selected?.aka || selected?.label || 'Model'}</span>
@@ -242,31 +275,49 @@ const ModelDropdown = ({ models, value, onChange }) => {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }} transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-60 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.13 }}
+              className="absolute right-0 top-9 z-50 w-64 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}>
               <div className="py-1">
                 {unlocked.map((m) => {
                   const caps = getModelCaps(m)
-                  const tags = [caps.faceInput && 'Face', caps.videoInput && 'Video', caps.multiChar && '2-char', caps.textScript && 'Text→Speech'].filter(Boolean)
+                  const tags = [
+                    caps.requiresImage  && 'Photo',
+                    caps.requiresVideo  && 'Video',
+                    caps.requiresAudio  && 'Audio',
+                    caps.requiresVoiceId && 'Script→Voice',
+                    caps.multiChar      && '2-char',
+                  ].filter(Boolean)
                   return (
-                    <button key={m.value} onClick={() => { onChange(m.value); setOpen(false) }}
+                    <button
+                      key={m.value}
+                      onClick={() => { onChange(m.value); setOpen(false) }}
                       className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
                       style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
-                        {m.description && <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
+                        {m.description && (
+                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
+                        )}
                         {tags.length > 0 && (
                           <div className="flex gap-1 flex-wrap mt-1">
                             {tags.map((t) => (
-                              <span key={t} className="px-1.5 py-0.5 rounded-md text-xs font-semibold"
-                                style={{ background: ACCENT_SUB, color: ACCENT, fontSize: 10 }}>{t}</span>
+                              <span
+                                key={t}
+                                className="px-1.5 py-0.5 rounded-md font-semibold"
+                                style={{ background: ACCENT_SUB, color: ACCENT, fontSize: 10 }}>
+                                {t}
+                              </span>
                             ))}
                           </div>
                         )}
                       </div>
-                      {m.value === value && <span style={{ color: ACCENT, fontSize: 14, flexShrink: 0, marginLeft: 8 }}>✓</span>}
+                      {m.value === value && (
+                        <span style={{ color: ACCENT, fontSize: 14, flexShrink: 0, marginLeft: 8 }}>✓</span>
+                      )}
                     </button>
                   )
                 })}
@@ -292,7 +343,10 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ─── SubjectSlot ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBJECT SLOT
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove }) => {
   if (mode === 'face') {
     return faceImage ? (
@@ -301,7 +355,8 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
           <div className="relative overflow-hidden rounded-2xl" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
             <img src={faceImage.url} alt="Subject" className="w-full h-full object-cover" />
           </div>
-          <button onClick={onFaceRemove}
+          <button
+            onClick={onFaceRemove}
             className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
             style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}>
             <X size={13} />
@@ -310,7 +365,8 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
       </div>
     ) : (
       <div className="flex justify-center">
-        <label className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all w-full max-w-[200px]"
+        <label
+          className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all w-full max-w-[200px]"
           style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
           <input type="file" accept="image/*" className="hidden" onChange={onFaceUpload} />
           <ImagePlus size={24} style={{ color: ACCENT, marginBottom: 8 }} />
@@ -320,9 +376,11 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
       </div>
     )
   }
+
   return videoFile ? (
     <div className="relative">
-      <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+      <div className="flex items-center gap-3 p-4 rounded-2xl"
+        style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ACCENT_SUB }}>
           <VideoIcon size={18} style={{ color: ACCENT }} />
         </div>
@@ -330,14 +388,17 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
           <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{videoFile.name}</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Video subject ready</p>
         </div>
-        <button onClick={onVideoRemove} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+        <button
+          onClick={onVideoRemove}
+          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
           <X size={13} />
         </button>
       </div>
     </div>
   ) : (
-    <label className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
+    <label
+      className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
       style={{ minHeight: 120, border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
       <input type="file" accept="video/*" className="hidden" onChange={onVideoUpload} />
       <VideoIcon size={24} style={{ color: ACCENT, marginBottom: 8 }} />
@@ -347,11 +408,12 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
   )
 }
 
-// ─── Shared audio singleton ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIO SOURCE PICKER
+// ─────────────────────────────────────────────────────────────────────────────
+
 const sharedPickerAudio = { ref: null }
 
-// ─── AudioSourcePicker ────────────────────────────────────────────────────────
-// maxDurationS: how many seconds remain in the budget for this slot
 function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slotIndex }) {
   const [mode,          setMode]          = useState(null)
   const [generations,   setGens]          = useState([])
@@ -361,7 +423,6 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   const [chunksMap,     setChunksMap]     = useState({})
   const [loadingChunks, setLoadingChunks] = useState(null)
 
-  // Format seconds nicely: "4.2s" or "4s"
   const fmtS = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
   const openPicker = async () => {
@@ -408,7 +469,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   const handleImportChunk = (gen, chunk) => {
     const chunkDur = chunk.duration_ms ? chunk.duration_ms / 1000 : null
     if (chunkDur !== null && chunkDur > maxDurationS + 0.25) {
-      toast.error(`This chunk is ${chunkDur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains. Pick a shorter clip.`, { duration: 5000 })
+      toast.error(`This chunk is ${chunkDur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains.`, { duration: 5000 })
       return
     }
     stopAudio()
@@ -425,7 +486,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   const handleImportFull = (gen) => {
     const dur = gen.duration_seconds ?? null
     if (dur !== null && dur > maxDurationS + 0.25) {
-      toast.error(`This audio is ${dur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains. Pick a shorter clip or use a chunk.`, { duration: 5000 })
+      toast.error(`This audio is ${dur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains.`, { duration: 5000 })
       return
     }
     stopAudio(); onImport(gen)
@@ -442,7 +503,8 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload file</span>
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Max {fmtS(maxDurationS)}</span>
         </label>
-        <button onClick={openPicker}
+        <button
+          onClick={openPicker}
           className="flex-1 flex flex-col items-center justify-center rounded-2xl transition-all gap-1.5 py-5"
           style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
           <Library size={20} style={{ color: ACCENT }} />
@@ -463,7 +525,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
       </div>
       <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
         {loadingList ? (
-          <div className="flex justify-center py-8"><Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" /></div>
+          <div className="flex justify-center py-8">
+            <Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" />
+          </div>
         ) : generations.length === 0 ? (
           <p className="text-xs text-center py-8" style={{ color: 'var(--text-muted)' }}>No generated audio yet</p>
         ) : generations.map((gen) => {
@@ -478,13 +542,14 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           return (
             <div key={gen.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
               <div className="flex items-center gap-2.5 px-3 py-2.5">
-                <button onClick={() => togglePlay(gen.id, gen.output_url)} disabled={!gen.output_url}
+                <button
+                  onClick={() => togglePlay(gen.id, gen.output_url)}
+                  disabled={!gen.output_url}
                   className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
                   style={{ background: playing === gen.id ? ACCENT : ACCENT_SUB, opacity: gen.output_url ? 1 : 0.3 }}>
                   {playing === gen.id
                     ? <Pause size={13} style={{ color: '#fff'  }} fill="currentColor" />
-                    : <Play  size={13} style={{ color: ACCENT }} fill="currentColor" />
-                  }
+                    : <Play  size={13} style={{ color: ACCENT }} fill="currentColor" />}
                 </button>
                 <button className="flex-1 min-w-0 text-left" onClick={() => hasChunks && handleExpand(gen)}>
                   <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{snippet}</p>
@@ -498,14 +563,17 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                   )}
                 </button>
                 {hasChunks ? (
-                  <button onClick={() => handleExpand(gen)}
+                  <button
+                    onClick={() => handleExpand(gen)}
                     className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
                     style={{ background: isExpanded ? ACCENT : ACCENT_SUB, color: isExpanded ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
                     <ChevronDown size={12} style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                     Parts
                   </button>
                 ) : (
-                  <button onClick={() => handleImportFull(gen)} disabled={tooLong}
+                  <button
+                    onClick={() => handleImportFull(gen)}
+                    disabled={tooLong}
                     className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
                     style={{ background: tooLong ? 'var(--bg-card)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff', opacity: tooLong ? 0.5 : 1 }}>
                     Use
@@ -515,37 +583,43 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18, ease: 'easeInOut' }}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeInOut' }}
                     style={{ overflow: 'hidden' }}>
                     <div className="px-3 pb-2 pt-1 flex flex-col gap-1.5"
                       style={{ borderTop: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
                       {loadingChunks === gen.id ? (
-                        <div className="flex justify-center py-3"><Loader2 size={15} style={{ color: ACCENT }} className="animate-spin" /></div>
+                        <div className="flex justify-center py-3">
+                          <Loader2 size={15} style={{ color: ACCENT }} className="animate-spin" />
+                        </div>
                       ) : chunks.length === 0 ? (
                         <div className="flex items-center justify-between py-2">
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Parts not ready — use full audio</p>
-                          <button onClick={() => handleImportFull(gen)} disabled={tooLong}
+                          <button
+                            onClick={() => handleImportFull(gen)}
+                            disabled={tooLong}
                             className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
                             style={{ background: tooLong ? 'var(--bg-elevated)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff' }}>
                             Use full
                           </button>
                         </div>
                       ) : chunks.map((chunk) => {
-                        const chunkDur       = chunk.duration_ms ? chunk.duration_ms / 1000 : null
-                        const chunkDurStr    = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
-                        const chunkTooLong   = chunkDur != null && chunkDur > maxDurationS + 0.25
-                        const isPlayingChunk = playing === chunk.id
+                        const chunkDur     = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+                        const chunkDurStr  = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
+                        const chunkTooLong = chunkDur != null && chunkDur > maxDurationS + 0.25
+                        const isPlayingCk  = playing === chunk.id
                         return (
                           <div key={chunk.id} className="flex items-center gap-2 py-1.5 px-2 rounded-xl"
                             style={{ background: 'var(--bg-elevated)' }}>
-                            <button onClick={() => togglePlay(chunk.id, chunk.public_url)}
+                            <button
+                              onClick={() => togglePlay(chunk.id, chunk.public_url)}
                               className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
-                              style={{ background: isPlayingChunk ? ACCENT : ACCENT_SUB }}>
-                              {isPlayingChunk
+                              style={{ background: isPlayingCk ? ACCENT : ACCENT_SUB }}>
+                              {isPlayingCk
                                 ? <Pause size={11} style={{ color: '#fff'  }} fill="currentColor" />
-                                : <Play  size={11} style={{ color: ACCENT }} fill="currentColor" />
-                              }
+                                : <Play  size={11} style={{ color: ACCENT }} fill="currentColor" />}
                             </button>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{chunk.label}</p>
@@ -553,7 +627,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                                 {chunkDurStr}{chunkTooLong ? ` · only ${fmtS(maxDurationS)} left` : ''}
                               </p>
                             </div>
-                            <button onClick={() => handleImportChunk(gen, chunk)} disabled={chunkTooLong}
+                            <button
+                              onClick={() => handleImportChunk(gen, chunk)}
+                              disabled={chunkTooLong}
                               className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95"
                               style={{ background: chunkTooLong ? 'var(--bg-card)' : ACCENT, color: chunkTooLong ? 'var(--text-muted)' : '#fff', opacity: chunkTooLong ? 0.5 : 1 }}>
                               Use
@@ -573,12 +649,14 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   )
 }
 
-// ─── Chained audio player ─────────────────────────────────────────────────────
-// Renders all filled slots as a single playable chain with individual remove buttons.
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAINED AUDIO PLAYER
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   const [playing,  setPlaying]  = useState(false)
-  const [progress, setProgress] = useState(0)   // 0–1
-  const audioRef  = useRef(null)
+  const [progress, setProgress] = useState(0)
+  const audioRef   = useRef(null)
   const blobUrlRef = useRef(null)
   const rafRef     = useRef(null)
 
@@ -586,7 +664,6 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   const totalDur    = filledSlots.reduce((a, s) => a + (s.duration_seconds ?? 0), 0)
   const fmtTime     = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-  // Build a chained blob URL from all filled slots (fetch remote, concat locally)
   const buildChain = useCallback(async () => {
     const blobs = await Promise.all(
       filledSlots.map(async (slot) => {
@@ -599,18 +676,16 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
     if (blobs.length === 1) return URL.createObjectURL(blobs[0])
     const combined = await concatenateAudioBlobs(blobs)
     return URL.createObjectURL(combined)
-  }, [filledSlots.map((s) => s.url).join('|')])  // eslint-disable-line
+  }, [filledSlots.map((s) => s.url).join('|')]) // eslint-disable-line
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (rafRef.current)  cancelAnimationFrame(rafRef.current)
+      if (rafRef.current)   cancelAnimationFrame(rafRef.current)
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
     }
   }, [])
 
-  // Stop playback if slots change
   useEffect(() => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
@@ -627,11 +702,7 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   }
 
   const handlePlayPause = async () => {
-    if (playing) {
-      audioRef.current?.pause()
-      setPlaying(false)
-      return
-    }
+    if (playing) { audioRef.current?.pause(); setPlaying(false); return }
     try {
       if (!blobUrlRef.current) blobUrlRef.current = await buildChain()
       if (!audioRef.current) {
@@ -653,7 +724,7 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   const handleSeek = (e) => {
     const a = audioRef.current
     if (!a || !a.duration) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    const rect  = e.currentTarget.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     a.currentTime = ratio * a.duration
     setProgress(ratio)
@@ -667,21 +738,22 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
       transition={{ duration: 0.18 }}
       className="flex flex-col gap-2 p-3 rounded-2xl"
       style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
-
-      {/* Play bar */}
       <div className="flex items-center gap-3">
-        <button onClick={handlePlayPause}
+        <button
+          onClick={handlePlayPause}
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
           style={{ background: ACCENT }}>
           {playing
             ? <Pause size={14} style={{ color: '#fff' }} fill="currentColor" />
             : <Play  size={14} style={{ color: '#fff' }} fill="currentColor" />}
         </button>
-
-        {/* Scrubber */}
         <div className="flex-1 flex flex-col gap-1 min-w-0">
-          <div className="relative h-1.5 rounded-full cursor-pointer" style={{ background: 'var(--bg-card)' }} onClick={handleSeek}>
-            <div className="absolute inset-y-0 left-0 rounded-full transition-all" style={{ width: `${progress * 100}%`, background: ACCENT }} />
+          <div
+            className="relative h-1.5 rounded-full cursor-pointer"
+            style={{ background: 'var(--bg-card)' }}
+            onClick={handleSeek}>
+            <div className="absolute inset-y-0 left-0 rounded-full transition-all"
+              style={{ width: `${progress * 100}%`, background: ACCENT }} />
           </div>
           <div className="flex justify-between">
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -691,21 +763,18 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
           </div>
         </div>
       </div>
-
-      {/* Individual parts list */}
       <div className="flex flex-col gap-1">
         {audioSlots.map((slot, i) => slot && (
-          <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-xl"
-            style={{ background: 'var(--bg-card)' }}>
-            <span className="text-xs font-bold flex-shrink-0 w-5 text-center"
-              style={{ color: ACCENT }}>{i + 1}</span>
+          <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-xl" style={{ background: 'var(--bg-card)' }}>
+            <span className="text-xs font-bold flex-shrink-0 w-5 text-center" style={{ color: ACCENT }}>{i + 1}</span>
             <p className="text-xs flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
               {slot.fromChunk ? slot.chunkLabel : slot.name}
             </p>
             <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
               {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
             </span>
-            <button onClick={() => onSlotClear(i)}
+            <button
+              onClick={() => onSlotClear(i)}
               className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
               <X size={10} />
@@ -717,24 +786,22 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   )
 }
 
-// ─── Multi-slot audio section ─────────────────────────────────────────────────
-// Budget logic:
-//   - totalUsed   = sum of all filled slot durations
-//   - remaining   = durationS - totalUsed
-//   - showPicker  = remaining > 0 (not >= full slot — any remaining space gets a picker)
-//   - maxDurationS passed to picker = remaining (so upload/import validation uses real budget)
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTI-SLOT AUDIO SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
 function MultiSlotAudio({
   label, audioSlots, durationS,
   onSlotFill, onSlotClear, audioMode, onAudioModeChange,
   script, onScriptChange, supportsTextScript, charIndex, userId,
 }) {
-  const charLabel    = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
-  const filledSlots  = audioSlots.filter(Boolean)
-  const filledCount  = filledSlots.length
-  const totalUsed    = totalSlotDuration(audioSlots)
-  const remaining    = Math.max(0, durationS - totalUsed)
-  const isFull       = remaining <= 0.1   // treat <0.1s as full
-  const fmtS         = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
+  const charLabel   = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
+  const filledSlots = audioSlots.filter(Boolean)
+  const filledCount = filledSlots.length
+  const totalUsed   = totalSlotDuration(audioSlots)
+  const remaining   = Math.max(0, durationS - totalUsed)
+  const isFull      = remaining <= 0.1
+  const fmtS        = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
   return (
     <div className="flex flex-col gap-2">
@@ -743,14 +810,14 @@ function MultiSlotAudio({
           {label}{charLabel}
         </p>
         {filledCount > 0 && (
-          <span className="text-xs px-2 py-0.5 rounded-lg font-semibold"
+          <span
+            className="text-xs px-2 py-0.5 rounded-lg font-semibold"
             style={{ background: isFull ? ACCENT : ACCENT_SUB, color: isFull ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
             {fmtS(totalUsed)} / {durationS}s {isFull ? '· full' : `· ${fmtS(remaining)} left`}
           </span>
         )}
       </div>
 
-      {/* Hint shown when multiple parts are possible */}
       {durationS > 0 && filledCount === 0 && (
         <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Upload audio up to {durationS}s total. Add multiple clips — they will be joined in order.
@@ -760,10 +827,12 @@ function MultiSlotAudio({
       {supportsTextScript && (
         <div className="flex gap-1 p-1 rounded-xl self-start" style={{ background: 'var(--bg-elevated)' }}>
           {[
-            { value: 'upload', label: 'Audio', icon: Mic      },
-            { value: 'text',   label: 'Script', icon: FileText },
+            { value: 'upload', label: 'Audio',  icon: Mic      },
+            { value: 'text',   label: 'Script',  icon: FileText },
           ].map(({ value, label: lbl, icon: Icon }) => (
-            <button key={value} onClick={() => onAudioModeChange(value)}
+            <button
+              key={value}
+              onClick={() => onAudioModeChange(value)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{ background: audioMode === value ? ACCENT : 'transparent', color: audioMode === value ? '#ffffff' : 'var(--text-muted)' }}>
               <Icon size={11} />{lbl}
@@ -772,14 +841,11 @@ function MultiSlotAudio({
         </div>
       )}
 
-{audioMode === 'upload' && (
+      {audioMode === 'upload' && (
         <div className="flex flex-col gap-2">
-          {/* Chained player — shown when at least one slot is filled */}
           {filledCount > 0 && (
             <ChainedAudioPlayer audioSlots={audioSlots} onSlotClear={onSlotClear} />
           )}
-
-          {/* Show picker only while there is remaining budget */}
           {!isFull && (
             <motion.div
               key={`picker-${filledCount}`}
@@ -799,7 +865,6 @@ function MultiSlotAudio({
               />
             </motion.div>
           )}
-
           {isFull && filledCount > 0 && (
             <motion.p
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -810,17 +875,58 @@ function MultiSlotAudio({
           )}
         </div>
       )}
+
       {audioMode === 'text' && (
-        <textarea value={script} onChange={(e) => onScriptChange(e.target.value)}
-          placeholder="Type the script this character will speak…" rows={3}
+        <textarea
+          value={script}
+          onChange={(e) => onScriptChange(e.target.value)}
+          placeholder="Type the script this character will speak…"
+          rows={3}
           className="w-full px-4 py-3 rounded-2xl text-sm resize-none outline-none transition-all"
-          style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}`, color: 'var(--text-primary)', fontFamily: 'inherit', lineHeight: 1.6 }} />
+          style={{
+            background:  'var(--bg-elevated)',
+            border:      `1px solid ${ACCENT_BDR}`,
+            color:       'var(--text-primary)',
+            fontFamily:  'inherit',
+            lineHeight:  1.6,
+          }} />
       )}
     </div>
   )
 }
 
-// ─── main page ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// VALIDATION BANNER
+// Shows all blocking errors above the generate button.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ValidationBanner({ errors }) {
+  if (!errors.length) return null
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col gap-1.5">
+      {errors.map((err, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
+          style={{
+            background: 'rgba(239,68,68,0.08)',
+            color:      '#ef4444',
+            border:     '1px solid rgba(239,68,68,0.18)',
+          }}>
+          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <span>{err}</span>
+        </div>
+      ))}
+    </motion.div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function CreateTalkingHeadPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
@@ -829,32 +935,32 @@ export default function CreateTalkingHeadPage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [model,         setModel]         = useState('')
 
-  // subject
+  // Subject
   const [subjectMode, setSubjectMode] = useState('face')
   const [faceImage,   setFaceImage]   = useState(null)
   const [videoFile,   setVideoFile]   = useState(null)
 
-  // audio — arrays of slots per character
-  const [audioSlots1,  setAudioSlots1]  = useState([])
-  const [audioSlots2,  setAudioSlots2]  = useState([])
-  const [audioMode1,   setAudioMode1]   = useState('upload')
-  const [audioMode2,   setAudioMode2]   = useState('upload')
-  const [script1,      setScript1]      = useState('')
-  const [script2,      setScript2]      = useState('')
+  // Audio — per-character slot arrays
+  const [audioSlots1, setAudioSlots1] = useState([])
+  const [audioSlots2, setAudioSlots2] = useState([])
+  const [audioMode1,  setAudioMode1]  = useState('upload')
+  const [audioMode2,  setAudioMode2]  = useState('upload')
+  const [script1,     setScript1]     = useState('')
+  const [script2,     setScript2]     = useState('')
 
-  // settings
+  // Settings
   const [prompt,      setPrompt]      = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [autoRatio,   setAutoRatio]   = useState(false)
   const [duration,    setDuration]    = useState('5')
 
-  const [submitting,     setSubmitting]     = useState(false)
+  const [submitting,          setSubmitting]          = useState(false)
   const [pendingVideoSubject, setPendingVideoSubject] = useState(false)
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+  const durationNum    = parseInt(duration || '5', 10)
 
-  const durationNum = parseInt(duration || '5', 10)
-
-  // ── session restore ──────────────────────────────────────────
+  // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
     try { const p = sessionStorage.getItem(SS_PROMPT); if (p) setPrompt(p) } catch {}
     restoreFile(SS_SUBJECT_IMG).then((f) => {
@@ -878,7 +984,7 @@ export default function CreateTalkingHeadPage() {
     } catch {}
   }, [prompt])
 
-  // ── When duration changes, trim slots that exceed the new limit ──────────
+  // ── Trim audio slots when duration changes ───────────────────────────────
   useEffect(() => {
     const trimAndNotify = (slots, setSlots, charLabel) => {
       const { kept, dropped } = trimSlotsToLimit(slots, durationNum)
@@ -887,25 +993,29 @@ export default function CreateTalkingHeadPage() {
         toast(`${dropped} audio part${dropped > 1 ? 's' : ''} removed from ${charLabel} — exceeded new ${durationNum}s limit.`, {
           icon: '✂️', duration: 4000,
         })
-      } else {
-        // No drop needed, but still enforce hard trim by index in case durations were unknown
-        setSlots((prev) => prev.slice(0, prev.filter(Boolean).length))
       }
     }
     trimAndNotify(audioSlots1, setAudioSlots1, 'Character 1')
     trimAndNotify(audioSlots2, setAudioSlots2, 'Character 2')
   }, [durationNum]) // eslint-disable-line
 
-  // ── load models ──────────────────────────────────────────────
+  // ── Load models ──────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
-      .from('models').select('*').eq('feature', 'lipsync')
-      .eq('is_active', true).eq('is_user_facing', true).order('sort_order')
+      .from('models')
+      .select('*')
+      .eq('feature', 'lipsync')
+      .eq('is_active', true)
+      .eq('is_user_facing', true)
+      .order('sort_order')
+
     const isMaster = profile?.user_tier === 'master'
     const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+
     setModels(list)
     setModelsLoading(false)
+
     setPendingVideoSubject((isPending) => {
       if (isPending) {
         const videoModel = list.find((m) => !m.is_locked && (m.supports_video_input ?? false))
@@ -917,25 +1027,27 @@ export default function CreateTalkingHeadPage() {
       }
       return false
     })
-  }, [])
+  }, []) // eslint-disable-line
 
   useEffect(() => { loadModels() }, [loadModels])
 
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  // ── reset on model change ────────────────────────────────────
+  // ── Reset when model changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!selectedModel) return
-    if (!caps.faceInput && caps.videoInput)  setSubjectMode('video')
-    if (caps.faceInput  && !caps.videoInput) setSubjectMode('face')
+    if (!caps.faceInput  && caps.videoInput)  setSubjectMode('video')
+    if (caps.faceInput   && !caps.videoInput) setSubjectMode('face')
     if (!caps.textScript) { setAudioMode1('upload'); setAudioMode2('upload') }
     if (!caps.multiChar) { setAudioSlots2([]); setScript2('') }
     if (!caps.supportedDurations.includes(duration)) setDuration(caps.supportedDurations[0] || '5')
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
+    // Auto-set audio mode for script-only models
+    if (caps.requiresVoiceId && !caps.requiresAudio) setAudioMode1('text')
   }, [model]) // eslint-disable-line
 
-  // ── credit cost ──────────────────────────────────────────────
+  // ── Credit cost ──────────────────────────────────────────────────────────
   const creditCost = (() => {
     if (!selectedModel) return 0
     const base = selectedModel.credit_cost_i2i || selectedModel.credit_cost_t2i || 0
@@ -945,33 +1057,67 @@ export default function CreateTalkingHeadPage() {
 
   const canAfford = credits >= creditCost
 
-  // ── readiness ────────────────────────────────────────────────
-  const hasSubject = subjectMode === 'face' ? !!faceImage : !!videoFile
-  const hasAudio1  = audioMode1 === 'upload'
-    ? audioSlots1.filter(Boolean).length > 0
-    : script1.trim().length > 0
-  const hasAudio2  = !caps.multiChar || (
-    audioMode2 === 'upload'
-      ? audioSlots2.filter(Boolean).length > 0
-      : script2.trim().length > 0
-  )
-  const subjectRequired = caps.faceInput || caps.videoInput
-  const subjectOk       = !subjectRequired || hasSubject
-  const buttonDisabled  = submitting || !canAfford || !hasAudio1 || !hasAudio2 || !subjectOk || !selectedModel
+  // ── Validation — derives from caps, not hardcoded ────────────────────────
+  // This is the single source of truth for what blocks submission.
+  const validationErrors = (() => {
+    if (!selectedModel) return ['Select a model to continue']
+    const errors = []
 
+    // Subject photo
+    if (caps.requiresImage && !faceImage) {
+      errors.push('Upload a face photo — this model requires one')
+    }
+
+    // Subject video
+    if (caps.requiresVideo && !videoFile) {
+      errors.push('Upload a subject video — this model requires one')
+    }
+
+    // Audio track
+    if (caps.requiresAudio) {
+      if (audioMode1 === 'upload' && audioSlots1.filter(Boolean).length === 0) {
+        errors.push(caps.multiChar ? 'Add audio for Character 1' : 'Add an audio track')
+      }
+      if (caps.multiChar && audioMode2 === 'upload' && audioSlots2.filter(Boolean).length === 0) {
+        errors.push('Add audio for Character 2')
+      }
+    }
+
+    // Script (text-to-speech models)
+    if (caps.requiresVoiceId) {
+      if (!script1.trim()) {
+        errors.push('Type a script — this model converts your text to speech')
+      }
+      // Note: voice_id / voice_language picker to be added when kling_lipsync_text_to_video is activated
+    }
+
+    // Credits
+    if (!canAfford) {
+      errors.push('Not enough credits')
+    }
+
+    return errors
+  })()
+
+  const buttonDisabled = submitting || validationErrors.length > 0
+
+  // ── Mode label ───────────────────────────────────────────────────────────
   const modeLabel = (() => {
     if (caps.multiChar)                             return 'Multi-Character Sync'
+    if (caps.requiresVoiceId)                       return 'Text → Lip Sync'
     if (caps.videoInput && subjectMode === 'video') return 'Video Lip Sync'
     if (caps.faceInput  && subjectMode === 'face')  return 'Talking Avatar'
     return 'Talking Head'
   })()
 
-  // ── upload handlers ──────────────────────────────────────────
+  // ── Upload handlers ──────────────────────────────────────────────────────
   const handleFaceUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
     const compressed = await compressImage(file)
-    setFaceImage(compressed); persistFile(SS_SUBJECT_IMG, compressed.file)
-    setAspectRatio(compressed.ar); setAutoRatio(true)
+    setFaceImage(compressed)
+    persistFile(SS_SUBJECT_IMG, compressed.file)
+    setAspectRatio(compressed.ar)
+    setAutoRatio(true)
   }
 
   const handleVideoUpload = (e) => {
@@ -980,17 +1126,15 @@ export default function CreateTalkingHeadPage() {
     persistFile(SS_SUBJECT_VID, file)
   }
 
-  // ── Slot fill: handles both file upload and chunk/generation import ──────
+  // ── Audio slot fill ──────────────────────────────────────────────────────
   const handleSlotFill = (charSlot) => async (slotIndex, e, imported) => {
     const setSlots  = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
     const curSlots  = charSlot === 1 ? audioSlots1    : audioSlots2
     const usedSoFar = totalSlotDuration(curSlots)
     const remaining = Math.max(0, durationNum - usedSoFar)
 
-    // ── Import path ──
     if (imported) {
       const durS = imported.duration_seconds ?? null
-
       if (durS !== null && durS > remaining + 0.25) {
         toast.error(
           `This audio is ${durS.toFixed(1)}s but only ${remaining <= 0 ? '0s' : remaining.toFixed(1) + 's'} remains in your ${durationNum}s budget.`,
@@ -998,30 +1142,26 @@ export default function CreateTalkingHeadPage() {
         )
         return
       }
-
       const filled = {
-        file:            null,
-        url:             imported.output_url,
-        name:            imported.name ?? imported.chunkLabel ?? 'Audio',
-        fromChunk:       !!imported.fromChunk,
-        fromGeneration:  !imported.fromChunk,
-        chunkLabel:      imported.chunkLabel ?? null,
+        file:             null,
+        url:              imported.output_url,
+        name:             imported.name ?? imported.chunkLabel ?? 'Audio',
+        fromChunk:        !!imported.fromChunk,
+        fromGeneration:   !imported.fromChunk,
+        chunkLabel:       imported.chunkLabel ?? null,
         duration_seconds: durS,
       }
       setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
       return
     }
 
-    // ── File upload path ──
     const file = e?.target?.files?.[0]; if (!file) return
-
     let durS = null
     try { durS = await getAudioDuration(file) } catch {}
 
     if (durS !== null && durS > remaining + 0.25) {
       toast.error(
-        `This audio is ${durS.toFixed(1)}s but only ${remaining.toFixed(1)}s remains in your ${durationNum}s budget. ` +
-        `Upload a shorter clip or use a chunk from My Generations.`,
+        `This audio is ${durS.toFixed(1)}s but only ${remaining.toFixed(1)}s remains. Upload a shorter clip or use a chunk.`,
         { duration: 6000 }
       )
       return
@@ -1029,10 +1169,10 @@ export default function CreateTalkingHeadPage() {
 
     const filled = {
       file,
-      url:             URL.createObjectURL(file),
-      name:            file.name,
-      fromChunk:       false,
-      fromGeneration:  false,
+      url:              URL.createObjectURL(file),
+      name:             file.name,
+      fromChunk:        false,
+      fromGeneration:   false,
       duration_seconds: durS,
     }
     setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
@@ -1058,18 +1198,19 @@ export default function CreateTalkingHeadPage() {
     } catch {}
   }
 
-  // ── Upload file to storage ───────────────────────────────────
+  // ── Storage upload ───────────────────────────────────────────────────────
   const uploadToStorage = async (fileOrBlob, name = 'audio.wav', bucket = 'generation-uploads') => {
     const ext  = name.split('.').pop()?.toLowerCase() || 'wav'
     const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-    const { data, error } = await supabase.storage.from(bucket)
+    const { data, error } = await supabase.storage
+      .from(bucket)
       .upload(path, fileOrBlob, { upsert: false, cacheControl: '3600', contentType: fileOrBlob.type || 'audio/wav' })
     if (error) throw new Error(`Upload failed: ${error.message}`)
     const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(data.path)
     return publicUrl
   }
 
-  // ── Build final audio URL for a character's slots ────────────
+  // ── Build final audio URL for a character ───────────────────────────────
   const buildAudioUrl = async (slots) => {
     const filled = slots.filter(Boolean)
     if (filled.length === 0) return null
@@ -1092,21 +1233,19 @@ export default function CreateTalkingHeadPage() {
     return uploadToStorage(combined, 'combined.wav')
   }
 
-  // ── Generate ─────────────────────────────────────────────────
+  // ── Generate ─────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (!selectedModel) return toast.error('Pick a model')
-    if (!hasAudio1)     return toast.error('Add audio for character 1')
-    if (!hasAudio2)     return toast.error('Add audio for character 2')
-    if (!subjectOk)     return toast.error(subjectMode === 'face' ? 'Upload a face photo' : 'Upload a subject video')
-    if (!canAfford)     return toast.error('Not enough credits')
-    if (!user)          return toast.error('Please sign in')
+    // Final guard — validationErrors drives the button state, but double-check
+    if (validationErrors.length) return toast.error(validationErrors[0])
+    if (!user) return toast.error('Please sign in')
 
-    // Final safety trim before generate (covers edge cases with unknown durations)
+    // Safety trim before submitting
     const { kept: safe1 } = trimSlotsToLimit(audioSlots1, durationNum)
     const { kept: safe2 } = trimSlotsToLimit(audioSlots2, durationNum)
 
     setSubmitting(true)
     try {
+      // ── Upload subject ─────────────────────────────────────────────────
       let startFrameUrl   = null
       let subjectVideoUrl = null
 
@@ -1121,27 +1260,43 @@ export default function CreateTalkingHeadPage() {
           : videoFile.url
       }
 
+      // ── Upload audio ───────────────────────────────────────────────────
       let audio1Url = null
       let audio2Url = null
 
-      if (audioMode1 === 'upload') audio1Url = await buildAudioUrl(safe1)
-      if (caps.multiChar && audioMode2 === 'upload') audio2Url = await buildAudioUrl(safe2)
+      if (caps.requiresAudio) {
+        if (audioMode1 === 'upload') audio1Url = await buildAudioUrl(safe1)
+        if (caps.multiChar && audioMode2 === 'upload') audio2Url = await buildAudioUrl(safe2)
+      }
 
-      const inputImageUrls = [subjectVideoUrl, audio1Url, audio2Url].filter(Boolean)
+      // ── Validate audio URLs were actually produced ─────────────────────
+      // This catches silent upload failures before the generation row is created.
+      if (caps.requiresAudio && !audio1Url && audioMode1 === 'upload') {
+        throw new Error('Audio upload failed — please try again')
+      }
 
+      // ── Build input_image_urls (subject video only — audio goes in meta) ─
+      const inputImageUrls = [subjectVideoUrl].filter(Boolean)
+
+      // ── Metadata for edge function ─────────────────────────────────────
       const metadata = {
         lipsync:           true,
         subject_mode:      subjectMode,
         audio_mode_1:      audioMode1,
         audio_mode_2:      audioMode2,
-        script_1:          audioMode1 === 'text' ? script1 : null,
-        script_2:          audioMode2 === 'text' && caps.multiChar ? script2 : null,
+        script_1:          audioMode1 === 'text' ? script1.trim() : null,
+        script_2:          audioMode2 === 'text' && caps.multiChar ? script2.trim() : null,
         multi_char:        caps.multiChar,
         audio_1_url:       audio1Url,
         audio_2_url:       audio2Url,
         subject_video_url: subjectVideoUrl,
+        // kling_lipsync_text_to_video fields (populated when voice picker is built)
+        voice_id:          null,
+        voice_language:    null,
+        voice_speed:       null,
       }
 
+      // ── Create generation row ──────────────────────────────────────────
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'lipsync',
@@ -1160,13 +1315,16 @@ export default function CreateTalkingHeadPage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
+      // ── Deduct credits ─────────────────────────────────────────────────
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      supabase.functions.invoke('talking-head-generate', { body: { generationId: genRow.id, meta: metadata } })
+      // ── Invoke edge function ───────────────────────────────────────────
+      supabase.functions
+        .invoke('talking-head-generate', { body: { generationId: genRow.id, meta: metadata } })
         .catch((e) => console.error('talking-head-generate invoke error', e))
 
       refreshProfile()
@@ -1181,7 +1339,10 @@ export default function CreateTalkingHeadPage() {
     }
   }
 
-  // ─── render ───────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
@@ -1189,10 +1350,13 @@ export default function CreateTalkingHeadPage() {
       <AnimatePresence>
         {submitting && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}>
-            <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }} />
             <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
@@ -1205,7 +1369,8 @@ export default function CreateTalkingHeadPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
+      <div
+        className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
@@ -1215,9 +1380,14 @@ export default function CreateTalkingHeadPage() {
           <span className="text-xs font-medium" style={{ color: ACCENT }}>{modeLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          {!modelsLoading && models.length > 0 && <ModelDropdown models={models} value={model} onChange={setModel} />}
+          {!modelsLoading && models.length > 0 && (
+            <ModelDropdown models={models} value={model} onChange={setModel} />
+          )}
           {!modelsLoading && models.length === 0 && (
-            <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>No models</span>
+            <span className="text-xs px-3 py-1.5 rounded-xl"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              No models
+            </span>
           )}
           <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
@@ -1231,17 +1401,22 @@ export default function CreateTalkingHeadPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── Subject ── */}
+          {/* ── Subject ────────────────────────────────────────────────── */}
           {(caps.faceInput || caps.videoInput) && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Subject <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— required</span>
+                  Subject
+                  {(caps.requiresImage || caps.requiresVideo) && (
+                    <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
+                  )}
                 </p>
                 {caps.faceInput && caps.videoInput && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                     {[{ value: 'face', label: 'Photo', icon: User }, { value: 'video', label: 'Video', icon: VideoIcon }].map(({ value, label, icon: Icon }) => (
-                      <button key={value} onClick={() => setSubjectMode(value)}
+                      <button
+                        key={value}
+                        onClick={() => setSubjectMode(value)}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                         style={{ background: subjectMode === value ? ACCENT : 'transparent', color: subjectMode === value ? '#ffffff' : 'var(--text-muted)' }}>
                         <Icon size={11} />{label}
@@ -1251,36 +1426,49 @@ export default function CreateTalkingHeadPage() {
                 )}
               </div>
               <SubjectSlot
-                mode={subjectMode} faceImage={faceImage} videoFile={videoFile}
-                onFaceUpload={handleFaceUpload} onVideoUpload={handleVideoUpload}
-                onFaceRemove={() => { setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16'); try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {} }}
-                onVideoRemove={() => { setVideoFile(null); try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {} }}
+                mode={subjectMode}
+                faceImage={faceImage}
+                videoFile={videoFile}
+                onFaceUpload={handleFaceUpload}
+                onVideoUpload={handleVideoUpload}
+                onFaceRemove={() => {
+                  setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16')
+                  try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {}
+                }}
+                onVideoRemove={() => {
+                  setVideoFile(null)
+                  try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {}
+                }}
               />
             </div>
           )}
 
-          {/* ── Settings ── */}
+          {/* ── Settings ───────────────────────────────────────────────── */}
           <div>
             <SettingChips
               label="Aspect Ratio"
               options={ALL_ASPECT_RATIOS.map((o) => ({ ...o, disabled: !caps.supportedAspectRatios.includes(o.value) }))}
-              value={aspectRatio} onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
+              value={aspectRatio}
+              onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
             {caps.supportedDurations?.length > 1 && (
               <SettingChips
                 label="Duration"
                 options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
-                value={duration} onChange={setDuration}
+                value={duration}
+                onChange={setDuration}
               />
             )}
           </div>
 
-          {/* ── Audio ── */}
+          {/* ── Audio ──────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 {caps.multiChar ? 'Audio Tracks' : 'Audio'}
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
+                {(caps.requiresAudio || caps.requiresVoiceId) && (
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
+                )}
               </p>
               {caps.multiChar && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold"
@@ -1323,28 +1511,58 @@ export default function CreateTalkingHeadPage() {
             )}
           </div>
 
-          {/* ── Prompt ── */}
-          <Textarea label="Prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Optional: describe pose, expression, background scene…" rows={3} />
+          {/* ── Prompt ─────────────────────────────────────────────────── */}
+          <Textarea
+            label="Prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Optional: describe pose, expression, background scene…"
+            rows={3}
+          />
 
         </div>
       </div>
 
-      {/* Generate button */}
+      {/* Generate button + validation */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
-        <div className="mx-auto w-full max-w-xl">
-          <button onClick={handleGenerate} disabled={buttonDisabled}
+        <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
+
+          <ValidationBanner errors={validationErrors} />
+
+          <button
+            onClick={handleGenerate}
+            disabled={buttonDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
-            style={{ background: buttonDisabled ? 'var(--bg-elevated)' : ACCENT, color: buttonDisabled ? 'var(--text-muted)' : '#ffffff' }}>
-            <Zap size={15} fill="currentColor" />
-            {submitting ? 'Generating…' : !canAfford ? 'Not enough credits' : `Generate · ${creditCost} cr`}
+            style={{
+              background: buttonDisabled ? 'var(--bg-elevated)' : ACCENT,
+              color:      buttonDisabled ? 'var(--text-muted)'  : '#ffffff',
+            }}>
+            {submitting ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : validationErrors.length === 0 ? (
+              <Zap size={15} fill="currentColor" />
+            ) : (
+              <AlertTriangle size={15} />
+            )}
+            {submitting
+              ? 'Generating…'
+              : validationErrors.length > 0
+              ? 'Fix issues above to continue'
+              : `Generate · ${creditCost} cr`}
           </button>
+
           {!canAfford && (
-            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>Top up</button>
+              <button
+                onClick={() => navigate('/profile')}
+                className="font-semibold"
+                style={{ color: ACCENT }}>
+                Top up
+              </button>
             </p>
           )}
+
         </div>
       </div>
 
