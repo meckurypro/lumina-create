@@ -906,6 +906,13 @@ export default function UGCBrandGeneratePage() {
             <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
               {prompt.length}/600
             </p>
+            {!isMaster && (
+              <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
+                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
+                {' '}to attach reference images to your generations.
+              </p>
+            )}
           </div>
 
           {/* Aspect ratio */}
