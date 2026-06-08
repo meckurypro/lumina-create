@@ -569,14 +569,14 @@ const { data: genRow, error: genErr } = await generationsDb.create({
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
         <button
-          onClick={() => navigate('/create/ugc')}
+          onClick={() => navigate('/create/ugc', { state: { tab: 'characters' } })}
           className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
         >
           <ArrowLeft size={20} />
         </button>
 
-        <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
+        <button onClick={() => navigate('/create/ugc', { state: { tab: 'characters' } })} className="flex items-center gap-2.5">
           {profile?.thumbnail_url ? (
             <img
               src={profile.thumbnail_url}
