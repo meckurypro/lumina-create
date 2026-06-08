@@ -107,7 +107,7 @@ export default function PrivacyPage() {
           <h2 className="text-base font-bold mb-2" style={{ color: 'var(--text-primary)' }}>9. Contact</h2>
           <p className="text-sm">
             For privacy-related questions, contact us at{' '}
-            <a href="mailto:meckurypro@gmail.com" className="underline" style={{ color: 'var(--brand)' }}>
+            <a href="mailto:hey@meckury.ai" className="underline" style={{ color: 'var(--brand)' }}>
               hey@meckury.ai
             </a>.
           </p>
