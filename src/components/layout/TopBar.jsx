@@ -2,29 +2,32 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Zap, Home, Sparkles, Film, User } from 'lucide-react'
+import { Home, Grip, GalleryHorizontalEnd, User, Zap, Users } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { CreditBadge } from '@/components/ui/Modal'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 const NAV_ITEMS = [
-  { path: '/feed',    icon: Home,     label: 'Home'    },
-  { path: '/create',  icon: Sparkles, label: 'Create'  },
-  { path: '/media',   icon: Film,     label: 'Media'   },
-  { path: '/profile', icon: User,     label: 'Profile' },
+  { path: '/feed',       icon: Home,     label: 'Home'    },
+  { path: '/create', icon: Grip, label: 'Create' },
+  { path: '/create/ugc', icon: Users,    label: 'UGC'     },
+  { path: '/media',      icon: Film,     label: 'Media'   },
+  { path: '/profile',    icon: User,     label: 'Profile' },
 ]
 
 const DesktopNavItem = ({ path, label }) => {
   const location = useLocation()
-  const isActive = location.pathname === path
+
+  const isCreateBase = path === '/create' && location.pathname.startsWith('/create/ugc')
+  const isActive = (location.pathname === path || location.pathname.startsWith(path + '/')) && !isCreateBase
 
   return (
     <NavLink
       to={path}
       className="relative px-4 py-2 text-sm font-semibold rounded-xl transition-all"
       style={{
-        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-        background: isActive ? 'var(--bg-elevated)' : 'transparent',
+        color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+        background: isActive ? 'var(--bg-elevated)'  : 'transparent',
       }}
     >
       {label}
