@@ -273,6 +273,7 @@ export default function UGCGeneratePage() {
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [duration,      setDuration]      = useState('5')
   const [scene,         setScene]         = useState('')
+  const [withSound,     setWithSound]     = useState(true)
   const [submitting,    setSubmitting]    = useState(false)
 
   // Master-only ref images state
@@ -430,7 +431,7 @@ export default function UGCGeneratePage() {
 
       const allInputImages = [...extraUrls, ...characterPhotos]
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
+const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        outputType === 'image' ? 'text_to_image' : 'text_to_video',
         status:                 'pending',
@@ -442,6 +443,7 @@ export default function UGCGeneratePage() {
         output_type:            outputType,
         skip_prompt_refinement: skipRefinement,
         input_image_urls:       allInputImages.length ? allInputImages : null,
+        generation_metadata:    outputType === 'video' ? { with_sound: withSound } : undefined,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -482,6 +484,7 @@ export default function UGCGeneratePage() {
       )
       setScene('')
       setRefImages([])
+      setWithSound(true)
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -705,14 +708,39 @@ export default function UGCGeneratePage() {
             onChange={setAspectRatio}
           />
 
-          {/* Duration (video only) */}
+     {/* Duration + Sound (video only) */}
           {outputType === 'video' && (
-            <SettingChips
-              label="Duration"
-              options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
-              value={duration}
-              onChange={setDuration}
-            />
+            <>
+              <SettingChips
+                label="Duration"
+                options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
+                value={duration}
+                onChange={setDuration}
+              />
+              <div className="mb-5">
+                <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Sound
+                </p>
+                <div className="flex gap-2">
+                  {[
+                    { value: false, label: '🔇 No Sound'   },
+                    { value: true,  label: '🔊 With Sound' },
+                  ].map((opt) => (
+                    <button
+                      key={String(opt.value)}
+                      onClick={() => setWithSound(opt.value)}
+                      className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                      style={{
+                        background: withSound === opt.value ? ACCENT : 'var(--bg-elevated)',
+                        color:      withSound === opt.value ? '#fff' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           {/* Refinement off notice */}
