@@ -883,21 +883,36 @@ export default function CreateUGCPage() {
   const activeBrandProfiles = brandProfiles.filter((b) => b.status === 'active')
   const draftBrandProfiles  = brandProfiles.filter((b) => b.status === 'draft')
 
-  const filteredActiveChars  = charSearch
-    ? activeCharProfiles.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
-    : activeCharProfiles
+  const sortedActiveChars = [...activeCharProfiles].sort((a, b) => {
+  const aLocked = isProfileMuted(a) ? 1 : 0
+  const bLocked = isProfileMuted(b) ? 1 : 0
+  return aLocked - bLocked
+})
+const filteredActiveChars  = charSearch
+  ? sortedActiveChars.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
+  : sortedActiveChars
   const filteredDraftChars   = charSearch
     ? draftCharProfiles.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
     : draftCharProfiles
-  const filteredActiveBrands = brandSearch
-    ? activeBrandProfiles.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
-    : activeBrandProfiles
+  const sortedActiveBrands = [...activeBrandProfiles].sort((a, b) => {
+  const aLocked = isBrandMuted(a) ? 1 : 0
+  const bLocked = isBrandMuted(b) ? 1 : 0
+  return aLocked - bLocked
+})
+const filteredActiveBrands = brandSearch
+  ? sortedActiveBrands.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
+  : sortedActiveBrands
   const filteredDraftBrands  = brandSearch
     ? draftBrandProfiles.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
     : draftBrandProfiles
-  const filteredVoices       = voiceSearch
-    ? voices.filter((v) => q(v.name).includes(q(voiceSearch)))
-    : voices
+  const sortedVoices = [...voices].sort((a, b) => {
+  const aLocked = isVoiceMuted(a) ? 1 : 0
+  const bLocked = isVoiceMuted(b) ? 1 : 0
+  return aLocked - bLocked
+})
+const filteredVoices = voiceSearch
+  ? sortedVoices.filter((v) => q(v.name).includes(q(voiceSearch)))
+  : sortedVoices
 
   const currentTabLabel = { characters: 'Your Characters', voices: 'Voice Studio', brands: 'Your Brands' }[ugcTab] || ''
 
