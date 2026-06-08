@@ -7,6 +7,8 @@ import { useAuth } from '@/context/AuthContext'
 import LandingPage              from '@/pages/LandingPage'
 import AuthPage                 from '@/pages/AuthPage'
 import ResetPasswordPage        from '@/pages/ResetPasswordPage'
+import PrivacyPage              from '@/pages/PrivacyPage'
+import TermsPage                from '@/pages/TermsPage'
 import FeedPage                 from '@/pages/FeedPage'
 import CreatePage               from '@/pages/CreatePage'
 import CreateImagePage          from '@/pages/CreateImagePage'
@@ -98,10 +100,12 @@ export default function App() {
     <>
       <Routes>
 
-        {/* ── Public callbacks (no auth gate) ────────────────── */}
+        {/* ── Public (no auth gate) ───────────────────────────── */}
         <Route path="/auth/callback"    element={<AuthCallbackPage />} />
         <Route path="/payment/callback" element={<PaymentCallbackPage />} />
         <Route path="/reset-password"   element={<ResetPasswordPage />} />
+        <Route path="/privacy"          element={<PrivacyPage />} />
+        <Route path="/terms"            element={<TermsPage />} />
 
         {loading ? (
           <Route path="*" element={<FullLoader />} />
@@ -137,7 +141,7 @@ export default function App() {
             <Route path="/create/photo-polish" element={<Auth><CreatePhotoPolishPage /></Auth>} />
 
             {/* ── Cinematic ───────────────────────────────────── */}
-            <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
+            <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage />  </Auth>} />
             <Route path="/cinematic/:projectId"        element={<Auth><CinematicResultPage /></Auth>} />
 
             {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
