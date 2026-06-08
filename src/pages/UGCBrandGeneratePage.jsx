@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Building2, Images,
-  ImageIcon, VideoIcon, ChevronDown, Info,
+  ImageIcon, VideoIcon, ChevronDown,
   X, ImagePlus, Plus, Maximize2, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -774,8 +774,7 @@ export default function UGCBrandGeneratePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
 
-          <BrandContextPill brand={brand} />
-
+       
           {/* Output type toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
             {[
@@ -953,21 +952,7 @@ export default function UGCBrandGeneratePage() {
             </>
           )}
 
-          {/* Adviser info */}
-          <div
-            className="flex items-start gap-2 p-3 rounded-xl mt-1"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-          >
-            <Info size={13} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 1 }} />
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              The AI brand adviser will combine your brand's personality, color palette, and content style
-              to craft a premium output — no AI fluff.
-              {hasImages && modelSupportsImage && (
-                <span style={{ color: ACCENT }}> Your reference images will guide the composition.</span>
-              )}
-            </p>
-          </div>
-
+      
           {skipRefinement && (
             <div
               className="flex items-center gap-2 p-3 rounded-xl mt-2"
