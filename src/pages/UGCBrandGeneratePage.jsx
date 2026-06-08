@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Building2, Images,
   ImageIcon, VideoIcon, ChevronDown, Info,
-  X, ImagePlus, Plus, Maximize2,
+  X, ImagePlus, Plus, Maximize2, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcBrandProfiles, ugcBrandGenerations } from '@/lib/ugcBrands'
@@ -367,7 +367,8 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 export default function UGCBrandGeneratePage() {
   const { brandId }                                              = useParams()
   const navigate                                                 = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+ const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const isMaster = userProfile?.user_tier === 'master'
   const textareaRef                                              = useRef(null)
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
