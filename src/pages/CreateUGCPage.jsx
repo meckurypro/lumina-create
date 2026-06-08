@@ -253,7 +253,7 @@ const ProfileCard = ({ profile, index, onSelect, onArchive, onEdit, muted, onMut
 }
 
 // ── Brand card ────────────────────────────────────────────────
-const BrandCard = ({ brand, index, onSelect, onArchive, onEdit }) => {
+const BrandCard = ({ brand, index, onSelect, onArchive, onEdit, muted, onMutedClick }) => {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -265,16 +265,29 @@ const BrandCard = ({ brand, index, onSelect, onArchive, onEdit }) => {
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <button
-        onClick={() => onSelect(brand)}
+        onClick={() => (muted ? onMutedClick?.() : onSelect(brand))}
         className="w-full relative overflow-hidden flex-shrink-0 flex items-center justify-center"
         style={{ aspectRatio: '3/4', background: ACCENT_SUB }}
       >
         {brand.logo_url ? (
-          <img src={brand.logo_url} alt={brand.brand_name} className="w-full h-full object-contain p-6" />
+          <img
+            src={brand.logo_url}
+            alt={brand.brand_name}
+            className="w-full h-full object-contain p-6"
+            style={{ filter: muted ? 'grayscale(1) brightness(0.55)' : 'none' }}
+          />
         ) : (
-          <Building2 size={36} style={{ color: ACCENT, opacity: 0.5 }} />
+          <Building2 size={36} style={{ color: ACCENT, opacity: muted ? 0.25 : 0.5 }} />
         )}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 60%)' }} />
+        {muted && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <Lock size={20} style={{ color: '#fff' }} />
+            <span className="text-xs font-bold flex items-center gap-1" style={{ color: '#fff' }}>
+              <Crown size={10} /> Master only
+            </span>
+          </div>
+        )}
         {brand.generation_count > 0 && (
           <div
             className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -295,7 +308,7 @@ const BrandCard = ({ brand, index, onSelect, onArchive, onEdit }) => {
       </button>
 
       <div className="px-3 py-2.5 flex items-center justify-between">
-        <button onClick={() => onSelect(brand)} className="flex flex-col min-w-0 flex-1 text-left">
+        <button onClick={() => muted ? onMutedClick?.() : onSelect(brand)} className="flex flex-col min-w-0 flex-1 text-left">
           <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>{brand.brand_name}</p>
           <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{brand.tagline}</p>
         </button>
@@ -343,24 +356,6 @@ const BrandCard = ({ brand, index, onSelect, onArchive, onEdit }) => {
     </motion.div>
   )
 }
-
-// ── Create new card ───────────────────────────────────────────
-const CreateCard = ({ onClick, index, label = 'New Character', Icon = User }) => (
-  <motion.button
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: index * 0.06 }}
-    whileTap={{ scale: 0.97 }}
-    onClick={onClick}
-    className="rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3 transition-all"
-    style={{ aspectRatio: '3/4', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-  >
-    <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: ACCENT_BDR }}>
-      <Plus size={20} style={{ color: ACCENT }} />
-    </div>
-    <span className="text-xs font-semibold" style={{ color: ACCENT }}>{label}</span>
-  </motion.button>
-)
 
 // ── Saved voice row ───────────────────────────────────────────
 const SavedVoiceRow = ({ voice, index, onSelect, onArchive, playing, loading, onPlay, muted, onMutedClick }) => {
@@ -818,15 +813,15 @@ export default function CreateUGCPage() {
   }
   const handleEditChar = (p) => navigate('/create/ugc/new', { state: { editProfileId: p.id } })
 
-  const oldestActiveId = charProfiles
+  const oldestActiveCharId = charProfiles
     .filter((p) => p.status === 'active').slice()
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0]?.id
 
-  const isProfileMuted    = (p) => !isMaster && p.status === 'active' && p.id !== oldestActiveId
+  const isProfileMuted    = (p) => !isMaster && p.status === 'active' && p.id !== oldestActiveCharId
   const noviceAtCharLimit = !isMaster && charProfiles.some((p) => p.status === 'active' || p.status === 'draft')
 
-  const handleMutedClick    = () => { toast.error('Upgrade to Master to use additional characters.', { duration: 4000 }); navigate('/profile') }
-  const handleCreateNewChar = () => {
+  const handleMutedCharClick = () => { toast.error('Upgrade to Master to use additional characters.', { duration: 4000 }); navigate('/profile') }
+  const handleCreateNewChar  = () => {
     if (noviceAtCharLimit) { toast.error('Novice users can only have one UGC character. Upgrade to Master for more.', { duration: 4500 }); return }
     if (!canCreateChar)    { toast.error(`You need at least ${CHARACTER_CREDIT_COST} credits to create a UGC character.`, { duration: 4000 }); return }
     navigate('/create/ugc/new')
@@ -842,9 +837,19 @@ export default function CreateUGCPage() {
     if (error) toast.error('Could not archive brand')
     else { setBrandProfiles((prev) => prev.filter((br) => br.id !== b.id)); toast.success(`${b.brand_name} archived`) }
   }
-  const handleEditBrand    = (b) => navigate('/create/ugc/brand/new', { state: { editBrandId: b.id } })
-  const handleCreateNewBrand = () => {
-    if (!canCreateBrand) { toast.error(`You need at least ${BRAND_CREDIT_COST} credits to create a brand profile.`, { duration: 4000 }); return }
+  const handleEditBrand = (b) => navigate('/create/ugc/brand/new', { state: { editBrandId: b.id } })
+
+  const oldestActiveBrandId = brandProfiles
+    .filter((b) => b.status === 'active').slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0]?.id
+
+  const isBrandMuted       = (b) => !isMaster && b.status === 'active' && b.id !== oldestActiveBrandId
+  const noviceAtBrandLimit = !isMaster && brandProfiles.some((b) => b.status === 'active' || b.status === 'draft')
+
+  const handleMutedBrandClick = () => { toast.error('Upgrade to Master to use additional brands.', { duration: 4000 }); navigate('/profile') }
+  const handleCreateNewBrand  = () => {
+    if (noviceAtBrandLimit) { toast.error('Novice users can only have one brand profile. Upgrade to Master for more.', { duration: 4500 }); return }
+    if (!canCreateBrand)    { toast.error(`You need at least ${BRAND_CREDIT_COST} credits to create a brand profile.`, { duration: 4000 }); return }
     navigate('/create/ugc/brand/new')
   }
 
@@ -895,6 +900,13 @@ export default function CreateUGCPage() {
     : voices
 
   const currentTabLabel = { characters: 'Your Characters', voices: 'Voice Studio', brands: 'Your Brands' }[ugcTab] || ''
+
+  // ── Sticky footer visibility ──────────────────────────────
+  // Show footer CTA when there are existing items (non-empty state),
+  // respecting tier limits for Characters and Brands
+  const showCharFooter  = ugcTab === 'characters' && !charLoading  && charProfiles.length  > 0 && (isMaster || !noviceAtCharLimit)
+  const showBrandFooter = ugcTab === 'brands'     && !brandLoading && brandProfiles.length > 0 && (isMaster || !noviceAtBrandLimit)
+  const showVoiceFooter = ugcTab === 'voices'     && voices.length > 0
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -979,11 +991,12 @@ export default function CreateUGCPage() {
                       />
                       <div className="grid grid-cols-2 gap-3">
                         {filteredActiveChars.map((p, i) => (
-                          <ProfileCard key={p.id} profile={p} index={i} onSelect={handleSelectProfile} onArchive={handleArchiveChar} onEdit={handleEditChar} muted={isProfileMuted(p)} onMutedClick={handleMutedClick} />
+                          <ProfileCard
+                            key={p.id} profile={p} index={i}
+                            onSelect={handleSelectProfile} onArchive={handleArchiveChar} onEdit={handleEditChar}
+                            muted={isProfileMuted(p)} onMutedClick={handleMutedCharClick}
+                          />
                         ))}
-                        {(isMaster || activeCharProfiles.length === 0) && (
-                          <CreateCard onClick={handleCreateNewChar} index={filteredActiveChars.length} label="New Character" Icon={User} />
-                        )}
                       </div>
                       {filteredActiveChars.length === 0 && charSearch && (
                         <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No characters match "{charSearch}"</p>
@@ -1130,12 +1143,25 @@ export default function CreateUGCPage() {
                       />
                       <div className="grid grid-cols-2 gap-3">
                         {filteredActiveBrands.map((b, i) => (
-                          <BrandCard key={b.id} brand={b} index={i} onSelect={handleSelectBrand} onArchive={handleArchiveBrand} onEdit={handleEditBrand} />
+                          <BrandCard
+                            key={b.id} brand={b} index={i}
+                            onSelect={handleSelectBrand} onArchive={handleArchiveBrand} onEdit={handleEditBrand}
+                            muted={isBrandMuted(b)} onMutedClick={handleMutedBrandClick}
+                          />
                         ))}
-                        <CreateCard onClick={handleCreateNewBrand} index={filteredActiveBrands.length} label="New Brand" Icon={Building2} />
                       </div>
                       {filteredActiveBrands.length === 0 && brandSearch && (
                         <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No brands match "{brandSearch}"</p>
+                      )}
+                      {!isMaster && activeBrandProfiles.length >= 1 && (
+                        <div className="mt-4 flex items-start gap-3 p-3 rounded-2xl" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+                          <Crown size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 2 }} />
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            Novice plan supports 1 active brand.{' '}
+                            <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>{' '}
+                            to create and use more.
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1175,17 +1201,37 @@ export default function CreateUGCPage() {
         </div>
       </div>
 
-      {/* Sticky footer — Add Voice button only on Voices tab with voices present */}
-      {ugcTab === 'voices' && voices.length > 0 && (
+      {/* Sticky footer — unified CTA style across all tabs */}
+      {(showCharFooter || showBrandFooter || showVoiceFooter) && (
         <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
           <div className="mx-auto w-full max-w-xl">
-            <button
-              onClick={() => setShowAddVoice(true)}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-              style={{ background: ACCENT, color: '#ffffff' }}
-            >
-              <Plus size={15} /> Add Voice
-            </button>
+            {showCharFooter && (
+              <button
+                onClick={handleCreateNewChar}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{ background: ACCENT, color: '#ffffff' }}
+              >
+                <Plus size={15} /> New Character
+              </button>
+            )}
+            {showBrandFooter && (
+              <button
+                onClick={handleCreateNewBrand}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{ background: ACCENT, color: '#ffffff' }}
+              >
+                <Plus size={15} /> New Brand
+              </button>
+            )}
+            {showVoiceFooter && (
+              <button
+                onClick={() => setShowAddVoice(true)}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{ background: ACCENT, color: '#ffffff' }}
+              >
+                <Plus size={15} /> Add Voice
+              </button>
+            )}
           </div>
         </div>
       )}
