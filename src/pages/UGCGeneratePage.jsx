@@ -607,19 +607,9 @@ const isMaster = userProfile?.user_tier === 'master'
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
               {profile?.name}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: ACCENT }}>UGC</p>
           </div>
-        </button>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(`/create/ugc/${profileId}/media`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            <Images size={13} />
-            <span>Media</span>
-          </button>
 
           {!modelsLoading && (
             <ModelDropdown
