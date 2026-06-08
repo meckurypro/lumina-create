@@ -87,6 +87,7 @@ export type Database = {
           mime_type: string | null
           name: string
           size_bytes: number | null
+          source: string | null
           thumbnail_url: string | null
           user_id: string
         }
@@ -98,6 +99,7 @@ export type Database = {
           mime_type?: string | null
           name: string
           size_bytes?: number | null
+          source?: string | null
           thumbnail_url?: string | null
           user_id: string
         }
@@ -109,6 +111,7 @@ export type Database = {
           mime_type?: string | null
           name?: string
           size_bytes?: number | null
+          source?: string | null
           thumbnail_url?: string | null
           user_id?: string
         }
@@ -366,6 +369,7 @@ export type Database = {
           expires_at: string | null
           generation_id: string | null
           id: string
+          is_test: boolean
           metadata: Json | null
           payment_amount_ngn: number | null
           payment_amount_usd: number | null
@@ -386,6 +390,7 @@ export type Database = {
           expires_at?: string | null
           generation_id?: string | null
           id?: string
+          is_test?: boolean
           metadata?: Json | null
           payment_amount_ngn?: number | null
           payment_amount_usd?: number | null
@@ -406,6 +411,7 @@ export type Database = {
           expires_at?: string | null
           generation_id?: string | null
           id?: string
+          is_test?: boolean
           metadata?: Json | null
           payment_amount_ngn?: number | null
           payment_amount_usd?: number | null
@@ -433,6 +439,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_campaigns: {
+        Row: {
+          attachment_urls: Json | null
+          body: string | null
+          body_mode: string | null
+          created_at: string | null
+          created_by: string | null
+          custom_user_ids: string[] | null
+          error_message: string | null
+          id: string
+          recipient_count: number | null
+          schedule: Json | null
+          send_mode: string | null
+          sent_at: string | null
+          status: string | null
+          subject: string
+          tier: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          attachment_urls?: Json | null
+          body?: string | null
+          body_mode?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_user_ids?: string[] | null
+          error_message?: string | null
+          id?: string
+          recipient_count?: number | null
+          schedule?: Json | null
+          send_mode?: string | null
+          sent_at?: string | null
+          status?: string | null
+          subject: string
+          tier?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          attachment_urls?: Json | null
+          body?: string | null
+          body_mode?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_user_ids?: string[] | null
+          error_message?: string | null
+          id?: string
+          recipient_count?: number | null
+          schedule?: Json | null
+          send_mode?: string | null
+          sent_at?: string | null
+          status?: string | null
+          subject?: string
+          tier?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       feed_likes: {
         Row: {
@@ -1092,6 +1155,7 @@ export type Database = {
           end_frame_url: string | null
           enhanced_prompt: string | null
           error_message: string | null
+          generation_metadata: Json | null
           generation_time_ms: number | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id: string
@@ -1131,6 +1195,7 @@ export type Database = {
           end_frame_url?: string | null
           enhanced_prompt?: string | null
           error_message?: string | null
+          generation_metadata?: Json | null
           generation_time_ms?: number | null
           generation_type: Database["public"]["Enums"]["generation_type"]
           id?: string
@@ -1170,6 +1235,7 @@ export type Database = {
           end_frame_url?: string | null
           enhanced_prompt?: string | null
           error_message?: string | null
+          generation_metadata?: Json | null
           generation_time_ms?: number | null
           generation_type?: Database["public"]["Enums"]["generation_type"]
           id?: string
@@ -1259,7 +1325,10 @@ export type Database = {
           max_ref_images: number
           min_billable_seconds: number | null
           provider: string
+          requires_audio: boolean
           requires_image: boolean
+          requires_video: boolean
+          requires_voice_id: boolean
           sort_order: number | null
           sound_cost_multiplier: number
           sublabel: string | null
@@ -1298,7 +1367,10 @@ export type Database = {
           max_ref_images?: number
           min_billable_seconds?: number | null
           provider?: string
+          requires_audio?: boolean
           requires_image?: boolean
+          requires_video?: boolean
+          requires_voice_id?: boolean
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
@@ -1337,7 +1409,10 @@ export type Database = {
           max_ref_images?: number
           min_billable_seconds?: number | null
           provider?: string
+          requires_audio?: boolean
           requires_image?: boolean
+          requires_video?: boolean
+          requires_voice_id?: boolean
           sort_order?: number | null
           sound_cost_multiplier?: number
           sublabel?: string | null
@@ -1943,6 +2018,160 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ugc_brand_generations: {
+        Row: {
+          aspect_ratio: string
+          created_at: string
+          generation_id: string
+          id: string
+          output_type: string
+          refined_prompt: string | null
+          scene_prompt: string
+          ugc_brand_id: string
+          user_id: string
+          with_sound: boolean
+        }
+        Insert: {
+          aspect_ratio?: string
+          created_at?: string
+          generation_id: string
+          id?: string
+          output_type: string
+          refined_prompt?: string | null
+          scene_prompt?: string
+          ugc_brand_id: string
+          user_id: string
+          with_sound?: boolean
+        }
+        Update: {
+          aspect_ratio?: string
+          created_at?: string
+          generation_id?: string
+          id?: string
+          output_type?: string
+          refined_prompt?: string | null
+          scene_prompt?: string
+          ugc_brand_id?: string
+          user_id?: string
+          with_sound?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ugc_brand_generations_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ugc_brand_generations_ugc_brand_id_fkey"
+            columns: ["ugc_brand_id"]
+            isOneToOne: false
+            referencedRelation: "ugc_brand_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ugc_brand_profiles: {
+        Row: {
+          brand_bio: string | null
+          brand_colors: string[]
+          brand_name: string
+          brand_tones: string[]
+          competitor_brands: string | null
+          content_styles: string[]
+          country: string
+          created_at: string
+          generation_count: number
+          id: string
+          industry: Database["public"]["Enums"]["ugc_brand_industry"] | null
+          logo_url: string | null
+          offering_type:
+            | Database["public"]["Enums"]["ugc_brand_offering_type"]
+            | null
+          offerings: string[]
+          platforms: string[]
+          price_tier: Database["public"]["Enums"]["ugc_brand_price_tier"] | null
+          status: Database["public"]["Enums"]["ugc_status"]
+          tagline: string
+          target_age_ranges: string[]
+          target_genders: string[]
+          target_interests: string | null
+          target_markets: string | null
+          thumbnail_url: string | null
+          updated_at: string
+          user_id: string
+          visual_styles: string[]
+          website: string | null
+        }
+        Insert: {
+          brand_bio?: string | null
+          brand_colors?: string[]
+          brand_name: string
+          brand_tones?: string[]
+          competitor_brands?: string | null
+          content_styles?: string[]
+          country: string
+          created_at?: string
+          generation_count?: number
+          id?: string
+          industry?: Database["public"]["Enums"]["ugc_brand_industry"] | null
+          logo_url?: string | null
+          offering_type?:
+            | Database["public"]["Enums"]["ugc_brand_offering_type"]
+            | null
+          offerings?: string[]
+          platforms?: string[]
+          price_tier?:
+            | Database["public"]["Enums"]["ugc_brand_price_tier"]
+            | null
+          status?: Database["public"]["Enums"]["ugc_status"]
+          tagline: string
+          target_age_ranges?: string[]
+          target_genders?: string[]
+          target_interests?: string | null
+          target_markets?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id: string
+          visual_styles?: string[]
+          website?: string | null
+        }
+        Update: {
+          brand_bio?: string | null
+          brand_colors?: string[]
+          brand_name?: string
+          brand_tones?: string[]
+          competitor_brands?: string | null
+          content_styles?: string[]
+          country?: string
+          created_at?: string
+          generation_count?: number
+          id?: string
+          industry?: Database["public"]["Enums"]["ugc_brand_industry"] | null
+          logo_url?: string | null
+          offering_type?:
+            | Database["public"]["Enums"]["ugc_brand_offering_type"]
+            | null
+          offerings?: string[]
+          platforms?: string[]
+          price_tier?:
+            | Database["public"]["Enums"]["ugc_brand_price_tier"]
+            | null
+          status?: Database["public"]["Enums"]["ugc_status"]
+          tagline?: string
+          target_age_ranges?: string[]
+          target_genders?: string[]
+          target_interests?: string | null
+          target_markets?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id?: string
+          visual_styles?: string[]
+          website?: string | null
+        }
+        Relationships: []
       }
       ugc_generations: {
         Row: {
@@ -2603,6 +2832,24 @@ export type Database = {
         | "staff_usage"
         | "referral_commission"
         | "referral_bonus"
+      ugc_brand_industry:
+        | "fashion"
+        | "beauty"
+        | "food_beverage"
+        | "health_wellness"
+        | "tech"
+        | "finance"
+        | "real_estate"
+        | "entertainment"
+        | "education"
+        | "ecommerce"
+        | "automotive"
+        | "travel"
+        | "sports"
+        | "nonprofit"
+        | "other"
+      ugc_brand_offering_type: "products" | "services" | "both"
+      ugc_brand_price_tier: "budget" | "mid" | "premium" | "luxury"
       ugc_education_level:
         | "no_formal_education"
         | "primary_school"
@@ -2627,6 +2874,7 @@ export type Database = {
         | "comfortable"
         | "wealthy"
         | "elite"
+      ugc_status: "draft" | "active" | "archived"
       ugc_voice_source:
         | "elevenlabs_library"
         | "instant_clone"
@@ -2941,6 +3189,25 @@ export const Constants = {
         "referral_commission",
         "referral_bonus",
       ],
+      ugc_brand_industry: [
+        "fashion",
+        "beauty",
+        "food_beverage",
+        "health_wellness",
+        "tech",
+        "finance",
+        "real_estate",
+        "entertainment",
+        "education",
+        "ecommerce",
+        "automotive",
+        "travel",
+        "sports",
+        "nonprofit",
+        "other",
+      ],
+      ugc_brand_offering_type: ["products", "services", "both"],
+      ugc_brand_price_tier: ["budget", "mid", "premium", "luxury"],
       ugc_education_level: [
         "no_formal_education",
         "primary_school",
@@ -2968,6 +3235,7 @@ export const Constants = {
         "wealthy",
         "elite",
       ],
+      ugc_status: ["draft", "active", "archived"],
       ugc_voice_source: [
         "elevenlabs_library",
         "instant_clone",
