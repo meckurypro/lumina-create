@@ -1688,8 +1688,8 @@ Write the enhancement prompt now.`
       body.size = sizeStr
     } else if (cfg.sizeParam === 'aspect_ratio') {
       body.aspect_ratio = ar
-    } else if (cfg.sizeParam === 'resolution_enum') {
-      body.resolution   = gen.resolution ?? '2k'
+} else if (cfg.sizeParam === 'resolution_enum') {
+      body.resolution   = gen.resolution ?? '1k'
       body.aspect_ratio = ar
     }
 
@@ -1848,7 +1848,7 @@ Write the enhancement prompt now.`
     } else if (cfg.sizeParam === 'aspect_ratio') {
       body.aspect_ratio = ar
     } else if (cfg.sizeParam === 'resolution_enum') {
-      const resolution  = gen.resolution ?? '2k'
+      const resolution  = gen.resolution ?? '1k'
       body.resolution   = resolution
       body.aspect_ratio = ar
     }
@@ -1927,17 +1927,21 @@ async function runVideoPipeline(gen: GenerationRow, cfg: ModelConfig, t0: number
   const duration    = Math.min(parseInt(String(gen.duration || 5), 10), cfg.maxDuration || 15)
   const highQuality = (gen.credits_charged || 0) >= 20
 
+  // Read with_sound from generation_metadata (set by UGCGeneratePage)
+  const withSound = (gen as any).generation_metadata?.with_sound ?? true
+
   const body: Record<string, unknown> = {
     prompt:     engineeredPrompt,
     duration,
     resolution: highQuality ? '1080P' : '720P',
+    sound:      withSound,
   }
 
   if (hasImage) {
     body.image_url = gen.start_frame_url || gen.input_image_urls?.[0]
   }
 
-  console.log(`🎬  Submitting video → ${endpoint} (${body.resolution}, ${duration}s)`)
+  console.log(`🎬  Submitting video → ${endpoint} (${body.resolution}, ${duration}s, sound: ${withSound})`)
   const reqId = await waveSubmit(endpoint, body)
   await admin.from('generations').update({ provider_request_id: reqId }).eq('id', gen.id)
 
