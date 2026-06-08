@@ -87,6 +87,7 @@ export type Database = {
           mime_type: string | null
           name: string
           size_bytes: number | null
+          source: string | null
           thumbnail_url: string | null
           user_id: string
         }
@@ -98,6 +99,7 @@ export type Database = {
           mime_type?: string | null
           name: string
           size_bytes?: number | null
+          source?: string | null
           thumbnail_url?: string | null
           user_id: string
         }
@@ -109,6 +111,7 @@ export type Database = {
           mime_type?: string | null
           name?: string
           size_bytes?: number | null
+          source?: string | null
           thumbnail_url?: string | null
           user_id?: string
         }
