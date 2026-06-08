@@ -139,8 +139,8 @@ export default function TermsPage() {
           <h2 className="text-base font-bold mb-2" style={{ color: 'var(--text-primary)' }}>11. Contact</h2>
           <p className="text-sm">
             For questions about these Terms, contact us at{' '}
-            <a href="mailto:meckurypro@gmail.com" className="underline" style={{ color: 'var(--brand)' }}>
-              meckurypro@gmail.com
+            <a href="mailto:hey@meckury.ai" className="underline" style={{ color: 'var(--brand)' }}>
+              hey@meckury.ai
             </a>.
           </p>
         </section>
