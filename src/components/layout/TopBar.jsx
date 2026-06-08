@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Home, Grip, GalleryHorizontalEnd, User, Zap, Users } from 'lucide-react'
+import { ArrowLeft, Zap, Home, Grip, Film, User, Users } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { CreditBadge } from '@/components/ui/Modal'
 import PromptIQPage from '@/pages/PromptIQPage'
