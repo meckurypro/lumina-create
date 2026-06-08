@@ -751,21 +751,12 @@ export default function UGCBrandGeneratePage() {
           )}
           <div className="flex flex-col items-start">
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-              {brand?.brand_name}
+              {profile?.name}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: ACCENT }}>Brand Studio</p>
           </div>
         </button>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(`/create/ugc/brand/${brandId}/media`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            <Images size={13} />
-            <span>Media</span>
-          </button>
 
           {!modelsLoading && (
             <ModelDropdown
