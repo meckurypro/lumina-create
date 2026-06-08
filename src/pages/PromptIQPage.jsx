@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Zap, Search, ChevronRight, Lock, Sparkles, Clapperboard } from 'lucide-react'
+import { TopBar } from '@/components/layout/TopBar'
 import { templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TemplateCard } from '@/components/templates/TemplateCard'
@@ -160,10 +161,10 @@ export default function PromptIQPage({ onClose }) {
         </p>
         <button
           onClick={onClose}
-          className="mt-2 rounded-2xl px-5 py-2.5 text-sm font-bold"
+          className="mt-2 rounded-2xl px-5 py-2.5 text-sm font-bold flex items-center gap-2"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
         >
-          Close
+          <X size={14} /> Close
         </button>
       </div>
     )
@@ -174,66 +175,31 @@ export default function PromptIQPage({ onClose }) {
       className="flex h-full w-full flex-col"
       style={{ background: 'var(--bg-primary)', overflowY: 'auto' }}
     >
-      {/* ── Header ── */}
-      <div
-        className="sticky top-0 z-10 flex-shrink-0"
-        style={{
-          background:           'color-mix(in srgb, var(--bg-primary) 90%, transparent)',
-          backdropFilter:       'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          borderBottom:         '1px solid var(--border-color)',
-        }}
-      >
-        <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl brand-gradient">
-              <Zap size={16} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-base font-black leading-none" style={{ color: 'var(--text-primary)' }}>
-                PromptIQ
-              </h2>
-              <p className="text-xs leading-none mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                Staff templates · Free
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full"
-            style={{ background: 'var(--bg-elevated)' }}
-            aria-label="Close"
-          >
-            <X size={16} style={{ color: 'var(--text-secondary)' }} />
-          </button>
-        </div>
+      <TopBar title="PromptIQ" showCredits showBack onBack={onClose} />
 
-        {/* Search */}
-        <div className="px-4 pb-3">
-          <div
-            className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-          >
-            <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-            <input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search templates…"
-              className="flex-1 bg-transparent text-sm outline-none"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')}>
-                <X size={12} style={{ color: 'var(--text-muted)' }} />
-              </button>
-            )}
-          </div>
+      {/* Search + category pills */}
+      <div className="flex-shrink-0 px-4 pt-3 pb-1">
+        <div
+          className="flex items-center gap-2 rounded-2xl px-3 py-2.5 mb-3"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+        >
+          <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search templates…"
+            className="flex-1 bg-transparent text-sm outline-none"
+            style={{ color: 'var(--text-primary)' }}
+          />
+          {search && (
+            <button onClick={() => setSearch('')}>
+              <X size={12} style={{ color: 'var(--text-muted)' }} />
+            </button>
+          )}
         </div>
-
-        {/* Category pills */}
         {categories.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-3 no-scrollbar">
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {categories.map((cat) => (
               <CategoryPill
                 key={cat}
