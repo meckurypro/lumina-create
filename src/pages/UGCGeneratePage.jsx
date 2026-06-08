@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, User, Sparkles,
   ImageIcon, VideoIcon, ChevronDown, Info, Images,
-  X, ImagePlus, Maximize2, Plus,
+  X, ImagePlus, Maximize2, Plus, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
