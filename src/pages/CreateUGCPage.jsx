@@ -14,6 +14,7 @@ import { ugcVoices, VOICE_CREDITS } from '@/lib/ugcVoices'
 import { supabase } from '@/lib/supabase'
 import VoiceRecorder   from '@/components/ugc/VoiceRecorder'
 import ScriptGenerator from '@/components/ugc/ScriptGenerator'
+import { TopBar } from '@/components/layout/TopBar'
 import toast from 'react-hot-toast'
 
 const ACCENT     = 'var(--tool-ugc)'
@@ -926,26 +927,7 @@ const filteredVoices = voiceSearch
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Header */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
-      >
-        <button onClick={() => navigate('/create')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex flex-col items-center">
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>UGC</h1>
-          <span className="text-xs font-medium" style={{ color: ACCENT }}>{currentTabLabel}</span>
-        </div>
-        <div
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-          {Math.floor(credits)}
-        </div>
-      </div>
+      <TopBar showLogo showCredits showBack onBack={() => navigate('/create')} />
 
       {/* Tab switcher */}
       <div className="flex-shrink-0 flex gap-1 mx-4 lg:mx-8 p-1 rounded-2xl mt-3 mb-1" style={{ background: 'var(--bg-elevated)' }}>
