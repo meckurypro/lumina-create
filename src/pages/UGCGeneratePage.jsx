@@ -605,8 +605,8 @@ const isMaster = userProfile?.user_tier === 'master'
           )}
           <div className="flex flex-col items-start">
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-              {profile?.name}
-            </p>
+  {profile?.name?.length > 15 ? `${profile.name.slice(0, 15)}…` : profile?.name}
+</p>
           </div>
           </button>
 
@@ -620,14 +620,7 @@ const isMaster = userProfile?.user_tier === 'master'
             />
           )}
 
-          <div
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-            {Math.floor(credits)}
-          </div>
-        </div>
+                  </div>
       </div>
 
       {/* Scrollable content */}
