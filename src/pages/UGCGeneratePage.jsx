@@ -166,16 +166,17 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Multi-image grid (Master only, silent) ────────────────────
+// ── Multi-image grid (Master only) ─────────────────────────────
+// FIX: dynamic visibleSlots — show one empty slot at a time, not all at once
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
-  const slots       = Array.from({ length: maxImages }, (_, i) => images[i] || null)
-  const filledCount = images.filter(Boolean).length
+  const filledCount  = images.filter(Boolean).length
+  const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
+  const slots        = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Add up to {maxImages} reference images. Your uploads are tagged first —
-        tap{' '}
+        Add up to {maxImages} reference images. Tap{' '}
         {Array.from({ length: Math.min(maxImages, 4) }, (_, i) => (
           <span key={i}>
             <button
@@ -191,41 +192,42 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
         to reference each in your scene description. Character photos are included automatically.
       </p>
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxImages, 4)}, 1fr)` }}>
-        {slots.map((img, idx) => (
-          <div key={idx} className="flex flex-col gap-1.5">
-            {img ? (
-              <div className="relative group">
-                <div
-                  className="relative overflow-hidden rounded-xl cursor-pointer"
-                  style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
-                  onClick={() => onFullscreen(idx)}
-                >
-                  <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+      <div className="flex flex-wrap gap-3">
+        {slots.map((img, idx) => {
+          const isNextSlot = idx === filledCount
+          return (
+            <div key={idx} style={{ width: 'calc(25% - 9px)', minWidth: 64 }} className="flex flex-col gap-1.5">
+              {img ? (
+                <div className="relative group">
                   <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ background: 'rgba(0,0,0,0.45)' }}
+                    className="relative overflow-hidden rounded-xl cursor-pointer"
+                    style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
+                    onClick={() => onFullscreen(idx)}
                   >
-                    <Maximize2 size={16} color="white" />
+                    <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
+                    <div
+                      className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: 'rgba(0,0,0,0.45)' }}
+                    >
+                      <Maximize2 size={16} color="white" />
+                    </div>
                   </div>
+                  <button
+                    onClick={() => onTagInsert(tagForSlot(idx))}
+                    className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
+                    style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
+                  >
+                    {tagForSlot(idx)}
+                  </button>
+                  <button
+                    onClick={() => onRemove(idx)}
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+                    style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+                  >
+                    <X size={11} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => onTagInsert(tagForSlot(idx))}
-                  className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
-                  style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-                >
-                  {tagForSlot(idx)}
-                </button>
-                <button
-                  onClick={() => onRemove(idx)}
-                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
-                  style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ) : (
-              idx === filledCount ? (
+              ) : isNextSlot ? (
                 <label className="cursor-pointer">
                   <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
                   <div
@@ -242,25 +244,10 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                     {tagForSlot(idx)}
                   </div>
                 </label>
-              ) : (
-                <div>
-                  <div
-                    className="flex flex-col items-center justify-center rounded-xl"
-                    style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)', opacity: 0.25 }}
-                  >
-                    <Plus size={14} style={{ color: 'var(--text-muted)' }} />
-                  </div>
-                  <div
-                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.2 }}
-                  >
-                    {tagForSlot(idx)}
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        ))}
+              ) : null}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -289,7 +276,7 @@ export default function UGCGeneratePage() {
   const [submitting,    setSubmitting]    = useState(false)
 
   // Master-only ref images state
-  const [refImages,     setRefImages]     = useState([])   // [{ file, url, w, h }]
+  const [refImages,     setRefImages]     = useState([])
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
@@ -320,8 +307,7 @@ export default function UGCGeneratePage() {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-const isMaster = userProfile?.user_tier === 'master'
-    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list = data || []
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
     setModel(firstUnlocked?.value || '')
@@ -605,13 +591,12 @@ const isMaster = userProfile?.user_tier === 'master'
           )}
           <div className="flex flex-col items-start">
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-  {profile?.name?.length > 15 ? `${profile.name.slice(0, 15)}…` : profile?.name}
-</p>
+              {profile?.name?.length > 15 ? `${profile.name.slice(0, 15)}…` : profile?.name}
+            </p>
           </div>
-          </button>
+        </button>
 
         <div className="flex items-center gap-2">
-
           {!modelsLoading && (
             <ModelDropdown
               models={filteredModels}
@@ -619,8 +604,7 @@ const isMaster = userProfile?.user_tier === 'master'
               onChange={setModel}
             />
           )}
-
-                  </div>
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -649,9 +633,9 @@ const isMaster = userProfile?.user_tier === 'master'
             ))}
           </div>
 
-          {/* Master-only: extra reference images — renders silently, no explanation */}
+          {/* Master-only: extra reference images */}
           {isMaster && selectedModel?.supports_multi_image && (
-  <div className="mb-5">
+            <div className="mb-5">
               <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Reference Images
                 <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
