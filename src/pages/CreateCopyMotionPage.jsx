@@ -686,27 +686,40 @@ export default function CreateCopyMotionPage() {
     !weeklyBlocked
 
   // ── Upload handlers ──────────────────────────────────────
-  const handleVideoUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+const handleVideoUpload = async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
 
-    const url  = URL.createObjectURL(file)
-    const meta = await readVideoMetadata(file)
-
-    setMotionVideo({
-      file, url,
-      duration:    meta.duration,
-      width:       meta.width,
-      height:      meta.height,
-      aspectRatio: meta.aspectRatio,
-    })
-    setVideoGhostMeta(null)
-    setConvertSuccess(null)
-    if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
-      setAspectRatio(meta.aspectRatio)
-    }
-    persistVideoMeta(file.name, meta.duration, meta.aspectRatio)
+  if (file.size > 40 * 1024 * 1024) {
+    toast.error('Video must be under 40MB.')
+    e.target.value = ''
+    return
   }
+
+  const url  = URL.createObjectURL(file)
+  const meta = await readVideoMetadata(file)
+
+  if (meta.duration != null && meta.duration > 35) {
+    URL.revokeObjectURL(url)
+    toast.error('Video must be 35 seconds or under.')
+    e.target.value = ''
+    return
+  }
+
+  setMotionVideo({
+    file, url,
+    duration:    meta.duration,
+    width:       meta.width,
+    height:      meta.height,
+    aspectRatio: meta.aspectRatio,
+  })
+  setVideoGhostMeta(null)
+  setConvertSuccess(null)
+  if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
+    setAspectRatio(meta.aspectRatio)
+  }
+  persistVideoMeta(file.name, meta.duration, meta.aspectRatio)
+}
 
   const handleSubjectUpload = (e) => {
     const file = e.target.files?.[0]
