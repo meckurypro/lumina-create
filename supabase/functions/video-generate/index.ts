@@ -128,14 +128,14 @@ const MODEL_CONFIGS: Record<string, ModelConfig> = {
     supportsSound:         false,
     supportsGuidanceScale: false,
   },
-  vidu_q2_pro_s2e_fast: {
-    endpoint:              'vidu/q2-pro/start-end-to-video-fast',
-    imageKey:              'start_image',
-    endImageKey:           'end_image',    // confirmed: vidu uses start_image / end_image
-    durations:             [5, 8],
-    supportsSound:         false,
-    supportsGuidanceScale: false,
-  },
+vidu_q2_pro_s2e_fast: {
+  endpoint:              'vidu/q2-pro/start-end-to-video-fast',
+  imageKey:              'image',
+  endImageKey:           'last_image',
+  durations:             [5, 8],
+  supportsSound:         true,
+  supportsGuidanceScale: false,
+},
   seedance_v1_lite_i2v: {
     endpoint:              'bytedance/seedance-v1-lite-i2v-720p',
     imageKey:              'image',
@@ -1045,7 +1045,12 @@ async function runSubmit(generationId: string) {
     const hasImages  = imageUrls.length > 0
     const isMultiRef = imageUrls.length > 1
 
-    console.log(`[video-generate] ${generationId} | model: ${gen.model} | images: ${imageUrls.length} | mode: ${gen.generation_type}`)
+    // Resolve with_sound — check top-level field first, fall back to generation_metadata
+    if (gen.with_sound === undefined || gen.with_sound === null) {
+      gen.with_sound = gen.generation_metadata?.with_sound ?? true
+    }
+
+    console.log(`[video-generate] ${generationId} | model: ${gen.model} | images: ${imageUrls.length} | mode: ${gen.generation_type} | sound: ${gen.with_sound}`)
 
     // ── 2. Vision analysis — parallel for all ref images ───────────────────
     // For start_end_frame mode, also analyse the end frame so the engineered
