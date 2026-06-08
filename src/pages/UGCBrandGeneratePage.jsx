@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Zap, Building2, Images,
-  ImageIcon, VideoIcon, ChevronDown,
+  ArrowLeft, Zap, Building2,
+  ImageIcon, VideoIcon, ChevronDown, Info,
   X, ImagePlus, Plus, Maximize2, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -22,7 +22,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ── Helpers (ported directly from CreateImagePage) ─────────────
+// ── Helpers ────────────────────────────────────────────────────
 function detectAspectRatio(width, height) {
   const ratio = width / height
   if (ratio > 1.6)  return '16:9'
@@ -173,33 +173,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Brand context pill ─────────────────────────────────────────
-const BrandContextPill = ({ brand }) => (
-  <div
-    className="flex items-center gap-2 px-3 py-2 rounded-xl mb-5"
-    style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-  >
-    {brand?.logo_url ? (
-      <img src={brand.logo_url} alt={brand.brand_name} className="w-6 h-6 rounded-lg object-contain flex-shrink-0" />
-    ) : (
-      <Building2 size={14} style={{ color: ACCENT, flexShrink: 0 }} />
-    )}
-    <div className="flex-1 min-w-0">
-      <p className="text-xs font-bold truncate" style={{ color: ACCENT }}>{brand?.brand_name}</p>
-      <p className="text-xs truncate" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
-        {brand?.tagline}
-      </p>
-    </div>
-    <span
-      className="text-xs px-2 py-0.5 rounded-lg font-medium flex-shrink-0"
-      style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '10px' }}
-    >
-      AI Brand Adviser
-    </span>
-  </div>
-)
-
-// ── Single image slot (same as CreateImagePage) ────────────────
+// ── Single image slot ──────────────────────────────────────────
 const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupportsImage }) => {
   if (image) {
     const ar   = image.w && image.h ? `${image.w} / ${image.h}` : '1 / 1'
@@ -245,12 +219,12 @@ const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupport
       <label
         className="flex flex-col items-center justify-center rounded-2xl transition-all"
         style={{
-          width:      '140px',
-          aspectRatio:'1 / 1',
-          border:     `1.5px dashed ${ACCENT_BDR}`,
-          background: ACCENT_SUB,
-          cursor:     modelSupportsImage ? 'pointer' : 'not-allowed',
-          opacity:    modelSupportsImage ? 1 : 0.4,
+          width:       '140px',
+          aspectRatio: '1 / 1',
+          border:      `1.5px dashed ${ACCENT_BDR}`,
+          background:  ACCENT_SUB,
+          cursor:      modelSupportsImage ? 'pointer' : 'not-allowed',
+          opacity:     modelSupportsImage ? 1 : 0.4,
         }}
       >
         <input
@@ -269,15 +243,14 @@ const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupport
   )
 }
 
-// ── Multi-image grid (same as CreateImagePage) ─────────────────
+// ── Multi-image grid ───────────────────────────────────────────
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
-  const filledCount   = images.filter(Boolean).length
-  const visibleSlots  = filledCount < maxImages ? filledCount + 1 : filledCount
-  const slots         = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
+  const filledCount  = images.filter(Boolean).length
+  const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
+  const slots        = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Tag hint */}
       <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
         Reference up to {maxImages} images. Insert{' '}
         {Array.from({ length: Math.min(maxImages, 4) }, (_, i) => (
@@ -295,7 +268,6 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
         tags into your prompt to describe how each image is used.
       </p>
 
-      {/* Grid */}
       <div className="flex flex-wrap gap-3">
         {slots.map((img, idx) => {
           const isNextSlot = idx === filledCount
@@ -316,7 +288,6 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                       <Maximize2 size={16} color="white" />
                     </div>
                   </div>
-                  {/* Tag insert button */}
                   <button
                     onClick={() => onTagInsert(tagForSlot(idx))}
                     className="w-full py-1 rounded-lg text-xs font-mono font-semibold transition-all"
@@ -367,9 +338,9 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 export default function UGCBrandGeneratePage() {
   const { brandId }                                              = useParams()
   const navigate                                                 = useNavigate()
- const { user, profile: userProfile, credits, refreshProfile } = useAuth()
-  const isMaster = userProfile?.user_tier === 'master'
-  const textareaRef                                              = useRef(null)
+  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const isMaster     = userProfile?.user_tier === 'master'
+  const textareaRef  = useRef(null)
 
   const skipRefinement = !(userProfile?.ai_prompt_refinement ?? true)
 
@@ -387,7 +358,6 @@ export default function UGCBrandGeneratePage() {
   const [withSound,     setWithSound]     = useState(false)
   const [submitting,    setSubmitting]    = useState(false)
 
-  // Reference image state — same pattern as CreateImagePage
   const [images,        setImages]        = useState([])
   const [multiMode,     setMultiMode]     = useState(false)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
@@ -424,19 +394,16 @@ export default function UGCBrandGeneratePage() {
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
 
-  // Model capability flags — same names as CreateImagePage
-  const modelSupportsImage = selectedModel?.supports_image  !== false
+  const modelSupportsImage = selectedModel?.supports_image      !== false
   const modelSupportsMulti = selectedModel?.supports_multi_image === true
-  const modelRequiresImage = selectedModel?.requires_image  === true
-  const modelMaxRefImages  = selectedModel?.max_ref_images  ?? 1
+  const modelRequiresImage = selectedModel?.requires_image       === true
+  const modelMaxRefImages  = selectedModel?.max_ref_images       ?? 1
 
-  // Reset on output type change
   useEffect(() => {
     const first = filteredModels.find((m) => !m.is_locked)
     if (first) setModel(first.value)
   }, [outputType])
 
-  // Reset multi-mode and images when model loses multi support
   useEffect(() => {
     if (!modelSupportsMulti) {
       setMultiMode(false)
@@ -467,12 +434,12 @@ export default function UGCBrandGeneratePage() {
     return Math.ceil(base)
   })()
 
-  const canAfford      = credits >= creditCost
-  const promptEmpty    = !prompt.trim()
-  const imageRequired  = modelRequiresImage && !hasImages
-  const btnDisabled    = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading || imageRequired
+  const canAfford     = credits >= creditCost
+  const promptEmpty   = !prompt.trim()
+  const imageRequired = modelRequiresImage && !hasImages
+  const btnDisabled   = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading || imageRequired
 
-  // ── Image handlers (same logic as CreateImagePage) ─────────────
+  // ── Image handlers ─────────────────────────────────────────────
   const handleAddImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -509,7 +476,7 @@ export default function UGCBrandGeneratePage() {
     setAspectRatio('9:16')
   }
 
-  // ── Tag insertion into textarea ────────────────────────────────
+  // ── Tag insertion ──────────────────────────────────────────────
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
@@ -528,7 +495,7 @@ export default function UGCBrandGeneratePage() {
     })
   }
 
-  // ── Build brand context string ─────────────────────────────────
+  // ── Brand context ──────────────────────────────────────────────
   const buildBrandContext = () => {
     if (!brand) return ''
     return [
@@ -547,7 +514,7 @@ export default function UGCBrandGeneratePage() {
     ].filter(Boolean).join(' | ')
   }
 
-  // ── Generate ────────────────────────────────────────────────────
+  // ── Generate ───────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Describe the content you want')
     if (!selectedModel) return toast.error('Pick a model')
@@ -559,12 +526,10 @@ export default function UGCBrandGeneratePage() {
     try {
       const brandContext = buildBrandContext()
 
-      // Upload reference images — same pattern as CreateImagePage
       const uploadedUrls = []
       for (const img of images) {
         if (!img) continue
         if (!img.file) {
-          // URL-only ref from Assets — use directly
           uploadedUrls.push(img.url)
           continue
         }
@@ -581,8 +546,6 @@ export default function UGCBrandGeneratePage() {
         uploadedUrls.push(publicUrl)
       }
 
-      // Build input_image_urls as objects with role, same shape the edge function expects
-      // Position-based roles: 0 = subject, 1 = setting, 2+ = additional
       const roles = ['subject', 'setting', 'additional reference']
       const inputImageUrls = uploadedUrls.map((url, i) => ({
         url,
@@ -617,13 +580,13 @@ export default function UGCBrandGeneratePage() {
       }
 
       await ugcBrandGenerations.create({
-        generation_id:  genRow.id,
-        ugc_brand_id:   brandId,
-        user_id:        user.id,
-        output_type:    outputType,
-        scene_prompt:   prompt,
-        aspect_ratio:   aspectRatio,
-        with_sound:     outputType === 'video' ? withSound : false,
+        generation_id: genRow.id,
+        ugc_brand_id:  brandId,
+        user_id:       user.id,
+        output_type:   outputType,
+        scene_prompt:  prompt,
+        aspect_ratio:  aspectRatio,
+        with_sound:    outputType === 'video' ? withSound : false,
       })
 
       supabase.functions.invoke('brand-generate', { body: { generationId: genRow.id } })
@@ -751,13 +714,12 @@ export default function UGCBrandGeneratePage() {
           )}
           <div className="flex flex-col items-start">
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-  {brand?.brand_name?.length > 15 ? `${brand.brand_name.slice(0, 15)}…` : brand?.brand_name}
-</p>
+              {brand?.brand_name?.length > 15 ? `${brand.brand_name.slice(0, 15)}…` : brand?.brand_name}
+            </p>
           </div>
         </button>
 
         <div className="flex items-center gap-2">
-
           {!modelsLoading && (
             <ModelDropdown
               models={filteredModels}
@@ -765,8 +727,6 @@ export default function UGCBrandGeneratePage() {
               onChange={setModel}
             />
           )}
-
-          
         </div>
       </div>
 
@@ -774,7 +734,6 @@ export default function UGCBrandGeneratePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
 
-       
           {/* Output type toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
             {[
@@ -797,72 +756,79 @@ export default function UGCBrandGeneratePage() {
             ))}
           </div>
 
-          {/* Reference image section — same structure as CreateImagePage */}
-          <div className="mb-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Reference Image
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
-              </p>
+          {/* Reference image — Master only */}
+          {isMaster ? (
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Reference Image
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+                </p>
 
-              {/* Multi-ref toggle — only for multi-capable models */}
-              {modelSupportsMulti && modelSupportsImage && (
-                <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
-                  {[
-                    { value: false, label: 'Simple'    },
-                    { value: true,  label: 'Multi-ref' },
-                  ].map((opt) => (
-                    <button
-                      key={String(opt.value)}
-                      onClick={() => {
-                        setMultiMode(opt.value)
-                        if (!opt.value && images.length > 1) {
-                          setImages([images[0]])
-                        }
-                      }}
-                      className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-                      style={{
-                        background: multiMode === opt.value ? ACCENT    : 'transparent',
-                        color:      multiMode === opt.value ? '#ffffff' : 'var(--text-muted)',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                {modelSupportsMulti && modelSupportsImage && (
+                  <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+                    {[
+                      { value: false, label: 'Simple'    },
+                      { value: true,  label: 'Multi-ref' },
+                    ].map((opt) => (
+                      <button
+                        key={String(opt.value)}
+                        onClick={() => {
+                          setMultiMode(opt.value)
+                          if (!opt.value && images.length > 1) setImages([images[0]])
+                        }}
+                        className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                          background: multiMode === opt.value ? ACCENT    : 'transparent',
+                          color:      multiMode === opt.value ? '#ffffff' : 'var(--text-muted)',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {modelSupportsMulti && multiMode ? (
+                <MultiImageGrid
+                  images={images}
+                  maxImages={modelMaxRefImages}
+                  onAdd={handleAddImage}
+                  onRemove={handleRemoveImage}
+                  onTagInsert={handleTagInsert}
+                  onFullscreen={(idx) => setFullscreenIdx(idx)}
+                />
+              ) : (
+                <SingleImageSlot
+                  image={images[0] || null}
+                  onUpload={handleSingleImageUpload}
+                  onRemove={() => handleRemoveImage(0)}
+                  onFullscreen={() => setFullscreenIdx(0)}
+                  modelSupportsImage={modelSupportsImage}
+                />
+              )}
+
+              {modelSupportsImage && modelRequiresImage && !hasImages && (
+                <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
+                  This model requires a reference image to generate.
+                </p>
+              )}
+              {!modelSupportsImage && (
+                <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                  This model is text-only. Switch models to use a reference image.
+                </p>
               )}
             </div>
-
-            {modelSupportsMulti && multiMode ? (
-              <MultiImageGrid
-                images={images}
-                maxImages={modelMaxRefImages}
-                onAdd={handleAddImage}
-                onRemove={handleRemoveImage}
-                onTagInsert={handleTagInsert}
-                onFullscreen={(idx) => setFullscreenIdx(idx)}
-              />
-            ) : (
-              <SingleImageSlot
-                image={images[0] || null}
-                onUpload={handleSingleImageUpload}
-                onRemove={() => handleRemoveImage(0)}
-                onFullscreen={() => setFullscreenIdx(0)}
-                modelSupportsImage={modelSupportsImage}
-              />
-            )}
-
-            {modelSupportsImage && modelRequiresImage && !hasImages && (
-              <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
-                This model requires a reference image to generate.
-              </p>
-            )}
-            {!modelSupportsImage && (
-              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
-                This model is text-only. Switch models to use a reference image.
-              </p>
-            )}
-          </div>
+          ) : (
+            <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
+              <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
+              <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
+                Upgrade to Master
+              </button>
+              {' '}to attach reference images to your generations.
+            </p>
+          )}
 
           {/* Prompt */}
           <div className="mb-5">
@@ -874,9 +840,9 @@ export default function UGCBrandGeneratePage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={
-                modelSupportsMulti && multiMode && hasImages
+                isMaster && modelSupportsMulti && multiMode && hasImages
                   ? `Describe how to use the references — e.g. person in ${tagForSlot(0)} inside the space in ${tagForSlot(1)}, brand logo on the wall`
-                  : `Describe what you want the AI to create for ${brand?.brand_name}. The brand adviser will handle the rest — styling, lighting, composition, all on-brand.`
+                  : `Describe what you want created for ${brand?.brand_name}…`
               }
               rows={5}
               maxLength={600}
@@ -891,13 +857,6 @@ export default function UGCBrandGeneratePage() {
             <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
               {prompt.length}/600
             </p>
-            {!isMaster && (
-              <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
-                <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
-                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
-                {' '}to attach reference images to your generations.
-              </p>
-            )}
           </div>
 
           {/* Aspect ratio */}
@@ -917,7 +876,7 @@ export default function UGCBrandGeneratePage() {
             </p>
           )}
 
-          {/* Duration (video only) */}
+          {/* Duration + Sound (video only) */}
           {outputType === 'video' && (
             <>
               <SettingChips
@@ -952,10 +911,10 @@ export default function UGCBrandGeneratePage() {
             </>
           )}
 
-      
+          {/* Refinement off notice */}
           {skipRefinement && (
             <div
-              className="flex items-center gap-2 p-3 rounded-xl mt-2"
+              className="flex items-center gap-2 p-3 rounded-xl mt-1"
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
             >
               <Info size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
