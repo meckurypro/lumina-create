@@ -608,6 +608,7 @@ const isMaster = userProfile?.user_tier === 'master'
               {profile?.name}
             </p>
           </div>
+          </button>
 
         <div className="flex items-center gap-2">
 
