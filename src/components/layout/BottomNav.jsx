@@ -2,15 +2,16 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Sparkles, GalleryHorizontalEnd, User, Zap } from 'lucide-react'
+import { Home, Grip, GalleryHorizontalEnd, User, Zap, Users } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 const NAV_ITEMS = [
-  { path: '/feed',   icon: Home,                  label: 'Home'   },
-  { path: '/create', icon: Sparkles,               label: 'Create' },
-  { path: '/media',  icon: GalleryHorizontalEnd,   label: 'Media'  },
-  { path: '/profile',icon: User,                   label: 'Profile'},
+  { path: '/feed',       icon: Home,                 label: 'Home'    },
+  { path: '/create', icon: Grip, label: 'Create' },
+  { path: '/create/ugc', icon: Users,                 label: 'UGC'     },
+  { path: '/media',      icon: GalleryHorizontalEnd,  label: 'Media'   },
+  { path: '/profile',    icon: User,                  label: 'Profile' },
 ]
 
 const STAFF_NAV_LEFT  = NAV_ITEMS.slice(0, 2)
@@ -18,7 +19,12 @@ const STAFF_NAV_RIGHT = NAV_ITEMS.slice(2)
 
 const NavItem = ({ path, icon: Icon, label }) => {
   const location = useLocation()
-  const isActive = location.pathname === path
+  const isActive = location.pathname === path || location.pathname.startsWith(path + '/')
+
+  // Avoid /create/ugc highlighting /create as well
+  const isCreateBase = path === '/create' && location.pathname.startsWith('/create/ugc')
+
+  const active = isActive && !isCreateBase
 
   return (
     <NavLink
@@ -27,7 +33,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
       className="relative flex items-center justify-center"
       style={{ flex: 1 }}
     >
-      {isActive && (
+      {active && (
         <motion.span
           layoutId="nav-pill"
           className="absolute inset-0"
@@ -38,8 +44,8 @@ const NavItem = ({ path, icon: Icon, label }) => {
       <span className="relative p-3 flex items-center justify-center">
         <Icon
           size={22}
-          strokeWidth={isActive ? 2 : 1.5}
-          style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)', transition: 'color 0.2s ease' }}
+          strokeWidth={active ? 2 : 1.5}
+          style={{ color: active ? 'var(--text-primary)' : 'var(--text-muted)', transition: 'color 0.2s ease' }}
         />
       </span>
     </NavLink>
