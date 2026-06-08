@@ -2,8 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Zap, Search, ChevronRight, Lock, Sparkles, Clapperboard } from 'lucide-react'
-import { TopBar } from '@/components/layout/TopBar'
+import { ArrowLeft, Zap, Search, ChevronRight, Lock, Sparkles, Clapperboard, X } from 'lucide-react'
 import { templates as templatesDb } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TemplateCard } from '@/components/templates/TemplateCard'
@@ -92,7 +91,7 @@ const SkeletonCard = ({ i }) => (
 
 export default function PromptIQPage({ onClose }) {
   const navigate             = useNavigate()
-  const { isStaff, isAdmin } = useAuth()
+  const { isStaff, isAdmin, credits } = useAuth()
 
   const [templates,      setTemplates]      = useState([])
   const [loading,        setLoading]        = useState(true)
@@ -100,10 +99,8 @@ export default function PromptIQPage({ onClose }) {
   const [activeCategory, setActiveCategory] = useState('All')
   const searchRef = useRef(null)
 
-  // ── Guard ──────────────────────────────────────────────
   const hasAccess = isStaff || isAdmin
 
-  // ── Fetch promptiq templates ───────────────────────────
   useEffect(() => {
     if (!hasAccess) return
     const load = async () => {
@@ -115,7 +112,6 @@ export default function PromptIQPage({ onClose }) {
     load()
   }, [hasAccess])
 
-  // ── Derived ────────────────────────────────────────────
   const categories = ['All', ...new Set(templates.map((t) => t.category).filter(Boolean))]
 
   const filtered = templates.filter((t) => {
@@ -127,7 +123,6 @@ export default function PromptIQPage({ onClose }) {
     return matchesSearch && matchesCat
   })
 
-  // ── Handlers ───────────────────────────────────────────
   const handleSelect = (template) => {
     onClose?.()
     navigate(`/create/${template.slug}`, {
@@ -144,28 +139,45 @@ export default function PromptIQPage({ onClose }) {
   if (!hasAccess) {
     return (
       <div
-        className="flex h-full w-full flex-col items-center justify-center gap-4"
+        className="flex h-full w-full flex-col"
         style={{ background: 'var(--bg-primary)' }}
       >
+        {/* Header */}
         <div
-          className="flex h-16 w-16 items-center justify-center rounded-3xl"
-          style={{ background: 'var(--bg-elevated)' }}
+          className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
+          style={{ borderBottom: '1px solid var(--border-color)' }}
         >
-          <Lock size={28} style={{ color: 'var(--text-muted)' }} />
+          <button
+            onClick={onClose}
+            className="p-2 -ml-2 rounded-xl"
+            style={{ color: 'var(--text-secondary)' }}
+            aria-label="Close"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg brand-gradient">
+              <Zap size={14} className="text-white" />
+            </div>
+            <span className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>PromptIQ</span>
+          </div>
+          <div style={{ width: 36 }} />
         </div>
-        <p className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
-          Staff Access Only
-        </p>
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          PromptIQ is available to Meckury staff
-        </p>
-        <button
-          onClick={onClose}
-          className="mt-2 rounded-2xl px-5 py-2.5 text-sm font-bold flex items-center gap-2"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <X size={14} /> Close
-        </button>
+
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+          <div
+            className="flex h-16 w-16 items-center justify-center rounded-3xl"
+            style={{ background: 'var(--bg-elevated)' }}
+          >
+            <Lock size={28} style={{ color: 'var(--text-muted)' }} />
+          </div>
+          <p className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
+            Staff Access Only
+          </p>
+          <p className="text-sm text-center" style={{ color: 'var(--text-muted)' }}>
+            PromptIQ is available to Meckury staff
+          </p>
+        </div>
       </div>
     )
   }
@@ -173,12 +185,51 @@ export default function PromptIQPage({ onClose }) {
   return (
     <div
       className="flex h-full w-full flex-col"
-      style={{ background: 'var(--bg-primary)', overflowY: 'auto' }}
+      style={{ background: 'var(--bg-primary)' }}
     >
-      <TopBar title="PromptIQ" showCredits showBack onBack={onClose} />
+      {/* ── Header — matches TopBar height/style, no nav duplication ── */}
+      <div
+        className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
+        style={{
+          background:           'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
+          borderBottom:         '1px solid var(--border-color)',
+          backdropFilter:       'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+        }}
+      >
+        {/* Left — back/close */}
+        <button
+          onClick={onClose}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+          aria-label="Close PromptIQ"
+        >
+          <ArrowLeft size={20} />
+        </button>
 
-      {/* Search + category pills */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-1">
+        {/* Center — logo + title */}
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg brand-gradient">
+            <Zap size={14} className="text-white" />
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>PromptIQ</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Staff templates · Free</span>
+          </div>
+        </div>
+
+        {/* Right — credits */}
+        <div
+          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+        >
+          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
+          {Math.floor(credits ?? 0)}
+        </div>
+      </div>
+
+      {/* ── Search + category pills ── */}
+      <div className="flex-shrink-0 px-4 lg:px-8 pt-3 pb-1">
         <div
           className="flex items-center gap-2 rounded-2xl px-3 py-2.5 mb-3"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
@@ -212,41 +263,41 @@ export default function PromptIQPage({ onClose }) {
         )}
       </div>
 
-      {/* ── Content ── */}
-      <div className="flex-1 px-4 py-4">
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 lg:px-8 py-4">
 
-        {/* Filma suite entry */}
-        <FilmaEntryCard onClick={handleFilma} />
+          <FilmaEntryCard onClick={handleFilma} />
 
-        {/* Template grid */}
-        {loading ? (
-          <div className="grid grid-cols-2 gap-3">
-            {[...Array(4)].map((_, i) => <SkeletonCard key={i} i={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState query={search} />
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <AnimatePresence mode="popLayout">
-              {filtered.map((template, i) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  index={i}
-                  onClick={() => handleSelect(template)}
-                  showVisibilityBadge={false}
-                />
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => <SkeletonCard key={i} i={i} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState query={search} />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <AnimatePresence mode="popLayout">
+                {filtered.map((template, i) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    index={i}
+                    onClick={() => handleSelect(template)}
+                    showVisibilityBadge={false}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
 
-      {/* ── Footer ── */}
-      <div className="flex-shrink-0 px-4 py-4 text-center">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          ⚡ PromptIQ templates do not consume credits
-        </p>
+        {/* Footer */}
+        <div className="px-4 py-4 text-center">
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            ⚡ PromptIQ templates do not consume credits
+          </p>
+        </div>
       </div>
     </div>
   )
