@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Mic, Play, Pause, Download,
-  Trash2, Loader2, MoreHorizontal, Check, Lock,
+  Trash2, Loader2, MoreHorizontal, Check, Lock, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcVoices, ugcAudioGenerations, ugcAudioChunks, calcTTSCredits, ELEVENLABS_MODELS } from '@/lib/ugcVoices'
@@ -450,7 +450,30 @@ export default function UGCVoiceGeneratePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {isVoiceMuted && (
+          {isVoiceMuted ? (
+            <div
+              className="flex items-start gap-2.5 p-3 rounded-2xl"
+              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                This cloned voice is muted on the Novice tier.{' '}
+                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
+                {' '}to generate audio with it. Voices from the ElevenLabs library remain available.
+              </p>
+            </div>
+          ) : !isMaster && (
+            <div
+              className="flex items-start gap-2.5 p-3 rounded-2xl"
+              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+            >
+              <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
+                {' '}to clone your own voice and use cloned voices for audio generation.
+              </p>
+            </div>
+          )}
             <div
               className="flex items-start gap-2.5 p-3 rounded-2xl"
               style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
