@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, Film, Image as ImageIcon,
-  AlertCircle, RefreshCw, CheckCircle2,
+  AlertCircle, RefreshCw, CheckCircle2, Scissors,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import MasterGate from '@/components/ui/MasterGate'
@@ -14,6 +14,9 @@ import toast from 'react-hot-toast'
 const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
 const ACCENT_BDR = 'var(--tool-motion-border)'
+
+// Cost in credits to run the pre-processing edge function (same for Novice + Master).
+const CONVERSION_COST = 2
 
 // ── Session storage keys ───────────────────────────────────────────────────
 const SS_SUBJECT_IMG = 'meckury_copymotion_subject'
@@ -57,11 +60,9 @@ const restoreImage = (key) => new Promise((resolve) => {
     if (!saved) return resolve(null)
     sessionStorage.removeItem(key)
     const item = JSON.parse(saved)
-    // New: URL payload from Assets { url, name, type }
     if (item.url && !item.base64) {
       return resolve({ file: null, url: item.url, name: item.name })
     }
-    // Legacy: base64 payload
     const { base64, name, type } = item
     const bytes = atob(base64.split(',')[1])
     const ab    = new ArrayBuffer(bytes.length)
@@ -72,9 +73,9 @@ const restoreImage = (key) => new Promise((resolve) => {
   } catch { resolve(null) }
 })
 
-const persistVideoMeta = (name, duration, aspectRatio, compatible) => {
+const persistVideoMeta = (name, duration, aspectRatio) => {
   try {
-    sessionStorage.setItem(SS_VIDEO_META, JSON.stringify({ name, duration, aspectRatio, compatible }))
+    sessionStorage.setItem(SS_VIDEO_META, JSON.stringify({ name, duration, aspectRatio }))
   } catch { /* noop */ }
 }
 
@@ -85,14 +86,129 @@ const restoreVideoMeta = () => {
   } catch { return null }
 }
 
-const getVideoDuration = (file) => new Promise((resolve) => {
+// Reads duration + intrinsic dimensions in one pass.
+const readVideoMetadata = (file) => new Promise((resolve) => {
   const url = URL.createObjectURL(file)
   const vid = document.createElement('video')
   vid.preload = 'metadata'
-  vid.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Math.round(vid.duration)) }
-  vid.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+  vid.onloadedmetadata = () => {
+    const meta = {
+      duration:    vid.duration ? Math.round(vid.duration) : null,
+      width:       vid.videoWidth  || null,
+      height:      vid.videoHeight || null,
+      aspectRatio: vid.videoWidth && vid.videoHeight
+        ? detectAspectRatio(vid.videoWidth, vid.videoHeight)
+        : null,
+    }
+    URL.revokeObjectURL(url)
+    resolve(meta)
+  }
+  vid.onerror = () => { URL.revokeObjectURL(url); resolve({ duration: null, width: null, height: null, aspectRatio: null }) }
   vid.src = url
 })
+
+// ── Compat check ───────────────────────────────────────────────────────────
+// Pure function — takes already-read video metadata + the selected model row
+// and the user's chosen aspect ratio. Returns { compatible, reason, fixes }.
+// `fixes` describes what the conversion edge function will need to do.
+function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDuration }) {
+  if (!model || !videoMeta) {
+    return { compatible: false, reason: 'Video or model not ready', fixes: { needsTrim: false, needsCrop: false } }
+  }
+
+  const supportedRatios = model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
+  const durations       = (model.supported_durations ?? []).map(Number).sort((a, b) => a - b)
+
+  if (durations.length === 0) {
+    return { compatible: false, reason: 'Model has no supported durations configured', fixes: { needsTrim: false, needsCrop: false } }
+  }
+
+  const minDur = durations[0]
+  const aspectOk = supportedRatios.includes(videoMeta.aspectRatio) &&
+                   videoMeta.aspectRatio === targetAspectRatio
+
+  // Hard reject: video too short for the shortest supported duration.
+  if (videoMeta.duration != null && videoMeta.duration < minDur) {
+    return {
+      compatible: false,
+      reason: `Video is ${videoMeta.duration}s — minimum is ${minDur}s for this model.`,
+      fixes: { needsTrim: false, needsCrop: false, tooShort: true },
+    }
+  }
+
+  // Duration: needs trim if not exactly equal to the selected duration.
+  const needsTrim = videoMeta.duration !== targetDuration
+  const needsCrop = !aspectOk
+
+  if (!needsTrim && !needsCrop) {
+    return { compatible: true, reason: null, fixes: { needsTrim: false, needsCrop: false } }
+  }
+
+  const reasons = []
+  if (needsCrop) reasons.push(`Aspect ratio ${videoMeta.aspectRatio || 'unknown'} → ${targetAspectRatio}`)
+  if (needsTrim) reasons.push(`Trim ${videoMeta.duration}s → ${targetDuration}s`)
+
+  return {
+    compatible: false,
+    reason: reasons.join(' · '),
+    fixes: { needsTrim, needsCrop, tooShort: false },
+  }
+}
+
+// ── Edge function caller ───────────────────────────────────────────────────
+// Uploads the source to `generation-uploads` so the edge function can pull it,
+// then invokes `process-video-for-motion`. Returns the inserted asset row.
+async function callTranscodeEdgeFunction({
+  file, userId, targetAspectRatio, targetDuration, startTime, onProgress,
+}) {
+  onProgress?.(5)
+
+  const ext      = (file.name.split('.').pop() || 'mp4').toLowerCase()
+  const srcPath  = `${userId}/copy-motion-src/${crypto.randomUUID()}.${ext}`
+  const { error: upErr } = await supabase.storage
+    .from('generation-uploads')
+    .upload(srcPath, file, {
+      upsert: false,
+      cacheControl: '3600',
+      contentType: file.type || 'video/mp4',
+    })
+  if (upErr) throw new Error(upErr.message || 'Could not upload source video')
+
+  onProgress?.(25)
+  const { data: { publicUrl: sourceUrl } } = supabase.storage
+    .from('generation-uploads')
+    .getPublicUrl(srcPath)
+
+  // ffmpeg.wasm doesn't stream progress to us — give the user a slow advance.
+  let virtualPct = 30
+  const tick = setInterval(() => {
+    virtualPct = Math.min(virtualPct + 2, 90)
+    onProgress?.(virtualPct)
+  }, 800)
+
+  let result
+  try {
+    const { data, error } = await supabase.functions.invoke('process-video-for-motion', {
+      body: {
+        sourceUrl,
+        targetAspectRatio,
+        targetDuration,
+        startTime,
+        originalFilename: file.name,
+      },
+    })
+    if (error) throw new Error(error.message || 'Conversion edge function failed')
+    if (!data?.success) throw new Error(data?.error || 'Conversion failed')
+    result = data
+  } finally {
+    clearInterval(tick)
+    // best-effort cleanup of the source upload
+    supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {})
+  }
+
+  onProgress?.(100)
+  return result.asset
+}
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
@@ -199,98 +315,43 @@ const SettingChips = ({ label, options, value, onChange }) => (
   </div>
 )
 
-// ── Compat badge shown on the video tile ──────────────────────────────────
 const CompatBadge = ({ status }) => {
-  // status: 'checking' | 'compatible' | 'incompatible' | null
-  if (!status || status === null) return null
-
-  if (status === 'checking') {
-    return (
-      <div
-        className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-        style={{ background: 'rgba(0,0,0,0.72)', color: '#fff' }}
-      >
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-          className="w-3 h-3 rounded-full border border-white"
-          style={{ borderTopColor: 'transparent' }}
-        />
-        Checking…
-      </div>
-    )
+  if (!status) return null
+  const map = {
+    checking:     { bg: 'rgba(0,0,0,0.72)',      color: '#fff', icon: <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }} className="w-3 h-3 rounded-full border border-white" style={{ borderTopColor: 'transparent' }} />, text: 'Checking…' },
+    compatible:   { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready' },
+    incompatible: { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw size={11} />,    text: 'Needs conversion' },
+    rejected:     { bg: 'rgba(239,68,68,0.92)',  color: '#fff', icon: <AlertCircle size={11} />,  text: 'Too short' },
   }
-
-  if (status === 'compatible') {
-    return (
-      <div
-        className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-        style={{ background: 'rgba(16,185,129,0.85)', color: '#fff' }}
-      >
-        <CheckCircle2 size={11} />
-        Ready
-      </div>
-    )
-  }
-
-  if (status === 'incompatible') {
-    return (
-      <div
-        className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-        style={{ background: 'rgba(239,160,20,0.9)', color: '#fff' }}
-      >
-        <RefreshCw size={11} />
-        Will convert
-      </div>
-    )
-  }
-
-  return null
+  const cfg = map[status]
+  if (!cfg) return null
+  return (
+    <div
+      className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+      style={{ background: cfg.bg, color: cfg.color }}
+    >
+      {cfg.icon}
+      {cfg.text}
+    </div>
+  )
 }
 
-// ── Video upload zone ──────────────────────────────────────────────────────
-const VideoUploadZone = ({
-  value, ghostMeta, onUpload, onRemove,
-  durationMismatch, compatStatus,
-}) => {
+const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove, compatStatus, tooShort }) => {
   if (value) {
     return (
-      <div
-        className="relative w-full rounded-2xl overflow-hidden"
-        style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
-      >
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
         <video
           src={value.url}
           className="w-full h-full object-cover"
           muted loop autoPlay playsInline
-          style={{ filter: durationMismatch ? 'blur(4px)' : 'none' }}
+          style={{ filter: tooShort ? 'blur(4px)' : 'none' }}
         />
-
-        {/* Duration badge — only when valid and no compat issue */}
-        {value.duration != null && !durationMismatch && (
-          <div
-            className="absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
-          >
+        {value.duration != null && (
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
             {formatDuration(value.duration)}
           </div>
         )}
-
         <CompatBadge status={compatStatus} />
-
-        {/* Duration mismatch overlay */}
-        {durationMismatch && (
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
-            style={{ background: 'rgba(0,0,0,0.55)' }}
-          >
-            <AlertCircle size={18} style={{ color: '#ef4444' }} />
-            <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.95)', lineHeight: 1.5 }}>
-              Duration doesn't match<br />any available option
-            </p>
-          </div>
-        )}
-
         <button
           onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
@@ -304,10 +365,7 @@ const VideoUploadZone = ({
 
   if (ghostMeta) {
     return (
-      <div
-        className="relative w-full rounded-2xl overflow-hidden"
-        style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
-      >
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
         <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-3 text-center">
           <RefreshCw size={20} style={{ color: 'var(--text-muted)' }} />
           <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Re-upload video</p>
@@ -348,10 +406,7 @@ const VideoUploadZone = ({
 const ImageUploadZone = ({ value, onUpload, onRemove }) => {
   if (value) {
     return (
-      <div
-        className="relative w-full rounded-2xl overflow-hidden"
-        style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
-      >
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
         <img src={value.url} alt="Subject" className="w-full h-full object-cover" />
         <button
           onClick={onRemove}
@@ -385,10 +440,7 @@ const NoModelsState = () => (
     animate={{ opacity: 1, y: 0 }}
     className="flex flex-col items-center justify-center py-16 gap-4 text-center"
   >
-    <div
-      className="w-14 h-14 rounded-2xl flex items-center justify-center"
-      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-    >
+    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
       <AlertCircle size={26} style={{ color: ACCENT }} />
     </div>
     <div>
@@ -400,24 +452,17 @@ const NoModelsState = () => (
   </motion.div>
 )
 
-// ── Full-screen overlay — used for both converting and generating ──────────
 const FullscreenOverlay = ({ phase, convertProgress }) => {
   const isConverting = phase === 'converting'
-
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 px-8"
-      style={{
-        backdropFilter:       'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        background:           'rgba(0,0,0,0.45)',
-      }}
+      style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', background: 'rgba(0,0,0,0.45)' }}
     >
       {isConverting ? (
         <>
-          {/* Animated ring */}
           <div className="relative w-16 h-16 flex items-center justify-center">
             <svg className="absolute inset-0" viewBox="0 0 64 64">
               <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="4" />
@@ -433,17 +478,12 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
                 transition={{ duration: 0.3 }}
               />
             </svg>
-            <span className="text-xs font-bold" style={{ color: '#fff' }}>
-              {convertProgress}%
-            </span>
+            <span className="text-xs font-bold" style={{ color: '#fff' }}>{convertProgress}%</span>
           </div>
-
           <div className="text-center">
-            <p className="text-sm font-bold tracking-wide" style={{ color: '#fff' }}>
-              Converting your video
-            </p>
+            <p className="text-sm font-bold tracking-wide" style={{ color: '#fff' }}>Converting your video</p>
             <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,0.55)', maxWidth: 240, lineHeight: 1.6 }}>
-              Making it compatible with the AI model. This only takes a moment.
+              Trimming, cropping and re-encoding on the server. Hang tight.
             </p>
           </div>
         </>
@@ -455,9 +495,7 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
             className="w-10 h-10 rounded-full border-2"
             style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
           />
-          <p className="text-sm font-semibold tracking-wide" style={{ color: '#fff' }}>
-            Generating…
-          </p>
+          <p className="text-sm font-semibold tracking-wide" style={{ color: '#fff' }}>Generating…</p>
         </>
       )}
     </motion.div>
@@ -472,15 +510,10 @@ export default function CreateCopyMotionPage() {
   const [weeklyUsed,  setWeeklyUsed]                = useState(null)
   const [weeklyLimit, setWeeklyLimit]               = useState(20)
 
-  // Media state
-  const [motionVideo,    setMotionVideo]    = useState(null)
+  // Media
+  const [motionVideo,    setMotionVideo]    = useState(null)   // { file, url, duration, width, height, aspectRatio }
   const [videoGhostMeta, setVideoGhostMeta] = useState(null)
   const [subjectImage,   setSubjectImage]   = useState(null)
-
-  // Compat state
-  // compatStatus: null | 'checking' | 'compatible' | 'incompatible'
-  const [compatStatus,   setCompatStatus]   = useState(null)
-  const [compatReason,   setCompatReason]   = useState(null)
 
   // Settings
   const [aspectRatio,    setAspectRatio]    = useState('9:16')
@@ -489,9 +522,14 @@ export default function CreateCopyMotionPage() {
   const [models,         setModels]         = useState([])
   const [modelsLoading,  setModelsLoading]  = useState(true)
 
-  // Pipeline phase: null | 'converting' | 'submitting'
-  const [phase,           setPhase]           = useState(null)
+  // Trim
+  const [targetDuration, setTargetDuration] = useState(null)   // selected supported duration
+  const [trimStart,      setTrimStart]      = useState(0)
+
+  // Pipeline
+  const [phase,           setPhase]           = useState(null) // null | 'converting' | 'submitting'
   const [convertProgress, setConvertProgress] = useState(0)
+  const [convertSuccess,  setConvertSuccess]  = useState(null) // asset row after save
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
@@ -520,7 +558,7 @@ export default function CreateCopyMotionPage() {
     const firstUnlocked = list.find((m) => !m.is_locked)
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
-  }, [])
+  }, [profile?.user_tier])
 
   useEffect(() => { loadModels() }, [loadModels])
 
@@ -547,10 +585,13 @@ export default function CreateCopyMotionPage() {
   const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
-  const modelDurations        = selectedModel?.supported_durations
-    ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
-    : []
+  const modelDurations        = useMemo(() => (
+    selectedModel?.supported_durations
+      ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
+      : []
+  ), [selectedModel])
 
+  // Snap settings when model changes
   useEffect(() => {
     if (selectedModel && !supportedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(supportedAspectRatios[0] ?? '9:16')
@@ -559,24 +600,65 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
-  // ── Derived video status ─────────────────────────────────
-  const videoDuration    = motionVideo?.duration ?? null
-  const matchedDuration  = videoDuration != null && modelDurations.length > 0
-    ? modelDurations.find((d) => d === videoDuration) ?? null
-    : null
-  const durationMismatch = videoDuration != null && modelDurations.length > 0 && matchedDuration === null
+  // Default targetDuration: pick the longest supported that fits the video,
+  // or the shortest if video is too short. Re-runs when video or model changes.
+  useEffect(() => {
+    if (modelDurations.length === 0) { setTargetDuration(null); return }
+    if (motionVideo?.duration == null) { setTargetDuration(modelDurations[0]); return }
+    const exact = modelDurations.find((d) => d === motionVideo.duration)
+    if (exact != null) { setTargetDuration(exact); setTrimStart(0); return }
+    const fits = modelDurations.filter((d) => d <= motionVideo.duration)
+    setTargetDuration(fits.length ? fits[fits.length - 1] : modelDurations[0])
+    setTrimStart(0)
+  }, [motionVideo?.duration, modelDurations])
 
-  // ── Credit calculation ───────────────────────────────────
+  // Clamp trimStart if it ever overflows the available window.
+  useEffect(() => {
+    if (!motionVideo?.duration || !targetDuration) return
+    const maxStart = Math.max(0, motionVideo.duration - targetDuration)
+    if (trimStart > maxStart) setTrimStart(maxStart)
+  }, [motionVideo?.duration, targetDuration, trimStart])
+
+  // ── Compatibility — recomputes whenever inputs change ────
+  const compat = useMemo(() => {
+    if (!motionVideo || !selectedModel || !targetDuration) {
+      return { compatible: false, reason: null, fixes: { needsTrim: false, needsCrop: false } }
+    }
+    return checkVideoCompatibility({
+      videoMeta: {
+        duration:    motionVideo.duration,
+        width:       motionVideo.width,
+        height:      motionVideo.height,
+        aspectRatio: motionVideo.aspectRatio,
+      },
+      model:             selectedModel,
+      targetAspectRatio: aspectRatio,
+      targetDuration,
+    })
+  }, [motionVideo, selectedModel, aspectRatio, targetDuration])
+
+  const compatStatus = !motionVideo
+    ? null
+    : compat.fixes?.tooShort
+      ? 'rejected'
+      : compat.compatible
+        ? 'compatible'
+        : 'incompatible'
+
+  const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
+
+  // ── Credit calculation (for the generation, not conversion) ─────────────
   const durationMultiplier = (() => {
-    if (!matchedDuration) return 1
-    if (matchedDuration <= 5)  return 1
-    if (matchedDuration <= 8)  return 1.6
-    if (matchedDuration <= 10) return 2
-    if (matchedDuration <= 12) return 2.4
-    if (matchedDuration <= 15) return 3
-    if (matchedDuration <= 20) return 4
-    if (matchedDuration <= 30) return 6
-    return Math.ceil(matchedDuration / 5)
+    const d = targetDuration
+    if (!d) return 1
+    if (d <= 5)  return 1
+    if (d <= 8)  return 1.6
+    if (d <= 10) return 2
+    if (d <= 12) return 2.4
+    if (d <= 15) return 3
+    if (d <= 20) return 4
+    if (d <= 30) return 6
+    return Math.ceil(d / 5)
   })()
 
   const baseCredits = selectedModel?.credit_cost_i2i ?? 0
@@ -585,72 +667,47 @@ export default function CreateCopyMotionPage() {
     ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : Math.ceil(baseWithDur)
 
-  
   const canAfford       = credits >= creditCost
+  const canAffordConvert = credits >= CONVERSION_COST
   const weeklyBlocked   = isNovice && weeklyUsed !== null && weeklyUsed >= weeklyLimit
   const hasVideo        = !!motionVideo
   const hasVideoOrGhost = hasVideo || !!videoGhostMeta
   const hasSubject      = !!subjectImage
   const isProcessing    = phase !== null
 
-
+  // Generation is ONLY allowed when video is already compatible.
   const canGenerate =
     hasVideo &&
-    !durationMismatch &&
-    matchedDuration !== null &&
+    compat.compatible &&
     hasSubject &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
-    compatStatus !== 'checking' &&
     !weeklyBlocked
 
-  // ── Video upload handler ─────────────────────────────────
+  // ── Upload handlers ──────────────────────────────────────
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const url      = URL.createObjectURL(file)
-    const duration = await getVideoDuration(file)
+    const url  = URL.createObjectURL(file)
+    const meta = await readVideoMetadata(file)
 
-    // Detect aspect ratio
-    let detectedRatio = aspectRatio
-    await new Promise((resolve) => {
-      const vid    = document.createElement('video')
-      vid.preload  = 'metadata'
-      vid.onloadedmetadata = () => {
-        if (vid.videoWidth && vid.videoHeight) {
-          detectedRatio = detectAspectRatio(vid.videoWidth, vid.videoHeight)
-          setAspectRatio(detectedRatio)
-        }
-        URL.revokeObjectURL(vid.src)
-        resolve()
-      }
-      vid.onerror = resolve
-      vid.src     = URL.createObjectURL(file)
+    setMotionVideo({
+      file, url,
+      duration:    meta.duration,
+      width:       meta.width,
+      height:      meta.height,
+      aspectRatio: meta.aspectRatio,
     })
-
-    setMotionVideo({ file, url, duration })
     setVideoGhostMeta(null)
-
-    // ── Run compat check in background ────────────────────
-    setCompatStatus('checking')
-    setCompatReason(null)
-
-    try {
-      const { compatible, reason } = await checkVideoCompatibility(file)
-      setCompatStatus(compatible ? 'compatible' : 'incompatible')
-      setCompatReason(reason)
-      persistVideoMeta(file.name, duration, detectedRatio, compatible)
-    } catch {
-      // If check itself errors, assume incompatible — safer
-      setCompatStatus('incompatible')
-      setCompatReason('Could not verify format — will convert to be safe')
-      persistVideoMeta(file.name, duration, detectedRatio, false)
+    setConvertSuccess(null)
+    if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
+      setAspectRatio(meta.aspectRatio)
     }
+    persistVideoMeta(file.name, meta.duration, meta.aspectRatio)
   }
 
-  // ── Subject upload handler ───────────────────────────────
   const handleSubjectUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -658,13 +715,12 @@ export default function CreateCopyMotionPage() {
     persistImage(SS_SUBJECT_IMG, file)
   }
 
-  // ── Remove handlers ──────────────────────────────────────
   const handleRemoveVideo = () => {
     if (motionVideo?.url) URL.revokeObjectURL(motionVideo.url)
     setMotionVideo(null)
     setVideoGhostMeta(null)
-    setCompatStatus(null)
-    setCompatReason(null)
+    setConvertSuccess(null)
+    setTrimStart(0)
     try { sessionStorage.removeItem(SS_VIDEO_META) } catch { /* noop */ }
   }
 
@@ -674,42 +730,71 @@ export default function CreateCopyMotionPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-  // ── Generate ─────────────────────────────────────────────
-  const handleGenerate = async () => {
-    if (!hasVideo)        return toast.error('Upload a motion reference video')
-    if (durationMismatch) return toast.error(`Video duration must exactly match one of: ${modelDurations.join('s, ')}s`)
-    if (!hasSubject)      return toast.error('Upload a subject image')
-    if (!selectedModel)   return toast.error('Pick a model')
-    if (!canAfford)       return toast.error('Not enough credits')
-    if (!user)            return toast.error('Please sign in')
+  // ── Convert & Save to Assets ─────────────────────────────
+  const handleConvertAndSave = async () => {
+    if (!user)              return toast.error('Please sign in')
+    if (!motionVideo?.file) return toast.error('Re-upload the video first')
+    if (!targetDuration)    return toast.error('Pick a duration to trim to')
+    if (!canAffordConvert)  return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
 
-    let uploadFile = motionVideo.file
+    setPhase('converting')
+    setConvertProgress(0)
 
-    // ── Step 1: Transcode if needed ────────────────────────
-    if (compatStatus === 'incompatible') {
-      setPhase('converting')
+    // Deduct credits AFTER the edge function succeeds — that way a failure
+    // doesn't leave the user charged with nothing to show for it.
+    let asset
+    try {
+      asset = await callTranscodeEdgeFunction({
+        file:               motionVideo.file,
+        userId:             user.id,
+        targetAspectRatio:  aspectRatio,
+        targetDuration,
+        startTime:          trimStart,
+        onProgress:         (p) => setConvertProgress(p),
+      })
+    } catch (err) {
+      setPhase(null)
       setConvertProgress(0)
-
-      try {
-        uploadFile = await transcodeVideo(motionVideo.file, (pct) => {
-          setConvertProgress(pct)
-        })
-        setConvertProgress(100)
-        // Brief pause so user sees 100% before it transitions
-        await new Promise((r) => setTimeout(r, 400))
-      } catch (err) {
-        setPhase(null)
-        setConvertProgress(0)
-        toast.error('Video conversion failed. Try a different video.')
-        return
-      }
+      toast.error(err?.message || 'Video conversion failed.')
+      return
     }
 
-    // ── Step 2: Upload + generate ──────────────────────────
-    setPhase('submitting')
-
+    // Now deduct — asset is already saved. If deduction fails (e.g. credits
+    // changed between checks) the asset still belongs to the user; surface a
+    // clear warning instead of silently leaving them charged.
     try {
-      // Upload video
+      const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
+        p_user_id:       user.id,
+        p_amount:        CONVERSION_COST,
+        p_generation_id: null,
+        p_description:   'Copy Motion video conversion',
+      })
+      if (dErr || !deduct?.success) {
+        toast.error('Asset saved, but we could not charge credits: ' + (deduct?.error || dErr?.message || 'unknown'))
+      }
+    } catch (err) {
+      toast.error('Asset saved, but credit charge failed: ' + (err?.message || 'unknown'))
+    }
+
+    refreshProfile()
+    setConvertSuccess(asset)
+    setPhase(null)
+    setConvertProgress(0)
+    toast.success('Converted video saved to your Assets.', { duration: 4000 })
+  }
+
+  // ── Generate (only when already compatible) ──────────────
+  const handleGenerate = async () => {
+    if (!hasVideo)            return toast.error('Upload a motion reference video')
+    if (!compat.compatible)   return toast.error('Convert the video first, then start from Assets.')
+    if (!hasSubject)          return toast.error('Upload a subject image')
+    if (!selectedModel)       return toast.error('Pick a model')
+    if (!canAfford)           return toast.error('Not enough credits')
+    if (!user)                return toast.error('Please sign in')
+
+    setPhase('submitting')
+    try {
+      const uploadFile = motionVideo.file
       const vidExt  = uploadFile.name.split('.').pop()?.toLowerCase() || 'mp4'
       const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
       const { error: vidErr } = await supabase.storage
@@ -724,8 +809,6 @@ export default function CreateCopyMotionPage() {
         .from('generation-uploads')
         .getPublicUrl(vidPath)
 
-      // Upload image
-     // Upload image (or use URL directly if from Assets)
       let subjectImageUrl
       if (!subjectImage.file) {
         subjectImageUrl = subjectImage.url
@@ -745,7 +828,6 @@ export default function CreateCopyMotionPage() {
           .getPublicUrl(imgPath))
       }
 
-      // Create generation record
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'motion_transfer',
@@ -753,7 +835,7 @@ export default function CreateCopyMotionPage() {
         prompt:                 null,
         model,
         aspect_ratio:           aspectRatio,
-        duration:               String(matchedDuration),
+        duration:               String(targetDuration),
         credits_charged:        creditCost,
         output_type:            'video',
         start_frame_url:        subjectImageUrl,
@@ -763,7 +845,6 @@ export default function CreateCopyMotionPage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // Deduct credits
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(
         user.id, creditCost, genRow.id
       )
@@ -775,7 +856,6 @@ export default function CreateCopyMotionPage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Fire edge function — intentionally fire-and-forget
       supabase.functions
         .invoke('video-generate', { body: { generationId: genRow.id } })
         .catch((e) => console.error('video-generate invoke error', e))
@@ -783,24 +863,19 @@ export default function CreateCopyMotionPage() {
       refreshProfile()
       toast.success('Copy Motion is being generated. Check your Media page.', { duration: 4000 })
 
-      // Reset form
       handleRemoveVideo()
       handleRemoveSubject()
       setWithSound(false)
-
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
     } finally {
       setPhase(null)
-      setConvertProgress(0)
     }
   }
 
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-
-      {/* Converting / Generating overlay */}
       <AnimatePresence>
         {isProcessing && (
           <FullscreenOverlay phase={phase} convertProgress={convertProgress} />
@@ -810,21 +885,13 @@ export default function CreateCopyMotionPage() {
       {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{
-          borderBottom: '1px solid var(--border-color)',
-          borderLeft:   `3px solid ${ACCENT}`,
-        }}
+        style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-xl"
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Copy Motion</h1>
-          
           <span className="text-xs font-medium" style={{ color: ACCENT }}>
             Motion Transfer
             {isNovice && weeklyUsed !== null && (
@@ -846,46 +913,30 @@ export default function CreateCopyMotionPage() {
         </div>
       </div>
 
-      {/* Scrollable body */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
           {modelsLoading ? (
             <div className="flex flex-col gap-4">
               {[...Array(2)].map((_, i) => (
-                <div
-                  key={i}
-                  className="w-full rounded-2xl animate-pulse"
-                  style={{ height: 200, background: 'var(--bg-elevated)' }}
-                />
+                <div key={i} className="w-full rounded-2xl animate-pulse" style={{ height: 200, background: 'var(--bg-elevated)' }} />
               ))}
             </div>
           ) : models.length === 0 ? (
             <NoModelsState />
           ) : (
             <>
-              {/* Explainer */}
-              <div
-                className="rounded-2xl px-4 py-3 flex gap-3 items-start"
-                style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-              >
+              <div className="rounded-2xl px-4 py-3 flex gap-3 items-start" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                 <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                  Upload a{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the
-                  motion from the video onto your image — dances, gestures, camera moves.
+                  Upload a <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
+                  <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the motion from the video onto your image.
                 </p>
               </div>
 
-              {/* Upload grid */}
               <div>
-                <p
-                  className="text-xs font-semibold mb-3 uppercase tracking-widest"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  Inputs
-                </p>
+                <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Inputs</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Motion Video</p>
@@ -894,8 +945,8 @@ export default function CreateCopyMotionPage() {
                       ghostMeta={videoGhostMeta}
                       onUpload={handleVideoUpload}
                       onRemove={handleRemoveVideo}
-                      durationMismatch={durationMismatch}
                       compatStatus={compatStatus}
+                      tooShort={!!compat.fixes?.tooShort}
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -908,89 +959,174 @@ export default function CreateCopyMotionPage() {
                   </div>
                 </div>
 
-                {/* Compat info line */}
+                {/* Too short — hard reject */}
                 <AnimatePresence>
-                  {compatStatus === 'incompatible' && compatReason && (
+                  {compat.fixes?.tooShort && (
                     <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.15 }}
-                      className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
-                      style={{
-                        background: 'rgba(239,160,20,0.08)',
-                        border: '1px solid rgba(239,160,20,0.25)',
-                      }}
-                    >
-                      <RefreshCw size={12} style={{ color: '#efa014', flexShrink: 0 }} />
-                      <p className="text-xs" style={{ color: '#efa014' }}>
-                        {compatReason} — conversion happens automatically when you generate.
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Duration mismatch warning */}
-                <AnimatePresence>
-                  {durationMismatch && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
+                      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.18 }}
                       className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
-                      style={{
-                        background: 'rgba(239,68,68,0.1)',
-                        border: '1px solid rgba(239,68,68,0.25)',
-                      }}
+                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}
                     >
                       <AlertCircle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
-                      <p className="text-xs" style={{ color: '#ef4444' }}>
-                        Video is <strong>{videoDuration}s</strong> — must be exactly{' '}
-                        <strong>{modelDurations.join('s, ')}s</strong> for this model.
-                      </p>
+                      <p className="text-xs" style={{ color: '#ef4444' }}>{compat.reason}</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                {/* Duration OK confirmation */}
-                {matchedDuration !== null && motionVideo && (
+                {/* Compatible — green confirmation */}
+                {compat.compatible && motionVideo && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                    Video is <strong style={{ color: ACCENT }}>{videoDuration}s</strong> — matches the{' '}
-                    <strong style={{ color: ACCENT }}>{matchedDuration}s</strong> option. Ready to generate.
+                    Video is <strong style={{ color: ACCENT }}>{motionVideo.duration}s · {motionVideo.aspectRatio}</strong> — ready to generate.
                   </p>
                 )}
               </div>
 
-              {/* Duration display — read-only */}
-              {matchedDuration !== null && (
-                <div className="mb-1">
-                  <p
-                    className="text-xs font-semibold mb-2.5 uppercase tracking-widest"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Duration
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    {modelDurations.map((d) => (
-                      <div
-                        key={d}
-                        className="px-4 py-2 rounded-xl text-sm font-medium"
-                        style={{
-                          background: d === matchedDuration ? ACCENT    : 'var(--bg-elevated)',
-                          color:      d === matchedDuration ? '#ffffff' : 'var(--text-secondary)',
-                          opacity:    d === matchedDuration ? 1 : 0.35,
-                        }}
-                      >
-                        {d}s
-                      </div>
-                    ))}
+              {/* Trim UI — only when video is loaded and longer than min supported */}
+              {motionVideo && !compat.fixes?.tooShort && modelDurations.length > 0 && (
+                <div className="rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Scissors size={14} style={{ color: ACCENT }} />
+                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                      Trim length
+                    </p>
                   </div>
-                  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                    Duration is set automatically from your video.
-                  </p>
+
+                  <div className="flex gap-2 flex-wrap mb-4">
+                    {modelDurations.map((d) => {
+                      const tooLong = motionVideo.duration != null && d > motionVideo.duration
+                      return (
+                        <button
+                          key={d}
+                          disabled={tooLong}
+                          onClick={() => { setTargetDuration(d); setTrimStart(0) }}
+                          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                          style={{
+                            background: d === targetDuration ? ACCENT    : 'var(--bg-card)',
+                            color:      d === targetDuration ? '#ffffff' : 'var(--text-secondary)',
+                            opacity:    tooLong ? 0.3 : 1,
+                            cursor:     tooLong ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {d}s
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {motionVideo.duration != null && targetDuration != null && motionVideo.duration > targetDuration && (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start time</p>
+                        <p className="text-xs font-bold" style={{ color: ACCENT }}>
+                          {trimStart}s → {trimStart + targetDuration}s
+                        </p>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(0, motionVideo.duration - targetDuration)}
+                        step={1}
+                        value={trimStart}
+                        onChange={(e) => setTrimStart(Number(e.target.value))}
+                        className="w-full accent-current"
+                        style={{ accentColor: ACCENT }}
+                      />
+                    </>
+                  )}
+
+                  {motionVideo.duration === targetDuration && (
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Video already matches the selected duration — no trim needed.
+                    </p>
+                  )}
                 </div>
               )}
+
+              {/* Conversion confirmation panel */}
+              <AnimatePresence>
+                {needsConversion && !convertSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-2xl p-4 flex flex-col gap-3"
+                    style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold" style={{ color: '#efa014' }}>This video needs conversion</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                          {compat.reason}
+                          {compat.fixes?.needsTrim && motionVideo.duration !== targetDuration && (
+                            <> · Clip: <strong>{trimStart}s → {trimStart + targetDuration}s</strong></>
+                          )}
+                        </p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                          Cost: <strong style={{ color: 'var(--text-primary)' }}>{CONVERSION_COST} credits</strong>.
+                          The converted video is saved to your <strong style={{ color: 'var(--text-primary)' }}>Assets</strong>.
+                          To run Copy Motion, open the asset from there.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleConvertAndSave}
+                        disabled={!canAffordConvert || isProcessing}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: canAffordConvert && !isProcessing ? ACCENT : 'var(--bg-elevated)',
+                          color:      canAffordConvert && !isProcessing ? '#fff'  : 'var(--text-muted)',
+                          cursor:     canAffordConvert && !isProcessing ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        Convert &amp; Save to Assets · {CONVERSION_COST} cr
+                      </button>
+                      <button
+                        onClick={handleRemoveVideo}
+                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {!canAffordConvert && (
+                      <p className="text-xs" style={{ color: '#ef4444' }}>
+                        Not enough credits for conversion. <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Top up</button>
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Conversion success */}
+              <AnimatePresence>
+                {convertSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-2xl p-4 flex flex-col gap-3"
+                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)' }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 size={16} style={{ color: '#10b981', marginTop: 2, flexShrink: 0 }} />
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: '#10b981' }}>Converted &amp; saved to Assets</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                          Open your Assets to pick the converted video and start a fresh Copy Motion run from there.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate('/media?tab=assets')}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold"
+                      style={{ background: ACCENT, color: '#fff' }}
+                    >
+                      Go to Assets
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Settings */}
               <div>
@@ -1023,10 +1159,7 @@ export default function CreateCopyMotionPage() {
 
       {/* Generate button */}
       {models.length > 0 && (
-        <div
-          className="flex-shrink-0 px-4 lg:px-8 py-4"
-          style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
-        >
+        <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
           <div className="mx-auto w-full max-w-xl">
             <button
               onClick={handleGenerate}
@@ -1041,41 +1174,35 @@ export default function CreateCopyMotionPage() {
               <Zap size={15} fill="currentColor" />
               {isProcessing
                 ? phase === 'converting' ? 'Converting…' : 'Generating…'
-                : matchedDuration
-                  ? `Generate · ${creditCost} cr · ${matchedDuration}s`
+                : targetDuration
+                  ? `Generate · ${creditCost} cr · ${targetDuration}s`
                   : 'Generate'}
             </button>
 
-            {/* Helper messages */}
-            {durationMismatch && (
-              <p className="text-xs text-center mt-2" style={{ color: '#ef4444' }}>
-                Upload a video that is exactly {modelDurations.join('s, ')}s
+            {needsConversion && !convertSuccess && (
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                Convert your video above to continue.
               </p>
             )}
-            {!durationMismatch && !hasVideoOrGhost && !hasSubject && (
+            {!needsConversion && !hasVideoOrGhost && !hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Upload both a motion video and a subject image to continue
               </p>
             )}
-            {!durationMismatch && (hasVideoOrGhost || hasSubject) && (!hasVideoOrGhost || !hasSubject) && (
+            {!needsConversion && (hasVideoOrGhost || hasSubject) && (!hasVideoOrGhost || !hasSubject) && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 {!hasVideoOrGhost ? 'Still need a motion reference video' : 'Still need a subject image'}
               </p>
             )}
-            {!durationMismatch && videoGhostMeta && !motionVideo && hasSubject && (
+            {videoGhostMeta && !motionVideo && hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
-                Re-upload your motion video to generate
+                Re-upload your motion video to continue
               </p>
             )}
-      
-            {!durationMismatch && hasVideo && hasSubject && matchedDuration !== null && !canAfford && (
+            {compat.compatible && hasVideo && hasSubject && !canAfford && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Not enough credits.{' '}
-                <button
-                  onClick={() => navigate('/profile')}
-                  className="font-semibold"
-                  style={{ color: ACCENT }}
-                >
+                <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                   Top up
                 </button>
               </p>
