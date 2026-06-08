@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, User, Sparkles,
-  ImageIcon, VideoIcon, ChevronDown, Info, Images,
+  ImageIcon, VideoIcon, ChevronDown, Info,
   X, ImagePlus, Maximize2, Plus, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
