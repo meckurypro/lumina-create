@@ -1,9 +1,10 @@
+// src/pages/UGCVoiceGeneratePage.jsx
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Mic, Play, Pause, Download,
-  Trash2, Loader2, MoreHorizontal, Check, Lock, Crown,
+  Trash2, Loader2, MoreHorizontal, Lock, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcVoices, ugcAudioGenerations, ugcAudioChunks, calcTTSCredits, ELEVENLABS_MODELS } from '@/lib/ugcVoices'
@@ -63,14 +64,11 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
       className="p-4 rounded-2xl"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
-      {/* Script preview */}
       <p className="text-sm font-medium mb-3 line-clamp-2" style={{ color: 'var(--text-primary)', lineHeight: 1.5 }}>
         {gen.refined_script || gen.script}
       </p>
 
-      {/* Player row */}
       <div className="flex items-center gap-3">
-        {/* Play / loader button */}
         <button
           onClick={() => isCompleted && onToggle(gen.id, gen.output_url)}
           disabled={!isCompleted}
@@ -85,7 +83,6 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
           }
         </button>
 
-        {/* Progress bar */}
         <div className="flex-1">
           <div className="w-full rounded-full overflow-hidden" style={{ height: 3, background: 'var(--bg-elevated)' }}>
             <motion.div
@@ -113,7 +110,6 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
           </div>
         </div>
 
-        {/* Chunking spinner — shown while WAV slicing is in progress */}
         {isChunking && (
           <Loader2
             size={14}
@@ -122,7 +118,6 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
           />
         )}
 
-        {/* More menu */}
         {!isChunking && (
           <div className="relative flex-shrink-0">
             <button
@@ -156,8 +151,7 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
                           className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
                           style={{ color: 'var(--text-secondary)' }}
                         >
-                          <Download size={12} />
-                          Download
+                          <Download size={12} /> Download
                         </button>
                         <div style={{ height: 1, background: 'var(--border-color)', margin: '0 8px' }} />
                       </>
@@ -167,8 +161,7 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
                       style={{ color: '#ef4444' }}
                     >
-                      <Trash2 size={12} />
-                      Delete
+                      <Trash2 size={12} /> Delete
                     </button>
                   </motion.div>
                 </>
@@ -183,37 +176,39 @@ const AudioCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownlo
 
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCVoiceGeneratePage() {
-  const { voiceId }                                   = useParams()
-  const navigate                                      = useNavigate()
+  const { voiceId }                                             = useParams()
+  const navigate                                                = useNavigate()
   const { user, credits, refreshProfile, profile: authProfile } = useAuth()
   const isMaster = authProfile?.user_tier === 'master'
 
-  const [voice,         setVoice]         = useState(null)
-  const [voiceLoading,  setVoiceLoading]  = useState(true)
-  const [items,         setItems]         = useState([])
-  const [loading,       setLoading]       = useState(true)
-  const [hasMore,       setHasMore]       = useState(false)
-  const [page,          setPage]          = useState(0)
-  const [script,        setScript]        = useState('')
-  const [model,         setModel]         = useState('eleven_multilingual_v2')
-  const [stability,     setStability]     = useState(0.5)
-  const [similarity,    setSimilarity]    = useState(0.75)
-  const [submitting,    setSubmitting]    = useState(false)
+  const [voice,        setVoice]        = useState(null)
+  const [voiceLoading, setVoiceLoading] = useState(true)
+  const [items,        setItems]        = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [hasMore,      setHasMore]      = useState(false)
+  const [page,         setPage]         = useState(0)
+  const [script,       setScript]       = useState('')
+  const [model,        setModel]        = useState('eleven_multilingual_v2')
+  const [stability,    setStability]    = useState(0.5)
+  const [similarity,   setSimilarity]   = useState(0.75)
+  const [submitting,   setSubmitting]   = useState(false)
 
-  // Track which generation IDs are currently being chunked
-  const [chunkingIds,   setChunkingIds]   = useState(new Set())
-  // Track which IDs have already been chunked this session (avoid re-chunking on re-poll)
+  const [chunkingIds, setChunkingIds] = useState(new Set())
   const chunkedThisSession = useRef(new Set())
 
   const { playing, progress, toggle } = useAudioPlayer()
   const { chunkAndStore }             = useVoiceChunker()
-  const pollRef = useRef(null)
+  const pollRef    = useRef(null)
   const textareaRef = useRef(null)
 
-  const creditCost = calcTTSCredits(script)
-  const canAfford  = credits >= creditCost
+  const creditCost   = calcTTSCredits(script)
+  const canAfford    = credits >= creditCost
   const isVoiceMuted = !!voice && !isMaster && voice.source !== 'elevenlabs_library'
-  const canGenerate = script.trim().length > 0 && canAfford && !submitting && !isVoiceMuted
+  const isClonedVoice = !!voice && voice.source !== 'elevenlabs_library'
+  const canGenerate  = script.trim().length > 0 && canAfford && !submitting && !isVoiceMuted
+
+  // Shorten voice name to first word only
+  const shortName = voice?.name?.split(/[\s\-–]/)[0] ?? ''
 
   useEffect(() => {
     loadVoice()
@@ -241,18 +236,14 @@ export default function UGCVoiceGeneratePage() {
     setLoading(false)
   }
 
-  // ── Chunking trigger ──────────────────────────────────────────
-  // Called whenever we receive fresh generation data (from poll or optimistic update).
-  // Only runs once per generation per session.
   const maybeChunk = async (gen) => {
     if (
-      gen.status !== 'completed'    ||   // not done yet
-      !gen.output_url               ||   // no audio to slice
-      (gen.chunk_count > 0)         ||   // already chunked in DB
-      chunkedThisSession.current.has(gen.id)  // already chunked this session
+      gen.status !== 'completed'   ||
+      !gen.output_url              ||
+      (gen.chunk_count > 0)        ||
+      chunkedThisSession.current.has(gen.id)
     ) return
 
-    // Mark immediately to prevent concurrent triggers
     chunkedThisSession.current.add(gen.id)
     setChunkingIds((prev) => new Set(prev).add(gen.id))
 
@@ -266,18 +257,15 @@ export default function UGCVoiceGeneratePage() {
 
     if (error) {
       console.error('[VoiceGeneratePage] chunking failed:', error)
-      // Non-fatal — audio still plays fine, chunks just won't be available in lipsync
       toast.error('Could not slice audio into parts. The full audio is still available.', { duration: 4000 })
       return
     }
 
-    // Update chunk_count on the local item so the card shows "X parts"
     setItems((prev) =>
       prev.map((g) => g.id === gen.id ? { ...g, chunk_count: chunks.length } : g)
     )
   }
 
-  // ── Poll for pending generations ──────────────────────────────
   useEffect(() => {
     const hasPending = items.some((g) => g.status === 'pending' || g.status === 'processing')
     if (hasPending) {
@@ -289,7 +277,6 @@ export default function UGCVoiceGeneratePage() {
             const map = new Map(data.map((g) => [g.id, g]))
             return prev.map((g) => map.get(g.id) || g)
           })
-          // Check each fresh row — trigger chunking for any newly completed ones
           data.forEach((g) => maybeChunk(g))
         }
       }, POLL_MS)
@@ -300,14 +287,13 @@ export default function UGCVoiceGeneratePage() {
   }, [items, user, voiceId])
 
   const handleGenerate = async () => {
-    if (isVoiceMuted) return toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
-    if (!script.trim()) return toast.error('Write something to generate')
-    if (!canAfford)     return toast.error('Not enough credits')
-    if (!user)          return toast.error('Please sign in')
+    if (isVoiceMuted)    return toast.error('Cloned voices are Master-only. Upgrade to use this voice.')
+    if (!script.trim())  return toast.error('Write something to generate')
+    if (!canAfford)      return toast.error('Not enough credits')
+    if (!user)           return toast.error('Please sign in')
 
     setSubmitting(true)
     try {
-      // 1. Create the audio generation row
       const { data: genRow, error: genErr } = await ugcAudioGenerations.create({
         user_id:             user.id,
         voice_id:            voiceId,
@@ -323,7 +309,6 @@ export default function UGCVoiceGeneratePage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // 2. Deduct credits
       const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
         p_user_id:       user.id,
         p_amount:        creditCost,
@@ -335,11 +320,9 @@ export default function UGCVoiceGeneratePage() {
         throw new Error('Not enough credits')
       }
 
-      // 3. Fire edge function
       supabase.functions.invoke('audio-generate', { body: { audioGenId: genRow.id } })
         .catch((e) => console.error('audio-generate invoke error', e))
 
-      // 4. Optimistically add to list
       setItems((prev) => [{ ...genRow, chunk_count: 0 }, ...prev])
       refreshProfile()
       setScript('')
@@ -354,23 +337,15 @@ export default function UGCVoiceGeneratePage() {
 
   const handleDelete = async (gen) => {
     try {
-      // 1. Delete chunk storage files
       const { data: chunks } = await ugcAudioChunks.getByGeneration(gen.id)
       if (chunks?.length) {
         const paths = chunks.map((c) => c.storage_path)
         await supabase.storage.from('ugc-profiles').remove(paths)
       }
-
-      // 2. Delete chunk DB rows (also handled by ON DELETE CASCADE, but explicit is cleaner)
       await ugcAudioChunks.deleteByGeneration(gen.id)
-
-      // 3. Delete the generation row
       await ugcAudioGenerations.delete(gen.id)
-
-      // 4. Delete the full audio file from storage
       const fullAudioPath = `${user.id}/audio/${gen.id}.mp3`
       await supabase.storage.from('generations').remove([fullAudioPath])
-
       setItems((prev) => prev.filter((g) => g.id !== gen.id))
       toast.success('Deleted')
     } catch {
@@ -423,6 +398,7 @@ export default function UGCVoiceGeneratePage() {
         >
           <ArrowLeft size={20} />
         </button>
+
         <div className="flex items-center gap-2.5">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
@@ -430,60 +406,49 @@ export default function UGCVoiceGeneratePage() {
           >
             <Mic size={14} style={{ color: ACCENT }} />
           </div>
-          <div className="flex flex-col items-start">
-            <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-              {voice?.name}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: ACCENT }}>Voice Studio</p>
-          </div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {shortName}
+          </p>
         </div>
-        <div
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-          {Math.floor(credits)}
-        </div>
+
+        {/* spacer to keep name centered */}
+        <div style={{ width: 36 }} />
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {isVoiceMuted ? (
-            <div
-              className="flex items-start gap-2.5 p-3 rounded-2xl"
-              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-            >
-              <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
-              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                This cloned voice is muted on the Novice tier.{' '}
-                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
-                {' '}to generate audio with it. Voices from the ElevenLabs library remain available.
-              </p>
-            </div>
-          ) : !isMaster && (
-            <div
-              className="flex items-start gap-2.5 p-3 rounded-2xl"
-              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-            >
-              <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
-              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
-                {' '}to clone your own voice and use cloned voices for audio generation.
-              </p>
-            </div>
-          )}
-            <div
-              className="flex items-start gap-2.5 p-3 rounded-2xl"
-              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-            >
-              <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
-              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                This cloned voice is muted on the Novice tier. Upgrade to Master to
-                generate audio with it. Voices from the ElevenLabs library remain available.
-              </p>
-            </div>
+          {/* Only show tier banners for cloned voices */}
+          {isClonedVoice && (
+            isVoiceMuted ? (
+              <div
+                className="flex items-start gap-2.5 p-3 rounded-2xl"
+                style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+              >
+                <Lock size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  This cloned voice is muted on the Novice tier.{' '}
+                  <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
+                    Upgrade to Master
+                  </button>
+                  {' '}to generate audio with it.
+                </p>
+              </div>
+            ) : !isMaster && (
+              <div
+                className="flex items-start gap-2.5 p-3 rounded-2xl"
+                style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+              >
+                <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
+                    Upgrade to Master
+                  </button>
+                  {' '}to clone your own voice and use cloned voices for audio generation.
+                </p>
+              </div>
+            )
           )}
 
           {/* Script input */}
@@ -495,15 +460,15 @@ export default function UGCVoiceGeneratePage() {
               ref={textareaRef}
               value={script}
               onChange={(e) => setScript(e.target.value)}
-              placeholder={`Write your script for ${voice?.name}…`}
+              placeholder={`Write your script for ${shortName}…`}
               rows={5}
               maxLength={5000}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{
-                background:  'var(--bg-elevated)',
-                border:      '1px solid var(--border-color)',
-                color:       'var(--text-primary)',
-                lineHeight:  1.6,
+                background: 'var(--bg-elevated)',
+                border:     '1px solid var(--border-color)',
+                color:      'var(--text-primary)',
+                lineHeight: 1.6,
               }}
             />
             <div className="flex items-center justify-between mt-1.5">
@@ -639,6 +604,7 @@ export default function UGCVoiceGeneratePage() {
           )}
         </div>
       </div>
+
     </div>
   )
 }
