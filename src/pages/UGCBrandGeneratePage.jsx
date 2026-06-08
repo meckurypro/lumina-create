@@ -173,76 +173,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
   )
 }
 
-// ── Single image slot ──────────────────────────────────────────
-const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupportsImage }) => {
-  if (image) {
-    const ar   = image.w && image.h ? `${image.w} / ${image.h}` : '1 / 1'
-    const maxW = image.w && image.h ? (image.w > image.h ? '100%' : '200px') : '140px'
-    return (
-      <div className="flex justify-center">
-        <div className="relative" style={{ width: '100%', maxWidth: maxW }}>
-          <div
-            className="relative overflow-hidden rounded-2xl cursor-pointer w-full"
-            style={{ aspectRatio: ar, maxHeight: '300px', background: 'var(--bg-elevated)' }}
-            onClick={onFullscreen}
-          >
-            <img src={image.url} alt="Reference" className="w-full h-full" style={{ objectFit: 'contain' }} />
-            <div
-              className="absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
-            >
-              <Maximize2 size={11} />
-            </div>
-            {image.ar && (
-              <div
-                className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium"
-                style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
-              >
-                {image.ar}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onRemove}
-            className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
-            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
-          >
-            <X size={13} />
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex justify-center">
-      <label
-        className="flex flex-col items-center justify-center rounded-2xl transition-all"
-        style={{
-          width:       '140px',
-          aspectRatio: '1 / 1',
-          border:      `1.5px dashed ${ACCENT_BDR}`,
-          background:  ACCENT_SUB,
-          cursor:      modelSupportsImage ? 'pointer' : 'not-allowed',
-          opacity:     modelSupportsImage ? 1 : 0.4,
-        }}
-      >
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={onUpload}
-          disabled={!modelSupportsImage}
-        />
-        <ImagePlus size={22} style={{ color: ACCENT, marginBottom: 6 }} />
-        <span className="text-xs font-medium" style={{ color: ACCENT }}>
-          {modelSupportsImage ? 'Add reference' : 'Not supported'}
-        </span>
-      </label>
-    </div>
-  )
-}
-
 // ── Multi-image grid ───────────────────────────────────────────
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
   const filledCount  = images.filter(Boolean).length
@@ -359,7 +289,6 @@ export default function UGCBrandGeneratePage() {
   const [submitting,    setSubmitting]    = useState(false)
 
   const [images,        setImages]        = useState([])
-  const [multiMode,     setMultiMode]     = useState(false)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
   useEffect(() => { loadBrand(); loadModels() }, [brandId])
@@ -376,6 +305,8 @@ export default function UGCBrandGeneratePage() {
     setBrandLoading(false)
   }
 
+  // FIX: filter to supports_multi_image only (same as UGCGeneratePage)
+  // and allow all tiers to see models (no master-only filter at load time)
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -383,6 +314,7 @@ export default function UGCBrandGeneratePage() {
       .select('*')
       .eq('is_active', true)
       .eq('is_user_facing', true)
+      .eq('supports_multi_image', true)
       .order('sort_order')
     const list = data || []
     setModels(list)
@@ -394,22 +326,19 @@ export default function UGCBrandGeneratePage() {
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
 
-  const modelSupportsImage = selectedModel?.supports_image      !== false
-  const modelSupportsMulti = selectedModel?.supports_multi_image === true
-  const modelRequiresImage = selectedModel?.requires_image       === true
-  const modelMaxRefImages  = selectedModel?.max_ref_images       ?? 1
+  const modelMaxRefImages = selectedModel?.max_ref_images ?? 4
 
   useEffect(() => {
     const first = filteredModels.find((m) => !m.is_locked)
     if (first) setModel(first.value)
   }, [outputType])
 
+  // Clear images when output type switches
   useEffect(() => {
-    if (!modelSupportsMulti) {
-      setMultiMode(false)
-      if (images.length > 1) setImages([images[0]])
-    }
-  }, [model]) // eslint-disable-line
+    setImages([])
+    setAutoRatio(false)
+    setAspectRatio('9:16')
+  }, [outputType])
 
   const caps = selectedModel ? {
     supportedDurations:    selectedModel.supported_durations     ?? ['5', '8', '10'],
@@ -425,7 +354,7 @@ export default function UGCBrandGeneratePage() {
   const creditCost = (() => {
     if (!selectedModel) return 0
     const base = outputType === 'image'
-      ? (hasImages && modelSupportsImage
+      ? (hasImages
           ? selectedModel.credit_cost_i2i
           : selectedModel.credit_cost_t2i) || 0
       : caps.isFlatRate
@@ -434,10 +363,9 @@ export default function UGCBrandGeneratePage() {
     return Math.ceil(base)
   })()
 
-  const canAfford     = credits >= creditCost
-  const promptEmpty   = !prompt.trim()
-  const imageRequired = modelRequiresImage && !hasImages
-  const btnDisabled   = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading || imageRequired
+  const canAfford   = credits >= creditCost
+  const promptEmpty = !prompt.trim()
+  const btnDisabled = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading
 
   // ── Image handlers ─────────────────────────────────────────────
   const handleAddImage = async (e, slotIdx) => {
@@ -451,15 +379,6 @@ export default function UGCBrandGeneratePage() {
       if (slotIdx === 0) { setAspectRatio(compressed.ar); setAutoRatio(true) }
       return trimmed
     })
-  }
-
-  const handleSingleImageUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const compressed = await compressImage(file)
-    setImages([compressed])
-    setAspectRatio(compressed.ar)
-    setAutoRatio(true)
   }
 
   const handleRemoveImage = (idx) => {
@@ -520,33 +439,42 @@ export default function UGCBrandGeneratePage() {
     if (!selectedModel) return toast.error('Pick a model')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
-    if (imageRequired)  return toast.error('This model requires a reference image')
 
     setSubmitting(true)
     try {
       const brandContext = buildBrandContext()
 
+      // FIX: prepend brand logo_url (always first), then upload any master ref images
       const uploadedUrls = []
-      for (const img of images) {
-        if (!img) continue
-        if (!img.file) {
-          uploadedUrls.push(img.url)
-          continue
-        }
-        const contentType = img.file.type || 'image/jpeg'
-        const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-        const { data: uploadData, error: upErr } = await supabase.storage
-          .from('generation-uploads')
-          .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
-        if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-        const { data: { publicUrl } } = supabase.storage
-          .from('generation-uploads')
-          .getPublicUrl(uploadData.path)
-        uploadedUrls.push(publicUrl)
+
+      // Brand logo always included first (no upload needed — already a public URL)
+      if (brand?.logo_url) {
+        uploadedUrls.push(brand.logo_url)
       }
 
-      const roles = ['subject', 'setting', 'additional reference']
+      // Master ref images uploaded after logo
+      if (isMaster) {
+        for (const img of images) {
+          if (!img) continue
+          if (!img.file) {
+            uploadedUrls.push(img.url)
+            continue
+          }
+          const contentType = img.file.type || 'image/jpeg'
+          const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+          const { data: uploadData, error: upErr } = await supabase.storage
+            .from('generation-uploads')
+            .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
+          if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
+          const { data: { publicUrl } } = supabase.storage
+            .from('generation-uploads')
+            .getPublicUrl(uploadData.path)
+          uploadedUrls.push(publicUrl)
+        }
+      }
+
+      const roles = ['brand logo', 'subject', 'setting', 'additional reference']
       const inputImageUrls = uploadedUrls.map((url, i) => ({
         url,
         role: roles[i] || `reference ${i + 1}`,
@@ -756,69 +684,21 @@ export default function UGCBrandGeneratePage() {
             ))}
           </div>
 
-          {/* Reference image — Master only */}
+          {/* FIX: Reference image — Master only, full gate */}
           {isMaster ? (
             <div className="mb-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Reference Image
-                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
-                </p>
-
-                {modelSupportsMulti && modelSupportsImage && (
-                  <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
-                    {[
-                      { value: false, label: 'Simple'    },
-                      { value: true,  label: 'Multi-ref' },
-                    ].map((opt) => (
-                      <button
-                        key={String(opt.value)}
-                        onClick={() => {
-                          setMultiMode(opt.value)
-                          if (!opt.value && images.length > 1) setImages([images[0]])
-                        }}
-                        className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-                        style={{
-                          background: multiMode === opt.value ? ACCENT    : 'transparent',
-                          color:      multiMode === opt.value ? '#ffffff' : 'var(--text-muted)',
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {modelSupportsMulti && multiMode ? (
-                <MultiImageGrid
-                  images={images}
-                  maxImages={modelMaxRefImages}
-                  onAdd={handleAddImage}
-                  onRemove={handleRemoveImage}
-                  onTagInsert={handleTagInsert}
-                  onFullscreen={(idx) => setFullscreenIdx(idx)}
-                />
-              ) : (
-                <SingleImageSlot
-                  image={images[0] || null}
-                  onUpload={handleSingleImageUpload}
-                  onRemove={() => handleRemoveImage(0)}
-                  onFullscreen={() => setFullscreenIdx(0)}
-                  modelSupportsImage={modelSupportsImage}
-                />
-              )}
-
-              {modelSupportsImage && modelRequiresImage && !hasImages && (
-                <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
-                  This model requires a reference image to generate.
-                </p>
-              )}
-              {!modelSupportsImage && (
-                <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
-                  This model is text-only. Switch models to use a reference image.
-                </p>
-              )}
+              <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                Reference Images
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+              </p>
+              <MultiImageGrid
+                images={images}
+                maxImages={modelMaxRefImages}
+                onAdd={handleAddImage}
+                onRemove={handleRemoveImage}
+                onTagInsert={handleTagInsert}
+                onFullscreen={(idx) => setFullscreenIdx(idx)}
+              />
             </div>
           ) : (
             <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
@@ -840,7 +720,7 @@ export default function UGCBrandGeneratePage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={
-                isMaster && modelSupportsMulti && multiMode && hasImages
+                isMaster && hasImages
                   ? `Describe how to use the references — e.g. person in ${tagForSlot(0)} inside the space in ${tagForSlot(1)}, brand logo on the wall`
                   : `Describe what you want created for ${brand?.brand_name}…`
               }
@@ -943,11 +823,9 @@ export default function UGCBrandGeneratePage() {
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {imageRequired
-              ? 'Reference image required'
-              : !canAfford && !promptEmpty
-                ? 'Not enough credits'
-                : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
+            {!canAfford && !promptEmpty
+              ? 'Not enough credits'
+              : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
 
           {!canAfford && (
