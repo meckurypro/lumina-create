@@ -751,8 +751,8 @@ export default function UGCBrandGeneratePage() {
           )}
           <div className="flex flex-col items-start">
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text-primary)' }}>
-              {profile?.name}
-            </p>
+  {brand?.brand_name?.length > 15 ? `${brand.brand_name.slice(0, 15)}…` : brand?.brand_name}
+</p>
           </div>
         </button>
 
@@ -766,13 +766,7 @@ export default function UGCBrandGeneratePage() {
             />
           )}
 
-          <div
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-            {Math.floor(credits)}
-          </div>
+          
         </div>
       </div>
 
