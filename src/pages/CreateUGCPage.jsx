@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Plus, User, Building2, Zap, Sparkles,
+  ArrowLeft, Plus, User, Building2, Zap, Sparkles,f{activeCharProfiles.length > 0 && (
   MoreVertical, Archive, Pencil, Lock, Crown,
   Mic, Play, Pause, Loader2, Search, X, Upload, Radio,
 } from 'lucide-react'
@@ -745,6 +745,10 @@ export default function CreateUGCPage() {
   const canCreateChar  = credits >= CHARACTER_CREDIT_COST
   const canCreateBrand = credits >= BRAND_CREDIT_COST
 
+  const [charSearch,  setCharSearch]  = useState('')
+  const [brandSearch, setBrandSearch] = useState('')
+  const [voiceSearch, setVoiceSearch] = useState('')
+
   useEffect(() => {
     if (!user) return
     loadCharProfiles()
@@ -851,6 +855,13 @@ export default function CreateUGCPage() {
   const activeBrandProfiles = brandProfiles.filter((b) => b.status === 'active')
   const draftBrandProfiles  = brandProfiles.filter((b) => b.status === 'draft')
 
+  const q = (str) => str?.toLowerCase() ?? ''
+  const filteredActiveChars  = charSearch  ? activeCharProfiles.filter((p)  => q(p.name).includes(q(charSearch))  || q(p.nationality).includes(q(charSearch)))  : activeCharProfiles
+  const filteredDraftChars   = charSearch  ? draftCharProfiles.filter((p)   => q(p.name).includes(q(charSearch))  || q(p.nationality).includes(q(charSearch)))   : draftCharProfiles
+  const filteredActiveBrands = brandSearch ? activeBrandProfiles.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch))) : activeBrandProfiles
+  const filteredDraftBrands  = brandSearch ? draftBrandProfiles.filter((b)  => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))  : draftBrandProfiles
+  const filteredVoices       = voiceSearch ? voices.filter((v) => q(v.name).includes(q(voiceSearch))) : voices
+
   const currentTabLabel = { characters: 'Your Characters', voices: 'Voice Studio', brands: 'Your Brands' }[ugcTab] || ''
 
   return (
@@ -928,9 +939,23 @@ export default function CreateUGCPage() {
                 <>
                   {activeCharProfiles.length > 0 && (
                     <div className="mb-6">
-                      <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Characters</p>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                        <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                        <input
+                          value={charSearch}
+                          onChange={(e) => setCharSearch(e.target.value)}
+                          placeholder="Search characters…"
+                          className="flex-1 bg-transparent text-sm outline-none"
+                          style={{ color: 'var(--text-primary)' }}
+                        />
+                        {charSearch && (
+                          <button onClick={() => setCharSearch('')} style={{ color: 'var(--text-muted)' }}>
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
-                        {activeCharProfiles.map((p, i) => (
+                        {filteredActiveChars.map((p, i) => (
                           <ProfileCard key={p.id} profile={p} index={i} onSelect={handleSelectProfile} onArchive={handleArchiveChar} onEdit={handleEditChar} muted={isProfileMuted(p)} onMutedClick={handleMutedClick} />
                         ))}
                         {(isMaster || activeCharProfiles.length === 0) && (
@@ -953,7 +978,7 @@ export default function CreateUGCPage() {
                     <div className="mb-6">
                       <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Drafts</p>
                       <div className="grid grid-cols-2 gap-3">
-                        {draftCharProfiles.map((p, i) => (
+                        {filteredDraftChars.map((p, i) => (
                           <ProfileCard key={p.id} profile={p} index={i} onSelect={handleSelectProfile} onArchive={handleArchiveChar} onEdit={handleEditChar} />
                         ))}
                       </div>
@@ -983,7 +1008,7 @@ export default function CreateUGCPage() {
           )}
 
           {/* ── Voices Tab (inline — no navigation) ──────────── */}
-          {ugcTab === 'voices' && (
+{ugcTab === 'voices' && (
             <>
               {voicesLoading ? (
                 <div className="flex flex-col gap-3">
@@ -1010,20 +1035,39 @@ export default function CreateUGCPage() {
                 </motion.div>
               ) : (
                 <div className="flex flex-col gap-3 mb-5">
-                  {voices.map((voice, i) => (
-                    <SavedVoiceRow
-                      key={voice.id}
-                      voice={voice}
-                      index={i}
-                      onSelect={handleSelectVoice}
-                      onArchive={handleArchiveVoice}
-                      playing={voicePlaying}
-                      loading={voicePreviewLoading}
-                      onPlay={handlePlayVoice}
-                      muted={isVoiceMuted(voice)}
-                      onMutedClick={() => toast.error('Cloned voices are Master-only. Upgrade to use this voice.')}
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                    <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <input
+                      value={voiceSearch}
+                      onChange={(e) => setVoiceSearch(e.target.value)}
+                      placeholder="Search voices…"
+                      className="flex-1 bg-transparent text-sm outline-none"
+                      style={{ color: 'var(--text-primary)' }}
                     />
-                  ))}
+                    {voiceSearch && (
+                      <button onClick={() => setVoiceSearch('')} style={{ color: 'var(--text-muted)' }}>
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {filteredVoices.length === 0 ? (
+                    <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No voices match "{voiceSearch}"</p>
+                  ) : (
+                    filteredVoices.map((voice, i) => (
+                      <SavedVoiceRow
+                        key={voice.id}
+                        voice={voice}
+                        index={i}
+                        onSelect={handleSelectVoice}
+                        onArchive={handleArchiveVoice}
+                        playing={voicePlaying}
+                        loading={voicePreviewLoading}
+                        onPlay={handlePlayVoice}
+                        muted={isVoiceMuted(voice)}
+                        onMutedClick={() => toast.error('Cloned voices are Master-only. Upgrade to use this voice.')}
+                      />
+                    ))
+                  )}
                   {hasMutedVoices && (
                     <div className="flex items-start gap-2.5 p-3 rounded-2xl mt-1" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                       <Crown size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
@@ -1035,6 +1079,7 @@ export default function CreateUGCPage() {
                 </div>
               )}
             </>
+          )}
           )}
 
           {/* ── Brands Tab ───────────────────────────────────── */}
@@ -1061,9 +1106,23 @@ export default function CreateUGCPage() {
                 <>
                   {activeBrandProfiles.length > 0 && (
                     <div className="mb-6">
-                      <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Brands</p>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                        <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                        <input
+                          value={brandSearch}
+                          onChange={(e) => setBrandSearch(e.target.value)}
+                          placeholder="Search brands…"
+                          className="flex-1 bg-transparent text-sm outline-none"
+                          style={{ color: 'var(--text-primary)' }}
+                        />
+                        {brandSearch && (
+                          <button onClick={() => setBrandSearch('')} style={{ color: 'var(--text-muted)' }}>
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
-                        {activeBrandProfiles.map((b, i) => (
+                        {filteredActiveBrands.map((b, i) => (
                           <BrandCard key={b.id} brand={b} index={i} onSelect={handleSelectBrand} onArchive={handleArchiveBrand} onEdit={handleEditBrand} />
                         ))}
                         <CreateCard onClick={handleCreateNewBrand} index={activeBrandProfiles.length} label="New Brand" Icon={Building2} />
@@ -1074,7 +1133,7 @@ export default function CreateUGCPage() {
                     <div className="mb-6">
                       <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Brand Drafts</p>
                       <div className="grid grid-cols-2 gap-3">
-                        {draftBrandProfiles.map((b, i) => (
+                        {filteredDraftBrands.map((b, i) => (
                           <BrandCard key={b.id} brand={b} index={i} onSelect={handleSelectBrand} onArchive={handleArchiveBrand} onEdit={handleEditBrand} />
                         ))}
                       </div>
