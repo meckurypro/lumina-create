@@ -736,6 +736,11 @@ export default function CreateUGCPage() {
   const initTab = location.state?.tab || (location.pathname.endsWith('/voices') ? 'voices' : 'characters')
   const [ugcTab, setUgcTab] = useState(initTab)
 
+  // Restore tab when navigating back from sub-pages
+  useEffect(() => {
+    if (location.state?.tab) setUgcTab(location.state.tab)
+  }, [location.state?.tab])
+
   const isMaster       = profile?.user_tier === 'master'
   const canCreateChar  = credits >= CHARACTER_CREDIT_COST
   const canCreateBrand = credits >= BRAND_CREDIT_COST
