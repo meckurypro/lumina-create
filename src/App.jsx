@@ -29,7 +29,6 @@ import CreateUGCPage            from '@/pages/CreateUGCPage'
 import UGCWizardPage            from '@/pages/UGCWizardPage'
 import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 import UGCMediaPage             from '@/pages/UGCMediaPage'
-import UGCVoicesPage            from '@/pages/UGCVoicesPage'
 import UGCVoiceGeneratePage     from '@/pages/UGCVoiceGeneratePage'
 import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
 
@@ -40,7 +39,8 @@ import FilmaStructurePage       from '@/pages/filma/FilmaStructurePage'
 import FilmaScenePage           from '@/pages/filma/FilmaScenePage'
 import FilmaShotPage            from '@/pages/filma/FilmaShotPage'
 
-import { BottomNav } from '@/components/layout/BottomNav'
+import { BottomNav }    from '@/components/layout/BottomNav'
+import PWAUpdateToast   from '@/components/PWAUpdateToast'
 
 const FullLoader = () => (
   <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
@@ -77,78 +77,86 @@ export default function App() {
   const { user, loading, onboardingNeeded } = useAuth()
 
   return (
-    <Routes>
-      <Route path="/auth/callback"  element={<AuthCallbackPage />} />
-      <Route path="/payment/callback" element={<PaymentCallbackPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <>
+      <Routes>
+        <Route path="/auth/callback"    element={<AuthCallbackPage />} />
+        <Route path="/payment/callback" element={<PaymentCallbackPage />} />
+        <Route path="/reset-password"   element={<ResetPasswordPage />} />
 
-      {loading ? (
-        <Route path="*" element={<FullLoader />} />
-      ) : (
-        <>
-          <Route
-            path="/"
-            element={user ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace /> : <LandingPage />}
-          />
-          <Route
-            path="/auth"
-            element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
-          />
+        {loading ? (
+          <Route path="*" element={<FullLoader />} />
+        ) : (
+          <>
+            <Route
+              path="/"
+              element={user ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace /> : <LandingPage />}
+            />
+            <Route
+              path="/auth"
+              element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
+            />
 
-          {/* ── Feed ─────────────────────────────────────────────── */}
-          <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
-          <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
+            {/* ── Feed ─────────────────────────────────────────────── */}
+            <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
+            <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Create — base tools ──────────────────────────────── */}
-          <Route path="/create"              element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/image"        element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/video"        element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/copy-motion"  element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/photo-polish" element={<RequireAuth><AppLayout><CreatePhotoPolishPage /></AppLayout></RequireAuth>} />
+            {/* ── Create — base tools ──────────────────────────────── */}
+            <Route path="/create"              element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
+            <Route path="/create/image"        element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
+            <Route path="/create/video"        element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/copy-motion"  element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/photo-polish" element={<RequireAuth><AppLayout><CreatePhotoPolishPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Cinematic ────────────────────────────────────────── */}
-          <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
-          <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
+            {/* ── Cinematic ────────────────────────────────────────── */}
+            <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
+            <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Filma — full-screen, no AppLayout/BottomNav ──────── */}
-          <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
-          <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
-          <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
-          <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
-          <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
-          <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
+            {/* ── Filma — full-screen, no AppLayout/BottomNav ──────── */}
+            <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
+            <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
 
-          {/* ── UGC ──────────────────────────────────────────────── */}
-          <Route path="/create/ugc"                    element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/new"                element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/voices"             element={<RequireAuth><AppLayout><UGCVoicesPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/voice/:voiceId"     element={<RequireAuth><AppLayout><UGCVoiceGeneratePage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/:profileId/media"   element={<RequireAuth><AppLayout><UGCMediaPage /></AppLayout></RequireAuth>} />
-          <Route path="/create/ugc/:profileId"         element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
+            {/* ── UGC ──────────────────────────────────────────────── */}
+            {/* /create/ugc/voices redirects back into CreateUGCPage    */}
+            {/* (Voices tab is now inline — no separate page needed)    */}
+            <Route path="/create/ugc"                  element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/ugc/voices"           element={<Navigate to="/create/ugc" replace state={{ tab: 'voices' }} />} />
+            <Route path="/create/ugc/new"              element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/ugc/brand/new"        element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/ugc/voice/:voiceId"   element={<RequireAuth><AppLayout><UGCVoiceGeneratePage /></AppLayout></RequireAuth>} />
+            <Route path="/create/ugc/:profileId/media" element={<RequireAuth><AppLayout><UGCMediaPage /></AppLayout></RequireAuth>} />
+            <Route path="/create/ugc/:profileId"       element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
 
-          {/* ── Generic template runner — MUST stay last ─────────── */}
-          <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
+            {/* ── Generic template runner — MUST stay last in /create ─ */}
+            <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Generate / Result ────────────────────────────────── */}
-          <Route path="/generate"   element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
-          <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
+            {/* ── Generate / Result ────────────────────────────────── */}
+            <Route path="/generate"   element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
+            <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
 
-          {/* ── Media ────────────────────────────────────────────── */}
-          <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
-          <Route path="/history" element={<Navigate to="/media" replace />} />
+            {/* ── Media ────────────────────────────────────────────── */}
+            <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
+            <Route path="/history" element={<Navigate to="/media" replace />} />
 
-          {/* ── Profile / Settings / Admin ───────────────────────── */}
-          <Route path="/profile"  element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
-          <Route path="/settings" element={<RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>} />
-          <Route path="/admin"    element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+            {/* ── Profile / Settings / Admin ───────────────────────── */}
+            <Route path="/profile"  element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
+            <Route path="/settings" element={<RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>} />
+            <Route path="/admin"    element={<RequireAdmin><AdminPage /></RequireAdmin>} />
 
-          <Route
-            path="*"
-            element={<Navigate to={user ? (onboardingNeeded ? '/auth' : '/feed') : '/'} replace />}
-          />
-        </>
-      )}
-    </Routes>
+            <Route
+              path="*"
+              element={<Navigate to={user ? (onboardingNeeded ? '/auth' : '/feed') : '/'} replace />}
+            />
+          </>
+        )}
+      </Routes>
+
+      {/* PWA update banner — shown when a new version deploys */}
+      <PWAUpdateToast />
+    </>
   )
 }
