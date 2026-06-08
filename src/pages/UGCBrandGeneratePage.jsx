@@ -285,7 +285,8 @@ export default function UGCBrandGeneratePage() {
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [duration,      setDuration]      = useState('5')
   const [prompt,        setPrompt]        = useState('')
-  const [withSound,     setWithSound]     = useState(false)
+  const [filter,        setFilter]        = useState('hyper_realistic')
+  const [withSound,     setWithSound]     = useState(true)
   const [submitting,    setSubmitting]    = useState(false)
 
   const [images,        setImages]        = useState([])
@@ -496,6 +497,7 @@ export default function UGCBrandGeneratePage() {
           brand_id:      brandId,
           brand_context: brandContext,
           with_sound:    outputType === 'video' ? withSound : false,
+          filter_applied: filter,
           mode:          'brand_adviser',
         },
       })
@@ -618,14 +620,14 @@ export default function UGCBrandGeneratePage() {
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
         <button
-          onClick={() => navigate('/create/ugc')}
+          onClick={() => navigate('/create/ugc', { state: { tab: 'brands' } })}
           className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
         >
           <ArrowLeft size={20} />
         </button>
 
-        <button onClick={() => navigate('/create/ugc')} className="flex items-center gap-2.5">
+        <button onClick={() => navigate('/create/ugc', { state: { tab: 'brands' } })} className="flex items/center gap-2.5">
           {brand?.logo_url ? (
             <img
               src={brand.logo_url} alt={brand.brand_name}
@@ -684,8 +686,8 @@ export default function UGCBrandGeneratePage() {
             ))}
           </div>
 
-          {/* FIX: Reference image — Master only, full gate */}
-          {isMaster ? (
+{/* Reference images — Master only */}
+          {isMaster && selectedModel?.supports_multi_image && (
             <div className="mb-5">
               <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Reference Images
@@ -700,14 +702,6 @@ export default function UGCBrandGeneratePage() {
                 onFullscreen={(idx) => setFullscreenIdx(idx)}
               />
             </div>
-          ) : (
-            <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
-              <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
-              <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
-                Upgrade to Master
-              </button>
-              {' '}to attach reference images to your generations.
-            </p>
           )}
 
           {/* Prompt */}
@@ -737,7 +731,25 @@ export default function UGCBrandGeneratePage() {
             <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
               {prompt.length}/600
             </p>
+            {!isMaster && (
+              <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
+                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
+                {' '}to attach reference images to your generations.
+              </p>
+            )}
           </div>
+
+          {/* Style filter */}
+          <SettingChips
+            label="Style Filter"
+            options={[
+              { value: 'hyper_realistic', label: '📱 Hyper Realistic' },
+              { value: 'cinematic',       label: '🎬 Cinematic'       },
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
 
           {/* Aspect ratio */}
           <SettingChips
