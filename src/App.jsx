@@ -25,13 +25,19 @@ import AuthCallbackPage         from '@/pages/AuthCallbackPage'
 import PaymentCallbackPage      from '@/pages/PaymentCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
+import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
+
+// ── UGC ──────────────────────────────────────────────────────
 import CreateUGCPage            from '@/pages/CreateUGCPage'
 import UGCWizardPage            from '@/pages/UGCWizardPage'
 import UGCGeneratePage          from '@/pages/UGCGeneratePage'
 import UGCMediaPage             from '@/pages/UGCMediaPage'
 import UGCVoiceGeneratePage     from '@/pages/UGCVoiceGeneratePage'
-import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
+import UGCBrandWizardPage       from '@/pages/UGCBrandWizardPage'
+import UGCBrandGeneratePage     from '@/pages/UGCBrandGeneratePage'
+import UGCBrandMediaPage        from '@/pages/UGCBrandMediaPage'
 
+// ── Filma ─────────────────────────────────────────────────────
 import FilmaHubPage             from '@/pages/filma/FilmaHubPage'
 import FilmaSetupPage           from '@/pages/filma/FilmaSetupPage'
 import FilmaCastPage            from '@/pages/filma/FilmaCastPage'
@@ -41,6 +47,8 @@ import FilmaShotPage            from '@/pages/filma/FilmaShotPage'
 
 import { BottomNav }    from '@/components/layout/BottomNav'
 import PWAUpdateToast   from '@/components/PWAUpdateToast'
+
+// ── Loaders / guards ──────────────────────────────────────────
 
 const FullLoader = () => (
   <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
@@ -66,6 +74,8 @@ function RequireAdmin({ children }) {
   return children
 }
 
+// ── Layout wrapper (includes BottomNav) ───────────────────────
+
 const AppLayout = ({ children }) => (
   <div className="w-full min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
     {children}
@@ -73,12 +83,22 @@ const AppLayout = ({ children }) => (
   </div>
 )
 
+// ── Shorthand wrappers ────────────────────────────────────────
+// keeps route declarations concise
+
+const Auth  = ({ children }) => <RequireAuth><AppLayout>{children}</AppLayout></RequireAuth>
+const Admin = ({ children }) => <RequireAdmin>{children}</RequireAdmin>
+
+// ─────────────────────────────────────────────────────────────
+
 export default function App() {
   const { user, loading, onboardingNeeded } = useAuth()
 
   return (
     <>
       <Routes>
+
+        {/* ── Public callbacks (no auth gate) ────────────────── */}
         <Route path="/auth/callback"    element={<AuthCallbackPage />} />
         <Route path="/payment/callback" element={<PaymentCallbackPage />} />
         <Route path="/reset-password"   element={<ResetPasswordPage />} />
@@ -87,32 +107,40 @@ export default function App() {
           <Route path="*" element={<FullLoader />} />
         ) : (
           <>
+
+            {/* ── Root / Auth ─────────────────────────────────── */}
             <Route
               path="/"
-              element={user ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace /> : <LandingPage />}
+              element={user
+                ? <Navigate to={onboardingNeeded ? '/auth' : '/feed'} replace />
+                : <LandingPage />
+              }
             />
             <Route
               path="/auth"
-              element={user && !onboardingNeeded ? <Navigate to="/feed" replace /> : <AuthPage />}
+              element={user && !onboardingNeeded
+                ? <Navigate to="/feed" replace />
+                : <AuthPage />
+              }
             />
 
-            {/* ── Feed ─────────────────────────────────────────────── */}
-            <Route path="/feed"           element={<RequireAuth><AppLayout><FeedPage /></AppLayout></RequireAuth>} />
-            <Route path="/feed/community" element={<RequireAuth><AppLayout><CommunityFeedPage /></AppLayout></RequireAuth>} />
+            {/* ── Feed ────────────────────────────────────────── */}
+            <Route path="/feed"           element={<Auth><FeedPage /></Auth>} />
+            <Route path="/feed/community" element={<Auth><CommunityFeedPage /></Auth>} />
 
-            {/* ── Create — base tools ──────────────────────────────── */}
-            <Route path="/create"              element={<RequireAuth><AppLayout><CreatePage /></AppLayout></RequireAuth>} />
-            <Route path="/create/image"        element={<RequireAuth><AppLayout><CreateImagePage /></AppLayout></RequireAuth>} />
-            <Route path="/create/video"        element={<RequireAuth><AppLayout><CreateVideoPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/copy-motion"  element={<RequireAuth><AppLayout><CreateCopyMotionPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/talking-head" element={<RequireAuth><AppLayout><CreateTalkingHeadPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/photo-polish" element={<RequireAuth><AppLayout><CreatePhotoPolishPage /></AppLayout></RequireAuth>} />
+            {/* ── Create — base tools ─────────────────────────── */}
+            <Route path="/create"              element={<Auth><CreatePage /></Auth>} />
+            <Route path="/create/image"        element={<Auth><CreateImagePage /></Auth>} />
+            <Route path="/create/video"        element={<Auth><CreateVideoPage /></Auth>} />
+            <Route path="/create/copy-motion"  element={<Auth><CreateCopyMotionPage /></Auth>} />
+            <Route path="/create/talking-head" element={<Auth><CreateTalkingHeadPage /></Auth>} />
+            <Route path="/create/photo-polish" element={<Auth><CreatePhotoPolishPage /></Auth>} />
 
-            {/* ── Cinematic ────────────────────────────────────────── */}
-            <Route path="/create/cinematic-transition" element={<RequireAuth><AppLayout><CinematicTransitionPage /></AppLayout></RequireAuth>} />
-            <Route path="/cinematic/:projectId"        element={<RequireAuth><AppLayout><CinematicResultPage /></AppLayout></RequireAuth>} />
+            {/* ── Cinematic ───────────────────────────────────── */}
+            <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
+            <Route path="/cinematic/:projectId"        element={<Auth><CinematicResultPage /></Auth>} />
 
-            {/* ── Filma — full-screen, no AppLayout/BottomNav ──────── */}
+            {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
             <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
             <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
@@ -120,37 +148,69 @@ export default function App() {
             <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
             <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
 
-            {/* ── UGC ──────────────────────────────────────────────── */}
-            {/* /create/ugc/voices redirects back into CreateUGCPage    */}
-            {/* (Voices tab is now inline — no separate page needed)    */}
-            <Route path="/create/ugc"                  element={<RequireAuth><AppLayout><CreateUGCPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/ugc/voices"           element={<Navigate to="/create/ugc" replace state={{ tab: 'voices' }} />} />
-            <Route path="/create/ugc/new"              element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/ugc/brand/new"        element={<RequireAuth><AppLayout><UGCWizardPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/ugc/voice/:voiceId"   element={<RequireAuth><AppLayout><UGCVoiceGeneratePage /></AppLayout></RequireAuth>} />
-            <Route path="/create/ugc/:profileId/media" element={<RequireAuth><AppLayout><UGCMediaPage /></AppLayout></RequireAuth>} />
-            <Route path="/create/ugc/:profileId"       element={<RequireAuth><AppLayout><UGCGeneratePage /></AppLayout></RequireAuth>} />
+            {/* ── UGC — hub ───────────────────────────────────── */}
+            {/* Voices tab is now inline on CreateUGCPage.         */}
+            {/* /create/ugc/voices redirects back with tab state.  */}
+            <Route path="/create/ugc"
+              element={<Auth><CreateUGCPage /></Auth>}
+            />
+            <Route path="/create/ugc/voices"
+              element={<Navigate to="/create/ugc" replace state={{ tab: 'voices' }} />}
+            />
 
-            {/* ── Generic template runner — MUST stay last in /create ─ */}
-            <Route path="/create/:templateSlug" element={<RequireAuth><AppLayout><TemplateRunnerPage /></AppLayout></RequireAuth>} />
+            {/* ── UGC — Characters ────────────────────────────── */}
+            <Route path="/create/ugc/new"
+              element={<Auth><UGCWizardPage /></Auth>}
+            />
+            <Route path="/create/ugc/:profileId"
+              element={<Auth><UGCGeneratePage /></Auth>}
+            />
+            <Route path="/create/ugc/:profileId/media"
+              element={<Auth><UGCMediaPage /></Auth>}
+            />
 
-            {/* ── Generate / Result ────────────────────────────────── */}
-            <Route path="/generate"   element={<RequireAuth><AppLayout><GeneratePage /></AppLayout></RequireAuth>} />
-            <Route path="/result/:id" element={<RequireAuth><AppLayout><ResultPage /></AppLayout></RequireAuth>} />
+            {/* ── UGC — Voices ────────────────────────────────── */}
+            <Route path="/create/ugc/voice/:voiceId"
+              element={<Auth><UGCVoiceGeneratePage /></Auth>}
+            />
 
-            {/* ── Media ────────────────────────────────────────────── */}
-            <Route path="/media"   element={<RequireAuth><AppLayout><MediaPage /></AppLayout></RequireAuth>} />
+            {/* ── UGC — Brands ────────────────────────────────── */}
+            <Route path="/create/ugc/brand/new"
+              element={<Auth><UGCBrandWizardPage /></Auth>}
+            />
+            <Route path="/create/ugc/brand/:brandId"
+              element={<Auth><UGCBrandGeneratePage /></Auth>}
+            />
+            <Route path="/create/ugc/brand/:brandId/media"
+              element={<Auth><UGCBrandMediaPage /></Auth>}
+            />
+
+            {/* ── Generic template runner ──────────────────────── */}
+            {/* MUST stay last inside /create/* to avoid swallowing */}
+            {/* the specific routes above.                          */}
+            <Route path="/create/:templateSlug"
+              element={<Auth><TemplateRunnerPage /></Auth>}
+            />
+
+            {/* ── Generate / Result ───────────────────────────── */}
+            <Route path="/generate"   element={<Auth><GeneratePage /></Auth>} />
+            <Route path="/result/:id" element={<Auth><ResultPage /></Auth>} />
+
+            {/* ── Media ───────────────────────────────────────── */}
+            <Route path="/media"   element={<Auth><MediaPage /></Auth>} />
             <Route path="/history" element={<Navigate to="/media" replace />} />
 
-            {/* ── Profile / Settings / Admin ───────────────────────── */}
-            <Route path="/profile"  element={<RequireAuth><AppLayout><ProfilePage /></AppLayout></RequireAuth>} />
-            <Route path="/settings" element={<RequireAuth><AppLayout><SettingsPage /></AppLayout></RequireAuth>} />
-            <Route path="/admin"    element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+            {/* ── Profile / Settings / Admin ──────────────────── */}
+            <Route path="/profile"  element={<Auth><ProfilePage /></Auth>} />
+            <Route path="/settings" element={<Auth><SettingsPage /></Auth>} />
+            <Route path="/admin"    element={<Admin><AdminPage /></Admin>} />
 
+            {/* ── Fallback ────────────────────────────────────── */}
             <Route
               path="*"
               element={<Navigate to={user ? (onboardingNeeded ? '/auth' : '/feed') : '/'} replace />}
             />
+
           </>
         )}
       </Routes>
