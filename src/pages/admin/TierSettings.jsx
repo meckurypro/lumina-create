@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 // ─── Feature definitions ──────────────────────────────────
-// Add new gatable features here — the rest is automatic.
 const GATABLE_FEATURES = [
   {
     slug:        'ugc',
@@ -40,6 +39,25 @@ const GATABLE_FEATURES = [
 ]
 
 const SETTING_KEYS = ['novice_copy_motion_weekly_limit', 'novice_locked_features']
+
+// ─── Feature label map ────────────────────────────────────
+const FEATURE_LABELS = {
+  text_to_image:       'Text to Image',
+  image_to_image:      'Image to Image',
+  text_image_to_image: 'Text + Image to Image',
+  text_to_video:       'Text to Video',
+  image_to_video:      'Image to Video',
+  image_text_to_video: 'Image + Text to Video',
+  frame_to_frame:      'Frame to Frame',
+  motion_transfer:     'Motion Transfer',
+  lipsync:             'Lipsync',
+  video_to_video:      'Video to Video',
+  face_swap:           'Face Swap',
+  head_swap:           'Head Swap',
+  cinematic:           'Cinematic',
+  prompt_to_video:     'Prompt to Video',
+  image_generation:    'Image Generation',
+}
 
 // ─── Section wrapper ──────────────────────────────────────
 const Section = ({ title, description, children }) => (
@@ -85,14 +103,115 @@ const FeatureRow = ({ feature, isLocked, onToggle, saving }) => (
   </div>
 )
 
+// ─── Model Required Section ───────────────────────────────
+const ModelRequiredSection = () => {
+  const [models,      setModels]      = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [savingModel, setSavingModel] = useState(null)
+
+  useEffect(() => {
+    supabase
+      .from('models')
+      .select('id, label, feature, tier_required, is_required, is_active')
+      .eq('is_user_facing', true)
+      .order('feature')
+      .order('label')
+      .then(({ data, error }) => {
+        if (error) toast.error('Failed to load models')
+        else setModels(data || [])
+        setLoading(false)
+      })
+  }, [])
+
+  const handleToggleRequired = async (model) => {
+    const next = !model.is_required
+    setSavingModel(model.id)
+    const { error } = await supabase
+      .from('models')
+      .update({ is_required: next })
+      .eq('id', model.id)
+    if (error) {
+      toast.error('Failed to update model')
+    } else {
+      setModels((prev) =>
+        prev.map((m) => m.id === model.id ? { ...m, is_required: next } : m)
+      )
+      toast.success(next ? `${model.label} is now required` : `${model.label} can be muted`)
+    }
+    setSavingModel(null)
+  }
+
+  const grouped = models.reduce((acc, m) => {
+    const key = m.feature || 'other'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(m)
+    return acc
+  }, {})
+
+  if (loading) {
+    return (
+      <div className="h-48 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
+    )
+  }
+
+  return (
+    <Section
+      title="Model Settings"
+      description="Mark models as required to prevent users from muting them. Required models always appear in dropdowns."
+    >
+      {Object.entries(grouped).map(([feature, featureModels], gi) => (
+        <div key={feature}>
+          {gi > 0 && <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 0 12px' }} />}
+          <p className="text-xs font-bold uppercase tracking-widest mb-3"
+             style={{ color: 'var(--text-muted)' }}>
+            {FEATURE_LABELS[feature] ?? feature}
+          </p>
+          <div className="flex flex-col gap-3">
+            {featureModels.map((model) => (
+              <div key={model.id} className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                    {model.label}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {model.tier_required === 'master' ? '⭐ Master' : '🆓 Free'} · {model.feature}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleToggleRequired(model)}
+                  disabled={savingModel === model.id}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0 transition-all"
+                  style={{
+                    background: model.is_required ? 'rgba(239,68,68,0.1)'  : 'rgba(100,100,100,0.1)',
+                    color:      model.is_required ? '#ef4444'               : 'var(--text-muted)',
+                    border:     `1px solid ${model.is_required ? 'rgba(239,68,68,0.2)' : 'var(--border-color)'}`,
+                    opacity:    savingModel === model.id ? 0.6 : 1,
+                  }}
+                >
+                  {savingModel === model.id
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : model.is_required
+                      ? <><Lock   size={11} /> Required</>
+                      : <><Unlock size={11} /> Optional</>
+                  }
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </Section>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────
 export default function TierSettings() {
-  const [weeklyLimit,     setWeeklyLimit]     = useState(20)
-  const [lockedFeatures,  setLockedFeatures]  = useState([])
-  const [loading,         setLoading]         = useState(true)
-  const [savingLimit,     setSavingLimit]     = useState(false)
-  const [savingFeature,   setSavingFeature]   = useState(null)
-  const [limitDraft,      setLimitDraft]      = useState('')
+  const [weeklyLimit,    setWeeklyLimit]    = useState(20)
+  const [lockedFeatures, setLockedFeatures] = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [savingLimit,    setSavingLimit]    = useState(false)
+  const [savingFeature,  setSavingFeature]  = useState(null)
+  const [limitDraft,     setLimitDraft]     = useState('')
 
   // ── Load settings ────────────────────────────────────────
   useEffect(() => {
@@ -106,8 +225,8 @@ export default function TierSettings() {
 
       const map = Object.fromEntries((data || []).map((r) => [r.key, r.value]))
 
-      const limit   = parseInt(map['novice_copy_motion_weekly_limit'] ?? '20', 10)
-      const locked  = JSON.parse(map['novice_locked_features'] ?? '["ugc","ugc_voices"]')
+      const limit  = parseInt(map['novice_copy_motion_weekly_limit'] ?? '20', 10)
+      const locked = JSON.parse(map['novice_locked_features'] ?? '["ugc","ugc_voices"]')
 
       setWeeklyLimit(limit)
       setLimitDraft(String(limit))
@@ -238,8 +357,6 @@ export default function TierSettings() {
             </button>
           </div>
         </div>
-
-        {/* Current value display */}
         <div
           className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
           style={{ background: 'var(--bg-elevated)' }}
@@ -250,6 +367,9 @@ export default function TierSettings() {
           </p>
         </div>
       </Section>
+
+      {/* ── Model required toggles ── */}
+      <ModelRequiredSection />
 
     </motion.div>
   )
