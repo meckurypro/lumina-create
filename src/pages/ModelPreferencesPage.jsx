@@ -37,7 +37,7 @@ const ModelRow = ({ model, isActive, isRequired, isMasterOnly, onToggle, saving 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-            {model.label}
+            {model.aka || '—'}
           </p>
           {isMasterOnly && (
             <span
@@ -56,9 +56,9 @@ const ModelRow = ({ model, isActive, isRequired, isMasterOnly, onToggle, saving 
             </span>
           )}
         </div>
-        {model.sublabel && (
-          <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-            {model.sublabel}
+        {model.description && (
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: '1.4' }}>
+            {model.description}
           </p>
         )}
       </div>
@@ -93,14 +93,14 @@ const ModelRow = ({ model, isActive, isRequired, isMasterOnly, onToggle, saving 
 
 // ─── Main page ────────────────────────────────────────────
 export default function ModelPreferencesPage() {
-  const navigate             = useNavigate()
-  const { user, profile }    = useAuth()
-  const isMaster             = profile?.user_tier === 'master'
+  const navigate          = useNavigate()
+  const { user, profile } = useAuth()
+  const isMaster          = profile?.user_tier === 'master'
 
-  const [models,      setModels]      = useState([])
-  const [prefs,       setPrefs]       = useState({})   // { [model_id]: is_active }
-  const [loading,     setLoading]     = useState(true)
-  const [savingId,    setSavingId]    = useState(null)
+  const [models,   setModels]   = useState([])
+  const [prefs,    setPrefs]    = useState({})   // { [model_id]: is_active }
+  const [loading,  setLoading]  = useState(true)
+  const [savingId, setSavingId] = useState(null)
 
   // ── Load models + user prefs ─────────────────────────────
   useEffect(() => {
@@ -109,11 +109,11 @@ export default function ModelPreferencesPage() {
       const [{ data: modelsData }, { data: prefsData }] = await Promise.all([
         supabase
           .from('models')
-          .select('id, label, sublabel, feature, tier_required, is_required')
+          .select('id, aka, description, feature, tier_required, is_required')
           .eq('is_user_facing', true)
           .eq('is_active', true)
           .order('feature')
-          .order('label'),
+          .order('aka'),
         supabase
           .from('user_model_preferences')
           .select('model_id, is_active')
@@ -122,7 +122,6 @@ export default function ModelPreferencesPage() {
 
       setModels(modelsData || [])
 
-      // Build prefs map — default is true (active) if no row exists
       const map = {}
       ;(prefsData || []).forEach((p) => { map[p.model_id] = p.is_active })
       setPrefs(map)
@@ -134,8 +133,6 @@ export default function ModelPreferencesPage() {
   // ── Toggle handler ───────────────────────────────────────
   const handleToggle = async (modelId, nextActive) => {
     setSavingId(modelId)
-
-    // Optimistic update
     setPrefs((prev) => ({ ...prev, [modelId]: nextActive }))
 
     const { error } = await supabase
@@ -146,7 +143,6 @@ export default function ModelPreferencesPage() {
       )
 
     if (error) {
-      // Roll back
       setPrefs((prev) => ({ ...prev, [modelId]: !nextActive }))
       toast.error('Could not save preference')
     }
@@ -168,17 +164,22 @@ export default function ModelPreferencesPage() {
   if (loading) {
     return (
       <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-        <div className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
-             style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <div
+          className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
+          style={{ borderBottom: '1px solid var(--border-color)' }}
+        >
           <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl"
                   style={{ color: 'var(--text-secondary)' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Model Preferences</h1>
+          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Model Preferences
+          </h1>
         </div>
         <div className="flex-1 p-4 flex flex-col gap-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-32 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
+            <div key={i} className="h-32 rounded-2xl animate-pulse"
+                 style={{ background: 'var(--bg-card)' }} />
           ))}
         </div>
       </div>
@@ -189,13 +190,21 @@ export default function ModelPreferencesPage() {
     <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
-           style={{ borderBottom: '1px solid var(--border-color)' }}>
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl"
-                style={{ color: 'var(--text-secondary)' }} aria-label="Go back">
+      <div
+        className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
+        style={{ borderBottom: '1px solid var(--border-color)' }}
+      >
+        <button
+          onClick={() => navigate(-1)}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+          aria-label="Go back"
+        >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Model Preferences</h1>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Model Preferences
+        </h1>
       </div>
 
       {/* Scrollable content */}
@@ -203,7 +212,8 @@ export default function ModelPreferencesPage() {
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
 
           <p className="text-xs mb-5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Toggle which models appear in your dropdowns. Deactivated models are hidden from selectors but still accessible here.
+            Toggle which models appear in your dropdowns. Deactivated models are hidden from
+            selectors but still accessible here.
             {!isMaster && (
               <> <span style={{ color: '#f59e0b' }}>⭐ Master</span> models require an upgrade.</>
             )}
@@ -228,7 +238,6 @@ export default function ModelPreferencesPage() {
                 {featureModels.map((model) => {
                   const isMasterOnly = model.tier_required === 'master' && !isMaster
                   const isRequired   = model.is_required
-                  // default active = true if no pref row
                   const isActive     = prefs[model.id] ?? true
 
                   return (
@@ -245,7 +254,6 @@ export default function ModelPreferencesPage() {
                 })}
               </div>
 
-              {/* Bottom padding */}
               <div style={{ height: 8 }} />
             </div>
           ))}
