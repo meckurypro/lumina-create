@@ -112,7 +112,7 @@ const ModelRequiredSection = () => {
   useEffect(() => {
     supabase
       .from('models')
-      .select('id, label, feature, tier_required, is_required, is_active')
+      .select('id, label, aka, feature, tier_required, is_required, is_active')
       .eq('is_user_facing', true)
       .order('feature')
       .order('label')
@@ -171,7 +171,7 @@ const ModelRequiredSection = () => {
               <div key={model.id} className="flex items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                    {model.label}
+                    {model.label}{model.aka ? ` · ${model.aka}` : ''}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {model.tier_required === 'master' ? '⭐ Master' : '🆓 Free'} · {model.feature}
