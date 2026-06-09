@@ -28,6 +28,7 @@ import PaymentCallbackPage      from '@/pages/PaymentCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
+import ModelPreferencesPage     from '@/pages/ModelPreferencesPage'
 
 // ── UGC ──────────────────────────────────────────────────────
 import CreateUGCPage            from '@/pages/CreateUGCPage'
@@ -207,6 +208,7 @@ export default function App() {
             {/* ── Profile / Settings / Admin ──────────────────── */}
             <Route path="/profile"  element={<Auth><ProfilePage /></Auth>} />
             <Route path="/settings" element={<Auth><SettingsPage /></Auth>} />
+<Route path="/settings/models" element={<Auth><ModelPreferencesPage /></Auth>} />
             <Route path="/admin"    element={<Admin><AdminPage /></Admin>} />
 
             {/* ── Fallback ────────────────────────────────────── */}
