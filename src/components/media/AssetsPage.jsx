@@ -50,7 +50,7 @@ const ACCEPTED_MIME = [
 ]
 const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
-const PAGE_SIZE   = 20
+const PAGE_SIZE   = 12
 
 const EXTRACT_END_FRAME_COST  = 3
 const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
@@ -78,12 +78,6 @@ const TYPE_FILTERS = [
   { label: 'Images', value: 'image' },
   { label: 'Videos', value: 'video' },
 ]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Module-level thumbnail cache — survives re-mounts, cleared on page refresh
-// ─────────────────────────────────────────────────────────────────────────────
-
-const _thumbCache = new Map() // assetId → dataUrl
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -152,127 +146,47 @@ async function extractLastFrame(videoUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// useIntersection — fires once when element enters viewport, then stops
-// ─────────────────────────────────────────────────────────────────────────────
-
-function useIntersection(ref, rootMargin = '200px') {
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref, rootMargin])
-
-  return visible
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VideoThumbFallback — defers extraction until card is visible
-// ─────────────────────────────────────────────────────────────────────────────
-
-function VideoThumbFallback({ asset, visible }) {
-  const [src,    setSrc]    = useState(() => _thumbCache.get(asset.id) || null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    if (!visible || src || failed) return
-
-    let cancelled = false
-    let objUrl    = null
-
-    ;(async () => {
-      try {
-        const res  = await fetch(asset.file_url)
-        if (!res.ok) throw new Error('fetch failed')
-        const blob = await res.blob()
-        objUrl     = URL.createObjectURL(blob)
-
-        const video = document.createElement('video')
-        video.muted       = true
-        video.preload     = 'auto'
-        video.crossOrigin = 'anonymous'
-        video.playsInline = true
-
-        await new Promise((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            video.currentTime = Math.min(0.1, Math.max(0, (video.duration || 1) * 0.05))
-          }
-          video.onseeked = resolve
-          video.onerror  = () => reject(new Error('video load failed'))
-          video.src = objUrl
-        })
-
-        const canvas = document.createElement('canvas')
-        const maxW   = 240
-        const scale  = Math.min(1, maxW / (video.videoWidth || maxW))
-        canvas.width  = Math.max(1, Math.round((video.videoWidth  || maxW) * scale))
-        canvas.height = Math.max(1, Math.round((video.videoHeight || maxW) * scale))
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
-
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
-        _thumbCache.set(asset.id, dataUrl)
-        if (!cancelled) setSrc(dataUrl)
-      } catch {
-        if (!cancelled) setFailed(true)
-      } finally {
-        if (objUrl) URL.revokeObjectURL(objUrl)
-      }
-    })()
-
-    return () => { cancelled = true }
-  }, [visible, asset.id, asset.file_url, src, failed])
-
-  if (src) {
-    return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
-  }
-  return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // AssetThumb
+//
+// Uses the server-generated tiny WebP thumbnail (asset-thumbs bucket) when
+// available. For legacy rows without a thumbnail_url we never download the
+// full file — we just show a typed icon. The previous fallback that fetched
+// the full video and decoded a canvas frame was the dominant data cost on
+// this page on mobile.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AssetThumb({ asset, visible, onError }) {
+function AssetThumb({ asset, onError }) {
   const isVideo = isVideoAsset(asset)
 
   if (asset.thumbnail_url) {
     return (
       <img
-        src={visible ? asset.thumbnail_url : undefined}
-        data-src={asset.thumbnail_url}
+        src={asset.thumbnail_url}
         alt={asset.name}
         className="w-full h-full object-cover"
         loading="lazy"
+        decoding="async"
         onError={onError}
       />
     )
   }
 
+  // Images: lazy-load the actual file (browser-native lazy + async decode).
   if (!isVideo) {
     return (
       <img
-        src={visible ? asset.file_url : undefined}
-        data-src={asset.file_url}
+        src={asset.file_url}
         alt={asset.name}
         className="w-full h-full object-cover"
         loading="lazy"
+        decoding="async"
         onError={onError}
       />
     )
   }
 
-  return <VideoThumbFallback asset={asset} visible={visible} />
+  // Legacy videos with no server thumbnail — show an icon, no network cost.
+  return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
