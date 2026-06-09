@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
 import toast from 'react-hot-toast'
+import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
 const ACCENT     = 'var(--tool-talking-head)'
 const ACCENT_SUB = 'var(--tool-talking-head-subtle)'
@@ -1010,8 +1011,9 @@ export default function CreateTalkingHeadPage() {
       .eq('is_user_facing', true)
       .order('sort_order')
 
-    const isMaster = profile?.user_tier === 'master'
-    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+   const isMaster     = profile?.user_tier === 'master'
+    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list         = await applyModelPreferences(tierFiltered, user?.id)
 
     setModels(list)
     setModelsLoading(false)
