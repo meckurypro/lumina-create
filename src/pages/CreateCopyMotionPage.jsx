@@ -15,12 +15,12 @@ const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
 const ACCENT_BDR = 'var(--tool-motion-border)'
 
-// Cost in credits to run the pre-processing edge function (same for Novice + Master).
 const CONVERSION_COST = 2
 
 // ── Session storage keys ───────────────────────────────────────────────────
-const SS_SUBJECT_IMG = 'meckury_copymotion_subject'
-const SS_VIDEO_META  = 'meckury_copymotion_video_meta'
+const SS_SUBJECT_IMG       = 'meckury_copymotion_subject'
+const SS_VIDEO_META        = 'meckury_copymotion_video_meta'
+const SS_COPY_MOTION_VIDEO = 'meckury_copymotion_video_asset'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function formatDuration(secs) {
@@ -46,8 +46,8 @@ const persistImage = (key, file) => {
     reader.onload = (ev) => {
       sessionStorage.setItem(key, JSON.stringify({
         base64: ev.target.result,
-        name: file.name,
-        type: file.type,
+        name:   file.name,
+        type:   file.type,
       }))
     }
     reader.readAsDataURL(file)
@@ -86,7 +86,6 @@ const restoreVideoMeta = () => {
   } catch { return null }
 }
 
-// Reads duration + intrinsic dimensions in one pass.
 const readVideoMetadata = (file) => new Promise((resolve) => {
   const url = URL.createObjectURL(file)
   const vid = document.createElement('video')
@@ -103,14 +102,14 @@ const readVideoMetadata = (file) => new Promise((resolve) => {
     URL.revokeObjectURL(url)
     resolve(meta)
   }
-  vid.onerror = () => { URL.revokeObjectURL(url); resolve({ duration: null, width: null, height: null, aspectRatio: null }) }
+  vid.onerror = () => {
+    URL.revokeObjectURL(url)
+    resolve({ duration: null, width: null, height: null, aspectRatio: null })
+  }
   vid.src = url
 })
 
 // ── Compat check ───────────────────────────────────────────────────────────
-// Pure function — takes already-read video metadata + the selected model row
-// and the user's chosen aspect ratio. Returns { compatible, reason, fixes }.
-// `fixes` describes what the conversion edge function will need to do.
 function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDuration }) {
   if (!model || !videoMeta) {
     return { compatible: false, reason: 'Video or model not ready', fixes: { needsTrim: false, needsCrop: false } }
@@ -123,11 +122,10 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
     return { compatible: false, reason: 'Model has no supported durations configured', fixes: { needsTrim: false, needsCrop: false } }
   }
 
-  const minDur = durations[0]
+  const minDur  = durations[0]
   const aspectOk = supportedRatios.includes(videoMeta.aspectRatio) &&
                    videoMeta.aspectRatio === targetAspectRatio
 
-  // Hard reject: video too short for the shortest supported duration.
   if (videoMeta.duration != null && videoMeta.duration < minDur) {
     return {
       compatible: false,
@@ -136,7 +134,6 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
     }
   }
 
-  // Duration: needs trim if not exactly equal to the selected duration.
   const needsTrim = videoMeta.duration !== targetDuration
   const needsCrop = !aspectOk
 
@@ -150,27 +147,25 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
 
   return {
     compatible: false,
-    reason: reasons.join(' · '),
-    fixes: { needsTrim, needsCrop, tooShort: false },
+    reason:     reasons.join(' · '),
+    fixes:      { needsTrim, needsCrop, tooShort: false },
   }
 }
 
 // ── Edge function caller ───────────────────────────────────────────────────
-// Uploads the source to `generation-uploads` so the edge function can pull it,
-// then invokes `process-video-for-motion`. Returns the inserted asset row.
 async function callTranscodeEdgeFunction({
   file, userId, targetAspectRatio, targetDuration, startTime, onProgress,
 }) {
   onProgress?.(5)
 
-  const ext      = (file.name.split('.').pop() || 'mp4').toLowerCase()
-  const srcPath  = `${userId}/copy-motion-src/${crypto.randomUUID()}.${ext}`
+  const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
+  const srcPath = `${userId}/copy-motion-src/${crypto.randomUUID()}.${ext}`
   const { error: upErr } = await supabase.storage
     .from('generation-uploads')
     .upload(srcPath, file, {
-      upsert: false,
+      upsert:       false,
       cacheControl: '3600',
-      contentType: file.type || 'video/mp4',
+      contentType:  file.type || 'video/mp4',
     })
   if (upErr) throw new Error(upErr.message || 'Could not upload source video')
 
@@ -179,7 +174,6 @@ async function callTranscodeEdgeFunction({
     .from('generation-uploads')
     .getPublicUrl(srcPath)
 
-  // ffmpeg.wasm doesn't stream progress to us — give the user a slow advance.
   let virtualPct = 30
   const tick = setInterval(() => {
     virtualPct = Math.min(virtualPct + 2, 90)
@@ -197,12 +191,11 @@ async function callTranscodeEdgeFunction({
         originalFilename: file.name,
       },
     })
-    if (error) throw new Error(error.message || 'Conversion edge function failed')
-    if (!data?.success) throw new Error(data?.error || 'Conversion failed')
+    if (error)          throw new Error(error.message || 'Conversion edge function failed')
+    if (!data?.success) throw new Error(data?.error   || 'Conversion failed')
     result = data
   } finally {
     clearInterval(tick)
-    // best-effort cleanup of the source upload
     supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {})
   }
 
@@ -319,9 +312,9 @@ const CompatBadge = ({ status }) => {
   if (!status) return null
   const map = {
     checking:     { bg: 'rgba(0,0,0,0.72)',      color: '#fff', icon: <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }} className="w-3 h-3 rounded-full border border-white" style={{ borderTopColor: 'transparent' }} />, text: 'Checking…' },
-    compatible:   { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready' },
-    incompatible: { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw size={11} />,    text: 'Needs conversion' },
-    rejected:     { bg: 'rgba(239,68,68,0.92)',  color: '#fff', icon: <AlertCircle size={11} />,  text: 'Too short' },
+    compatible:   { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready'            },
+    incompatible: { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs conversion' },
+    rejected:     { bg: 'rgba(239,68,68,0.92)',  color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'        },
   }
   const cfg = map[status]
   if (!cfg) return null
@@ -504,42 +497,32 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function CreateCopyMotionPage() {
-  const navigate                                    = useNavigate()
-  const { user, credits, refreshProfile, profile }  = useAuth()
-  const isNovice                                    = profile?.user_tier !== 'master'
-  const [weeklyUsed,  setWeeklyUsed]                = useState(null)
-  const [weeklyLimit, setWeeklyLimit]               = useState(20)
+  const navigate                                   = useNavigate()
+  const { user, credits, refreshProfile, profile } = useAuth()
+  const isNovice                                   = profile?.user_tier !== 'master'
+  const [weeklyUsed,  setWeeklyUsed]               = useState(null)
+  const [weeklyLimit, setWeeklyLimit]              = useState(20)
 
   // Media
-  const [motionVideo,    setMotionVideo]    = useState(null)   // { file, url, duration, width, height, aspectRatio }
+  const [motionVideo,    setMotionVideo]    = useState(null)
   const [videoGhostMeta, setVideoGhostMeta] = useState(null)
   const [subjectImage,   setSubjectImage]   = useState(null)
 
   // Settings
-  const [aspectRatio,    setAspectRatio]    = useState('9:16')
-  const [withSound,      setWithSound]      = useState(false)
-  const [model,          setModel]          = useState('')
-  const [models,         setModels]         = useState([])
-  const [modelsLoading,  setModelsLoading]  = useState(true)
+  const [aspectRatio,   setAspectRatio]   = useState('9:16')
+  const [withSound,     setWithSound]     = useState(false)
+  const [model,         setModel]         = useState('')
+  const [models,        setModels]        = useState([])
+  const [modelsLoading, setModelsLoading] = useState(true)
 
   // Trim
-  const [targetDuration, setTargetDuration] = useState(null)   // selected supported duration
+  const [targetDuration, setTargetDuration] = useState(null)
   const [trimStart,      setTrimStart]      = useState(0)
 
   // Pipeline
-  const [phase,           setPhase]           = useState(null) // null | 'converting' | 'submitting'
+  const [phase,           setPhase]           = useState(null)
   const [convertProgress, setConvertProgress] = useState(0)
-  const [convertSuccess,  setConvertSuccess]  = useState(null) // asset row after save
-
-  // ── Restore session on mount ─────────────────────────────
-  useEffect(() => {
-    restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
-    const meta = restoreVideoMeta()
-    if (meta) {
-      setVideoGhostMeta(meta)
-      if (meta.aspectRatio) setAspectRatio(meta.aspectRatio)
-    }
-  }, [])
+  const [convertSuccess,  setConvertSuccess]  = useState(null)
 
   // ── Load models ──────────────────────────────────────────
   const loadModels = useCallback(async () => {
@@ -552,8 +535,8 @@ export default function CreateCopyMotionPage() {
       .eq('is_user_facing', true)
       .eq('feature', 'motion_transfer')
       .order('sort_order')
-    const isMaster = profile?.user_tier === 'master'
-    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const isMaster      = profile?.user_tier === 'master'
+    const list          = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked)
     setModel(firstUnlocked?.value || '')
@@ -561,6 +544,59 @@ export default function CreateCopyMotionPage() {
   }, [profile?.user_tier])
 
   useEffect(() => { loadModels() }, [loadModels])
+
+  // ── Derived model config (needed before mount effect) ────
+  const selectedModel         = models.find((m) => m.value === model)
+  const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
+  const supportsSound         = selectedModel?.supports_sound ?? false
+  const modelDurations        = useMemo(() => (
+    selectedModel?.supported_durations
+      ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
+      : []
+  ), [selectedModel])
+
+  // ── Restore session on mount ─────────────────────────────
+  useEffect(() => {
+    // Restore subject image (file upload or Assets "Set to Motion")
+    restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
+
+    // Restore motion video passed from Assets "Set for Motion"
+    try {
+      const raw = sessionStorage.getItem(SS_COPY_MOTION_VIDEO)
+      if (raw) {
+        sessionStorage.removeItem(SS_COPY_MOTION_VIDEO)
+        const payload = JSON.parse(raw) // { url, name, type }
+        if (payload?.url) {
+          const vid    = document.createElement('video')
+          vid.preload  = 'metadata'
+          vid.onloadedmetadata = () => {
+            const duration    = vid.duration ? Math.round(vid.duration) : null
+            const width       = vid.videoWidth  || null
+            const height      = vid.videoHeight || null
+            const aspectRatio = width && height ? detectAspectRatio(width, height) : null
+            setMotionVideo({ file: null, url: payload.url, duration, width, height, aspectRatio })
+            if (aspectRatio && supportedAspectRatios.includes(aspectRatio)) {
+              setAspectRatio(aspectRatio)
+            }
+            persistVideoMeta(payload.name, duration, aspectRatio)
+          }
+          vid.onerror = () => {
+            // Metadata unavailable — populate with URL only
+            setMotionVideo({ file: null, url: payload.url, duration: null, width: null, height: null, aspectRatio: null })
+          }
+          vid.src = payload.url
+          return // skip ghost meta restore — we have a live video
+        }
+      }
+    } catch { /* noop */ }
+
+    // Restore ghost meta for re-upload prompt (file upload path only)
+    const meta = restoreVideoMeta()
+    if (meta) {
+      setVideoGhostMeta(meta)
+      if (meta.aspectRatio) setAspectRatio(meta.aspectRatio)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Weekly limit for Novices
   useEffect(() => {
@@ -581,16 +617,6 @@ export default function CreateCopyMotionPage() {
     fetchWeekly()
   }, [isNovice, profile?.id])
 
-  // ── Derived model config ─────────────────────────────────
-  const selectedModel         = models.find((m) => m.value === model)
-  const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
-  const supportsSound         = selectedModel?.supports_sound ?? false
-  const modelDurations        = useMemo(() => (
-    selectedModel?.supported_durations
-      ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
-      : []
-  ), [selectedModel])
-
   // Snap settings when model changes
   useEffect(() => {
     if (selectedModel && !supportedAspectRatios.includes(aspectRatio)) {
@@ -600,8 +626,7 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { if (!supportsSound) setWithSound(false) }, [supportsSound])
 
-  // Default targetDuration: pick the longest supported that fits the video,
-  // or the shortest if video is too short. Re-runs when video or model changes.
+  // Default targetDuration
   useEffect(() => {
     if (modelDurations.length === 0) { setTargetDuration(null); return }
     if (motionVideo?.duration == null) { setTargetDuration(modelDurations[0]); return }
@@ -612,14 +637,14 @@ export default function CreateCopyMotionPage() {
     setTrimStart(0)
   }, [motionVideo?.duration, modelDurations])
 
-  // Clamp trimStart if it ever overflows the available window.
+  // Clamp trimStart
   useEffect(() => {
     if (!motionVideo?.duration || !targetDuration) return
     const maxStart = Math.max(0, motionVideo.duration - targetDuration)
     if (trimStart > maxStart) setTrimStart(maxStart)
   }, [motionVideo?.duration, targetDuration, trimStart])
 
-  // ── Compatibility — recomputes whenever inputs change ────
+  // ── Compatibility ────────────────────────────────────────
   const compat = useMemo(() => {
     if (!motionVideo || !selectedModel || !targetDuration) {
       return { compatible: false, reason: null, fixes: { needsTrim: false, needsCrop: false } }
@@ -647,7 +672,7 @@ export default function CreateCopyMotionPage() {
 
   const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
 
-  // ── Credit calculation (for the generation, not conversion) ─────────────
+  // ── Credit calculation ───────────────────────────────────
   const durationMultiplier = (() => {
     const d = targetDuration
     if (!d) return 1
@@ -667,15 +692,14 @@ export default function CreateCopyMotionPage() {
     ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
     : Math.ceil(baseWithDur)
 
-  const canAfford       = credits >= creditCost
+  const canAfford        = credits >= creditCost
   const canAffordConvert = credits >= CONVERSION_COST
-  const weeklyBlocked   = isNovice && weeklyUsed !== null && weeklyUsed >= weeklyLimit
-  const hasVideo        = !!motionVideo
-  const hasVideoOrGhost = hasVideo || !!videoGhostMeta
-  const hasSubject      = !!subjectImage
-  const isProcessing    = phase !== null
+  const weeklyBlocked    = isNovice && weeklyUsed !== null && weeklyUsed >= weeklyLimit
+  const hasVideo         = !!motionVideo
+  const hasVideoOrGhost  = hasVideo || !!videoGhostMeta
+  const hasSubject       = !!subjectImage
+  const isProcessing     = phase !== null
 
-  // Generation is ONLY allowed when video is already compatible.
   const canGenerate =
     hasVideo &&
     compat.compatible &&
@@ -686,40 +710,34 @@ export default function CreateCopyMotionPage() {
     !weeklyBlocked
 
   // ── Upload handlers ──────────────────────────────────────
-const handleVideoUpload = async (e) => {
-  const file = e.target.files?.[0]
-  if (!file) return
+  const handleVideoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-  if (file.size > 40 * 1024 * 1024) {
-    toast.error('Video must be under 40MB.')
-    e.target.value = ''
-    return
+    if (file.size > 40 * 1024 * 1024) {
+      toast.error('Video must be under 40MB.')
+      e.target.value = ''
+      return
+    }
+
+    const url  = URL.createObjectURL(file)
+    const meta = await readVideoMetadata(file)
+
+    if (meta.duration != null && meta.duration > 35) {
+      URL.revokeObjectURL(url)
+      toast.error('Video must be 35 seconds or under.')
+      e.target.value = ''
+      return
+    }
+
+    setMotionVideo({ file, url, duration: meta.duration, width: meta.width, height: meta.height, aspectRatio: meta.aspectRatio })
+    setVideoGhostMeta(null)
+    setConvertSuccess(null)
+    if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
+      setAspectRatio(meta.aspectRatio)
+    }
+    persistVideoMeta(file.name, meta.duration, meta.aspectRatio)
   }
-
-  const url  = URL.createObjectURL(file)
-  const meta = await readVideoMetadata(file)
-
-  if (meta.duration != null && meta.duration > 35) {
-    URL.revokeObjectURL(url)
-    toast.error('Video must be 35 seconds or under.')
-    e.target.value = ''
-    return
-  }
-
-  setMotionVideo({
-    file, url,
-    duration:    meta.duration,
-    width:       meta.width,
-    height:      meta.height,
-    aspectRatio: meta.aspectRatio,
-  })
-  setVideoGhostMeta(null)
-  setConvertSuccess(null)
-  if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
-    setAspectRatio(meta.aspectRatio)
-  }
-  persistVideoMeta(file.name, meta.duration, meta.aspectRatio)
-}
 
   const handleSubjectUpload = (e) => {
     const file = e.target.files?.[0]
@@ -729,12 +747,16 @@ const handleVideoUpload = async (e) => {
   }
 
   const handleRemoveVideo = () => {
-    if (motionVideo?.url) URL.revokeObjectURL(motionVideo.url)
+    // Only revoke object URLs created from local files
+    if (motionVideo?.url && motionVideo?.file) URL.revokeObjectURL(motionVideo.url)
     setMotionVideo(null)
     setVideoGhostMeta(null)
     setConvertSuccess(null)
     setTrimStart(0)
-    try { sessionStorage.removeItem(SS_VIDEO_META) } catch { /* noop */ }
+    try {
+      sessionStorage.removeItem(SS_VIDEO_META)
+      sessionStorage.removeItem(SS_COPY_MOTION_VIDEO)
+    } catch { /* noop */ }
   }
 
   const handleRemoveSubject = () => {
@@ -745,25 +767,28 @@ const handleVideoUpload = async (e) => {
 
   // ── Convert & Save to Assets ─────────────────────────────
   const handleConvertAndSave = async () => {
-    if (!user)              return toast.error('Please sign in')
-    if (!motionVideo?.file) return toast.error('Re-upload the video first')
-    if (!targetDuration)    return toast.error('Pick a duration to trim to')
-    if (!canAffordConvert)  return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
+    if (!user) return toast.error('Please sign in')
+
+    // Asset URL videos are already converted — no file to process
+    if (!motionVideo?.file) {
+      return toast.error('This video is already saved in your Assets and is ready to use — hit Generate.')
+    }
+
+    if (!targetDuration)   return toast.error('Pick a duration to trim to')
+    if (!canAffordConvert) return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
 
     setPhase('converting')
     setConvertProgress(0)
 
-    // Deduct credits AFTER the edge function succeeds — that way a failure
-    // doesn't leave the user charged with nothing to show for it.
     let asset
     try {
       asset = await callTranscodeEdgeFunction({
-        file:               motionVideo.file,
-        userId:             user.id,
-        targetAspectRatio:  aspectRatio,
+        file:              motionVideo.file,
+        userId:            user.id,
+        targetAspectRatio: aspectRatio,
         targetDuration,
-        startTime:          trimStart,
-        onProgress:         (p) => setConvertProgress(p),
+        startTime:         trimStart,
+        onProgress:        (p) => setConvertProgress(p),
       })
     } catch (err) {
       setPhase(null)
@@ -772,9 +797,6 @@ const handleVideoUpload = async (e) => {
       return
     }
 
-    // Now deduct — asset is already saved. If deduction fails (e.g. credits
-    // changed between checks) the asset still belongs to the user; surface a
-    // clear warning instead of silently leaving them charged.
     try {
       const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
         p_user_id:       user.id,
@@ -796,32 +818,38 @@ const handleVideoUpload = async (e) => {
     toast.success('Converted video saved to your Assets.', { duration: 4000 })
   }
 
-  // ── Generate (only when already compatible) ──────────────
+  // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (!hasVideo)            return toast.error('Upload a motion reference video')
-    if (!compat.compatible)   return toast.error('Convert the video first, then start from Assets.')
-    if (!hasSubject)          return toast.error('Upload a subject image')
-    if (!selectedModel)       return toast.error('Pick a model')
-    if (!canAfford)           return toast.error('Not enough credits')
-    if (!user)                return toast.error('Please sign in')
+    if (!hasVideo)          return toast.error('Upload a motion reference video')
+    if (!compat.compatible) return toast.error('Convert the video first, then start from Assets.')
+    if (!hasSubject)        return toast.error('Upload a subject image')
+    if (!selectedModel)     return toast.error('Pick a model')
+    if (!canAfford)         return toast.error('Not enough credits')
+    if (!user)              return toast.error('Please sign in')
 
     setPhase('submitting')
     try {
-      const uploadFile = motionVideo.file
-      const vidExt  = uploadFile.name.split('.').pop()?.toLowerCase() || 'mp4'
-      const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
-      const { error: vidErr } = await supabase.storage
-        .from('generation-uploads')
-        .upload(vidPath, uploadFile, {
-          upsert: false,
-          cacheControl: '3600',
-          contentType: uploadFile.type || 'video/mp4',
-        })
-      if (vidErr) throw new Error('Video upload failed')
-      const { data: { publicUrl: motionVideoUrl } } = supabase.storage
-        .from('generation-uploads')
-        .getPublicUrl(vidPath)
+      // Motion video — use URL directly if from Assets, otherwise upload
+      let motionVideoUrl
+      if (!motionVideo.file) {
+        motionVideoUrl = motionVideo.url
+      } else {
+        const vidExt  = motionVideo.file.name.split('.').pop()?.toLowerCase() || 'mp4'
+        const vidPath = `${user.id}/${crypto.randomUUID()}.${vidExt}`
+        const { error: vidErr } = await supabase.storage
+          .from('generation-uploads')
+          .upload(vidPath, motionVideo.file, {
+            upsert:       false,
+            cacheControl: '3600',
+            contentType:  motionVideo.file.type || 'video/mp4',
+          })
+        if (vidErr) throw new Error('Video upload failed')
+        ;({ data: { publicUrl: motionVideoUrl } } = supabase.storage
+          .from('generation-uploads')
+          .getPublicUrl(vidPath))
+      }
 
+      // Subject image — use URL directly if from Assets, otherwise upload
       let subjectImageUrl
       if (!subjectImage.file) {
         subjectImageUrl = subjectImage.url
@@ -831,9 +859,9 @@ const handleVideoUpload = async (e) => {
         const { error: imgErr } = await supabase.storage
           .from('generation-uploads')
           .upload(imgPath, subjectImage.file, {
-            upsert: false,
+            upsert:       false,
             cacheControl: '3600',
-            contentType: subjectImage.file.type,
+            contentType:  subjectImage.file.type,
           })
         if (imgErr) throw new Error('Image upload failed')
         ;({ data: { publicUrl: subjectImageUrl } } = supabase.storage
@@ -863,7 +891,7 @@ const handleVideoUpload = async (e) => {
       )
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, {
-          status: 'failed',
+          status:        'failed',
           error_message: deduct?.error || 'Insufficient credits',
         })
         throw new Error(deduct?.error || 'Not enough credits')
@@ -995,7 +1023,7 @@ const handleVideoUpload = async (e) => {
                 )}
               </div>
 
-              {/* Trim UI — only when video is loaded and longer than min supported */}
+              {/* Trim UI */}
               {motionVideo && !compat.fixes?.tooShort && modelDurations.length > 0 && (
                 <div className="rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2 mb-3">
@@ -1105,7 +1133,10 @@ const handleVideoUpload = async (e) => {
                     </div>
                     {!canAffordConvert && (
                       <p className="text-xs" style={{ color: '#ef4444' }}>
-                        Not enough credits for conversion. <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Top up</button>
+                        Not enough credits for conversion.{' '}
+                        <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
+                          Top up
+                        </button>
                       </p>
                     )}
                   </motion.div>
