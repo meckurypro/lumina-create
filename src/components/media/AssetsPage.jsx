@@ -25,17 +25,18 @@ const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
 const PAGE_SIZE   = 20
 
-const EXTRACT_END_FRAME_COST = 3
+const EXTRACT_END_FRAME_COST  = 3
 const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
 
 // ── SessionStorage keys ───────────────────────────────────────────────────────
-const SS_IMAGE_POLISH   = 'meckury_polish_image'
-const SS_IMAGE_EDIT     = 'meckury_create_images'
-const SS_VIDEO_START    = 'meckury_video_start_frame'
-const SS_TH_SUBJECT_IMG = 'meckury_th_subject_img'
-const SS_TH_SUBJECT_VID = 'meckury_th_subject_vid'
-const SS_COPY_SUBJECT   = 'meckury_copymotion_subject'
-const SS_VIDEO_OMNI_REF = 'meckury_video_omni_ref'
+const SS_IMAGE_POLISH        = 'meckury_polish_image'
+const SS_IMAGE_EDIT          = 'meckury_create_images'
+const SS_VIDEO_START         = 'meckury_video_start_frame'
+const SS_TH_SUBJECT_IMG      = 'meckury_th_subject_img'
+const SS_TH_SUBJECT_VID      = 'meckury_th_subject_vid'
+const SS_COPY_SUBJECT        = 'meckury_copymotion_subject'
+const SS_COPY_MOTION_VIDEO   = 'meckury_copymotion_video_asset'   // video → Copy Motion
+const SS_VIDEO_OMNI_REF      = 'meckury_video_omni_ref'
 
 // ── Time filter config ────────────────────────────────────────────────────────
 const TIME_FILTERS = [
@@ -224,10 +225,10 @@ function SkeletonCard() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AssetsPage() {
-  const navigate                          = useNavigate()
+  const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
-  const fileInputRef                      = useRef(null)
-  const debounceRef                       = useRef(null)
+  const fileInputRef                               = useRef(null)
+  const debounceRef                                = useRef(null)
 
   const isMaster = profile?.user_tier === 'master'
 
@@ -243,15 +244,15 @@ export default function AssetsPage() {
   const [search,       setSearch]       = useState('')
   const [searchQuery,  setSearchQuery]  = useState('')
 
-  const [uploading,       setUploading]       = useState(false)
-  const [previewAsset,    setPreviewAsset]    = useState(null)
-  const [activeAsset,     setActiveAsset]     = useState(null)
-  const [sheetOpen,       setSheetOpen]       = useState(false)
-  const [pendingDelete,   setPendingDelete]   = useState(null)
-  const [renamingId,      setRenamingId]      = useState(null)
-  const [renameValue,     setRenameValue]     = useState('')
-  const [extractingId,    setExtractingId]    = useState(null)
-  const [extractConfirmAsset, setExtractConfirmAsset] = useState(null)
+  const [uploading,            setUploading]            = useState(false)
+  const [previewAsset,         setPreviewAsset]         = useState(null)
+  const [activeAsset,          setActiveAsset]          = useState(null)
+  const [sheetOpen,            setSheetOpen]            = useState(false)
+  const [pendingDelete,        setPendingDelete]        = useState(null)
+  const [renamingId,           setRenamingId]           = useState(null)
+  const [renameValue,          setRenameValue]          = useState('')
+  const [extractingId,         setExtractingId]         = useState(null)
+  const [extractConfirmAsset,  setExtractConfirmAsset]  = useState(null)
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -406,14 +407,17 @@ export default function AssetsPage() {
 
   const handleLipsyncVideo = (asset) =>
     prepareAndNavigate(asset, SS_TH_SUBJECT_VID, '/create/talking-head', {
-      alsoRemove: [SS_TH_SUBJECT_IMG],
+      alsoRemove:   [SS_TH_SUBJECT_IMG],
+      fallbackType: 'video/mp4',
+    })
+
+  // Set video as motion reference in Copy Motion
+  const handleSetVideoForMotion = (asset) =>
+    prepareAndNavigate(asset, SS_COPY_MOTION_VIDEO, '/create/copy-motion', {
       fallbackType: 'video/mp4',
     })
 
   // ── Extract end frame ──────────────────────────────────────────────────────
-  // Free for master users. Costs EXTRACT_END_FRAME_COST credits for novice.
-  // Shows a confirm modal unless user has ticked "don't remind me again".
-  // Deduction fires AFTER successful extraction to avoid charging on failure.
 
   const handleExtractEndFrame = (asset) => {
     closeSheet()
@@ -779,14 +783,15 @@ export default function AssetsPage() {
             onClose={closeSheet}
             onRename={() => { closeSheet(); startRename(activeAsset) }}
             onDownload={() => handleDownload(activeAsset)}
-            onPolish={!isVideoAsset(activeAsset)         ? () => handlePolish(activeAsset)         : undefined}
-            onEditImage={!isVideoAsset(activeAsset)      ? () => handleEditImage(activeAsset)      : undefined}
-            onAnimate={!isVideoAsset(activeAsset)        ? () => handleAnimate(activeAsset)        : undefined}
-            onLipsyncImage={!isVideoAsset(activeAsset)   ? () => handleLipsyncImage(activeAsset)   : undefined}
-            onSetToMotion={!isVideoAsset(activeAsset)    ? () => handleSetToMotion(activeAsset)    : undefined}
-            onEditVideo={isVideoAsset(activeAsset)       ? () => handleEditVideo(activeAsset)      : undefined}
-            onLipsyncVideo={isVideoAsset(activeAsset)    ? () => handleLipsyncVideo(activeAsset)   : undefined}
-            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset): undefined}
+            onPolish={!isVideoAsset(activeAsset)              ? () => handlePolish(activeAsset)            : undefined}
+            onEditImage={!isVideoAsset(activeAsset)           ? () => handleEditImage(activeAsset)         : undefined}
+            onAnimate={!isVideoAsset(activeAsset)             ? () => handleAnimate(activeAsset)           : undefined}
+            onLipsyncImage={!isVideoAsset(activeAsset)        ? () => handleLipsyncImage(activeAsset)      : undefined}
+            onSetToMotion={!isVideoAsset(activeAsset)         ? () => handleSetToMotion(activeAsset)       : undefined}
+            onEditVideo={isVideoAsset(activeAsset)            ? () => handleEditVideo(activeAsset)         : undefined}
+            onLipsyncVideo={isVideoAsset(activeAsset)         ? () => handleLipsyncVideo(activeAsset)      : undefined}
+            onSetVideoForMotion={isVideoAsset(activeAsset)    ? () => handleSetVideoForMotion(activeAsset) : undefined}
+            onExtractEndFrame={isVideoAsset(activeAsset)      ? () => handleExtractEndFrame(activeAsset)   : undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -847,6 +852,9 @@ export default function AssetsPage() {
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssetCard
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
@@ -943,7 +951,7 @@ function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRena
 function AssetActionSheet({
   asset, isMaster, onClose, onRename, onDownload, onDelete,
   onPolish, onEditImage, onAnimate, onLipsyncImage, onSetToMotion,
-  onEditVideo, onLipsyncVideo, onExtractEndFrame,
+  onEditVideo, onLipsyncVideo, onSetVideoForMotion, onExtractEndFrame,
 }) {
   const isVideo = isVideoAsset(asset)
 
@@ -958,9 +966,10 @@ function AssetActionSheet({
       { icon: Clapperboard, label: 'Set to Motion', sub: 'Use in Copy Motion',      onClick: onSetToMotion  },
     ] : []),
     ...(isVideo ? [
-      { icon: Wand2,    label: 'Edit',              sub: 'Use as video reference',                                                          onClick: onEditVideo       },
-      { icon: Mic2,     label: 'Lipsync',           sub: 'Re-animate with audio',                                                          onClick: onLipsyncVideo    },
-      { icon: ScanLine, label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`, onClick: onExtractEndFrame },
+      { icon: Wand2,        label: 'Edit',            sub: 'Use as video reference',                                                                          onClick: onEditVideo         },
+      { icon: Mic2,         label: 'Lipsync',         sub: 'Re-animate with audio',                                                                           onClick: onLipsyncVideo      },
+      { icon: Clapperboard, label: 'Set for Motion',  sub: 'Use as motion reference in Copy Motion',                                                          onClick: onSetVideoForMotion },
+      { icon: ScanLine,     label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`,   onClick: onExtractEndFrame   },
     ] : []),
     { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
   ]
@@ -1045,7 +1054,6 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
         style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Icon + title */}
         <div className="flex items-start gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -1063,7 +1071,6 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
           </div>
         </div>
 
-        {/* Cost callout */}
         <div
           className="flex items-center gap-3 px-4 py-3 rounded-xl"
           style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}
@@ -1074,7 +1081,6 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
           </p>
         </div>
 
-        {/* Master plan upsell */}
         <div
           className="flex items-center gap-3 px-4 py-3 rounded-xl"
           style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}
@@ -1085,7 +1091,6 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
           </p>
         </div>
 
-        {/* Don't remind me */}
         <button
           onClick={() => setSkipNext((v) => !v)}
           className="flex items-center gap-2.5 w-fit"
@@ -1104,7 +1109,6 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
           </span>
         </button>
 
-        {/* Actions */}
         <div className="flex gap-3">
           <button
             onClick={onCancel}
