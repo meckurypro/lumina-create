@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
@@ -484,8 +485,9 @@ export default function CreateVideoPage() {
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-    const isMaster = profile?.user_tier === 'master'
-    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+   const isMaster = profile?.user_tier === 'master'
+    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list     = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
     return list
