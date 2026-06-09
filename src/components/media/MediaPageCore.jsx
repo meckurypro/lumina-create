@@ -334,7 +334,9 @@ export default function MediaPageCore({
           // Deep-equal check on status + output_url to avoid unnecessary updates
           if (fresh.status === g.status && fresh.output_url === g.output_url) return g
           changed = true
-          return { ...fresh, ...preserveUGCKeys(g, fresh) }
+          // Merge narrow poll result onto existing full row — preserves
+          // columns we deliberately did not re-select.
+          return { ...g, ...fresh, ...preserveUGCKeys(g, fresh) }
         })
         return changed ? next : prev
       })
@@ -440,7 +442,7 @@ export default function MediaPageCore({
 
       if (fresh) {
         setItems((prev) => prev.map((g) =>
-          g.id === gen.id ? { ...fresh, ...preserveUGCKeys(g, fresh) } : g
+          g.id === gen.id ? { ...g, ...fresh, ...preserveUGCKeys(g, fresh) } : g
         ))
       }
 
