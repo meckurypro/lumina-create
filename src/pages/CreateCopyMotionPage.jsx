@@ -6,7 +6,6 @@ import {
   AlertCircle, RefreshCw, CheckCircle2, Scissors,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import MasterGate from '@/components/ui/MasterGate'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -16,6 +15,9 @@ const ACCENT_SUB = 'var(--tool-motion-subtle)'
 const ACCENT_BDR = 'var(--tool-motion-border)'
 
 const CONVERSION_COST = 2
+
+// ── Subject image constraints (Kling API limits) ───────────────────────────
+const SUBJECT_IMAGE_MAX_BYTES = 10 * 1024 * 1024 // 10 MB hard limit per WaveSpeed/Kling docs
 
 // ── Session storage keys ───────────────────────────────────────────────────
 const SS_SUBJECT_IMG       = 'meckury_copymotion_subject'
@@ -109,7 +111,7 @@ const readVideoMetadata = (file) => new Promise((resolve) => {
   vid.src = url
 })
 
-// ── Compat check ───────────────────────────────────────────────────────────
+// ── Compatibility check ────────────────────────────────────────────────────
 function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDuration }) {
   if (!model || !videoMeta) {
     return { compatible: false, reason: 'Video or model not ready', fixes: { needsTrim: false, needsCrop: false } }
@@ -122,7 +124,7 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
     return { compatible: false, reason: 'Model has no supported durations configured', fixes: { needsTrim: false, needsCrop: false } }
   }
 
-  const minDur  = durations[0]
+  const minDur   = durations[0]
   const aspectOk = supportedRatios.includes(videoMeta.aspectRatio) &&
                    videoMeta.aspectRatio === targetAspectRatio
 
@@ -153,11 +155,13 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
 }
 
 // ── Edge function caller ───────────────────────────────────────────────────
+// Returns { url, duration, aspectRatio, width, height } — no assets row.
 async function callTranscodeEdgeFunction({
   file, userId, targetAspectRatio, targetDuration, startTime, onProgress,
 }) {
   onProgress?.(5)
 
+  // Upload source file to generation-uploads for the edge function to fetch
   const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
   const srcPath = `${userId}/copy-motion-src/${crypto.randomUUID()}.${ext}`
   const { error: upErr } = await supabase.storage
@@ -169,12 +173,14 @@ async function callTranscodeEdgeFunction({
     })
   if (upErr) throw new Error(upErr.message || 'Could not upload source video')
 
-  onProgress?.(25)
+  onProgress?.(20)
+
   const { data: { publicUrl: sourceUrl } } = supabase.storage
     .from('generation-uploads')
     .getPublicUrl(srcPath)
 
-  let virtualPct = 30
+  // Virtual progress ticker while the edge function trims + scales
+  let virtualPct = 25
   const tick = setInterval(() => {
     virtualPct = Math.min(virtualPct + 2, 90)
     onProgress?.(virtualPct)
@@ -188,7 +194,6 @@ async function callTranscodeEdgeFunction({
         targetAspectRatio,
         targetDuration,
         startTime,
-        originalFilename: file.name,
       },
     })
     if (error)          throw new Error(error.message || 'Conversion edge function failed')
@@ -196,11 +201,20 @@ async function callTranscodeEdgeFunction({
     result = data
   } finally {
     clearInterval(tick)
+    // Clean up the source upload; the processed file lives in copy-motion-processed/
     supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {})
   }
 
   onProgress?.(100)
-  return result.asset
+
+  // Return the processed video metadata for inline card hydration
+  return {
+    url:         result.url,
+    duration:    result.duration,
+    aspectRatio: result.aspectRatio,
+    width:       result.width,
+    height:      result.height,
+  }
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -313,6 +327,7 @@ const CompatBadge = ({ status }) => {
   const map = {
     checking:     { bg: 'rgba(0,0,0,0.72)',      color: '#fff', icon: <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }} className="w-3 h-3 rounded-full border border-white" style={{ borderTopColor: 'transparent' }} />, text: 'Checking…' },
     compatible:   { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready'            },
+    converted:    { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Converted · Ready' },
     incompatible: { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs conversion' },
     rejected:     { bg: 'rgba(239,68,68,0.92)',  color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'        },
   }
@@ -396,7 +411,7 @@ const VideoUploadZone = ({ value, ghostMeta, onUpload, onRemove, compatStatus, t
   )
 }
 
-const ImageUploadZone = ({ value, onUpload, onRemove }) => {
+const ImageUploadZone = ({ value, onUpload, onRemove, sizeError }) => {
   if (value) {
     return (
       <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
@@ -413,17 +428,30 @@ const ImageUploadZone = ({ value, onUpload, onRemove }) => {
   }
 
   return (
-    <label
-      className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-    >
-      <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
-      <ImageIcon size={24} style={{ color: ACCENT, marginBottom: 8 }} />
-      <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload image</span>
-      <span className="text-xs mt-1 text-center px-4" style={{ color: 'var(--text-muted)' }}>
-        The image that moves
-      </span>
-    </label>
+    <div className="flex flex-col gap-1.5">
+      <label
+        className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
+        style={{
+          aspectRatio: '1/1',
+          border:      `1.5px dashed ${sizeError ? 'rgba(239,68,68,0.6)' : ACCENT_BDR}`,
+          background:  sizeError ? 'rgba(239,68,68,0.06)' : ACCENT_SUB,
+        }}
+      >
+        <input type="file" accept="image/jpeg,image/jpg,image/png" className="hidden" onChange={onUpload} />
+        <ImageIcon size={24} style={{ color: sizeError ? '#ef4444' : ACCENT, marginBottom: 8 }} />
+        <span className="text-sm font-semibold" style={{ color: sizeError ? '#ef4444' : ACCENT }}>
+          {sizeError ? 'Image too large' : 'Upload image'}
+        </span>
+        <span className="text-xs mt-1 text-center px-4" style={{ color: 'var(--text-muted)' }}>
+          {sizeError ? 'Max 10 MB · Try a smaller file' : 'The image that moves'}
+        </span>
+      </label>
+      {sizeError && (
+        <p className="text-xs text-center" style={{ color: '#ef4444' }}>
+          Kling rejects images over 10 MB. Use a smaller file.
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -476,7 +504,7 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
           <div className="text-center">
             <p className="text-sm font-bold tracking-wide" style={{ color: '#fff' }}>Converting your video</p>
             <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,0.55)', maxWidth: 240, lineHeight: 1.6 }}>
-              Trimming, cropping and re-encoding on the server. Hang tight.
+              Trimming, cropping and re-encoding. Hang tight.
             </p>
           </div>
         </>
@@ -507,6 +535,7 @@ export default function CreateCopyMotionPage() {
   const [motionVideo,    setMotionVideo]    = useState(null)
   const [videoGhostMeta, setVideoGhostMeta] = useState(null)
   const [subjectImage,   setSubjectImage]   = useState(null)
+  const [subjectSizeErr, setSubjectSizeErr] = useState(false)
 
   // Settings
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
@@ -520,9 +549,8 @@ export default function CreateCopyMotionPage() {
   const [trimStart,      setTrimStart]      = useState(0)
 
   // Pipeline
-  const [phase,           setPhase]           = useState(null)
+  const [phase,           setPhase]           = useState(null) // null | 'converting' | 'submitting'
   const [convertProgress, setConvertProgress] = useState(0)
-  const [convertSuccess,  setConvertSuccess]  = useState(null)
 
   // ── Load models ──────────────────────────────────────────
   const loadModels = useCallback(async () => {
@@ -545,7 +573,7 @@ export default function CreateCopyMotionPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // ── Derived model config (needed before mount effect) ────
+  // ── Derived model config ─────────────────────────────────
   const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
   const supportsSound         = selectedModel?.supports_sound ?? false
@@ -557,7 +585,7 @@ export default function CreateCopyMotionPage() {
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
-    // Restore subject image (file upload or Assets "Set to Motion")
+    // Restore subject image
     restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
 
     // Restore motion video passed from Assets "Set for Motion"
@@ -581,16 +609,15 @@ export default function CreateCopyMotionPage() {
             persistVideoMeta(payload.name, duration, aspectRatio)
           }
           vid.onerror = () => {
-            // Metadata unavailable — populate with URL only
             setMotionVideo({ file: null, url: payload.url, duration: null, width: null, height: null, aspectRatio: null })
           }
           vid.src = payload.url
-          return // skip ghost meta restore — we have a live video
+          return
         }
       }
     } catch { /* noop */ }
 
-    // Restore ghost meta for re-upload prompt (file upload path only)
+    // Restore ghost meta for re-upload prompt
     const meta = restoreVideoMeta()
     if (meta) {
       setVideoGhostMeta(meta)
@@ -617,7 +644,7 @@ export default function CreateCopyMotionPage() {
     fetchWeekly()
   }, [isNovice, profile?.id])
 
-  // Snap settings when model changes
+  // Snap aspect ratio when model changes
   useEffect(() => {
     if (selectedModel && !supportedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(supportedAspectRatios[0] ?? '9:16')
@@ -666,9 +693,11 @@ export default function CreateCopyMotionPage() {
     ? null
     : compat.fixes?.tooShort
       ? 'rejected'
-      : compat.compatible
-        ? 'compatible'
-        : 'incompatible'
+      : motionVideo._converted
+        ? 'converted'
+        : compat.compatible
+          ? 'compatible'
+          : 'incompatible'
 
   const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
 
@@ -704,6 +733,7 @@ export default function CreateCopyMotionPage() {
     hasVideo &&
     compat.compatible &&
     hasSubject &&
+    !subjectSizeErr &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
@@ -715,7 +745,7 @@ export default function CreateCopyMotionPage() {
     if (!file) return
 
     if (file.size > 40 * 1024 * 1024) {
-      toast.error('Video must be under 40MB.')
+      toast.error('Video must be under 40 MB.')
       e.target.value = ''
       return
     }
@@ -732,7 +762,6 @@ export default function CreateCopyMotionPage() {
 
     setMotionVideo({ file, url, duration: meta.duration, width: meta.width, height: meta.height, aspectRatio: meta.aspectRatio })
     setVideoGhostMeta(null)
-    setConvertSuccess(null)
     if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
       setAspectRatio(meta.aspectRatio)
     }
@@ -742,16 +771,24 @@ export default function CreateCopyMotionPage() {
   const handleSubjectUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // Hard gate — Kling API rejects images over 10 MB
+    if (file.size > SUBJECT_IMAGE_MAX_BYTES) {
+      setSubjectSizeErr(true)
+      setSubjectImage(null)
+      e.target.value = ''
+      return
+    }
+
+    setSubjectSizeErr(false)
     setSubjectImage({ file, url: URL.createObjectURL(file) })
     persistImage(SS_SUBJECT_IMG, file)
   }
 
   const handleRemoveVideo = () => {
-    // Only revoke object URLs created from local files
     if (motionVideo?.url && motionVideo?.file) URL.revokeObjectURL(motionVideo.url)
     setMotionVideo(null)
     setVideoGhostMeta(null)
-    setConvertSuccess(null)
     setTrimStart(0)
     try {
       sessionStorage.removeItem(SS_VIDEO_META)
@@ -762,27 +799,25 @@ export default function CreateCopyMotionPage() {
   const handleRemoveSubject = () => {
     if (subjectImage?.url) URL.revokeObjectURL(subjectImage.url)
     setSubjectImage(null)
+    setSubjectSizeErr(false)
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-  // ── Convert & Save to Assets ─────────────────────────────
-  const handleConvertAndSave = async () => {
-    if (!user) return toast.error('Please sign in')
-
-    // Asset URL videos are already converted — no file to process
-    if (!motionVideo?.file) {
-      return toast.error('This video is already saved in your Assets and is ready to use — hit Generate.')
-    }
-
-    if (!targetDuration)   return toast.error('Pick a duration to trim to')
-    if (!canAffordConvert) return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
+  // ── Convert ──────────────────────────────────────────────
+  // Converts the incompatible video and hydrates the card inline.
+  // No assets row is written; no redirect required.
+  const handleConvert = async () => {
+    if (!user)              return toast.error('Please sign in')
+    if (!motionVideo?.file) return toast.error('This video is already compatible — hit Generate.')
+    if (!targetDuration)    return toast.error('Pick a duration to trim to')
+    if (!canAffordConvert)  return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
 
     setPhase('converting')
     setConvertProgress(0)
 
-    let asset
+    let processed
     try {
-      asset = await callTranscodeEdgeFunction({
+      processed = await callTranscodeEdgeFunction({
         file:              motionVideo.file,
         userId:            user.id,
         targetAspectRatio: aspectRatio,
@@ -797,6 +832,7 @@ export default function CreateCopyMotionPage() {
       return
     }
 
+    // Deduct conversion credits
     try {
       const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
         p_user_id:       user.id,
@@ -805,31 +841,43 @@ export default function CreateCopyMotionPage() {
         p_description:   'Copy Motion video conversion',
       })
       if (dErr || !deduct?.success) {
-        toast.error('Asset saved, but we could not charge credits: ' + (deduct?.error || dErr?.message || 'unknown'))
+        toast.error('Converted, but credit charge failed: ' + (deduct?.error || dErr?.message || 'unknown'))
       }
     } catch (err) {
-      toast.error('Asset saved, but credit charge failed: ' + (err?.message || 'unknown'))
+      toast.error('Converted, but credit charge failed: ' + (err?.message || 'unknown'))
     }
 
     refreshProfile()
-    setConvertSuccess(asset)
     setPhase(null)
     setConvertProgress(0)
-    toast.success('Converted video saved to your Assets.', { duration: 4000 })
+
+    // Hydrate the video card inline — mark as converted so the badge shows correctly
+    setMotionVideo({
+      file:        null,
+      url:         processed.url,
+      duration:    processed.duration,
+      width:       processed.width,
+      height:      processed.height,
+      aspectRatio: processed.aspectRatio,
+      _converted:  true,
+    })
+
+    toast.success('Video converted — ready to generate!', { duration: 3000 })
   }
 
   // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!hasVideo)          return toast.error('Upload a motion reference video')
-    if (!compat.compatible) return toast.error('Convert the video first, then start from Assets.')
+    if (!compat.compatible) return toast.error('Convert the video first, then generate.')
     if (!hasSubject)        return toast.error('Upload a subject image')
+    if (subjectSizeErr)     return toast.error('Subject image is too large. Use a file under 10 MB.')
     if (!selectedModel)     return toast.error('Pick a model')
     if (!canAfford)         return toast.error('Not enough credits')
     if (!user)              return toast.error('Please sign in')
 
     setPhase('submitting')
     try {
-      // Motion video — use URL directly if from Assets, otherwise upload
+      // Motion video — use URL directly if already processed/from Assets
       let motionVideoUrl
       if (!motionVideo.file) {
         motionVideoUrl = motionVideo.url
@@ -968,6 +1016,7 @@ export default function CreateCopyMotionPage() {
             <NoModelsState />
           ) : (
             <>
+              {/* Info banner */}
               <div className="rounded-2xl px-4 py-3 flex gap-3 items-start" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                 <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
@@ -976,9 +1025,10 @@ export default function CreateCopyMotionPage() {
                 </p>
               </div>
 
+              {/* Upload grid */}
               <div>
                 <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Inputs</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 items-start">
                   <div className="flex flex-col gap-1.5">
                     <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Motion Video</p>
                     <VideoUploadZone
@@ -996,6 +1046,7 @@ export default function CreateCopyMotionPage() {
                       value={subjectImage}
                       onUpload={handleSubjectUpload}
                       onRemove={handleRemoveSubject}
+                      sizeError={subjectSizeErr}
                     />
                   </div>
                 </div>
@@ -1015,10 +1066,15 @@ export default function CreateCopyMotionPage() {
                   )}
                 </AnimatePresence>
 
-                {/* Compatible — green confirmation */}
+                {/* Compatible confirmation */}
                 {compat.compatible && motionVideo && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                    Video is <strong style={{ color: ACCENT }}>{motionVideo.duration}s · {motionVideo.aspectRatio}</strong> — ready to generate.
+                    Video is{' '}
+                    <strong style={{ color: ACCENT }}>
+                      {motionVideo.duration}s · {motionVideo.aspectRatio}
+                      {motionVideo._converted && ' · converted'}
+                    </strong>{' '}
+                    — ready to generate.
                   </p>
                 )}
               </div>
@@ -1084,9 +1140,9 @@ export default function CreateCopyMotionPage() {
                 </div>
               )}
 
-              {/* Conversion confirmation panel */}
+              {/* Conversion panel — shown when video needs processing */}
               <AnimatePresence>
-                {needsConversion && !convertSuccess && (
+                {needsConversion && (
                   <motion.div
                     initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.15 }}
@@ -1105,14 +1161,13 @@ export default function CreateCopyMotionPage() {
                         </p>
                         <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                           Cost: <strong style={{ color: 'var(--text-primary)' }}>{CONVERSION_COST} credits</strong>.
-                          The converted video is saved to your <strong style={{ color: 'var(--text-primary)' }}>Assets</strong>.
-                          To run Copy Motion, open the asset from there.
+                          The converted video will load directly here — no redirect needed.
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={handleConvertAndSave}
+                        onClick={handleConvert}
                         disabled={!canAffordConvert || isProcessing}
                         className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
                         style={{
@@ -1121,7 +1176,7 @@ export default function CreateCopyMotionPage() {
                           cursor:     canAffordConvert && !isProcessing ? 'pointer' : 'not-allowed',
                         }}
                       >
-                        Convert &amp; Save to Assets · {CONVERSION_COST} cr
+                        Convert &amp; Continue · {CONVERSION_COST} cr
                       </button>
                       <button
                         onClick={handleRemoveVideo}
@@ -1139,35 +1194,6 @@ export default function CreateCopyMotionPage() {
                         </button>
                       </p>
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Conversion success */}
-              <AnimatePresence>
-                {convertSuccess && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="rounded-2xl p-4 flex flex-col gap-3"
-                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)' }}
-                  >
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 size={16} style={{ color: '#10b981', marginTop: 2, flexShrink: 0 }} />
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: '#10b981' }}>Converted &amp; saved to Assets</p>
-                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                          Open your Assets to pick the converted video and start a fresh Copy Motion run from there.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => navigate('/media?tab=assets')}
-                      className="w-full py-2.5 rounded-xl text-sm font-semibold"
-                      style={{ background: ACCENT, color: '#fff' }}
-                    >
-                      Go to Assets
-                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1223,7 +1249,8 @@ export default function CreateCopyMotionPage() {
                   : 'Generate'}
             </button>
 
-            {needsConversion && !convertSuccess && (
+            {/* Contextual hint text */}
+            {needsConversion && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Convert your video above to continue.
               </p>
@@ -1241,6 +1268,11 @@ export default function CreateCopyMotionPage() {
             {videoGhostMeta && !motionVideo && hasSubject && (
               <p className="text-xs text-center mt-2" style={{ color: ACCENT }}>
                 Re-upload your motion video to continue
+              </p>
+            )}
+            {subjectSizeErr && !subjectImage && (
+              <p className="text-xs text-center mt-2" style={{ color: '#ef4444' }}>
+                Subject image exceeds 10 MB. Upload a smaller file to continue.
               </p>
             )}
             {compat.compatible && hasVideo && hasSubject && !canAfford && (
