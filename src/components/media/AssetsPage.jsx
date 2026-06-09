@@ -213,10 +213,7 @@ function AssetCard({
   onPreview, onMore,
 }) {
   const inputRef            = useRef(null)
-  const cardRef             = useRef(null)
   const [imgErr, setImgErr] = useState(false)
-
-  const visible = useIntersection(cardRef, '300px')
 
   useEffect(() => {
     if (isRenaming) setTimeout(() => inputRef.current?.focus(), 50)
@@ -224,7 +221,6 @@ function AssetCard({
 
   return (
     <div
-      ref={cardRef}
       className="flex items-center gap-3 px-4 py-3 rounded-2xl"
       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
     >
@@ -237,11 +233,7 @@ function AssetCard({
         {imgErr ? (
           <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
         ) : (
-          <AssetThumb
-            asset={asset}
-            visible={visible}
-            onError={() => setImgErr(true)}
-          />
+          <AssetThumb asset={asset} onError={() => setImgErr(true)} />
         )}
         <div
           className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
