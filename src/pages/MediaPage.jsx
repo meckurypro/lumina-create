@@ -32,14 +32,13 @@ const TABS = [
 const GEN_LIST_COLUMNS = [
   'id', 'user_id', 'status', 'created_at',
   'output_url', 'output_thumbnail_url', 'output_type',
-  'prompt', 'ugc_scene_prompt', 'ugc_filter_applied', 'ugc_aspect_ratio',
-  'ugc_generation_id',
-  'model', 'credits_charged', 'error_message',
+  'prompt', 'model', 'credits_charged', 'error_message',
   'generation_type', 'aspect_ratio', 'duration',
   'input_image_urls', 'start_frame_url', 'end_frame_url',
   'template_id', 'with_sound', 'skip_prompt_refinement',
   'provider_request_id', 'original_prompt', 'is_smart_edit',
-  'prompt_engineering_used',
+  'prompt_engineering_used', 'generation_metadata',
+  'title', 'resolution',
 ].join(', ')
 
 async function fetchGenerations(user, { limit, offset, afterIso, statusFilter }) {
