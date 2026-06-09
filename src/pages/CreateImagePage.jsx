@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
@@ -397,7 +398,8 @@ const [submitting,    setSubmitting]    = useState(false)
       .eq('is_user_facing', true)
       .order('sort_order')
     const isMaster = profile?.user_tier === 'master'
-    const list     = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list     = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const unlocked = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
