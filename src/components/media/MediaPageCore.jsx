@@ -40,7 +40,7 @@ import { uploadAsset } from '@/lib/assets'
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 12
 const POLL_MS   = 4_000
 
 export const TIME_FILTERS = [
@@ -316,9 +316,10 @@ export default function MediaPageCore({
     if (!pendingIds.length || !user) return
 
     pollRef.current = setInterval(async () => {
+      // Tight column set — polling only needs to know status + final URLs.
       const { data, error } = await supabase
         .from('generations')
-        .select('*')
+        .select('id, status, output_url, output_thumbnail_url, error_message, provider_request_id')
         .in('id', pendingIds)
 
       if (error || !data) return
