@@ -30,7 +30,6 @@ const Row = ({ icon: Icon, label, value, onClick, last = false }) => (
   </button>
 )
 
-// Toggle row — no chevron, just a pill switch
 const ToggleRow = ({ icon: Icon, label, sublabel, checked, onChange, last = false }) => (
   <div
     className="w-full flex items-center gap-3 px-4 py-4"
@@ -81,15 +80,12 @@ export default function SettingsPage() {
   const [bio,            setBio]            = useState(profile?.bio || '')
   const [profileLoading, setProfileLoading] = useState(false)
 
-  // ai_prompt_refinement defaults to true if not yet in DB
   const promptRefinement = profile?.ai_prompt_refinement ?? true
 
   const handleToggleRefinement = async (next) => {
-    // Optimistic update
     updateProfileLocal({ ai_prompt_refinement: next })
     const { data, error } = await profiles.update(user.id, { ai_prompt_refinement: next })
     if (error) {
-      // Roll back
       updateProfileLocal({ ai_prompt_refinement: !next })
       toast.error('Could not save preference')
     }
@@ -216,6 +212,11 @@ export default function SettingsPage() {
                 label="Edit profile"
                 value={profile?.display_name || profile?.username}
                 onClick={() => setShowEditProfile(true)}
+              />
+              <Row
+                icon={Sparkles}
+                label="Model preferences"
+                onClick={() => navigate('/settings/models')}
               />
               <Row
                 icon={Lock}
