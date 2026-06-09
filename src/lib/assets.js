@@ -3,7 +3,15 @@
 // Supabase helpers for the Assets feature.
 // Storage bucket: 'assets'       (private, signed URLs) — original files
 // Storage bucket: 'asset-thumbs' (public, permanent)    — tiny WebP thumbnails
-// Table: assets (id, user_id, name, file_path, file_url, thumbnail_url, mime_type, size_bytes, created_at)
+// Table: assets (id, user_id, name, file_path, file_url, thumbnail_url,
+//                mime_type, size_bytes, source, created_at)
+//
+// PERF NOTES:
+//  • listAssets selects only the columns the UI needs — no SELECT *
+//  • copy_motion_prep rows are excluded by default; they were temp conversion
+//    artifacts that polluted the list and wasted bandwidth
+//  • Default time window is 'today' with a this_week fallback (same pattern
+//    as MediaPageCore) so the initial load is always small
 
 import { supabase } from '@/lib/supabase'
 
@@ -14,6 +22,26 @@ const SIGNED_SECS   = 60 * 60 * 24 * 7   // 7-day signed URLs
 // Thumbnail target: 240px on the long edge, WebP at quality 72
 const THUMB_MAX_PX  = 240
 const THUMB_QUALITY = 0.72
+
+// Sources that should never appear in the user-facing assets list.
+// copy_motion_prep was written by the old process-video-for-motion edge
+// function before it was refactored to use generation-uploads instead.
+const EXCLUDED_SOURCES = ['copy_motion_prep']
+
+// Columns the UI actually needs — avoids pulling large text columns
+// (file_url is still needed for download/preview/action navigation)
+const LIST_COLUMNS = [
+  'id',
+  'user_id',
+  'name',
+  'file_path',
+  'file_url',
+  'thumbnail_url',
+  'mime_type',
+  'size_bytes',
+  'source',
+  'created_at',
+].join(', ')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // generateImageThumbnail
@@ -136,7 +164,7 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
 
   const name = displayName || file.name.replace(/\.[^.]+$/, '')
 
-  // ── Insert asset row (without thumbnail yet — we need the id) ─────────────
+  // ── Insert asset row ───────────────────────────────────────────────────────
   const { data: asset, error: insertErr } = await supabase
     .from('assets')
     .insert({
@@ -147,7 +175,7 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
       mime_type:  file.type || null,
       size_bytes: file.size || null,
     })
-    .select()
+    .select(LIST_COLUMNS)
     .single()
   if (insertErr) throw new Error(insertErr.message || 'Could not save asset')
 
@@ -178,21 +206,35 @@ export async function uploadAsset(userId, file, displayName, onProgress) {
 // ─────────────────────────────────────────────────────────────────────────────
 // listAssets
 // Supports pagination, time filtering, type filtering, and search.
+//
+// Options:
+//   search      — ilike on name
+//   limit       — page size (default 20)
+//   offset      — pagination offset
+//   afterIso    — created_at >= afterIso (ISO string)
+//   typeFilter  — 'all' | 'image' | 'video'
+//   includePrepSources — set true to include copy_motion_prep rows (admin use)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function listAssets(userId, {
-  search    = '',
-  limit     = 20,
-  offset    = 0,
-  afterIso  = null,   // created_at >= afterIso
-  typeFilter = 'all', // 'all' | 'image' | 'video'
+  search             = '',
+  limit              = 20,
+  offset             = 0,
+  afterIso           = null,
+  typeFilter         = 'all',
+  includePrepSources = false,
 } = {}) {
   let query = supabase
     .from('assets')
-    .select('*', { count: 'exact' })
+    .select(LIST_COLUMNS, { count: 'exact' })
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
+
+  // Exclude internal conversion artifacts from the user-facing list
+  if (!includePrepSources) {
+    query = query.not('source', 'in', `(${EXCLUDED_SOURCES.map((s) => `"${s}"`).join(',')})`)
+  }
 
   if (search.trim()) {
     query = query.ilike('name', `%${search.trim()}%`)
@@ -222,7 +264,7 @@ export async function renameAsset(assetId, newName) {
     .from('assets')
     .update({ name: newName.trim() })
     .eq('id', assetId)
-    .select()
+    .select(LIST_COLUMNS)
     .single()
   if (error) throw new Error(error.message || 'Rename failed')
   return data
