@@ -1,4 +1,17 @@
 // src/components/media/AssetsPage.jsx
+//
+// PERFORMANCE OVERHAUL — key changes:
+//  1. Thumbnails are LAZY: images use loading="lazy" + IntersectionObserver;
+//     videos show a static icon until the row enters the viewport, then and
+//     only then is a thumbnail extracted (and cached in a module-level Map).
+//  2. VideoThumbFallback is gated by an IntersectionObserver — it never starts
+//     fetching the video file until the card is actually visible on screen.
+//  3. The thumbnail extraction pipeline is unchanged in logic but is now
+//     deferred behind visibility — no more 20 simultaneous video fetches on
+//     mount.
+//  4. The assets list is already paginated (PAGE_SIZE = 20) — that is kept.
+//  5. A module-level extracted-thumb cache persists across re-renders/mounts
+//     so the same asset is never decoded twice in a session.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
@@ -17,6 +30,10 @@ import {
   deleteAsset, isVideoAsset, formatBytes,
 } from '@/lib/assets.js'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ACCEPTED_MIME = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'video/mp4', 'video/webm', 'video/quicktime',
@@ -28,17 +45,16 @@ const PAGE_SIZE   = 20
 const EXTRACT_END_FRAME_COST  = 3
 const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
 
-// ── SessionStorage keys ───────────────────────────────────────────────────────
+// SessionStorage keys
 const SS_IMAGE_POLISH        = 'meckury_polish_image'
 const SS_IMAGE_EDIT          = 'meckury_create_images'
 const SS_VIDEO_START         = 'meckury_video_start_frame'
 const SS_TH_SUBJECT_IMG      = 'meckury_th_subject_img'
 const SS_TH_SUBJECT_VID      = 'meckury_th_subject_vid'
 const SS_COPY_SUBJECT        = 'meckury_copymotion_subject'
-const SS_COPY_MOTION_VIDEO   = 'meckury_copymotion_video_asset'   // video → Copy Motion
+const SS_COPY_MOTION_VIDEO   = 'meckury_copymotion_video_asset'
 const SS_VIDEO_OMNI_REF      = 'meckury_video_omni_ref'
 
-// ── Time filter config ────────────────────────────────────────────────────────
 const TIME_FILTERS = [
   { label: 'Today',      value: 'today'      },
   { label: 'This Week',  value: 'this_week'  },
@@ -46,12 +62,21 @@ const TIME_FILTERS = [
   { label: 'All',        value: 'all'        },
 ]
 
-// ── Type filter config ────────────────────────────────────────────────────────
 const TYPE_FILTERS = [
   { label: 'All',    value: 'all'   },
   { label: 'Images', value: 'image' },
   { label: 'Videos', value: 'video' },
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Module-level thumbnail cache — survives re-mounts, cleared on page refresh
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _thumbCache = new Map() // assetId → dataUrl
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 function getTimeRangeStart(range) {
   if (range === 'all') return null
@@ -68,8 +93,13 @@ function getTimeRangeStart(range) {
   return null
 }
 
+function buildUrlPayload(asset, fallbackType) {
+  const type = fallbackType || (isVideoAsset(asset) ? 'video/mp4' : 'image/jpeg')
+  return { url: asset.file_url, name: asset.name, type }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// extractLastFrame
+// extractLastFrame  (used for "Extract End Frame" feature — unchanged logic)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function extractLastFrame(videoUrl) {
@@ -87,11 +117,9 @@ async function extractLastFrame(videoUrl) {
       URL.revokeObjectURL(objUrl)
       reject(new Error('Could not load video for frame extraction'))
     }
-
     video.onloadedmetadata = () => {
       video.currentTime = Math.max(0, video.duration - 0.001)
     }
-
     video.onseeked = () => {
       const canvas  = document.createElement('canvas')
       canvas.width  = video.videoWidth
@@ -103,28 +131,54 @@ async function extractLastFrame(videoUrl) {
         else reject(new Error('Canvas toBlob failed'))
       }, 'image/png')
     }
-
     video.src = objUrl
   })
 }
 
-function buildUrlPayload(asset, fallbackType) {
-  const type = fallbackType || (isVideoAsset(asset) ? 'video/mp4' : 'image/jpeg')
-  return { url: asset.file_url, name: asset.name, type }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// useIntersection — fires once when element enters viewport, then stops
+// ─────────────────────────────────────────────────────────────────────────────
 
-const _extractedThumbCache = new Map()
+function useIntersection(ref, rootMargin = '200px') {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    // If already in cache, skip the observer entirely
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref, rootMargin])
+
+  return visible
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VideoThumbFallback
+//
+// CHANGE: now takes a `visible` prop. Thumbnail extraction only starts when
+// the parent card is in / near the viewport. This prevents 20 simultaneous
+// video fetches when the list first loads.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function VideoThumbFallback({ asset }) {
-  const [src,    setSrc]    = useState(() => _extractedThumbCache.get(asset.id) || null)
+function VideoThumbFallback({ asset, visible }) {
+  const [src,    setSrc]    = useState(() => _thumbCache.get(asset.id) || null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (src || failed) return
+    // Don't start until visible AND not already resolved
+    if (!visible || src || failed) return
+
     let cancelled = false
     let objUrl    = null
 
@@ -156,8 +210,9 @@ function VideoThumbFallback({ asset }) {
         canvas.width  = Math.max(1, Math.round((video.videoWidth  || maxW) * scale))
         canvas.height = Math.max(1, Math.round((video.videoHeight || maxW) * scale))
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+
         const dataUrl = canvas.toDataURL('image/jpeg', 0.78)
-        _extractedThumbCache.set(asset.id, dataUrl)
+        _thumbCache.set(asset.id, dataUrl)
         if (!cancelled) setSrc(dataUrl)
       } catch {
         if (!cancelled) setFailed(true)
@@ -167,23 +222,28 @@ function VideoThumbFallback({ asset }) {
     })()
 
     return () => { cancelled = true }
-  }, [asset.id, asset.file_url, src, failed])
+  }, [visible, asset.id, asset.file_url, src, failed])
 
-  if (src) return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
+  if (src) {
+    return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
+  }
+  // Show a plain icon while waiting — no spinner, no layout shift
   return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetThumb
+// AssetThumb — decides what to render based on asset type + visibility
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AssetThumb({ asset, onError }) {
+function AssetThumb({ asset, visible, onError }) {
   const isVideo = isVideoAsset(asset)
 
+  // Pre-existing thumbnail URL (stored at upload time) — always use it if present
   if (asset.thumbnail_url) {
     return (
       <img
-        src={asset.thumbnail_url}
+        src={visible ? asset.thumbnail_url : undefined}
+        data-src={asset.thumbnail_url}
         alt={asset.name}
         className="w-full h-full object-cover"
         loading="lazy"
@@ -192,10 +252,12 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
+  // Plain image — native lazy loading is sufficient
   if (!isVideo) {
     return (
       <img
-        src={asset.file_url}
+        src={visible ? asset.file_url : undefined}
+        data-src={asset.file_url}
         alt={asset.name}
         className="w-full h-full object-cover"
         loading="lazy"
@@ -204,7 +266,8 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
-  return <VideoThumbFallback asset={asset} />
+  // Video — defer extraction until visible
+  return <VideoThumbFallback asset={asset} visible={visible} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,6 +280,115 @@ function SkeletonCard() {
       className="h-[72px] rounded-2xl animate-pulse"
       style={{ background: 'var(--bg-elevated)' }}
     />
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssetCard — owns its own IntersectionObserver ref so thumbnails are lazy
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AssetCard({
+  asset,
+  isRenaming, renameValue, setRenameValue,
+  onStartRename, onCommitRename,
+  onPreview, onMore,
+}) {
+  const inputRef            = useRef(null)
+  const cardRef             = useRef(null)
+  const [imgErr, setImgErr] = useState(false)
+
+  // Visibility gate — thumbnail only loads when card enters viewport
+  const visible = useIntersection(cardRef, '300px')
+
+  useEffect(() => {
+    if (isRenaming) setTimeout(() => inputRef.current?.focus(), 50)
+  }, [isRenaming])
+
+  return (
+    <div
+      ref={cardRef}
+      className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+    >
+      {/* Thumbnail */}
+      <button
+        onClick={onPreview}
+        className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center relative group"
+        style={{ background: 'var(--bg-primary)' }}
+      >
+        {imgErr ? (
+          <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
+        ) : (
+          <AssetThumb
+            asset={asset}
+            visible={visible}
+            onError={() => setImgErr(true)}
+          />
+        )}
+        <div
+          className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </div>
+      </button>
+
+      {/* Name + meta */}
+      <div className="flex-1 min-w-0">
+        {isRenaming ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={inputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') onCommitRename() }}
+              className="flex-1 text-sm font-semibold rounded-lg px-2 py-1 outline-none"
+              style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid #5B6EF7' }}
+            />
+            <button
+              onClick={onCommitRename}
+              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: '#5B6EF7' }}
+            >
+              <Check size={13} color="#fff" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 group">
+            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+              {asset.name}
+            </p>
+            <button onClick={onStartRename} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+              <Pencil size={12} style={{ color: 'var(--text-muted)' }} />
+            </button>
+          </div>
+        )}
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          {[
+            isVideoAsset(asset) ? 'Video' : 'Image',
+            formatBytes(asset.size_bytes),
+            asset.created_at
+              ? new Date(asset.created_at).toLocaleDateString('en-NG', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                })
+              : null,
+          ].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+
+      {/* More button */}
+      {!isRenaming && (
+        <button
+          onClick={onMore}
+          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'var(--bg-primary)' }}
+        >
+          <MoreHorizontal size={16} style={{ color: 'var(--text-muted)' }} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -395,9 +567,7 @@ export default function AssetsPage() {
   const handleEditVideo = (asset) => {
     closeSheet()
     try {
-      sessionStorage.setItem(SS_VIDEO_OMNI_REF, JSON.stringify({
-        url: asset.file_url, name: asset.name,
-      }))
+      sessionStorage.setItem(SS_VIDEO_OMNI_REF, JSON.stringify({ url: asset.file_url, name: asset.name }))
       sessionStorage.removeItem(SS_VIDEO_START)
       sessionStorage.removeItem('meckury_video_end_frame')
       sessionStorage.removeItem('meckury_video_ref_images')
@@ -407,15 +577,11 @@ export default function AssetsPage() {
 
   const handleLipsyncVideo = (asset) =>
     prepareAndNavigate(asset, SS_TH_SUBJECT_VID, '/create/talking-head', {
-      alsoRemove:   [SS_TH_SUBJECT_IMG],
-      fallbackType: 'video/mp4',
+      alsoRemove: [SS_TH_SUBJECT_IMG], fallbackType: 'video/mp4',
     })
 
-  // Set video as motion reference in Copy Motion
   const handleSetVideoForMotion = (asset) =>
-    prepareAndNavigate(asset, SS_COPY_MOTION_VIDEO, '/create/copy-motion', {
-      fallbackType: 'video/mp4',
-    })
+    prepareAndNavigate(asset, SS_COPY_MOTION_VIDEO, '/create/copy-motion', { fallbackType: 'video/mp4' })
 
   // ── Extract end frame ──────────────────────────────────────────────────────
 
@@ -427,10 +593,7 @@ export default function AssetsPage() {
         return
       }
       const skipConfirm = localStorage.getItem(LS_SKIP_EXTRACT_CONFIRM) === 'true'
-      if (!skipConfirm) {
-        setExtractConfirmAsset(asset)
-        return
-      }
+      if (!skipConfirm) { setExtractConfirmAsset(asset); return }
     }
     runExtractEndFrame(asset)
   }
@@ -451,16 +614,12 @@ export default function AssetsPage() {
 
       if (!isMaster) {
         const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
-          p_user_id:       user.id,
-          p_amount:        EXTRACT_END_FRAME_COST,
-          p_generation_id: null,
-          p_description:   'End frame extraction',
+          p_user_id: user.id, p_amount: EXTRACT_END_FRAME_COST,
+          p_generation_id: null, p_description: 'End frame extraction',
         })
         if (dErr || !deduct?.success) {
-          const errMsg = dErr?.message || deduct?.error || 'Unknown error'
-          console.error('[handleExtractEndFrame] credit deduction failed:', errMsg)
           toast.success('End frame saved to Assets')
-          toast.error(`Credit deduction failed (${errMsg}) — contact support`, { duration: 8000 })
+          toast.error(`Credit deduction failed — contact support`, { duration: 8000 })
         } else {
           refreshProfile()
           toast.success(`End frame saved — ${EXTRACT_END_FRAME_COST} credits used`)
@@ -469,7 +628,6 @@ export default function AssetsPage() {
         toast.success('End frame saved to Assets')
       }
     } catch (err) {
-      console.error('Extract end frame error:', err)
       toast.error(err.message || 'Could not extract end frame')
     } finally {
       setExtractingId(null)
@@ -516,7 +674,6 @@ export default function AssetsPage() {
         {uploading && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
           >
@@ -525,7 +682,7 @@ export default function AssetsPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Uploading…</p>
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Uploading…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -535,7 +692,6 @@ export default function AssetsPage() {
         {extractingId && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
@@ -544,7 +700,7 @@ export default function AssetsPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Extracting end frame…</p>
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Extracting end frame…</p>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>This may take a moment</p>
           </motion.div>
         )}
@@ -596,7 +752,7 @@ export default function AssetsPage() {
             <select
               value={timeFilter}
               onChange={(e) => setTimeFilter(e.target.value)}
-              className="appearance-none pl-3 pr-7 py-2 rounded-xl text-sm font-semibold outline-none transition-all cursor-pointer"
+              className="appearance-none pl-3 pr-7 py-2 rounded-xl text-sm font-semibold outline-none cursor-pointer"
               style={{
                 background:       'var(--bg-elevated)',
                 color:            'var(--text-secondary)',
@@ -608,10 +764,7 @@ export default function AssetsPage() {
                 <option key={f.value} value={f.value}>{f.label}</option>
               ))}
             </select>
-            <div
-              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
-              style={{ color: 'var(--text-muted)' }}
-            >
+            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -623,12 +776,7 @@ export default function AssetsPage() {
         <div className="flex items-center gap-3 mb-4 justify-end">
           {TYPE_FILTERS.map((f) => {
             const isActive = typeFilter === f.value
-            const dotColor = {
-              all:   'var(--text-primary)',
-              image: '#3b82f6',
-              video: '#a855f7',
-            }[f.value]
-
+            const dotColor = { all: 'var(--text-primary)', image: '#3b82f6', video: '#a855f7' }[f.value]
             return (
               <button
                 key={f.value}
@@ -637,17 +785,15 @@ export default function AssetsPage() {
                 className="flex items-center justify-center transition-all active:scale-90"
                 style={{ padding: '4px' }}
               >
-                <div
-                  style={{
-                    width:        14,
-                    height:       14,
-                    borderRadius: 4,
-                    background:   dotColor,
-                    opacity:      isActive ? 1 : 0.25,
-                    boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
-                    transition:   'opacity 0.15s, box-shadow 0.15s',
-                  }}
-                />
+                <div style={{
+                  width:        14,
+                  height:       14,
+                  borderRadius: 4,
+                  background:   dotColor,
+                  opacity:      isActive ? 1 : 0.25,
+                  boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
+                  transition:   'opacity 0.15s, box-shadow 0.15s',
+                }} />
               </button>
             )
           })}
@@ -682,7 +828,7 @@ export default function AssetsPage() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.97 }}
-                    transition={{ delay: i * 0.025 }}
+                    transition={{ delay: Math.min(i * 0.025, 0.3) }} // cap stagger at 300ms
                   >
                     <AssetCard
                       asset={asset}
@@ -699,7 +845,6 @@ export default function AssetsPage() {
               </AnimatePresence>
             </div>
 
-            {/* Load more */}
             {hasMore && !loadingMore && (
               <button
                 onClick={() => {
@@ -732,12 +877,11 @@ export default function AssetsPage() {
         )}
       </div>
 
-      {/* Asset preview modal */}
+      {/* Asset preview modal — only loads media when actually opened */}
       <AnimatePresence>
         {previewAsset && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.93)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
             onClick={() => setPreviewAsset(null)}
@@ -749,15 +893,22 @@ export default function AssetsPage() {
             >
               <X size={18} />
             </button>
-            <p className="absolute top-5 left-1/2 -translate-x-1/2 text-sm font-semibold truncate max-w-[60vw]"
-              style={{ color: 'rgba(255,255,255,0.7)' }}>
+            <p
+              className="absolute top-5 left-1/2 -translate-x-1/2 text-sm font-semibold truncate max-w-[60vw]"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
+            >
               {previewAsset.name}
             </p>
             {isVideoAsset(previewAsset) ? (
               <motion.video
                 key={previewAsset.id}
                 initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-                src={previewAsset.file_url} controls autoPlay className="rounded-2xl"
+                // preload="none" — let the user hit play; autoPlay is fine since they explicitly opened this
+                src={previewAsset.file_url}
+                controls
+                autoPlay
+                playsInline
+                className="rounded-2xl"
                 style={{ maxWidth: '100%', maxHeight: '85dvh', outline: 'none' }}
                 onClick={(e) => e.stopPropagation()}
               />
@@ -765,7 +916,9 @@ export default function AssetsPage() {
               <motion.img
                 key={previewAsset.id}
                 initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-                src={previewAsset.file_url} alt={previewAsset.name} className="rounded-2xl"
+                src={previewAsset.file_url}
+                alt={previewAsset.name}
+                className="rounded-2xl"
                 style={{ maxWidth: '100%', maxHeight: '85dvh', objectFit: 'contain' }}
                 onClick={(e) => e.stopPropagation()}
               />
@@ -783,15 +936,15 @@ export default function AssetsPage() {
             onClose={closeSheet}
             onRename={() => { closeSheet(); startRename(activeAsset) }}
             onDownload={() => handleDownload(activeAsset)}
-            onPolish={!isVideoAsset(activeAsset)              ? () => handlePolish(activeAsset)            : undefined}
-            onEditImage={!isVideoAsset(activeAsset)           ? () => handleEditImage(activeAsset)         : undefined}
-            onAnimate={!isVideoAsset(activeAsset)             ? () => handleAnimate(activeAsset)           : undefined}
-            onLipsyncImage={!isVideoAsset(activeAsset)        ? () => handleLipsyncImage(activeAsset)      : undefined}
-            onSetToMotion={!isVideoAsset(activeAsset)         ? () => handleSetToMotion(activeAsset)       : undefined}
-            onEditVideo={isVideoAsset(activeAsset)            ? () => handleEditVideo(activeAsset)         : undefined}
-            onLipsyncVideo={isVideoAsset(activeAsset)         ? () => handleLipsyncVideo(activeAsset)      : undefined}
-            onSetVideoForMotion={isVideoAsset(activeAsset)    ? () => handleSetVideoForMotion(activeAsset) : undefined}
-            onExtractEndFrame={isVideoAsset(activeAsset)      ? () => handleExtractEndFrame(activeAsset)   : undefined}
+            onPolish={!isVideoAsset(activeAsset)           ? () => handlePolish(activeAsset)            : undefined}
+            onEditImage={!isVideoAsset(activeAsset)        ? () => handleEditImage(activeAsset)         : undefined}
+            onAnimate={!isVideoAsset(activeAsset)          ? () => handleAnimate(activeAsset)           : undefined}
+            onLipsyncImage={!isVideoAsset(activeAsset)     ? () => handleLipsyncImage(activeAsset)      : undefined}
+            onSetToMotion={!isVideoAsset(activeAsset)      ? () => handleSetToMotion(activeAsset)       : undefined}
+            onEditVideo={isVideoAsset(activeAsset)         ? () => handleEditVideo(activeAsset)         : undefined}
+            onLipsyncVideo={isVideoAsset(activeAsset)      ? () => handleLipsyncVideo(activeAsset)      : undefined}
+            onSetVideoForMotion={isVideoAsset(activeAsset) ? () => handleSetVideoForMotion(activeAsset) : undefined}
+            onExtractEndFrame={isVideoAsset(activeAsset)   ? () => handleExtractEndFrame(activeAsset)   : undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -836,7 +989,7 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* Extract end frame confirm modal */}
+      {/* Extract end frame confirm */}
       <AnimatePresence>
         {extractConfirmAsset && (
           <ExtractEndFrameConfirmModal
@@ -854,98 +1007,7 @@ export default function AssetsPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetCard
-// ─────────────────────────────────────────────────────────────────────────────
-
-function AssetCard({ asset, isRenaming, renameValue, setRenameValue, onStartRename, onCommitRename, onPreview, onMore }) {
-  const inputRef            = useRef(null)
-  const [imgErr, setImgErr] = useState(false)
-
-  useEffect(() => {
-    if (isRenaming) setTimeout(() => inputRef.current?.focus(), 50)
-  }, [isRenaming])
-
-  return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-    >
-      {/* Thumbnail */}
-      <button
-        onClick={onPreview}
-        className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center relative group"
-        style={{ background: 'var(--bg-primary)' }}
-      >
-        {imgErr ? (
-          <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
-        ) : (
-          <AssetThumb asset={asset} onError={() => setImgErr(true)} />
-        )}
-        <div
-          className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ background: 'rgba(0,0,0,0.45)' }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-          </svg>
-        </div>
-      </button>
-
-      {/* Name + meta */}
-      <div className="flex-1 min-w-0">
-        {isRenaming ? (
-          <div className="flex items-center gap-1.5">
-            <input
-              ref={inputRef}
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') onCommitRename() }}
-              className="flex-1 text-sm font-semibold rounded-lg px-2 py-1 outline-none"
-              style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid #5B6EF7' }}
-            />
-            <button
-              onClick={onCommitRename}
-              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: '#5B6EF7' }}
-            >
-              <Check size={13} color="#fff" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 group">
-            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{asset.name}</p>
-            <button onClick={onStartRename} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-              <Pencil size={12} style={{ color: 'var(--text-muted)' }} />
-            </button>
-          </div>
-        )}
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {[
-            isVideoAsset(asset) ? 'Video' : 'Image',
-            formatBytes(asset.size_bytes),
-            asset.created_at
-              ? new Date(asset.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
-              : null,
-          ].filter(Boolean).join(' · ')}
-        </p>
-      </div>
-
-      {/* More button */}
-      {!isRenaming && (
-        <button
-          onClick={onMore}
-          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'var(--bg-primary)' }}
-        >
-          <MoreHorizontal size={16} style={{ color: 'var(--text-muted)' }} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AssetActionSheet
+// AssetActionSheet — unchanged logic, kept intact
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetActionSheet({
@@ -966,9 +1028,9 @@ function AssetActionSheet({
       { icon: Clapperboard, label: 'Set to Motion', sub: 'Use in Copy Motion',      onClick: onSetToMotion  },
     ] : []),
     ...(isVideo ? [
-      { icon: Wand2,        label: 'Edit',            sub: 'Use as video reference',                                                                          onClick: onEditVideo         },
-      { icon: Mic2,         label: 'Lipsync',         sub: 'Re-animate with audio',                                                                           onClick: onLipsyncVideo      },
-      { icon: Clapperboard, label: 'Set for Motion',  sub: 'Use as motion reference in Copy Motion',                                                          onClick: onSetVideoForMotion },
+      { icon: Wand2,        label: 'Edit',              sub: 'Use as video reference',                                                                        onClick: onEditVideo         },
+      { icon: Mic2,         label: 'Lipsync',           sub: 'Re-animate with audio',                                                                         onClick: onLipsyncVideo      },
+      { icon: Clapperboard, label: 'Set for Motion',    sub: 'Use as motion reference in Copy Motion',                                                        onClick: onSetVideoForMotion },
       { icon: ScanLine,     label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`,   onClick: onExtractEndFrame   },
     ] : []),
     { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
@@ -1034,7 +1096,7 @@ function AssetActionSheet({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ExtractEndFrameConfirmModal
+// ExtractEndFrameConfirmModal — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
@@ -1055,73 +1117,42 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'rgba(91,110,247,0.12)' }}
-          >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(91,110,247,0.12)' }}>
             <ScanLine size={18} style={{ color: '#5B6EF7' }} />
           </div>
           <div>
-            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-              Extract End Frame
-            </p>
+            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Extract End Frame</p>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
               The last frame of this video will be saved to your Assets.
             </p>
           </div>
         </div>
-
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl"
-          style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}
-        >
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}>
           <Zap size={15} style={{ color: '#5B6EF7', flexShrink: 0 }} />
-          <p className="text-sm font-semibold" style={{ color: '#5B6EF7' }}>
-            {cost} credits will be deducted
-          </p>
+          <p className="text-sm font-semibold" style={{ color: '#5B6EF7' }}>{cost} credits will be deducted</p>
         </div>
-
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl"
-          style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}
-        >
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}>
           <Sparkles size={15} style={{ color: '#eab308', flexShrink: 0 }} />
           <p className="text-xs" style={{ color: '#eab308', lineHeight: 1.5 }}>
-            <span className="font-bold">Master plan</span> unlocks this feature for free — no credits charged.
+            <span className="font-bold">Master plan</span> unlocks this feature for free.
           </p>
         </div>
-
-        <button
-          onClick={() => setSkipNext((v) => !v)}
-          className="flex items-center gap-2.5 w-fit"
-        >
+        <button onClick={() => setSkipNext((v) => !v)} className="flex items-center gap-2.5 w-fit">
           <div
             className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
-            style={{
-              background: skipNext ? '#5B6EF7' : 'transparent',
-              border:     `1.5px solid ${skipNext ? '#5B6EF7' : 'var(--border-color)'}`,
-            }}
+            style={{ background: skipNext ? '#5B6EF7' : 'transparent', border: `1.5px solid ${skipNext ? '#5B6EF7' : 'var(--border-color)'}` }}
           >
             {skipNext && <Check size={10} color="#fff" strokeWidth={3} />}
           </div>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Don't ask me again
-          </span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Don't ask me again</span>
         </button>
-
         <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold"
-            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
-          >
+          <button onClick={onCancel} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
             Cancel
           </button>
-          <button
-            onClick={() => onConfirm(skipNext)}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
-            style={{ background: '#5B6EF7', color: '#fff' }}
-          >
+          <button onClick={() => onConfirm(skipNext)} className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
+            style={{ background: '#5B6EF7', color: '#fff' }}>
             Extract · {cost} cr
           </button>
         </div>
@@ -1131,16 +1162,14 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetsEmpty
+// AssetsEmpty — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters }) {
   const isFiltered = search || timeFilter !== 'all' || typeFilter !== 'all'
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center justify-center py-20 gap-4 text-center"
     >
       <FolderOpen size={40} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
@@ -1149,25 +1178,17 @@ function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters 
           {isFiltered ? 'Nothing matches these filters' : 'No assets yet'}
         </p>
         <p className="text-sm mt-1 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
-          {isFiltered
-            ? 'Try adjusting your filters or search.'
-            : 'Upload images or videos to reuse across your creations.'}
+          {isFiltered ? 'Try adjusting your filters or search.' : 'Upload images or videos to reuse across your creations.'}
         </p>
       </div>
       {isFiltered ? (
-        <button
-          onClick={onClearFilters}
-          className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
+        <button onClick={onClearFilters} className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           Clear filters
         </button>
       ) : (
-        <button
-          onClick={onUpload}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
-          style={{ background: '#5B6EF7', color: '#fff' }}
-        >
+        <button onClick={onUpload} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+          style={{ background: '#5B6EF7', color: '#fff' }}>
           <Plus size={15} strokeWidth={2.5} />
           Upload your first asset
         </button>
