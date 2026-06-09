@@ -231,9 +231,9 @@ export async function listAssets(userId, {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  // Exclude internal conversion artifacts from the user-facing list
+// Exclude internal conversion artifacts from the user-facing list
   if (!includePrepSources) {
-    query = query.not('source', 'in', `(${EXCLUDED_SOURCES.map((s) => `"${s}"`).join(',')})`)
+    query = query.not('source', 'in', `(${EXCLUDED_SOURCES.join(',')})`)
   }
 
   if (search.trim()) {
