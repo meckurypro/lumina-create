@@ -744,8 +744,13 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
   const isVideo       = gen.output_type === 'video'
   const isComplete    = gen.status === 'completed'
   const isPending     = gen.status === 'pending' || gen.status === 'processing'
-  const thumbUrl      = gen.output_thumbnail_url || gen.output_url
-  const thumbIsImage  = !!gen.output_thumbnail_url
+  // Only ever render an <img>: real server thumbnail for videos, or the
+  // image output itself. We never set `<video src=...>` in the list — even
+  // with preload="none" the browser still issues a HEAD/Range request that
+  // is the dominant cost on mobile data.
+  const thumbUrl      = isVideo
+    ? (gen.output_thumbnail_url || null)
+    : (gen.output_thumbnail_url || gen.output_url || null)
   const cardTitle     = getCardTitle(gen)
   const friendlyError = gen.status === 'failed' ? getFriendlyError(gen.error_message) : null
   const isPolicy      = friendlyError?.startsWith('⚠️')
@@ -764,11 +769,13 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
         onClick={isComplete ? onClick : undefined}
       >
         {thumbUrl ? (
-          (thumbIsImage || !isVideo)
-            // ✅ loading="lazy" — don't fetch until in viewport
-            ? <img src={thumbUrl} alt={cardTitle} className="w-full h-full object-cover" loading="lazy" />
-            // ✅ preload="none" — don't buffer any video data in the list
-            : <video src={thumbUrl} className="w-full h-full object-cover" muted preload="none" />
+          <img
+            src={thumbUrl}
+            alt={cardTitle}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo ? <Film size={20} style={{ color: 'var(--text-muted)' }} /> : <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />}
