@@ -40,7 +40,7 @@ import { uploadAsset } from '@/lib/assets'
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 12
 const POLL_MS   = 4_000
 
 export const TIME_FILTERS = [
@@ -316,9 +316,10 @@ export default function MediaPageCore({
     if (!pendingIds.length || !user) return
 
     pollRef.current = setInterval(async () => {
+      // Tight column set — polling only needs to know status + final URLs.
       const { data, error } = await supabase
         .from('generations')
-        .select('*')
+        .select('id, status, output_url, output_thumbnail_url, error_message, provider_request_id')
         .in('id', pendingIds)
 
       if (error || !data) return
@@ -333,7 +334,9 @@ export default function MediaPageCore({
           // Deep-equal check on status + output_url to avoid unnecessary updates
           if (fresh.status === g.status && fresh.output_url === g.output_url) return g
           changed = true
-          return { ...fresh, ...preserveUGCKeys(g, fresh) }
+          // Merge narrow poll result onto existing full row — preserves
+          // columns we deliberately did not re-select.
+          return { ...g, ...fresh, ...preserveUGCKeys(g, fresh) }
         })
         return changed ? next : prev
       })
@@ -439,7 +442,7 @@ export default function MediaPageCore({
 
       if (fresh) {
         setItems((prev) => prev.map((g) =>
-          g.id === gen.id ? { ...fresh, ...preserveUGCKeys(g, fresh) } : g
+          g.id === gen.id ? { ...g, ...fresh, ...preserveUGCKeys(g, fresh) } : g
         ))
       }
 
