@@ -8,6 +8,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
 // ── Theme constants ────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-motion)'
@@ -564,7 +565,8 @@ export default function CreateCopyMotionPage() {
       .eq('feature', 'motion_transfer')
       .order('sort_order')
     const isMaster      = profile?.user_tier === 'master'
-    const list          = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered  = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list          = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked)
     setModel(firstUnlocked?.value || '')
