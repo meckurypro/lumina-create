@@ -247,9 +247,7 @@ export default function MediaPageCore({
       limit: PAGE_SIZE, offset, afterIso, statusFilter: 'all',
     })
 
-    // ── Fallback: today → this_week when nothing completed today ──────────
-    // Only runs once per load cycle (when offset === 0 and filter is "today").
-    // Previously this ran unconditionally on every mount.
+// ── Fallback: today → this_week when nothing completed today ──────────
     if (
       offset === 0 &&
       tFilter === 'today' &&
@@ -266,10 +264,18 @@ export default function MediaPageCore({
         setItems(weekData || [])
         setTotalCount(weekCount || 0)
         setHasMore(PAGE_SIZE < (weekCount || 0))
+        setTimeFilter('this_week')
         setLoading(false)
         setLoadingMore(false)
         return
       }
+      // No completed this week either — show whatever came back for today (may be empty)
+      setItems(data || [])
+      setTotalCount(count || 0)
+      setHasMore((PAGE_SIZE) < (count || 0))
+      setLoading(false)
+      setLoadingMore(false)
+      return
     }
 
     if (!wasDismissedToday()) setFallbackMsg(null)
