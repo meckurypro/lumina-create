@@ -853,8 +853,9 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   const isVideo      = gen.output_type === 'video'
   const isPending    = gen.status === 'pending' || gen.status === 'processing'
   const isComplete   = gen.status === 'completed'
-  const thumbUrl     = gen.output_thumbnail_url || gen.output_url
-  const thumbIsImage = !!gen.output_thumbnail_url
+  const thumbUrl     = isVideo
+    ? (gen.output_thumbnail_url || null)
+    : (gen.output_thumbnail_url || gen.output_url || null)
   const filterEmoji  = gen.ugc_filter_applied === 'cinematic' ? '🎬' : '📱'
   const arStyle      = gen.aspect_ratio === '16:9' ? '16/9' : gen.aspect_ratio === '1:1' ? '1/1' : '9/16'
 
@@ -869,10 +870,7 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
       <button className="w-full h-full block" onClick={isComplete ? onClick : undefined}
         style={{ cursor: isComplete ? 'pointer' : 'default' }}>
         {thumbUrl ? (
-          (thumbIsImage || !isVideo)
-            ? <img src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" loading="lazy" />
-            // ✅ preload="none"
-            : <video src={thumbUrl} className="w-full h-full object-cover" muted preload="none" />
+          <img src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo ? <Film size={24} style={{ color: 'var(--text-muted)' }} /> : <ImageIcon size={24} style={{ color: 'var(--text-muted)' }} />}
