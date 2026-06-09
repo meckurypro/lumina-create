@@ -233,7 +233,7 @@ export async function listAssets(userId, {
 
 // Exclude internal conversion artifacts from the user-facing list
   if (!includePrepSources) {
-    query = query.not('source', 'in', `(${EXCLUDED_SOURCES.join(',')})`)
+    query = query.or(`source.is.null,source.not.in.(${EXCLUDED_SOURCES.join(',')})`)
   }
 
   if (search.trim()) {
