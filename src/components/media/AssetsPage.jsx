@@ -1,17 +1,26 @@
 // src/components/media/AssetsPage.jsx
 //
 // PERFORMANCE OVERHAUL — key changes:
-//  1. Thumbnails are LAZY: images use loading="lazy" + IntersectionObserver;
-//     videos show a static icon until the row enters the viewport, then and
-//     only then is a thumbnail extracted (and cached in a module-level Map).
-//  2. VideoThumbFallback is gated by an IntersectionObserver — it never starts
-//     fetching the video file until the card is actually visible on screen.
-//  3. The thumbnail extraction pipeline is unchanged in logic but is now
-//     deferred behind visibility — no more 20 simultaneous video fetches on
-//     mount.
-//  4. The assets list is already paginated (PAGE_SIZE = 20) — that is kept.
-//  5. A module-level extracted-thumb cache persists across re-renders/mounts
-//     so the same asset is never decoded twice in a session.
+//
+//  1. DEFAULT TIME FILTER IS NOW 'today' (was 'all').
+//     Loading all assets on mount was the primary cause of slowness.
+//     Same pattern as MediaPageCore.
+//
+//  2. TODAY → THIS_WEEK FALLBACK.
+//     If today returns zero assets, we silently retry with this_week and
+//     show a dismissible banner — identical pattern to MediaPageCore.
+//     The fallback only fires once per load cycle (not on every render).
+//
+//  3. COPY_MOTION_PREP ROWS EXCLUDED.
+//     listAssets now excludes source='copy_motion_prep' by default.
+//     These were large temp videos written by the old conversion flow
+//     and should never appear in the user-facing assets list.
+//
+//  4. select() now fetches only LIST_COLUMNS (defined in assets.js).
+//     Previously used SELECT * which pulled every column unnecessarily.
+//
+//  5. All existing lazy thumbnail, IntersectionObserver, and pagination
+//     behaviour is preserved unchanged.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
@@ -29,6 +38,7 @@ import {
   uploadAsset, listAssets, renameAsset,
   deleteAsset, isVideoAsset, formatBytes,
 } from '@/lib/assets.js'
+import { FallbackBanner } from './MediaCardComponents.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -44,16 +54,17 @@ const PAGE_SIZE   = 20
 
 const EXTRACT_END_FRAME_COST  = 3
 const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
+const LS_FALLBACK_DISMISSED   = 'meckury_assets_fallback_dismissed_date'
 
 // SessionStorage keys
-const SS_IMAGE_POLISH        = 'meckury_polish_image'
-const SS_IMAGE_EDIT          = 'meckury_create_images'
-const SS_VIDEO_START         = 'meckury_video_start_frame'
-const SS_TH_SUBJECT_IMG      = 'meckury_th_subject_img'
-const SS_TH_SUBJECT_VID      = 'meckury_th_subject_vid'
-const SS_COPY_SUBJECT        = 'meckury_copymotion_subject'
-const SS_COPY_MOTION_VIDEO   = 'meckury_copymotion_video_asset'
-const SS_VIDEO_OMNI_REF      = 'meckury_video_omni_ref'
+const SS_IMAGE_POLISH      = 'meckury_polish_image'
+const SS_IMAGE_EDIT        = 'meckury_create_images'
+const SS_VIDEO_START       = 'meckury_video_start_frame'
+const SS_TH_SUBJECT_IMG    = 'meckury_th_subject_img'
+const SS_TH_SUBJECT_VID    = 'meckury_th_subject_vid'
+const SS_COPY_SUBJECT      = 'meckury_copymotion_subject'
+const SS_COPY_MOTION_VIDEO = 'meckury_copymotion_video_asset'
+const SS_VIDEO_OMNI_REF    = 'meckury_video_omni_ref'
 
 const TIME_FILTERS = [
   { label: 'Today',      value: 'today'      },
@@ -93,13 +104,18 @@ function getTimeRangeStart(range) {
   return null
 }
 
+const wasFallbackDismissedToday = () => {
+  try { return localStorage.getItem(LS_FALLBACK_DISMISSED) === new Date().toDateString() }
+  catch { return false }
+}
+
 function buildUrlPayload(asset, fallbackType) {
   const type = fallbackType || (isVideoAsset(asset) ? 'video/mp4' : 'image/jpeg')
   return { url: asset.file_url, name: asset.name, type }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// extractLastFrame  (used for "Extract End Frame" feature — unchanged logic)
+// extractLastFrame  (unchanged logic)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function extractLastFrame(videoUrl) {
@@ -145,8 +161,6 @@ function useIntersection(ref, rootMargin = '200px') {
   useEffect(() => {
     const el = ref.current
     if (!el) return
-
-    // If already in cache, skip the observer entirely
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -164,11 +178,7 @@ function useIntersection(ref, rootMargin = '200px') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VideoThumbFallback
-//
-// CHANGE: now takes a `visible` prop. Thumbnail extraction only starts when
-// the parent card is in / near the viewport. This prevents 20 simultaneous
-// video fetches when the list first loads.
+// VideoThumbFallback — defers extraction until card is visible
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VideoThumbFallback({ asset, visible }) {
@@ -176,7 +186,6 @@ function VideoThumbFallback({ asset, visible }) {
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    // Don't start until visible AND not already resolved
     if (!visible || src || failed) return
 
     let cancelled = false
@@ -227,18 +236,16 @@ function VideoThumbFallback({ asset, visible }) {
   if (src) {
     return <img src={src} alt={asset.name} className="w-full h-full object-cover" />
   }
-  // Show a plain icon while waiting — no spinner, no layout shift
   return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetThumb — decides what to render based on asset type + visibility
+// AssetThumb
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetThumb({ asset, visible, onError }) {
   const isVideo = isVideoAsset(asset)
 
-  // Pre-existing thumbnail URL (stored at upload time) — always use it if present
   if (asset.thumbnail_url) {
     return (
       <img
@@ -252,7 +259,6 @@ function AssetThumb({ asset, visible, onError }) {
     )
   }
 
-  // Plain image — native lazy loading is sufficient
   if (!isVideo) {
     return (
       <img
@@ -266,7 +272,6 @@ function AssetThumb({ asset, visible, onError }) {
     )
   }
 
-  // Video — defer extraction until visible
   return <VideoThumbFallback asset={asset} visible={visible} />
 }
 
@@ -284,7 +289,7 @@ function SkeletonCard() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetCard — owns its own IntersectionObserver ref so thumbnails are lazy
+// AssetCard
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetCard({
@@ -297,7 +302,6 @@ function AssetCard({
   const cardRef             = useRef(null)
   const [imgErr, setImgErr] = useState(false)
 
-  // Visibility gate — thumbnail only loads when card enters viewport
   const visible = useIntersection(cardRef, '300px')
 
   useEffect(() => {
@@ -401,6 +405,9 @@ export default function AssetsPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const fileInputRef                               = useRef(null)
   const debounceRef                                = useRef(null)
+  // Tracks the last tFilter used for the today→this_week fallback so it only
+  // fires once per filter-change cycle (not on every call to load).
+  const fallbackFiredFor                           = useRef(null)
 
   const isMaster = profile?.user_tier === 'master'
 
@@ -411,10 +418,12 @@ export default function AssetsPage() {
   const [totalCount,   setTotalCount]   = useState(0)
   const [page,         setPage]         = useState(0)
 
-  const [timeFilter,   setTimeFilter]   = useState('all')
+  // ── Default to 'today' — same starting point as MediaPageCore ─────────────
+  const [timeFilter,   setTimeFilter]   = useState('today')
   const [typeFilter,   setTypeFilter]   = useState('all')
   const [search,       setSearch]       = useState('')
   const [searchQuery,  setSearchQuery]  = useState('')
+  const [fallbackMsg,  setFallbackMsg]  = useState(null)
 
   const [uploading,            setUploading]            = useState(false)
   const [previewAsset,         setPreviewAsset]         = useState(null)
@@ -426,15 +435,20 @@ export default function AssetsPage() {
   const [extractingId,         setExtractingId]         = useState(null)
   const [extractConfirmAsset,  setExtractConfirmAsset]  = useState(null)
 
+  const dismissFallback = () => {
+    try { localStorage.setItem(LS_FALLBACK_DISMISSED, new Date().toDateString()) } catch {}
+    setFallbackMsg(null)
+  }
+
   // ── Load ───────────────────────────────────────────────────────────────────
 
   const load = useCallback(async ({
-    offset     = 0,
-    reset      = false,
-    tFilter    = timeFilter,
-    tyFilter   = typeFilter,
-    q          = searchQuery,
-    silent     = false,
+    offset   = 0,
+    reset    = false,
+    tFilter  = timeFilter,
+    tyFilter = typeFilter,
+    q        = searchQuery,
+    silent   = false,
   } = {}) => {
     if (!user) return
     if (!silent) {
@@ -452,6 +466,42 @@ export default function AssetsPage() {
         typeFilter: tyFilter,
       })
 
+      // ── Today → this_week fallback ────────────────────────────────────────
+      // Only fires when: first page, 'today' filter, zero results, and we
+      // haven't already done the fallback for this particular tFilter cycle.
+      if (
+        offset === 0 &&
+        tFilter === 'today' &&
+        (data || []).length === 0 &&
+        fallbackFiredFor.current !== tFilter
+      ) {
+        fallbackFiredFor.current = tFilter
+
+        const weekAfterIso = getTimeRangeStart('this_week')
+        const { data: weekData, count: weekCount } = await listAssets(user.id, {
+          search:     q,
+          limit:      PAGE_SIZE,
+          offset:     0,
+          afterIso:   weekAfterIso,
+          typeFilter: tyFilter,
+        })
+
+        if ((weekData || []).length > 0) {
+          if (!wasFallbackDismissedToday()) {
+            setFallbackMsg('Nothing uploaded today — showing this week')
+          }
+          setAssets(weekData || [])
+          setTotalCount(weekCount || 0)
+          setHasMore(PAGE_SIZE < (weekCount || 0))
+          setLoading(false)
+          setLoadingMore(false)
+          return
+        }
+      }
+
+      // Clear banner if no longer applicable
+      if (!wasFallbackDismissedToday()) setFallbackMsg(null)
+
       setTotalCount(count || 0)
       setAssets((prev) => reset ? (data || []) : [...prev, ...(data || [])])
       setHasMore((offset + PAGE_SIZE) < (count || 0))
@@ -463,7 +513,9 @@ export default function AssetsPage() {
     }
   }, [user, timeFilter, typeFilter, searchQuery])
 
+  // Reset + reload whenever time/type filter or user changes
   useEffect(() => {
+    fallbackFiredFor.current = null  // allow fallback to re-run for new filter
     setPage(0)
     setAssets([])
     load({ offset: 0, reset: true, tFilter: timeFilter, tyFilter: typeFilter, q: searchQuery })
@@ -477,6 +529,7 @@ export default function AssetsPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       setSearchQuery(val)
+      fallbackFiredFor.current = null
       setPage(0)
       setAssets([])
       load({ offset: 0, reset: true, tFilter: timeFilter, tyFilter: typeFilter, q: val })
@@ -746,6 +799,13 @@ export default function AssetsPage() {
           />
         </div>
 
+        {/* Fallback banner */}
+        <AnimatePresence>
+          {fallbackMsg && !wasFallbackDismissedToday() && (
+            <FallbackBanner message={fallbackMsg} onDismiss={dismissFallback} />
+          )}
+        </AnimatePresence>
+
         {/* Time filter dropdown */}
         <div className="flex items-center gap-2 mb-3 justify-end">
           <div className="relative">
@@ -812,6 +872,7 @@ export default function AssetsPage() {
             typeFilter={typeFilter}
             onUpload={() => fileInputRef.current?.click()}
             onClearFilters={() => {
+              fallbackFiredFor.current = null
               setTimeFilter('all')
               setTypeFilter('all')
               handleSearchChange('')
@@ -828,7 +889,7 @@ export default function AssetsPage() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.97 }}
-                    transition={{ delay: Math.min(i * 0.025, 0.3) }} // cap stagger at 300ms
+                    transition={{ delay: Math.min(i * 0.025, 0.3) }}
                   >
                     <AssetCard
                       asset={asset}
@@ -877,7 +938,7 @@ export default function AssetsPage() {
         )}
       </div>
 
-      {/* Asset preview modal — only loads media when actually opened */}
+      {/* Asset preview modal */}
       <AnimatePresence>
         {previewAsset && (
           <motion.div
@@ -903,11 +964,8 @@ export default function AssetsPage() {
               <motion.video
                 key={previewAsset.id}
                 initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-                // preload="none" — let the user hit play; autoPlay is fine since they explicitly opened this
                 src={previewAsset.file_url}
-                controls
-                autoPlay
-                playsInline
+                controls autoPlay playsInline
                 className="rounded-2xl"
                 style={{ maxWidth: '100%', maxHeight: '85dvh', outline: 'none' }}
                 onClick={(e) => e.stopPropagation()}
@@ -1007,7 +1065,7 @@ export default function AssetsPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetActionSheet — unchanged logic, kept intact
+// AssetActionSheet — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetActionSheet({
@@ -1162,7 +1220,7 @@ function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetsEmpty — unchanged
+// AssetsEmpty
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters }) {
@@ -1178,7 +1236,9 @@ function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters 
           {isFiltered ? 'Nothing matches these filters' : 'No assets yet'}
         </p>
         <p className="text-sm mt-1 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
-          {isFiltered ? 'Try adjusting your filters or search.' : 'Upload images or videos to reuse across your creations.'}
+          {isFiltered
+            ? 'Try adjusting your filters or search.'
+            : 'Upload images or videos to reuse across your creations.'}
         </p>
       </div>
       {isFiltered ? (
