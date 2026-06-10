@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, Film, Image as ImageIcon,
-  AlertCircle, RefreshCw, CheckCircle2, Scissors,
+  AlertCircle, RefreshCw, CheckCircle2, Scissors, Undo2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
@@ -156,13 +156,11 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
 }
 
 // ── Edge function caller ───────────────────────────────────────────────────
-// Returns { url, duration, aspectRatio, width, height } — no assets row.
 async function callTranscodeEdgeFunction({
   file, userId, targetAspectRatio, targetDuration, startTime, onProgress,
 }) {
   onProgress?.(5)
 
-  // Upload source file to generation-uploads for the edge function to fetch
   const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
   const srcPath = `${userId}/copy-motion-src/${crypto.randomUUID()}.${ext}`
   const { error: upErr } = await supabase.storage
@@ -180,7 +178,6 @@ async function callTranscodeEdgeFunction({
     .from('generation-uploads')
     .getPublicUrl(srcPath)
 
-  // Virtual progress ticker while the edge function trims + scales
   let virtualPct = 25
   const tick = setInterval(() => {
     virtualPct = Math.min(virtualPct + 2, 90)
@@ -190,25 +187,18 @@ async function callTranscodeEdgeFunction({
   let result
   try {
     const { data, error } = await supabase.functions.invoke('process-video-for-motion', {
-      body: {
-        sourceUrl,
-        targetAspectRatio,
-        targetDuration,
-        startTime,
-      },
+      body: { sourceUrl, targetAspectRatio, targetDuration, startTime },
     })
     if (error)          throw new Error(error.message || 'Conversion edge function failed')
     if (!data?.success) throw new Error(data?.error   || 'Conversion failed')
     result = data
   } finally {
     clearInterval(tick)
-    // Clean up the source upload; the processed file lives in copy-motion-processed/
     supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {})
   }
 
   onProgress?.(100)
 
-  // Return the processed video metadata for inline card hydration
   return {
     url:         result.url,
     duration:    result.duration,
@@ -331,6 +321,7 @@ const CompatBadge = ({ status }) => {
     converted:    { bg: 'rgba(16,185,129,0.85)', color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Converted · Ready' },
     incompatible: { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs conversion' },
     rejected:     { bg: 'rgba(239,68,68,0.92)',  color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'        },
+    reconvert:    { bg: 'rgba(239,160,20,0.9)',  color: '#fff', icon: <RefreshCw   size={11} />, text: 'Settings changed' },
   }
   const cfg = map[status]
   if (!cfg) return null
@@ -524,6 +515,162 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
   )
 }
 
+// ── Re-conversion warning panel ────────────────────────────────────────────
+// Shown only when the user changed settings AFTER a successful conversion.
+// Offers two choices: revert the setting change, or pay to re-convert.
+const ReconvertWarningPanel = ({
+  compat, trimStart, targetDuration,
+  convertedAspectRatio, convertedDuration,
+  canAffordConvert, isProcessing,
+  onRevert, onReconvert, onRemoveVideo,
+}) => {
+  // Build a human-readable summary of what changed
+  const changes = []
+  if (compat.fixes?.needsCrop)  changes.push(`aspect ratio`)
+  if (compat.fixes?.needsTrim)  changes.push(`duration`)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.15 }}
+      className="rounded-2xl p-4 flex flex-col gap-3"
+      style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.35)' }}
+    >
+      <div className="flex items-start gap-2">
+        <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
+        <div className="flex-1">
+          <p className="text-sm font-semibold" style={{ color: '#efa014' }}>
+            Settings changed after conversion
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            You changed the <strong style={{ color: 'var(--text-primary)' }}>{changes.join(' and ')}</strong>{' '}
+            after your video was already converted. Your converted video is{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>
+              {convertedDuration}s · {convertedAspectRatio}
+            </strong>
+            , but your current settings expect{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>
+              {targetDuration}s · {compat.fixes?.needsCrop ? 'a different ratio' : convertedAspectRatio}
+            </strong>.
+          </p>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+            Revert your settings (free) or re-convert to match the new settings (
+            <strong style={{ color: 'var(--text-primary)' }}>{CONVERSION_COST} credits</strong>).
+            {compat.fixes?.needsTrim && trimStart > 0 && (
+              <> Re-convert will clip <strong>{trimStart}s → {trimStart + targetDuration}s</strong>.</>
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {/* Primary: revert — free and lossless */}
+        <button
+          onClick={onRevert}
+          disabled={isProcessing}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{
+            background: !isProcessing ? ACCENT_SUB : 'var(--bg-elevated)',
+            color:      !isProcessing ? ACCENT     : 'var(--text-muted)',
+            border:     `1px solid ${ACCENT_BDR}`,
+            cursor:     !isProcessing ? 'pointer'  : 'not-allowed',
+          }}
+        >
+          <Undo2 size={13} />
+          Revert settings
+        </button>
+
+        {/* Secondary: re-convert at cost */}
+        <button
+          onClick={onReconvert}
+          disabled={!canAffordConvert || isProcessing}
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{
+            background: canAffordConvert && !isProcessing ? '#efa014'          : 'var(--bg-elevated)',
+            color:      canAffordConvert && !isProcessing ? '#fff'             : 'var(--text-muted)',
+            cursor:     canAffordConvert && !isProcessing ? 'pointer'          : 'not-allowed',
+          }}
+        >
+          Re-convert · {CONVERSION_COST} cr
+        </button>
+
+        {/* Tertiary: start over */}
+        <button
+          onClick={onRemoveVideo}
+          className="w-full py-2 rounded-xl text-xs font-medium"
+          style={{ background: 'transparent', color: 'var(--text-muted)' }}
+        >
+          Remove video and start over
+        </button>
+      </div>
+
+      {!canAffordConvert && (
+        <p className="text-xs" style={{ color: '#ef4444' }}>
+          Not enough credits to re-convert.
+        </p>
+      )}
+    </motion.div>
+  )
+}
+
+// ── First-time conversion panel ────────────────────────────────────────────
+// Shown when a freshly uploaded video needs processing before generation.
+const FirstConversionPanel = ({
+  compat, trimStart, targetDuration,
+  canAffordConvert, isProcessing,
+  onConvert, onRemoveVideo,
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+    transition={{ duration: 0.15 }}
+    className="rounded-2xl p-4 flex flex-col gap-3"
+    style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}
+  >
+    <div className="flex items-start gap-2">
+      <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
+      <div className="flex-1">
+        <p className="text-sm font-semibold" style={{ color: '#efa014' }}>This video needs conversion</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          {compat.reason}
+          {compat.fixes?.needsTrim && targetDuration != null && (
+            <> · Clip: <strong>{trimStart}s → {trimStart + targetDuration}s</strong></>
+          )}
+        </p>
+        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+          Cost: <strong style={{ color: 'var(--text-primary)' }}>{CONVERSION_COST} credits</strong>.
+          The converted video will load directly here — no redirect needed.
+        </p>
+      </div>
+    </div>
+    <div className="flex gap-2">
+      <button
+        onClick={onConvert}
+        disabled={!canAffordConvert || isProcessing}
+        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+        style={{
+          background: canAffordConvert && !isProcessing ? ACCENT : 'var(--bg-elevated)',
+          color:      canAffordConvert && !isProcessing ? '#fff'  : 'var(--text-muted)',
+          cursor:     canAffordConvert && !isProcessing ? 'pointer' : 'not-allowed',
+        }}
+      >
+        Convert &amp; Continue · {CONVERSION_COST} cr
+      </button>
+      <button
+        onClick={onRemoveVideo}
+        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+      >
+        Cancel
+      </button>
+    </div>
+    {!canAffordConvert && (
+      <p className="text-xs" style={{ color: '#ef4444' }}>
+        Not enough credits for conversion.
+      </p>
+    )}
+  </motion.div>
+)
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function CreateCopyMotionPage() {
   const navigate                                   = useNavigate()
@@ -552,6 +699,12 @@ export default function CreateCopyMotionPage() {
   // Pipeline
   const [phase,           setPhase]           = useState(null) // null | 'converting' | 'submitting'
   const [convertProgress, setConvertProgress] = useState(0)
+
+  // ── Snapshot of the settings the converted video was built with ──────────
+  // Used to detect when the user changes settings post-conversion so we can
+  // offer "Revert settings" instead of silently re-showing the cost panel.
+  const [convertedSettings, setConvertedSettings] = useState(null)
+  // { aspectRatio, duration } — set when a conversion completes, cleared on video removal.
 
   // ── Load models ──────────────────────────────────────────
   const loadModels = useCallback(async () => {
@@ -587,15 +740,13 @@ export default function CreateCopyMotionPage() {
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
-    // Restore subject image
     restoreImage(SS_SUBJECT_IMG).then((f) => { if (f) setSubjectImage(f) })
 
-    // Restore motion video passed from Assets "Set for Motion"
     try {
       const raw = sessionStorage.getItem(SS_COPY_MOTION_VIDEO)
       if (raw) {
         sessionStorage.removeItem(SS_COPY_MOTION_VIDEO)
-        const payload = JSON.parse(raw) // { url, name, type }
+        const payload = JSON.parse(raw)
         if (payload?.url) {
           const vid    = document.createElement('video')
           vid.preload  = 'metadata'
@@ -619,7 +770,6 @@ export default function CreateCopyMotionPage() {
       }
     } catch { /* noop */ }
 
-    // Restore ghost meta for re-upload prompt
     const meta = restoreVideoMeta()
     if (meta) {
       setVideoGhostMeta(meta)
@@ -691,17 +841,33 @@ export default function CreateCopyMotionPage() {
     })
   }, [motionVideo, selectedModel, aspectRatio, targetDuration])
 
+  // ── Conversion state classification ─────────────────────
+  // wasConverted: the current video is the output of a conversion this session
+  // settingsDrifted: the user changed aspect ratio or duration after conversion
+  const wasConverted    = !!motionVideo?._converted
+  const settingsDrifted = wasConverted && convertedSettings != null && (
+    convertedSettings.aspectRatio !== aspectRatio ||
+    convertedSettings.duration    !== targetDuration
+  )
+
+  // needsConversion: video exists, is incompatible, is not too-short
+  const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
+
+  // Separate the two scenarios for the UI
+  const showReconvertWarning  = needsConversion && settingsDrifted
+  const showFirstConvertPanel = needsConversion && !settingsDrifted
+
   const compatStatus = !motionVideo
     ? null
     : compat.fixes?.tooShort
       ? 'rejected'
-      : motionVideo._converted
-        ? 'converted'
-        : compat.compatible
-          ? 'compatible'
-          : 'incompatible'
-
-  const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
+      : settingsDrifted
+        ? 'reconvert'
+        : wasConverted && compat.compatible
+          ? 'converted'
+          : compat.compatible
+            ? 'compatible'
+            : 'incompatible'
 
   // ── Credit calculation ───────────────────────────────────
   const durationMultiplier = (() => {
@@ -734,6 +900,7 @@ export default function CreateCopyMotionPage() {
   const canGenerate =
     hasVideo &&
     compat.compatible &&
+    !settingsDrifted &&
     hasSubject &&
     !subjectSizeErr &&
     canAfford &&
@@ -764,6 +931,7 @@ export default function CreateCopyMotionPage() {
 
     setMotionVideo({ file, url, duration: meta.duration, width: meta.width, height: meta.height, aspectRatio: meta.aspectRatio })
     setVideoGhostMeta(null)
+    setConvertedSettings(null) // fresh upload — clear any prior conversion snapshot
     if (meta.aspectRatio && supportedAspectRatios.includes(meta.aspectRatio)) {
       setAspectRatio(meta.aspectRatio)
     }
@@ -774,7 +942,6 @@ export default function CreateCopyMotionPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Hard gate — Kling API rejects images over 10 MB
     if (file.size > SUBJECT_IMAGE_MAX_BYTES) {
       setSubjectSizeErr(true)
       setSubjectImage(null)
@@ -792,6 +959,7 @@ export default function CreateCopyMotionPage() {
     setMotionVideo(null)
     setVideoGhostMeta(null)
     setTrimStart(0)
+    setConvertedSettings(null)
     try {
       sessionStorage.removeItem(SS_VIDEO_META)
       sessionStorage.removeItem(SS_COPY_MOTION_VIDEO)
@@ -805,14 +973,22 @@ export default function CreateCopyMotionPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch { /* noop */ }
   }
 
-  // ── Convert ──────────────────────────────────────────────
-  // Converts the incompatible video and hydrates the card inline.
-  // No assets row is written; no redirect required.
-  const handleConvert = async () => {
-    if (!user)              return toast.error('Please sign in')
-    if (!motionVideo?.file) return toast.error('This video is already compatible — hit Generate.')
-    if (!targetDuration)    return toast.error('Pick a duration to trim to')
-    if (!canAffordConvert)  return toast.error(`Conversion costs ${CONVERSION_COST} credits.`)
+  // ── Revert settings to match converted video ─────────────
+  // Snaps aspectRatio and targetDuration back to what the converted video has,
+  // making it immediately compatible without any re-payment.
+  const handleRevertSettings = () => {
+    if (!convertedSettings) return
+    setAspectRatio(convertedSettings.aspectRatio)
+    setTargetDuration(convertedSettings.duration)
+    setTrimStart(0)
+    toast.success('Settings reverted — your converted video is ready.', { duration: 2500 })
+  }
+
+  // ── Shared conversion logic ───────────────────────────────
+  const runConversion = async ({ targetAspectRatio, targetDur, start }) => {
+    if (!user)              { toast.error('Please sign in'); return }
+    if (!motionVideo?.file) { toast.error('This video cannot be re-converted from a URL — remove it and re-upload.'); return }
+    if (!canAffordConvert)  { toast.error(`Conversion costs ${CONVERSION_COST} credits.`); return }
 
     setPhase('converting')
     setConvertProgress(0)
@@ -822,9 +998,9 @@ export default function CreateCopyMotionPage() {
       processed = await callTranscodeEdgeFunction({
         file:              motionVideo.file,
         userId:            user.id,
-        targetAspectRatio: aspectRatio,
-        targetDuration,
-        startTime:         trimStart,
+        targetAspectRatio: targetAspectRatio,
+        targetDuration:    targetDur,
+        startTime:         start,
         onProgress:        (p) => setConvertProgress(p),
       })
     } catch (err) {
@@ -834,7 +1010,6 @@ export default function CreateCopyMotionPage() {
       return
     }
 
-    // Deduct conversion credits
     try {
       const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
         p_user_id:       user.id,
@@ -853,7 +1028,7 @@ export default function CreateCopyMotionPage() {
     setPhase(null)
     setConvertProgress(0)
 
-    // Hydrate the video card inline — mark as converted so the badge shows correctly
+    // Hydrate card inline and snapshot the settings this conversion was built for
     setMotionVideo({
       file:        null,
       url:         processed.url,
@@ -863,14 +1038,37 @@ export default function CreateCopyMotionPage() {
       aspectRatio: processed.aspectRatio,
       _converted:  true,
     })
+    setConvertedSettings({
+      aspectRatio: processed.aspectRatio,
+      duration:    processed.duration,
+    })
+    // Snap UI settings to match the conversion output
+    setAspectRatio(processed.aspectRatio)
+    setTargetDuration(processed.duration)
+    setTrimStart(0)
 
     toast.success('Video converted — ready to generate!', { duration: 3000 })
   }
+
+  // First-time convert
+  const handleConvert = () => runConversion({
+    targetAspectRatio: aspectRatio,
+    targetDur:         targetDuration,
+    start:             trimStart,
+  })
+
+  // Re-convert after settings drift
+  const handleReconvert = () => runConversion({
+    targetAspectRatio: aspectRatio,
+    targetDur:         targetDuration,
+    start:             trimStart,
+  })
 
   // ── Generate ─────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!hasVideo)          return toast.error('Upload a motion reference video')
     if (!compat.compatible) return toast.error('Convert the video first, then generate.')
+    if (settingsDrifted)    return toast.error('Revert or re-convert before generating.')
     if (!hasSubject)        return toast.error('Upload a subject image')
     if (subjectSizeErr)     return toast.error('Subject image is too large. Use a file under 10 MB.')
     if (!selectedModel)     return toast.error('Pick a model')
@@ -879,7 +1077,6 @@ export default function CreateCopyMotionPage() {
 
     setPhase('submitting')
     try {
-      // Motion video — use URL directly if already processed/from Assets
       let motionVideoUrl
       if (!motionVideo.file) {
         motionVideoUrl = motionVideo.url
@@ -899,7 +1096,6 @@ export default function CreateCopyMotionPage() {
           .getPublicUrl(vidPath))
       }
 
-      // Subject image — use URL directly if from Assets, otherwise upload
       let subjectImageUrl
       if (!subjectImage.file) {
         subjectImageUrl = subjectImage.url
@@ -1069,7 +1265,7 @@ export default function CreateCopyMotionPage() {
                 </AnimatePresence>
 
                 {/* Compatible confirmation */}
-                {compat.compatible && motionVideo && (
+                {compat.compatible && motionVideo && !settingsDrifted && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                     Video is{' '}
                     <strong style={{ color: ACCENT }}>
@@ -1142,61 +1338,34 @@ export default function CreateCopyMotionPage() {
                 </div>
               )}
 
-              {/* Conversion panel — shown when video needs processing */}
-              <AnimatePresence>
-                {needsConversion && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="rounded-2xl p-4 flex flex-col gap-3"
-                    style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}
-                  >
-                    <div className="flex items-start gap-2">
-                      <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold" style={{ color: '#efa014' }}>This video needs conversion</p>
-                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                          {compat.reason}
-                          {compat.fixes?.needsTrim && motionVideo.duration !== targetDuration && (
-                            <> · Clip: <strong>{trimStart}s → {trimStart + targetDuration}s</strong></>
-                          )}
-                        </p>
-                        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                          Cost: <strong style={{ color: 'var(--text-primary)' }}>{CONVERSION_COST} credits</strong>.
-                          The converted video will load directly here — no redirect needed.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleConvert}
-                        disabled={!canAffordConvert || isProcessing}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                        style={{
-                          background: canAffordConvert && !isProcessing ? ACCENT : 'var(--bg-elevated)',
-                          color:      canAffordConvert && !isProcessing ? '#fff'  : 'var(--text-muted)',
-                          cursor:     canAffordConvert && !isProcessing ? 'pointer' : 'not-allowed',
-                        }}
-                      >
-                        Convert &amp; Continue · {CONVERSION_COST} cr
-                      </button>
-                      <button
-                        onClick={handleRemoveVideo}
-                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
-                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    {!canAffordConvert && (
-                      <p className="text-xs" style={{ color: '#ef4444' }}>
-                        Not enough credits for conversion.{' '}
-                        <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>
-                          Top up
-                        </button>
-                      </p>
-                    )}
-                  </motion.div>
+              {/* Conversion panels */}
+              <AnimatePresence mode="wait">
+                {showReconvertWarning && (
+                  <ReconvertWarningPanel
+                    key="reconvert-warning"
+                    compat={compat}
+                    trimStart={trimStart}
+                    targetDuration={targetDuration}
+                    convertedAspectRatio={convertedSettings?.aspectRatio}
+                    convertedDuration={convertedSettings?.duration}
+                    canAffordConvert={canAffordConvert}
+                    isProcessing={isProcessing}
+                    onRevert={handleRevertSettings}
+                    onReconvert={handleReconvert}
+                    onRemoveVideo={handleRemoveVideo}
+                  />
+                )}
+                {showFirstConvertPanel && (
+                  <FirstConversionPanel
+                    key="first-convert"
+                    compat={compat}
+                    trimStart={trimStart}
+                    targetDuration={targetDuration}
+                    canAffordConvert={canAffordConvert}
+                    isProcessing={isProcessing}
+                    onConvert={handleConvert}
+                    onRemoveVideo={handleRemoveVideo}
+                  />
                 )}
               </AnimatePresence>
 
@@ -1252,7 +1421,12 @@ export default function CreateCopyMotionPage() {
             </button>
 
             {/* Contextual hint text */}
-            {needsConversion && (
+            {showReconvertWarning && (
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+                Revert your settings or re-convert above to continue.
+              </p>
+            )}
+            {!showReconvertWarning && needsConversion && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Convert your video above to continue.
               </p>
@@ -1277,7 +1451,7 @@ export default function CreateCopyMotionPage() {
                 Subject image exceeds 10 MB. Upload a smaller file to continue.
               </p>
             )}
-            {compat.compatible && hasVideo && hasSubject && !canAfford && (
+            {compat.compatible && !settingsDrifted && hasVideo && hasSubject && !canAfford && (
               <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
                 Not enough credits.{' '}
                 <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
