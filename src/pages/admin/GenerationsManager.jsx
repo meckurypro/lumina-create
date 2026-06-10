@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle,
-  ChevronDown, ChevronUp, ExternalLink, Copy, Zap, Film,
-  Image, User, Calendar, Search, X, Filter,
+  ChevronDown, ChevronUp, Copy, Zap, Film,
+  Image, User, Calendar, Search, X, Filter, Download, Eye,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -65,6 +66,133 @@ const copyToClipboard = (text, label = 'Copied') => {
   navigator.clipboard.writeText(text).then(() => toast.success(label))
 }
 
+// Detect video by extension OR content-type hint in the URL.
+const looksLikeVideo = (url = '') =>
+  /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)
+
+// Blob-download — `download` attribute is ignored for cross-origin URLs,
+// so we MUST fetch the asset and create a same-origin object URL.
+const blobDownload = async (url, filename) => {
+  const toastId = toast.loading('Preparing download…')
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
+    if (!res.ok) throw new Error('Network response was not ok')
+    const blob = await res.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    toast.success('Downloaded', { id: toastId })
+  } catch (err) {
+    console.error('Download failed', err)
+    toast.error('Download failed', { id: toastId })
+  }
+}
+
+// In-app lightbox for previewing media without leaving the admin.
+const MediaLightbox = ({ url, kind, filename, onClose }) => {
+  if (!url) return null
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.92)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: 16, right: 16,
+          width: 40, height: 40, borderRadius: 9999,
+          background: 'rgba(255,255,255,0.12)', color: '#fff',
+          border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <X size={18} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); blobDownload(url, filename) }}
+        style={{
+          position: 'absolute', top: 16, left: 16,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '8px 14px', borderRadius: 9999,
+          background: 'rgba(255,255,255,0.12)', color: '#fff',
+          border: 'none', cursor: 'pointer',
+          fontSize: 12, fontWeight: 700,
+        }}
+      >
+        <Download size={13} /> Download
+      </button>
+      {kind === 'video' ? (
+        <video
+          src={url}
+          controls
+          autoPlay
+          playsInline
+          style={{ maxWidth: '95vw', maxHeight: '88vh', borderRadius: 12, background: '#000' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <img
+          src={url}
+          alt={filename}
+          style={{ maxWidth: '95vw', maxHeight: '88vh', borderRadius: 12, objectFit: 'contain' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
+    </div>,
+    document.body
+  )
+}
+
+// Row-level Preview + Download pair shown on each collapsed generation row.
+const RowMediaActions = ({ url, kind, filename }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        title="Preview output"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          padding: '4px 8px', borderRadius: 8,
+          background: 'rgba(16,185,129,0.1)', color: '#10b981',
+          fontSize: 10, fontWeight: 700,
+          border: '1px solid rgba(16,185,129,0.2)', cursor: 'pointer',
+        }}
+      >
+        <Eye size={9} /> Preview
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); blobDownload(url, filename) }}
+        title="Download output"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          padding: '4px 8px', borderRadius: 8,
+          background: 'rgba(99,102,241,0.1)', color: '#6366f1',
+          fontSize: 10, fontWeight: 700,
+          border: '1px solid rgba(99,102,241,0.2)', cursor: 'pointer',
+        }}
+      >
+        <Download size={9} /> Download
+      </button>
+      {open && (
+        <MediaLightbox url={url} kind={kind} filename={filename} onClose={() => setOpen(false)} />
+      )}
+    </>
+  )
+}
+
 // ─────────────────────────────────────────────────────────
 // Status Badge
 // ─────────────────────────────────────────────────────────
@@ -103,32 +231,55 @@ const StatusBadge = ({ status }) => {
 // ─────────────────────────────────────────────────────────
 
 const UrlChip = ({ label, url, color = '#6366f1' }) => {
+  const [previewOpen, setPreviewOpen] = useState(false)
   if (!url) return null
-  const isVideo = url.endsWith('.mp4') || url.includes('/generations/')
+  const isVideo = looksLikeVideo(url)
+  const kind    = isVideo ? 'video' : 'image'
+  const ext     = isVideo ? 'mp4' : (url.match(/\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i)?.[1] || 'png')
+  const safeLabel = label.toLowerCase().replace(/\s+/g, '-')
+  const filename  = `${safeLabel}.${ext}`
+
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* Preview — in-app lightbox, no redirect */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setPreviewOpen(true) }}
+        title={`Preview ${label}`}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 3,
           padding: '2px 7px', borderRadius: 6,
           background: `${color}15`, color,
-          fontSize: 10, fontWeight: 700, textDecoration: 'none',
-          border: `1px solid ${color}30`,
+          fontSize: 10, fontWeight: 700,
+          border: `1px solid ${color}30`, cursor: 'pointer',
         }}
       >
         {isVideo ? <Film size={8} /> : <Image size={8} />}
         {label}
-        <ExternalLink size={8} />
-      </a>
+        <Eye size={8} />
+      </button>
+      {/* One-click download — blob fetch, never navigates */}
       <button
-        onClick={() => copyToClipboard(url, `${label} URL copied`)}
+        onClick={(e) => { e.stopPropagation(); blobDownload(url, filename) }}
+        title={`Download ${label}`}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}
+      >
+        <Download size={9} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); copyToClipboard(url, `${label} URL copied`) }}
+        title="Copy URL"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}
       >
         <Copy size={9} />
       </button>
+      {previewOpen && (
+        <MediaLightbox
+          url={url}
+          kind={kind}
+          filename={filename}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </span>
   )
 }
@@ -419,21 +570,11 @@ const GenRow = ({ gen, onSync, syncing }) => {
           )}
 
           {gen.output_url && (
-            <a
-              href={gen.output_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 3,
-                padding: '4px 8px', borderRadius: 8,
-                background: 'rgba(16,185,129,0.1)', color: '#10b981',
-                fontSize: 10, fontWeight: 700, textDecoration: 'none',
-                border: '1px solid rgba(16,185,129,0.2)',
-              }}
-            >
-              <ExternalLink size={9} /> View
-            </a>
+            <RowMediaActions
+              url={gen.output_url}
+              filename={`gen-${gen.id.slice(0,8)}.${looksLikeVideo(gen.output_url) ? 'mp4' : 'png'}`}
+              kind={looksLikeVideo(gen.output_url) ? 'video' : 'image'}
+            />
           )}
 
           <span style={{ color: 'var(--text-muted)', display: 'flex' }}>
