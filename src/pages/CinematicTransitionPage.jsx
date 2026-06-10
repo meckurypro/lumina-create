@@ -464,9 +464,9 @@ const ProjectActionSheet = ({
                 </div>
               </button>
 
-              {/* Export */}
+              {/* Export — Merge */}
               <button
-                onClick={() => { onExport(project.id, project.name); onClose() }}
+                onClick={() => { onExport(project.id, project.name, 'merge'); onClose() }}
                 disabled={exporting || project.status !== 'completed'}
                 className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
                 style={{
@@ -489,12 +489,39 @@ const ProjectActionSheet = ({
                 </div>
                 <div>
                   <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {exporting ? `Exporting… ${exportProgress}%` : 'Export Video'}
+                    {exporting ? `Exporting… ${exportProgress}%` : 'Merge & Export'}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {project.status !== 'completed'
                       ? 'Clips must finish processing first'
-                      : 'Merge all clips into one video'}
+                      : 'Download all clips merged into one video'}
+                  </p>
+                </div>
+              </button>
+
+              {/* Export — Download All */}
+              <button
+                onClick={() => { onExport(project.id, project.name, 'download'); onClose() }}
+                disabled={exporting || project.status !== 'completed'}
+                className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border:     '1px solid var(--border-color)',
+                  opacity:    exporting || project.status !== 'completed' ? 0.5 : 1,
+                }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+                     style={{ background: 'rgba(91,110,247,0.12)' }}>
+                  <Film size={16} style={{ color: 'var(--brand)' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Download All Clips
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {project.status !== 'completed'
+                      ? 'Clips must finish processing first'
+                      : 'Save each clip as a separate file'}
                   </p>
                 </div>
               </button>
