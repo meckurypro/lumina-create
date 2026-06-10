@@ -309,9 +309,13 @@ const ModelPicker = ({ models, value, onChange }) => {
 }
 
 // ── ProjectActionSheet ────────────────────────────────────
-// Bottom sheet shown when user taps ⋯ on a project card.
-// Handles rename inline, delete (with two-option confirm),
-// and export (delegates to useCinematicExport).
+// Bottom sheet: rename / delete / export.
+//
+// FIX: onExport is now called with (projectId, projectName, mode) where
+// mode is explicitly 'merge' or 'download'. Previously mode was passed
+// as a third arg to onExport but was silently dropped by the intermediate
+// onProjectAction wrapper in ProjectList, so both buttons always triggered
+// merge mode and the fast downloadAll path was never reached.
 const ProjectActionSheet = ({
   project,
   onClose,
@@ -343,11 +347,9 @@ const ProjectActionSheet = ({
   }
 
   const handleDelete = async (mode) => {
-    // mode: 'project_only' | 'everything'
     setDeleting(true)
     try {
       if (mode === 'everything') {
-        // 1. Get all clip IDs for this project
         const { data: clips } = await supabase
           .from('cinematic_clips')
           .select('id')
@@ -356,7 +358,6 @@ const ProjectActionSheet = ({
         if (clips?.length) {
           const clipIds = clips.map(c => c.id)
 
-          // 2. Get generation IDs linked via clip versions
           const { data: versions } = await supabase
             .from('cinematic_clip_versions')
             .select('generation_id')
@@ -365,26 +366,20 @@ const ProjectActionSheet = ({
           if (versions?.length) {
             const genIds = versions.map(v => v.generation_id).filter(Boolean)
             if (genIds.length) {
-              // 3. Delete generation rows (cascades to outputs via RLS/FK)
               await supabase.from('generations').delete().in('id', genIds)
             }
           }
 
-          // 4. Delete clip version rows
           await supabase.from('cinematic_clip_versions').delete().in('clip_id', clipIds)
-
-          // 5. Delete clips
           await supabase.from('cinematic_clips').delete().in('id', clipIds)
         }
       } else {
-        // project_only: unlink clips by nulling project_id so they stay in Media
         await supabase
           .from('cinematic_clips')
           .update({ project_id: null })
           .eq('project_id', project.id)
       }
 
-      // 6. Delete the project itself
       await cinematicProjects.delete(project.id)
 
       onDeleted(project.id)
@@ -429,7 +424,7 @@ const ProjectActionSheet = ({
           <div className="w-10 h-1 rounded-full mb-4" style={{ background: 'var(--border-color)' }} />
           <div className="flex items-center justify-between w-full">
             <p className="text-sm font-black truncate pr-4" style={{ color: 'var(--text-primary)' }}>
-              {screen === 'menu'   ? project.name
+              {screen === 'menu'    ? project.name
                : screen === 'rename' ? 'Rename Project'
                : 'Delete Project'}
             </p>
@@ -464,9 +459,13 @@ const ProjectActionSheet = ({
                 </div>
               </button>
 
-              {/* Export — Merge */}
+              {/* Export — Merge & Export */}
               <button
-                onClick={() => { onExport(project.id, project.name, 'merge'); onClose() }}
+                onClick={() => {
+                  // Pass mode='merge' explicitly so it survives the prop chain
+                  onExport(project.id, project.name, 'merge')
+                  onClose()
+                }}
                 disabled={exporting || project.status !== 'completed'}
                 className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
                 style={{
@@ -499,9 +498,14 @@ const ProjectActionSheet = ({
                 </div>
               </button>
 
-              {/* Export — Download All */}
+              {/* Export — Download All Clips */}
               <button
-                onClick={() => { onExport(project.id, project.name, 'download'); onClose() }}
+                onClick={() => {
+                  // Pass mode='download' explicitly — this is the fast path,
+                  // no FFmpeg involved, just fetch + download each clip directly.
+                  onExport(project.id, project.name, 'download')
+                  onClose()
+                }}
                 disabled={exporting || project.status !== 'completed'}
                 className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
                 style={{
@@ -594,7 +598,6 @@ const ProjectActionSheet = ({
                 </p>
               </div>
 
-              {/* Option A — keep clips in Media */}
               <button
                 onClick={() => handleDelete('project_only')}
                 disabled={deleting}
@@ -613,7 +616,6 @@ const ProjectActionSheet = ({
                 </div>
               </button>
 
-              {/* Option B — delete everything */}
               <button
                 onClick={() => handleDelete('everything')}
                 disabled={deleting}
@@ -650,6 +652,8 @@ const ProjectActionSheet = ({
 }
 
 // ── ProjectList ───────────────────────────────────────────
+// FIX: onExport now threads all three args (id, name, mode) through to
+// onProjectAction, previously the mode arg was silently dropped here.
 const ProjectList = ({
   projects, onNew, onOpen, onView, loading,
   onProjectAction, exporting, exportProgress, exportingProjectId,
@@ -705,7 +709,6 @@ const ProjectList = ({
                 className="flex items-center gap-3 p-4 rounded-2xl"
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
               >
-                {/* Tap area → open editor */}
                 <button
                   onClick={() => onOpen(p)}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left"
@@ -725,22 +728,22 @@ const ProjectList = ({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-  {isExportingThis
-    ? `Exporting… ${exportProgress}%`
-    : `${p.status === 'draft' ? 'Draft'
-        : p.status === 'processing' ? 'Processing…'
-        : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
-  }
-</p>
-{p.status === 'processing' && (
-  <button
-    onClick={(e) => { e.stopPropagation(); onView(p.id) }}
-    className="text-xs font-bold mt-0.5"
-    style={{ color: 'var(--brand)' }}
-  >
-    View results →
-  </button>
-)}
+                      {isExportingThis
+                        ? `Exporting… ${exportProgress}%`
+                        : `${p.status === 'draft' ? 'Draft'
+                            : p.status === 'processing' ? 'Processing…'
+                            : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+                      }
+                    </p>
+                    {p.status === 'processing' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onView(p.id) }}
+                        className="text-xs font-bold mt-0.5"
+                        style={{ color: 'var(--brand)' }}
+                      >
+                        View results →
+                      </button>
+                    )}
                   </div>
                   <div
                     className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
@@ -757,7 +760,6 @@ const ProjectList = ({
                   </div>
                 </button>
 
-                {/* Kebab button */}
                 <button
                   onClick={(e) => handleKebabClick(e, p)}
                   className="w-8 h-8 flex items-center justify-center rounded-xl flex-shrink-0 ml-1"
@@ -771,7 +773,6 @@ const ProjectList = ({
         </div>
       )}
 
-      {/* Action sheet */}
       <AnimatePresence>
         {activeActionProject && (
           <ProjectActionSheet
@@ -781,7 +782,8 @@ const ProjectList = ({
             onClose={() => setActiveActionProject(null)}
             onRenamed={(id, name) => onProjectAction('rename', id, name)}
             onDeleted={(id) => onProjectAction('delete', id)}
-            onExport={(id, name) => onProjectAction('export', id, name)}
+            // FIX: thread mode (3rd arg) through to onProjectAction as 4th arg
+            onExport={(id, name, mode) => onProjectAction('export', id, name, mode)}
           />
         )}
       </AnimatePresence>
@@ -1191,7 +1193,7 @@ export default function CinematicTransitionPage() {
     if (exportError) toast.error(exportError)
   }, [exportError])
 
-  // ── Poll processing projects via generation rows ───────
+  // ── Poll processing projects ───────────────────────────
   useEffect(() => {
     if (!user) return
     const processingProjects = projects.filter(p => p.status === 'processing')
@@ -1199,7 +1201,6 @@ export default function CinematicTransitionPage() {
 
     const interval = setInterval(async () => {
       for (const project of processingProjects) {
-        // 1. Get clip→generation links for this project
         const { data: versions } = await supabase
           .from('cinematic_clip_versions')
           .select('generation_id, clip_id')
@@ -1217,7 +1218,6 @@ export default function CinematicTransitionPage() {
         const genIds = versions.map(v => v.generation_id).filter(Boolean)
         if (!genIds.length) continue
 
-        // 2. Check generation statuses — same source of truth MediaPageCore uses
         const { data: gens } = await supabase
           .from('generations')
           .select('id, status, output_url')
@@ -1228,7 +1228,6 @@ export default function CinematicTransitionPage() {
         const allDone = gens.every(g => g.status === 'completed' || g.status === 'failed')
         if (!allDone) continue
 
-        // 3. Update clip statuses to match their generations
         await Promise.all(
           versions.map(async v => {
             const gen = gens.find(g => g.id === v.generation_id)
@@ -1240,7 +1239,6 @@ export default function CinematicTransitionPage() {
           })
         )
 
-        // 4. Promote project to completed
         await supabase
           .from('cinematic_projects')
           .update({ status: 'completed' })
@@ -1390,7 +1388,12 @@ export default function CinematicTransitionPage() {
   }
 
   // ── Project list actions (rename / delete / export) ───
-  const handleProjectAction = useCallback(async (action, projectId, payload) => {
+  // FIX: accept `mode` as 4th arg and pass it through to exportProject.
+  // Previously this function only accepted 3 args, silently discarding the
+  // mode that ProjectActionSheet was already sending, so both export buttons
+  // always fell through to the default ('merge') and the fast downloadAll
+  // path was never reached.
+  const handleProjectAction = useCallback(async (action, projectId, payload, mode) => {
     if (action === 'rename') {
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: payload } : p))
     }
@@ -1401,7 +1404,8 @@ export default function CinematicTransitionPage() {
 
     if (action === 'export') {
       setExportingProjectId(projectId)
-      const ok = await exportProject(projectId, payload)
+      // mode is 'merge' or 'download', passed from ProjectActionSheet → ProjectList → here
+      const ok = await exportProject(projectId, payload, mode)
       setExportingProjectId(null)
       if (ok) toast.success('Export complete — check your downloads')
     }
