@@ -1,9 +1,10 @@
 // src/pages/CinematicTransitionPage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate }                               from 'react-router-dom'
-import { motion, AnimatePresence }                   from 'framer-motion'
+import { useNavigate, useLocation }                 from 'react-router-dom'
+import { motion, AnimatePresence }                  from 'framer-motion'
 import { ArrowLeft, Plus, Trash2, ChevronDown, Zap, Film, Settings2 } from 'lucide-react'
-import { useAuth }                                   from '@/context/AuthContext'
+import { useAuth }                                  from '@/context/AuthContext'
+import { promptiqAccess }                           from '@/lib/promptiq'
 import {
   supabase,
   templates      as templatesDb,
@@ -18,13 +19,9 @@ import toast from 'react-hot-toast'
 
 // ── Constants ─────────────────────────────────────────────
 const SLUG        = 'cinematic-transition'
+const TOOL_KEY    = 'cinematic_transition'   // matches promptiq_tools.identifier seed
 const DURATIONS   = ['3', '5', '8', '10']
 const ASPECT_OPTS = ['9:16', '16:9', '1:1']
-const MODEL_OPTS  = [
-  { id: 'kling_v3_pro',   label: 'Kling 3.0 Pro' },
-  { id: 'kling_v3_std',   label: 'Kling 3.0 Std' },
-  { id: 'kling_v2_6_pro', label: 'Kling 2.6 Pro' },
-]
 
 // ── Helpers ───────────────────────────────────────────────
 const uploadFile = async (file, userId) => {
@@ -56,7 +53,6 @@ const detectAspectRatio = (file) =>
     img.src = URL.createObjectURL(file)
   })
 
-// Simple debounce hook
 const useDebounce = (fn, delay) => {
   const timer = useRef(null)
   return useCallback((...args) => {
@@ -77,7 +73,6 @@ const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
         className="relative rounded-2xl overflow-hidden"
         style={{ width: 80, height: 80, background: 'var(--bg-elevated)', flexShrink: 0 }}
       >
-        {/* Show uploading spinner over thumbnail */}
         {frame.uploading && (
           <div className="absolute inset-0 flex items-center justify-center z-10"
                style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -174,7 +169,6 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
                   </button>
                 </div>
               </div>
-
               <div className="overflow-y-auto flex flex-col gap-2 px-4 pb-4 pt-2">
                 {transitions.map((t) => {
                   const isSelected = t.id === value
@@ -195,10 +189,8 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
                         </p>
                       </div>
                       {isSelected && (
-                        <div
-                          className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: 'var(--brand)' }}
-                        >
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                             style={{ background: 'var(--brand)' }}>
                           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                             <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5"
                                   strokeLinecap="round" strokeLinejoin="round"/>
@@ -234,6 +226,34 @@ const DurationPicker = ({ value, onChange }) => (
     ))}
   </div>
 )
+
+// ── Model Picker — dynamic from DB ────────────────────────
+const ModelPicker = ({ value, models, onChange }) => {
+  if (!models.length) return null
+  return (
+    <div>
+      <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Model</p>
+      <div className="flex gap-1.5 flex-wrap">
+        {models.map(m => (
+          <button
+            key={m.value}
+            onClick={() => onChange(m.value)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+            style={{
+              background: value === m.value ? 'var(--brand)' : 'var(--bg-elevated)',
+              color:      value === m.value ? '#fff'         : 'var(--text-muted)',
+            }}
+          >
+            {m.label}
+            {m.sublabel && (
+              <span className="ml-1 opacity-60 text-[10px]">{m.sublabel}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ── Project List View ─────────────────────────────────────
 const ProjectList = ({ projects, onNew, onOpen, loading }) => (
@@ -279,16 +299,14 @@ const ProjectList = ({ projects, onNew, onOpen, loading }) => (
             className="flex items-center gap-3 p-4 rounded-2xl text-left w-full"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
           >
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
-              style={{ background: 'var(--bg-elevated)' }}
-            >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
+                 style={{ background: 'var(--bg-elevated)' }}>
               <Film size={20} style={{ color: 'var(--brand)' }} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {p.status === 'draft'      ? 'Draft'
+                {p.status === 'draft'       ? 'Draft'
                 : p.status === 'processing' ? 'Processing…'
                 : 'Completed'}
                 {' · '}
@@ -366,14 +384,12 @@ const NewProjectModal = ({ onConfirm, onClose, loading }) => {
   )
 }
 
-// ── Swap Icon SVG ─────────────────────────────────────────
+// ── Swap Icon ─────────────────────────────────────────────
 const SwapIcon = ({ size = 14, color = 'var(--text-muted)' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
        stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 2v6h-6" />
-    <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-    <path d="M3 22v-6h6" />
-    <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+    <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+    <path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
   </svg>
 )
 
@@ -384,14 +400,15 @@ const EditorView = ({
   aspectRatio, setAspectRatio,
   withSound, setWithSound,
   model, setModel,
-  creditCost, credits, isPromptIQ,
+  availableModels,
+  creditCost, credits, isFree,
   onGenerate, onFrameUpload, submitting, onBack,
 }) => {
   const firstFrameUploaded = !!frames[0]?.url
-  const canAfford    = isPromptIQ || credits >= creditCost * slots.length
-  const clipCount    = frames.length - 1
+  const canAfford   = isFree || credits >= creditCost * slots.length
+  const clipCount   = frames.length - 1
   const anyUploading = frames.some(f => f?.uploading)
-  const canGenerate  = frames.length >= 2
+  const canGenerate = frames.length >= 2
     && frames.every(f => f?.url)
     && slots.every(s => s.transitionId && s.duration)
     && canAfford
@@ -412,20 +429,13 @@ const EditorView = ({
   return (
     <div className="relative min-h-full" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
       <AnimatePresence>
         {submitting && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              background: 'rgba(0,0,0,0.5)',
-            }}
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
             <motion.div
               animate={{ rotate: 360 }}
@@ -459,7 +469,7 @@ const EditorView = ({
               : 'Add frames below'}
           </p>
         </div>
-        {isPromptIQ ? (
+        {isFree ? (
           <span className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-white brand-gradient">
             <Zap size={10} /> Free
           </span>
@@ -479,7 +489,6 @@ const EditorView = ({
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
         style={{ paddingBottom: 'calc(80px + var(--bottom-nav-height))' }}
       >
-
         {/* Settings */}
         <div
           className="flex flex-col gap-3 p-4 rounded-2xl"
@@ -499,11 +508,8 @@ const EditorView = ({
               <AnimatePresence>
                 {firstFrameUploaded && (
                   <motion.span
-                    initial={{ opacity: 0, x: 6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{    opacity: 0, x: 6 }}
-                    className="text-xs font-semibold"
-                    style={{ color: 'var(--brand)' }}
+                    initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 6 }}
+                    className="text-xs font-semibold" style={{ color: 'var(--brand)' }}
                   >
                     auto-detected
                   </motion.span>
@@ -551,25 +557,8 @@ const EditorView = ({
             </button>
           </div>
 
-          {/* Model */}
-          <div>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Model</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {MODEL_OPTS.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setModel(m.id)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                  style={{
-                    background: model === m.id ? 'var(--brand)' : 'var(--bg-elevated)',
-                    color:      model === m.id ? '#fff'         : 'var(--text-muted)',
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Dynamic model picker */}
+          <ModelPicker value={model} models={availableModels} onChange={setModel} />
         </div>
 
         {/* Frame + Transition chain */}
@@ -580,7 +569,6 @@ const EditorView = ({
 
           {frames.map((frame, idx) => (
             <div key={idx}>
-              {/* Frame row */}
               <div
                 className="flex items-center gap-3 p-3 rounded-2xl"
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
@@ -592,9 +580,7 @@ const EditorView = ({
                   onRemove={() => setFrames(prev => prev.map((f, i) => i === idx ? null : f))}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Frame {idx + 1}
-                  </p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Frame {idx + 1}</p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {frame?.uploading ? 'Uploading…'
                       : frame?.url   ? 'Saved'
@@ -602,24 +588,16 @@ const EditorView = ({
                       : 'Tap to upload image'}
                   </p>
                 </div>
-
-                {/* Swap / delete */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <label
                     className="w-8 h-8 flex items-center justify-center rounded-xl cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.06)' }}
                     title="Swap image"
                   >
-                    <input
-                      type="file" accept="image/*" className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]
-                        if (f) onFrameUpload(f, idx)
-                      }}
-                    />
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) onFrameUpload(f, idx) }} />
                     <SwapIcon />
                   </label>
-
                   {idx > 1 && (
                     <button
                       onClick={() => removeFrame(idx)}
@@ -632,7 +610,6 @@ const EditorView = ({
                 </div>
               </div>
 
-              {/* Transition row */}
               {idx < frames.length - 1 && (
                 <div
                   className="flex items-center gap-2 px-3 py-2 mx-4 rounded-xl my-1"
@@ -657,15 +634,10 @@ const EditorView = ({
             </div>
           ))}
 
-          {/* Add frame */}
           <button
             onClick={addFrame}
             className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl text-sm font-bold transition-all"
-            style={{
-              border:     '1.5px dashed var(--border-color)',
-              color:      'var(--text-muted)',
-              background: 'transparent',
-            }}
+            style={{ border: '1.5px dashed var(--border-color)', color: 'var(--text-muted)', background: 'transparent' }}
           >
             <Plus size={16} />
             Add Frame
@@ -677,11 +649,11 @@ const EditorView = ({
       <div
         className="fixed left-0 right-0 px-4 pt-3"
         style={{
-  bottom:        'var(--bottom-nav-height)',
-  background:    'var(--bg-primary)',
-  borderTop:     '1px solid var(--border-color)',
-  paddingBottom: '12px',
-}}
+          bottom:        'var(--bottom-nav-height)',
+          background:    'var(--bg-primary)',
+          borderTop:     '1px solid var(--border-color)',
+          paddingBottom: '12px',
+        }}
       >
         <div className="mx-auto max-w-xl">
           <button
@@ -695,9 +667,9 @@ const EditorView = ({
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {submitting       ? 'Firing clips…'
-              : anyUploading  ? 'Saving frames…'
-              : isPromptIQ    ? `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  Free`
+            {submitting      ? 'Firing clips…'
+              : anyUploading ? 'Saving frames…'
+              : isFree        ? `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  Free`
               : `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  ${creditCost * clipCount} cr`}
           </button>
           {!canAfford && (
@@ -714,45 +686,81 @@ const EditorView = ({
 
 // ── Main Page ─────────────────────────────────────────────
 export default function CinematicTransitionPage() {
-  const navigate = useNavigate()
-  const { user, credits, profile, isStaff, isAdmin, refreshProfile } = useAuth()
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const { user, credits, profile, refreshProfile } = useAuth()
 
-  const [view,          setView]          = useState('list')
-  const [projects,      setProjects]      = useState([])
-  const [activeProject, setActiveProject] = useState(null)
-  const [transitions,   setTransitions]   = useState([])
-  const [dbTemplate,    setDbTemplate]    = useState(null)
-  const [loadingProj,   setLoadingProj]   = useState(true)
-  const [creatingProj,  setCreatingProj]  = useState(false)
-  const [showNewModal,  setShowNewModal]  = useState(false)
-  const [submitting,    setSubmitting]    = useState(false)
+  // ── Route state (passed when navigating from PromptIQ page) ──
+  // isPromptIQ flag just means "came from PromptIQ page"; actual free status
+  // comes from the DB grant, not from route state, to prevent client-side spoofing.
+  const cameFromPromptIQ = location.state?.isPromptIQ === true
+
+  const [view,           setView]          = useState('list')
+  const [projects,       setProjects]      = useState([])
+  const [activeProject,  setActiveProject] = useState(null)
+  const [transitions,    setTransitions]   = useState([])
+  const [availableModels,setAvailableModels] = useState([])  // dynamic frame_to_frame models
+  const [dbTemplate,     setDbTemplate]    = useState(null)
+  const [isFree,         setIsFree]        = useState(false) // resolved from DB grant
+  const [loadingProj,    setLoadingProj]   = useState(true)
+  const [creatingProj,   setCreatingProj]  = useState(false)
+  const [showNewModal,   setShowNewModal]  = useState(false)
+  const [submitting,     setSubmitting]    = useState(false)
 
   // Editor state
-  const [frames,      setFrames]      = useState([null, null])
-  const [slots,       setSlots]       = useState([{ transitionId: null, duration: '5' }])
-  const [aspectRatio, setAspectRatio] = useState('9:16')
-  const [withSound,   setWithSound]   = useState(false)
-  const [model,       setModel]       = useState('kling_v3_pro')
+  const [frames,       setFrames]      = useState([null, null])
+  const [slots,        setSlots]       = useState([{ transitionId: null, duration: '5' }])
+  const [aspectRatio,  setAspectRatio] = useState('9:16')
+  const [withSound,    setWithSound]   = useState(false)
+  const [model,        setModel]       = useState('')
 
-  const isPromptIQ = (isStaff || isAdmin) && dbTemplate?.visibility === 'promptiq'
-
-  // ── Load template + transitions + projects ──────────────
+  // ── Load everything on mount ──────────────────────────
   useEffect(() => {
     if (!user) return
     ;(async () => {
-      const [{ data: tmpl }, { data: trans }, { data: projs }] = await Promise.all([
+      const [
+        { data: tmpl },
+        { data: trans },
+        { data: projs },
+        { data: models },
+        { data: grant },
+      ] = await Promise.all([
         templatesDb.getBySlug(SLUG),
         cinematicTransitions.getActive(),
         cinematicProjects.getForUser(user.id),
+        // Fetch all active frame_to_frame models from DB
+        supabase
+          .from('models')
+          .select('value, label, sublabel, sort_order')
+          .eq('feature', 'frame_to_frame')
+          .eq('is_active', true)
+          .eq('is_user_facing', true)
+          .order('sort_order', { ascending: true }),
+        // Resolve access grant from DB (source of truth for isFree)
+        supabase.rpc('get_staff_tool_access', {
+          p_staff_id:        user.id,
+          p_tool_identifier: TOOL_KEY,
+        }),
       ])
+
       setDbTemplate(tmpl || null)
       setTransitions(trans || [])
       setProjects(projs || [])
+
+      const modelList = models || []
+      setAvailableModels(modelList)
+      // Default to first model in list, falling back to template default
+      setModel(modelList[0]?.value || tmpl?.default_model || '')
+
+      // isFree: only true if DB grant says so AND user came via PromptIQ
+      const accessGrant = grant || {}
+      setIsFree(cameFromPromptIQ && accessGrant.has_access === true && accessGrant.is_free === true)
+
       setLoadingProj(false)
     })()
-  }, [user])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Auto-save draft (debounced, fires whenever editor state changes) ──
+  // ── Auto-save draft ───────────────────────────────────
   const activeProjectRef = useRef(null)
   useEffect(() => { activeProjectRef.current = activeProject }, [activeProject])
 
@@ -770,7 +778,6 @@ export default function CinematicTransitionPage() {
 
   const debouncedPersist = useDebounce(persistDraft, 800)
 
-  // Trigger auto-save whenever editor values change (skip on first mount)
   const isMounted = useRef(false)
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return }
@@ -779,25 +786,22 @@ export default function CinematicTransitionPage() {
     debouncedPersist(frameUrls, slots, aspectRatio, withSound)
   }, [frames, slots, aspectRatio, withSound, model]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Frame upload — uploads immediately, saves real URL ──
+  // ── Frame upload ──────────────────────────────────────
   const handleFrameUpload = useCallback(async (file, idx) => {
-    // 1. Show instant preview + uploading spinner
     const blobUrl = URL.createObjectURL(file)
     setFrames(prev => prev.map((f, i) => i === idx ? { url: blobUrl, uploading: true } : f))
 
-    // 2. Detect aspect ratio from frame 0 while upload runs in parallel
     const [realUrl, detectedAR] = await Promise.all([
       uploadFile(file, user.id),
       idx === 0 ? detectAspectRatio(file) : Promise.resolve(null),
     ])
 
-    // 3. Replace blob URL with permanent Supabase URL
     URL.revokeObjectURL(blobUrl)
     setFrames(prev => prev.map((f, i) => i === idx ? { url: realUrl, uploading: false } : f))
     if (detectedAR) setAspectRatio(detectedAR)
   }, [user])
 
-  // ── New project ─────────────────────────────────────────
+  // ── New project ───────────────────────────────────────
   const handleNewProject = async (name) => {
     if (!user || !dbTemplate) return
     setCreatingProj(true)
@@ -821,9 +825,9 @@ export default function CinematicTransitionPage() {
     }
   }
 
-  // ── Open project — restore draft state if present ───────
+  // ── Open project ──────────────────────────────────────
   const openEditor = (project) => {
-    isMounted.current = false // reset so auto-save doesn't fire on restore
+    isMounted.current = false
     const draft = project.draft_state
 
     if (draft?.frameUrls?.length >= 2) {
@@ -831,37 +835,39 @@ export default function CinematicTransitionPage() {
       setSlots(draft.slots?.length ? draft.slots : [{ transitionId: null, duration: '5' }])
       setAspectRatio(draft.aspectRatio || '9:16')
       setWithSound(draft.withSound ?? false)
-      setModel(draft.model || dbTemplate?.default_model || 'kling_v3_pro')
+      // Restore saved model only if it's still in the available list
+      const savedModel = draft.model
+      setModel(prev => {
+        const stillAvailable = availableModels.some(m => m.value === savedModel)
+        return stillAvailable ? savedModel : (availableModels[0]?.value || dbTemplate?.default_model || prev)
+      })
     } else {
       setFrames([null, null])
       setSlots([{ transitionId: null, duration: '5' }])
       setAspectRatio(project.aspect_ratio || '9:16')
       setWithSound(project.with_sound || false)
-      setModel(dbTemplate?.default_model || 'kling_v3_pro')
+      setModel(availableModels[0]?.value || dbTemplate?.default_model || '')
     }
 
     setActiveProject(project)
     setView('editor')
   }
 
-  // ── Generate ────────────────────────────────────────────
+  // ── Generate ──────────────────────────────────────────
   const handleGenerate = async () => {
     if (!activeProject || !user || !dbTemplate) return
     const clipCount = frames.length - 1
     setSubmitting(true)
 
     try {
-      // All frames are already uploaded — just grab the URLs
       const uploadedUrls = frames.map(f => f?.url || null)
 
-      // Update project status + settings
       await cinematicProjects.update(activeProject.id, {
         status:       'processing',
         aspect_ratio: aspectRatio,
         with_sound:   withSound,
       })
 
-      // Upsert clips
       const clipRows = slots.map((slot, idx) => ({
         project_id:      activeProject.id,
         slot_index:      idx,
@@ -874,13 +880,11 @@ export default function CinematicTransitionPage() {
       const { data: savedClips, error: clipErr } = await cinematicClips.upsertForProject(clipRows)
       if (clipErr || !savedClips) throw new Error('Failed to save clips')
 
-      // Transition prompt map
       const transitionMap = {}
       transitions.forEach(t => { transitionMap[t.id] = t.prompt_text })
 
       const clipCreditCost = dbTemplate.credit_cost || 10
 
-      // Fire all clips in parallel
       await Promise.all(
         savedClips.map(async (clip, idx) => {
           const transitionPrompt = transitionMap[slots[idx].transitionId] || ''
@@ -891,11 +895,11 @@ export default function CinematicTransitionPage() {
             generation_type:     'start_end_frame',
             status:              'pending',
             prompt:              transitionPrompt,
-            model:               model || dbTemplate.default_model || 'kling_v3_pro',
+            model:               model || availableModels[0]?.value || dbTemplate.default_model,
             aspect_ratio:        aspectRatio,
             duration:            slots[idx].duration,
-            credits_charged:     isPromptIQ ? 0 : clipCreditCost,
-            is_staff_generation: isPromptIQ,
+            credits_charged:     isFree ? 0 : clipCreditCost,
+            is_staff_generation: isFree,
             with_sound:          withSound,
             start_frame_url:     clip.start_frame_url,
             end_frame_url:       clip.end_frame_url,
@@ -904,7 +908,8 @@ export default function CinematicTransitionPage() {
           })
           if (genErr || !genRow) throw new Error(`Clip ${idx + 1}: failed to create generation`)
 
-          if (isPromptIQ) {
+          if (isFree) {
+            // Free generation — deduct from staff pool
             const { data: poolResult } = await supabase.rpc('deduct_staff_pool', {
               p_staff_id:      user.id,
               p_generation_id: genRow.id,
@@ -913,6 +918,7 @@ export default function CinematicTransitionPage() {
             })
             if (!poolResult?.success) throw new Error(`Clip ${idx + 1}: pool error — ${poolResult?.error}`)
           } else {
+            // Paid generation — deduct from user's own credits
             const { data: deduct } = await generationsDb.deductCredits(user.id, clipCreditCost, genRow.id)
             if (!deduct?.success) throw new Error(`Clip ${idx + 1}: ${deduct?.error || 'Insufficient credits'}`)
           }
@@ -938,20 +944,21 @@ export default function CinematicTransitionPage() {
     }
   }
 
-  // ── Render ───────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────
   if (view === 'editor' && activeProject) {
     return (
       <EditorView
         project={activeProject}
-        frames={frames}           setFrames={setFrames}
+        frames={frames}             setFrames={setFrames}
         transitions={transitions}
-        slots={slots}             setSlots={setSlots}
-        aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
-        withSound={withSound}     setWithSound={setWithSound}
-        model={model}             setModel={setModel}
+        slots={slots}               setSlots={setSlots}
+        aspectRatio={aspectRatio}   setAspectRatio={setAspectRatio}
+        withSound={withSound}       setWithSound={setWithSound}
+        model={model}               setModel={setModel}
+        availableModels={availableModels}
         creditCost={dbTemplate?.credit_cost || 10}
         credits={credits}
-        isPromptIQ={isPromptIQ}
+        isFree={isFree}
         onGenerate={handleGenerate}
         onFrameUpload={handleFrameUpload}
         submitting={submitting}
