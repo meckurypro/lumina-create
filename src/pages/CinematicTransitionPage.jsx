@@ -2,9 +2,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useLocation }                          from 'react-router-dom'
 import { motion, AnimatePresence }                           from 'framer-motion'
-import { ArrowLeft, Plus, Trash2, ChevronDown, Zap, Film, Settings2 } from 'lucide-react'
-import { useAuth }                                           from '@/context/AuthContext'
-import { promptiqAccess }                                    from '@/lib/promptiq'
+import {
+  ArrowLeft, Plus, Trash2, ChevronDown, Zap, Film,
+  Settings2, MoreVertical, Pencil, Download, AlertTriangle,
+} from 'lucide-react'
+import { useAuth }              from '@/context/AuthContext'
+import { promptiqAccess }       from '@/lib/promptiq'
 import {
   supabase,
   templates      as templatesDb,
@@ -13,8 +16,9 @@ import {
   cinematicClips,
   cinematicTransitions,
 } from '@/lib/supabase'
-import { TopBar }      from '@/components/layout/TopBar'
-import { PageWrapper } from '@/components/layout/PageWrapper'
+import { TopBar }               from '@/components/layout/TopBar'
+import { PageWrapper }          from '@/components/layout/PageWrapper'
+import { useCinematicExport }   from '@/hooks/useCinematicExport'
 import toast from 'react-hot-toast'
 
 // ── Constants ─────────────────────────────────────────────
@@ -22,28 +26,17 @@ const SLUG      = 'cinematic-transition'
 const TOOL_KEY  = 'cinematic_transition'
 const ASPECT_OPTS = ['9:16', '16:9', '1:1']
 
-// ── Credit cost helper (mirrors CreateVideoPage logic) ────
-//
-// frame_to_frame models bill as:
-//   credit_cost_per_second × max(duration, min_billable_seconds)
-//
-// Some older/flat-rate models may fall back to credit_cost_t2i.
-// We never fall below 1 credit.
+// ── Credit cost helper ────────────────────────────────────
 function deriveClipCost(model, durationStr) {
   if (!model) return 0
   const dur = parseInt(durationStr || '5', 10)
-
   if (model.credit_cost_per_second) {
     const billable = Math.max(dur, model.min_billable_seconds ?? 1)
     return Math.ceil(model.credit_cost_per_second * billable)
   }
-
-  // flat-rate fallback (e.g. hailuo_02_pro, veo3_1_lite_s2e)
   if (model.is_flat_rate) {
     return model.credit_cost_t2i || model.credit_cost_i2i || 0
   }
-
-  // last-resort: t2i cost × duration
   const cps = model.credit_cost_t2i || model.credit_cost_i2i || 0
   return Math.ceil(cps * dur)
 }
@@ -86,8 +79,7 @@ const useDebounce = (fn, delay) => {
   }, [fn, delay])
 }
 
-// ── Sub-components ────────────────────────────────────────
-
+// ── FrameSlot ─────────────────────────────────────────────
 const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
   <div className="flex flex-col items-center gap-1.5">
     <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
@@ -137,6 +129,7 @@ const FrameSlot = ({ index, frame, onUpload, onRemove }) => (
   </div>
 )
 
+// ── TransitionPicker ──────────────────────────────────────
 const TransitionPicker = ({ value, transitions, onChange }) => {
   const [open, setOpen] = useState(false)
   const selected = transitions.find(t => t.id === value)
@@ -234,6 +227,7 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
   )
 }
 
+// ── DurationPicker ────────────────────────────────────────
 const DurationPicker = ({ value, options, onChange }) => (
   <div className="flex gap-1.5 flex-wrap">
     {options.map(d => (
@@ -252,7 +246,7 @@ const DurationPicker = ({ value, options, onChange }) => (
   </div>
 )
 
-// ── Model Picker (dropdown, mirrors CreateVideoPage style) ─
+// ── ModelPicker ───────────────────────────────────────────
 const ModelPicker = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const selected = models.find(m => m.value === value) || models[0]
@@ -314,85 +308,452 @@ const ModelPicker = ({ models, value, onChange }) => {
   )
 }
 
-// ── Project List View ─────────────────────────────────────
-const ProjectList = ({ projects, onNew, onOpen, loading }) => (
-  <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between pt-2 pb-2">
-      <div>
-        <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Cinematic</h1>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Your transition projects</p>
-      </div>
-      <button
-        onClick={onNew}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white brand-gradient"
+// ── ProjectActionSheet ────────────────────────────────────
+// Bottom sheet shown when user taps ⋯ on a project card.
+// Handles rename inline, delete (with two-option confirm),
+// and export (delegates to useCinematicExport).
+const ProjectActionSheet = ({
+  project,
+  onClose,
+  onRenamed,
+  onDeleted,
+  onExport,
+  exporting,
+  exportProgress,
+}) => {
+  const [screen, setScreen] = useState('menu')  // 'menu' | 'rename' | 'delete'
+  const [newName, setNewName] = useState(project.name)
+  const [renaming, setRenaming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleRename = async () => {
+    if (!newName.trim() || newName.trim() === project.name) return
+    setRenaming(true)
+    try {
+      const { error } = await cinematicProjects.update(project.id, { name: newName.trim() })
+      if (error) throw error
+      onRenamed(project.id, newName.trim())
+      toast.success('Project renamed')
+      onClose()
+    } catch (err) {
+      toast.error(err.message || 'Rename failed')
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  const handleDelete = async (mode) => {
+    // mode: 'project_only' | 'everything'
+    setDeleting(true)
+    try {
+      if (mode === 'everything') {
+        // 1. Get all clip IDs for this project
+        const { data: clips } = await supabase
+          .from('cinematic_clips')
+          .select('id')
+          .eq('project_id', project.id)
+
+        if (clips?.length) {
+          const clipIds = clips.map(c => c.id)
+
+          // 2. Get generation IDs linked via clip versions
+          const { data: versions } = await supabase
+            .from('cinematic_clip_versions')
+            .select('generation_id')
+            .in('clip_id', clipIds)
+
+          if (versions?.length) {
+            const genIds = versions.map(v => v.generation_id).filter(Boolean)
+            if (genIds.length) {
+              // 3. Delete generation rows (cascades to outputs via RLS/FK)
+              await supabase.from('generations').delete().in('id', genIds)
+            }
+          }
+
+          // 4. Delete clip version rows
+          await supabase.from('cinematic_clip_versions').delete().in('clip_id', clipIds)
+
+          // 5. Delete clips
+          await supabase.from('cinematic_clips').delete().in('id', clipIds)
+        }
+      } else {
+        // project_only: unlink clips by nulling project_id so they stay in Media
+        await supabase
+          .from('cinematic_clips')
+          .update({ project_id: null })
+          .eq('project_id', project.id)
+      }
+
+      // 6. Delete the project itself
+      await cinematicProjects.delete(project.id)
+
+      onDeleted(project.id)
+      toast.success(
+        mode === 'everything'
+          ? 'Project and all clips deleted'
+          : 'Project deleted — clips kept in Media'
+      )
+      onClose()
+    } catch (err) {
+      toast.error(err.message || 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 32, stiffness: 360 }}
+        className="w-full rounded-t-3xl flex flex-col"
+        style={{
+          background:    'var(--bg-card)',
+          border:        '1px solid var(--border-color)',
+          maxWidth:      480,
+          paddingBottom: 'env(safe-area-inset-bottom, 20px)',
+        }}
+        onClick={e => e.stopPropagation()}
       >
-        <Plus size={15} />
-        New
-      </button>
-    </div>
-
-    {loading ? (
-      <div className="flex flex-col gap-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-20 rounded-2xl" style={{ background: 'var(--bg-card)' }} />
-        ))}
-      </div>
-    ) : projects.length === 0 ? (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
-             style={{ background: 'var(--bg-elevated)' }}>
-          <Film size={24} style={{ color: 'var(--text-muted)' }} />
-        </div>
-        <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No projects yet</p>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tap New to get started</p>
-      </div>
-    ) : (
-      <div className="flex flex-col gap-3">
-        {projects.map((p, i) => (
-          <motion.button
-            key={p.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0  }}
-            transition={{ delay: i * 0.04 }}
-            onClick={() => onOpen(p)}
-            className="flex items-center gap-3 p-4 rounded-2xl text-left w-full"
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
-                 style={{ background: 'var(--bg-elevated)' }}>
-              <Film size={20} style={{ color: 'var(--brand)' }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {p.status === 'draft'       ? 'Draft'
-                : p.status === 'processing' ? 'Processing…'
-                : 'Completed'}
-                {' · '}
-                {new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-              </p>
-            </div>
-            <div
-              className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
-              style={{
-                background: p.status === 'completed'  ? 'rgba(16,185,129,0.12)'
-                          : p.status === 'processing' ? 'rgba(234,179,8,0.12)'
-                          : 'var(--bg-elevated)',
-                color:      p.status === 'completed'  ? '#10b981'
-                          : p.status === 'processing' ? '#eab308'
-                          : 'var(--text-muted)',
-              }}
+        {/* Handle + header */}
+        <div className="flex flex-col items-center px-4 pt-3 pb-3 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full mb-4" style={{ background: 'var(--border-color)' }} />
+          <div className="flex items-center justify-between w-full">
+            <p className="text-sm font-black truncate pr-4" style={{ color: 'var(--text-primary)' }}>
+              {screen === 'menu'   ? project.name
+               : screen === 'rename' ? 'Rename Project'
+               : 'Delete Project'}
+            </p>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-full text-xs font-bold flex-shrink-0"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
             >
-              {p.status}
-            </div>
-          </motion.button>
-        ))}
-      </div>
-    )}
-  </div>
-)
+              ✕
+            </button>
+          </div>
+        </div>
 
-// ── New Project Modal ─────────────────────────────────────
+        <div className="px-4 pb-4 flex flex-col gap-2">
+
+          {/* ── MENU SCREEN ── */}
+          {screen === 'menu' && (
+            <>
+              {/* Rename */}
+              <button
+                onClick={() => setScreen('rename')}
+                className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+                     style={{ background: 'rgba(91,110,247,0.12)' }}>
+                  <Pencil size={16} style={{ color: 'var(--brand)' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Rename</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Change the project name</p>
+                </div>
+              </button>
+
+              {/* Export */}
+              <button
+                onClick={() => { onExport(project.id, project.name); onClose() }}
+                disabled={exporting || project.status !== 'completed'}
+                className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border:     '1px solid var(--border-color)',
+                  opacity:    exporting || project.status !== 'completed' ? 0.5 : 1,
+                }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+                     style={{ background: 'rgba(16,185,129,0.12)' }}>
+                  {exporting
+                    ? <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+                        className="w-4 h-4 rounded-full border-2"
+                        style={{ borderColor: 'rgba(16,185,129,0.2)', borderTopColor: '#10b981' }}
+                      />
+                    : <Download size={16} style={{ color: '#10b981' }} />
+                  }
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {exporting ? `Exporting… ${exportProgress}%` : 'Export Video'}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {project.status !== 'completed'
+                      ? 'Clips must finish processing first'
+                      : 'Merge all clips into one video'}
+                  </p>
+                </div>
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={() => setScreen('delete')}
+                className="flex items-center gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+                     style={{ background: 'rgba(239,68,68,0.12)' }}>
+                  <Trash2 size={16} style={{ color: '#ef4444' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: '#ef4444' }}>Delete</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Remove this project</p>
+                </div>
+              </button>
+            </>
+          )}
+
+          {/* ── RENAME SCREEN ── */}
+          {screen === 'rename' && (
+            <>
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleRename()}
+                className="w-full rounded-2xl px-4 py-3 text-sm font-semibold outline-none"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  color:      'var(--text-primary)',
+                  border:     '1px solid var(--border-color)',
+                }}
+              />
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => setScreen('menu')}
+                  className="flex-1 py-3.5 rounded-2xl text-sm font-bold"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleRename}
+                  disabled={!newName.trim() || newName.trim() === project.name || renaming}
+                  className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white brand-gradient"
+                  style={{ opacity: !newName.trim() || newName.trim() === project.name || renaming ? 0.5 : 1 }}
+                >
+                  {renaming ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── DELETE CONFIRM SCREEN ── */}
+          {screen === 'delete' && (
+            <>
+              <div
+                className="flex items-start gap-3 px-4 py-3 rounded-2xl mb-1"
+                style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+              >
+                <AlertTriangle size={16} style={{ color: '#ef4444', marginTop: 2, flexShrink: 0 }} />
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  The clips generated for this project are also visible in{' '}
+                  <strong style={{ color: 'var(--text-primary)' }}>Media</strong>.
+                  Choose how much to delete.
+                </p>
+              </div>
+
+              {/* Option A — keep clips in Media */}
+              <button
+                onClick={() => handleDelete('project_only')}
+                disabled={deleting}
+                className="flex items-start gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', opacity: deleting ? 0.6 : 1 }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0 mt-0.5"
+                     style={{ background: 'rgba(91,110,247,0.12)' }}>
+                  <Film size={16} style={{ color: 'var(--brand)' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Delete project only</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Clips stay in Media — only the project is removed
+                  </p>
+                </div>
+              </button>
+
+              {/* Option B — delete everything */}
+              <button
+                onClick={() => handleDelete('everything')}
+                disabled={deleting}
+                className="flex items-start gap-3 w-full px-4 py-4 rounded-2xl text-left"
+                style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', opacity: deleting ? 0.6 : 1 }}
+              >
+                <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0 mt-0.5"
+                     style={{ background: 'rgba(239,68,68,0.12)' }}>
+                  <Trash2 size={16} style={{ color: '#ef4444' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: '#ef4444' }}>Delete everything</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Removes project, all clips, and their generations from Media
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setScreen('menu')}
+                disabled={deleting}
+                className="w-full py-3.5 rounded-2xl text-sm font-bold mt-1"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── ProjectList ───────────────────────────────────────────
+const ProjectList = ({
+  projects, onNew, onOpen, loading,
+  onProjectAction, exporting, exportProgress, exportingProjectId,
+}) => {
+  const [activeActionProject, setActiveActionProject] = useState(null)
+
+  const handleKebabClick = (e, project) => {
+    e.stopPropagation()
+    setActiveActionProject(project)
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between pt-2 pb-2">
+        <div>
+          <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Cinematic</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Your transition projects</p>
+        </div>
+        <button
+          onClick={onNew}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white brand-gradient"
+        >
+          <Plus size={15} />
+          New
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col gap-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-20 rounded-2xl" style={{ background: 'var(--bg-card)' }} />
+          ))}
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
+               style={{ background: 'var(--bg-elevated)' }}>
+            <Film size={24} style={{ color: 'var(--text-muted)' }} />
+          </div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No projects yet</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tap New to get started</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {projects.map((p, i) => {
+            const isExportingThis = exporting && exportingProjectId === p.id
+            return (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0  }}
+                transition={{ delay: i * 0.04 }}
+                className="flex items-center gap-3 p-4 rounded-2xl"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+              >
+                {/* Tap area → open editor */}
+                <button
+                  onClick={() => onOpen(p)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
+                       style={{ background: isExportingThis ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)' }}>
+                    {isExportingThis
+                      ? <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+                          className="w-5 h-5 rounded-full border-2"
+                          style={{ borderColor: 'rgba(16,185,129,0.2)', borderTopColor: '#10b981' }}
+                        />
+                      : <Film size={20} style={{ color: 'var(--brand)' }} />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {isExportingThis
+                        ? `Exporting… ${exportProgress}%`
+                        : `${p.status === 'draft' ? 'Draft'
+                            : p.status === 'processing' ? 'Processing…'
+                            : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+                      }
+                    </p>
+                  </div>
+                  <div
+                    className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
+                    style={{
+                      background: p.status === 'completed'  ? 'rgba(16,185,129,0.12)'
+                                : p.status === 'processing' ? 'rgba(234,179,8,0.12)'
+                                : 'var(--bg-elevated)',
+                      color:      p.status === 'completed'  ? '#10b981'
+                                : p.status === 'processing' ? '#eab308'
+                                : 'var(--text-muted)',
+                    }}
+                  >
+                    {p.status}
+                  </div>
+                </button>
+
+                {/* Kebab button */}
+                <button
+                  onClick={(e) => handleKebabClick(e, p)}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl flex-shrink-0 ml-1"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                >
+                  <MoreVertical size={15} />
+                </button>
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Action sheet */}
+      <AnimatePresence>
+        {activeActionProject && (
+          <ProjectActionSheet
+            project={activeActionProject}
+            exporting={exporting && exportingProjectId === activeActionProject.id}
+            exportProgress={exportProgress}
+            onClose={() => setActiveActionProject(null)}
+            onRenamed={(id, name) => onProjectAction('rename', id, name)}
+            onDeleted={(id) => onProjectAction('delete', id)}
+            onExport={(id, name) => onProjectAction('export', id, name)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ── NewProjectModal ───────────────────────────────────────
 const NewProjectModal = ({ onConfirm, onClose, loading }) => {
   const [name, setName] = useState('')
   return (
@@ -443,7 +804,7 @@ const NewProjectModal = ({ onConfirm, onClose, loading }) => {
   )
 }
 
-// ── Swap Icon ─────────────────────────────────────────────
+// ── SwapIcon ──────────────────────────────────────────────
 const SwapIcon = ({ size = 14, color = 'var(--text-muted)' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
        stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -452,7 +813,7 @@ const SwapIcon = ({ size = 14, color = 'var(--text-muted)' }) => (
   </svg>
 )
 
-// ── Editor View ───────────────────────────────────────────
+// ── EditorView ────────────────────────────────────────────
 const EditorView = ({
   project, frames, setFrames,
   transitions, slots, setSlots,
@@ -460,11 +821,10 @@ const EditorView = ({
   withSound, setWithSound,
   model, setModel,
   availableModels,
-  selectedModel,          // full model row
+  selectedModel,
   credits, isFree,
   onGenerate, onFrameUpload, submitting, onBack,
 }) => {
-  // Per-clip cost derived from the selected model + each slot's duration
   const perClipCosts = slots.map(s => deriveClipCost(selectedModel, s.duration))
   const totalCost    = perClipCosts.reduce((a, b) => a + b, 0)
 
@@ -472,19 +832,10 @@ const EditorView = ({
   const canAfford    = isFree || credits >= totalCost
   const anyUploading = frames.some(f => f?.uploading)
 
-  const canGenerate = frames.length >= 2
-    && frames.every(f => f?.url)
-    && slots.every(s => s.transitionId && s.duration)
-    && canAfford
-    && !submitting
-    && !anyUploading
-
-  // Duration options from the selected model, fallback to sensible defaults
   const durationOptions = selectedModel?.supported_durations?.length
     ? selectedModel.supported_durations
     : ['3', '5', '8', '10']
 
-  // When model changes, clamp existing slot durations to valid options
   useEffect(() => {
     if (!durationOptions.length) return
     setSlots(prev => prev.map(s => ({
@@ -510,6 +861,13 @@ const EditorView = ({
       return next.slice(0, frames.length - 2)
     })
   }
+
+  const canGenerate = frames.length >= 2
+    && frames.every(f => f?.url)
+    && slots.every(s => s.transitionId && s.duration)
+    && canAfford
+    && !submitting
+    && !anyUploading
 
   return (
     <div className="relative min-h-full" style={{ background: 'var(--bg-primary)' }}>
@@ -586,10 +944,8 @@ const EditorView = ({
             </p>
           </div>
 
-          {/* Model picker */}
           <ModelPicker value={model} models={availableModels} onChange={setModel} />
 
-          {/* Aspect ratio */}
           <div>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
             <div className="flex gap-2">
@@ -609,7 +965,6 @@ const EditorView = ({
             </div>
           </div>
 
-          {/* Sound toggle — only when model supports it */}
           {selectedModel?.supports_sound && (
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Audio</p>
@@ -691,7 +1046,6 @@ const EditorView = ({
                       setSlots(prev => prev.map((s, i) => i === idx ? { ...s, transitionId: id } : s))
                     }
                   />
-                  {/* Per-slot duration + live cost badge */}
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <DurationPicker
                       value={slots[idx]?.duration || durationOptions[0]}
@@ -769,6 +1123,9 @@ export default function CinematicTransitionPage() {
 
   const cameFromPromptIQ = location.state?.isPromptIQ === true
 
+  const { exportProject, exporting, exportProgress, exportError } = useCinematicExport()
+  const [exportingProjectId, setExportingProjectId] = useState(null)
+
   const [view,            setView]           = useState('list')
   const [projects,        setProjects]       = useState([])
   const [activeProject,   setActiveProject]  = useState(null)
@@ -788,13 +1145,17 @@ export default function CinematicTransitionPage() {
   const [withSound,   setWithSound]   = useState(false)
   const [model,       setModel]       = useState('')
 
-  // Derived: full model row for the currently selected model
   const selectedModel = useMemo(
     () => availableModels.find(m => m.value === model) || null,
     [availableModels, model],
   )
 
-  // ── Load everything on mount ──────────────────────────
+  // ── Surface export errors ─────────────────────────────
+  useEffect(() => {
+    if (exportError) toast.error(exportError)
+  }, [exportError])
+
+  // ── Load on mount ─────────────────────────────────────
   useEffect(() => {
     if (!user) return
     ;(async () => {
@@ -808,7 +1169,6 @@ export default function CinematicTransitionPage() {
         templatesDb.getBySlug(SLUG),
         cinematicTransitions.getActive(),
         cinematicProjects.getForUser(user.id),
-        // Fetch ALL columns so deriveClipCost has what it needs
         supabase
           .from('models')
           .select('*')
@@ -902,7 +1262,7 @@ export default function CinematicTransitionPage() {
     }
   }
 
-  // ── Open project ──────────────────────────────────────
+  // ── Open editor ───────────────────────────────────────
   const openEditor = (project) => {
     isMounted.current = false
     const draft = project.draft_state
@@ -928,6 +1288,24 @@ export default function CinematicTransitionPage() {
     setActiveProject(project)
     setView('editor')
   }
+
+  // ── Project list actions (rename / delete / export) ───
+  const handleProjectAction = useCallback(async (action, projectId, payload) => {
+    if (action === 'rename') {
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: payload } : p))
+    }
+
+    if (action === 'delete') {
+      setProjects(prev => prev.filter(p => p.id !== projectId))
+    }
+
+    if (action === 'export') {
+      setExportingProjectId(projectId)
+      const ok = await exportProject(projectId, payload)
+      setExportingProjectId(null)
+      if (ok) toast.success('Export complete — check your downloads')
+    }
+  }, [exportProject])
 
   // ── Generate ──────────────────────────────────────────
   const handleGenerate = async () => {
@@ -963,8 +1341,7 @@ export default function CinematicTransitionPage() {
 
       await Promise.all(
         savedClips.map(async (clip, idx) => {
-          // ── Per-clip cost — derived from model + duration ──
-          const clipCreditCost = deriveClipCost(selectedModel, slots[idx].duration)
+          const clipCreditCost   = deriveClipCost(selectedModel, slots[idx].duration)
           const transitionPrompt = transitionMap[slots[idx].transitionId] || ''
 
           const { data: genRow, error: genErr } = await generationsDb.create({
@@ -1052,6 +1429,10 @@ export default function CinematicTransitionPage() {
           loading={loadingProj}
           onNew={() => setShowNewModal(true)}
           onOpen={openEditor}
+          onProjectAction={handleProjectAction}
+          exporting={exporting}
+          exportProgress={exportProgress}
+          exportingProjectId={exportingProjectId}
         />
       </PageWrapper>
 
