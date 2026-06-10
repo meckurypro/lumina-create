@@ -1,10 +1,10 @@
 // src/pages/CinematicTransitionPage.jsx
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useLocation }                 from 'react-router-dom'
-import { motion, AnimatePresence }                  from 'framer-motion'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useNavigate, useLocation }                          from 'react-router-dom'
+import { motion, AnimatePresence }                           from 'framer-motion'
 import { ArrowLeft, Plus, Trash2, ChevronDown, Zap, Film, Settings2 } from 'lucide-react'
-import { useAuth }                                  from '@/context/AuthContext'
-import { promptiqAccess }                           from '@/lib/promptiq'
+import { useAuth }                                           from '@/context/AuthContext'
+import { promptiqAccess }                                    from '@/lib/promptiq'
 import {
   supabase,
   templates      as templatesDb,
@@ -13,15 +13,40 @@ import {
   cinematicClips,
   cinematicTransitions,
 } from '@/lib/supabase'
-import { TopBar }     from '@/components/layout/TopBar'
+import { TopBar }      from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import toast from 'react-hot-toast'
 
 // ── Constants ─────────────────────────────────────────────
-const SLUG        = 'cinematic-transition'
-const TOOL_KEY    = 'cinematic_transition'   // matches promptiq_tools.identifier seed
-const DURATIONS   = ['3', '5', '8', '10']
+const SLUG      = 'cinematic-transition'
+const TOOL_KEY  = 'cinematic_transition'
 const ASPECT_OPTS = ['9:16', '16:9', '1:1']
+
+// ── Credit cost helper (mirrors CreateVideoPage logic) ────
+//
+// frame_to_frame models bill as:
+//   credit_cost_per_second × max(duration, min_billable_seconds)
+//
+// Some older/flat-rate models may fall back to credit_cost_t2i.
+// We never fall below 1 credit.
+function deriveClipCost(model, durationStr) {
+  if (!model) return 0
+  const dur = parseInt(durationStr || '5', 10)
+
+  if (model.credit_cost_per_second) {
+    const billable = Math.max(dur, model.min_billable_seconds ?? 1)
+    return Math.ceil(model.credit_cost_per_second * billable)
+  }
+
+  // flat-rate fallback (e.g. hailuo_02_pro, veo3_1_lite_s2e)
+  if (model.is_flat_rate) {
+    return model.credit_cost_t2i || model.credit_cost_i2i || 0
+  }
+
+  // last-resort: t2i cost × duration
+  const cps = model.credit_cost_t2i || model.credit_cost_i2i || 0
+  return Math.ceil(cps * dur)
+}
 
 // ── Helpers ───────────────────────────────────────────────
 const uploadFile = async (file, userId) => {
@@ -209,9 +234,9 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
   )
 }
 
-const DurationPicker = ({ value, onChange }) => (
+const DurationPicker = ({ value, options, onChange }) => (
   <div className="flex gap-1.5 flex-wrap">
-    {DURATIONS.map(d => (
+    {options.map(d => (
       <button
         key={d}
         onClick={() => onChange(d)}
@@ -227,30 +252,64 @@ const DurationPicker = ({ value, onChange }) => (
   </div>
 )
 
-// ── Model Picker — dynamic from DB ────────────────────────
-const ModelPicker = ({ value, models, onChange }) => {
+// ── Model Picker (dropdown, mirrors CreateVideoPage style) ─
+const ModelPicker = ({ models, value, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const selected = models.find(m => m.value === value) || models[0]
   if (!models.length) return null
+
   return (
-    <div>
+    <div className="relative">
       <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Model</p>
-      <div className="flex gap-1.5 flex-wrap">
-        {models.map(m => (
-          <button
-            key={m.value}
-            onClick={() => onChange(m.value)}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-            style={{
-              background: value === m.value ? 'var(--brand)' : 'var(--bg-elevated)',
-              color:      value === m.value ? '#fff'         : 'var(--text-muted)',
-            }}
-          >
-            {m.label}
-            {m.sublabel && (
-              <span className="ml-1 opacity-60 text-[10px]">{m.sublabel}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+      >
+        <span>{selected?.aka || selected?.label || 'Model'}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0,  scale: 1    }}
+              exit={{    opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.13 }}
+              className="absolute left-0 top-10 z-50 w-64 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}
+            >
+              <div className="py-1">
+                {models.map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => { onChange(m.value); setOpen(false) }}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
+                    style={{ background: m.value === value ? 'var(--bg-elevated)' : 'transparent' }}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {m.aka || m.label}
+                      </p>
+                      {m.sublabel && (
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
+                      )}
+                    </div>
+                    {m.value === value && (
+                      <span style={{ color: 'var(--brand)', fontSize: 14 }}>✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -401,13 +460,18 @@ const EditorView = ({
   withSound, setWithSound,
   model, setModel,
   availableModels,
-  creditCost, credits, isFree,
+  selectedModel,          // full model row
+  credits, isFree,
   onGenerate, onFrameUpload, submitting, onBack,
 }) => {
-  const firstFrameUploaded = !!frames[0]?.url
-  const canAfford   = isFree || credits >= creditCost * slots.length
-  const clipCount   = frames.length - 1
+  // Per-clip cost derived from the selected model + each slot's duration
+  const perClipCosts = slots.map(s => deriveClipCost(selectedModel, s.duration))
+  const totalCost    = perClipCosts.reduce((a, b) => a + b, 0)
+
+  const clipCount    = frames.length - 1
+  const canAfford    = isFree || credits >= totalCost
   const anyUploading = frames.some(f => f?.uploading)
+
   const canGenerate = frames.length >= 2
     && frames.every(f => f?.url)
     && slots.every(s => s.transitionId && s.duration)
@@ -415,15 +479,36 @@ const EditorView = ({
     && !submitting
     && !anyUploading
 
+  // Duration options from the selected model, fallback to sensible defaults
+  const durationOptions = selectedModel?.supported_durations?.length
+    ? selectedModel.supported_durations
+    : ['3', '5', '8', '10']
+
+  // When model changes, clamp existing slot durations to valid options
+  useEffect(() => {
+    if (!durationOptions.length) return
+    setSlots(prev => prev.map(s => ({
+      ...s,
+      duration: durationOptions.includes(s.duration) ? s.duration : durationOptions[0],
+    })))
+  }, [model]) // eslint-disable-line
+
   const addFrame = () => {
     setFrames(prev => [...prev, null])
-    setSlots(prev => [...prev, { transitionId: prev[0]?.transitionId || null, duration: '5' }])
+    setSlots(prev => [...prev, {
+      transitionId: prev[0]?.transitionId || null,
+      duration: durationOptions[0] || '5',
+    }])
   }
 
   const removeFrame = (idx) => {
     if (frames.length <= 2) return
     setFrames(prev => prev.filter((_, i) => i !== idx))
-    setSlots(prev => prev.filter((_, i) => i !== idx - 1 || idx === 0).slice(0, frames.length - 2))
+    setSlots(prev => {
+      const next = [...prev]
+      next.splice(idx === 0 ? 0 : idx - 1, 1)
+      return next.slice(0, frames.length - 2)
+    })
   }
 
   return (
@@ -479,7 +564,7 @@ const EditorView = ({
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
           >
             <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-            {creditCost * Math.max(clipCount, 0)} cr
+            {totalCost} cr
           </div>
         )}
       </div>
@@ -489,9 +574,9 @@ const EditorView = ({
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-6"
         style={{ paddingBottom: 'calc(80px + var(--bottom-nav-height))' }}
       >
-        {/* Settings */}
+        {/* Settings card */}
         <div
-          className="flex flex-col gap-3 p-4 rounded-2xl"
+          className="flex flex-col gap-4 p-4 rounded-2xl"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
         >
           <div className="flex items-center gap-2 mb-1">
@@ -501,64 +586,47 @@ const EditorView = ({
             </p>
           </div>
 
+          {/* Model picker */}
+          <ModelPicker value={model} models={availableModels} onChange={setModel} />
+
           {/* Aspect ratio */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
-              <AnimatePresence>
-                {firstFrameUploaded && (
-                  <motion.span
-                    initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 6 }}
-                    className="text-xs font-semibold" style={{ color: 'var(--brand)' }}
-                  >
-                    auto-detected
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Aspect ratio</p>
             <div className="flex gap-2">
               {ASPECT_OPTS.map(a => (
                 <button
                   key={a}
-                  onClick={() => !firstFrameUploaded && setAspectRatio(a)}
+                  onClick={() => setAspectRatio(a)}
                   className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
                   style={{
                     background: aspectRatio === a ? 'var(--brand)' : 'var(--bg-elevated)',
                     color:      aspectRatio === a ? '#fff'         : 'var(--text-muted)',
-                    opacity:    firstFrameUploaded && aspectRatio !== a ? 0.35 : 1,
-                    cursor:     firstFrameUploaded ? 'default' : 'pointer',
                   }}
                 >
                   {a}
                 </button>
               ))}
             </div>
-            {!firstFrameUploaded && (
-              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                Upload frame 1 to auto-detect
-              </p>
-            )}
           </div>
 
-          {/* Sound */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Audio</p>
-            <button
-              onClick={() => setWithSound(v => !v)}
-              className="relative w-10 h-5 rounded-full transition-all"
-              style={{ background: withSound ? 'var(--brand)' : 'var(--bg-elevated)' }}
-            >
-              <motion.div
-                animate={{ x: withSound ? 20 : 2 }}
-                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-                className="absolute top-0.5 w-4 h-4 rounded-full"
-                style={{ background: '#fff' }}
-              />
-            </button>
-          </div>
-
-          {/* Dynamic model picker */}
-          <ModelPicker value={model} models={availableModels} onChange={setModel} />
+          {/* Sound toggle — only when model supports it */}
+          {selectedModel?.supports_sound && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Audio</p>
+              <button
+                onClick={() => setWithSound(v => !v)}
+                className="relative w-10 h-5 rounded-full transition-all"
+                style={{ background: withSound ? 'var(--brand)' : 'var(--bg-elevated)' }}
+              >
+                <motion.div
+                  animate={{ x: withSound ? 20 : 2 }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                  className="absolute top-0.5 w-4 h-4 rounded-full"
+                  style={{ background: '#fff' }}
+                />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Frame + Transition chain */}
@@ -610,7 +678,7 @@ const EditorView = ({
                 </div>
               </div>
 
-              {idx < frames.length - 1 && (
+              {idx < frames.length - 1 && slots[idx] && (
                 <div
                   className="flex items-center gap-2 px-3 py-2 mx-4 rounded-xl my-1"
                   style={{ background: 'var(--bg-elevated)' }}
@@ -623,12 +691,21 @@ const EditorView = ({
                       setSlots(prev => prev.map((s, i) => i === idx ? { ...s, transitionId: id } : s))
                     }
                   />
-                  <DurationPicker
-                    value={slots[idx]?.duration || '5'}
-                    onChange={(d) =>
-                      setSlots(prev => prev.map((s, i) => i === idx ? { ...s, duration: d } : s))
-                    }
-                  />
+                  {/* Per-slot duration + live cost badge */}
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <DurationPicker
+                      value={slots[idx]?.duration || durationOptions[0]}
+                      options={durationOptions}
+                      onChange={(d) =>
+                        setSlots(prev => prev.map((s, i) => i === idx ? { ...s, duration: d } : s))
+                      }
+                    />
+                    {!isFree && (
+                      <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                        {perClipCosts[idx] ?? 0} cr
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -670,7 +747,7 @@ const EditorView = ({
             {submitting      ? 'Firing clips…'
               : anyUploading ? 'Saving frames…'
               : isFree        ? `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  Free`
-              : `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  ${creditCost * clipCount} cr`}
+              : `Generate ${clipCount} clip${clipCount !== 1 ? 's' : ''}  ·  ${totalCost} cr`}
           </button>
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
@@ -690,29 +767,32 @@ export default function CinematicTransitionPage() {
   const location   = useLocation()
   const { user, credits, profile, refreshProfile } = useAuth()
 
-  // ── Route state (passed when navigating from PromptIQ page) ──
-  // isPromptIQ flag just means "came from PromptIQ page"; actual free status
-  // comes from the DB grant, not from route state, to prevent client-side spoofing.
   const cameFromPromptIQ = location.state?.isPromptIQ === true
 
-  const [view,           setView]          = useState('list')
-  const [projects,       setProjects]      = useState([])
-  const [activeProject,  setActiveProject] = useState(null)
-  const [transitions,    setTransitions]   = useState([])
-  const [availableModels,setAvailableModels] = useState([])  // dynamic frame_to_frame models
-  const [dbTemplate,     setDbTemplate]    = useState(null)
-  const [isFree,         setIsFree]        = useState(false) // resolved from DB grant
-  const [loadingProj,    setLoadingProj]   = useState(true)
-  const [creatingProj,   setCreatingProj]  = useState(false)
-  const [showNewModal,   setShowNewModal]  = useState(false)
-  const [submitting,     setSubmitting]    = useState(false)
+  const [view,            setView]           = useState('list')
+  const [projects,        setProjects]       = useState([])
+  const [activeProject,   setActiveProject]  = useState(null)
+  const [transitions,     setTransitions]    = useState([])
+  const [availableModels, setAvailableModels] = useState([])
+  const [dbTemplate,      setDbTemplate]     = useState(null)
+  const [isFree,          setIsFree]         = useState(false)
+  const [loadingProj,     setLoadingProj]    = useState(true)
+  const [creatingProj,    setCreatingProj]   = useState(false)
+  const [showNewModal,    setShowNewModal]   = useState(false)
+  const [submitting,      setSubmitting]     = useState(false)
 
   // Editor state
-  const [frames,       setFrames]      = useState([null, null])
-  const [slots,        setSlots]       = useState([{ transitionId: null, duration: '5' }])
-  const [aspectRatio,  setAspectRatio] = useState('9:16')
-  const [withSound,    setWithSound]   = useState(false)
-  const [model,        setModel]       = useState('')
+  const [frames,      setFrames]      = useState([null, null])
+  const [slots,       setSlots]       = useState([{ transitionId: null, duration: '5' }])
+  const [aspectRatio, setAspectRatio] = useState('9:16')
+  const [withSound,   setWithSound]   = useState(false)
+  const [model,       setModel]       = useState('')
+
+  // Derived: full model row for the currently selected model
+  const selectedModel = useMemo(
+    () => availableModels.find(m => m.value === model) || null,
+    [availableModels, model],
+  )
 
   // ── Load everything on mount ──────────────────────────
   useEffect(() => {
@@ -722,21 +802,20 @@ export default function CinematicTransitionPage() {
         { data: tmpl },
         { data: trans },
         { data: projs },
-        { data: models },
+        { data: modelRows },
         { data: grant },
       ] = await Promise.all([
         templatesDb.getBySlug(SLUG),
         cinematicTransitions.getActive(),
         cinematicProjects.getForUser(user.id),
-        // Fetch all active frame_to_frame models from DB
+        // Fetch ALL columns so deriveClipCost has what it needs
         supabase
           .from('models')
-          .select('value, label, sublabel, sort_order')
+          .select('*')
           .eq('feature', 'frame_to_frame')
           .eq('is_active', true)
           .eq('is_user_facing', true)
           .order('sort_order', { ascending: true }),
-        // Resolve access grant from DB (source of truth for isFree)
         supabase.rpc('get_staff_tool_access', {
           p_staff_id:        user.id,
           p_tool_identifier: TOOL_KEY,
@@ -747,12 +826,10 @@ export default function CinematicTransitionPage() {
       setTransitions(trans || [])
       setProjects(projs || [])
 
-      const modelList = models || []
+      const modelList = modelRows || []
       setAvailableModels(modelList)
-      // Default to first model in list, falling back to template default
       setModel(modelList[0]?.value || tmpl?.default_model || '')
 
-      // isFree: only true if DB grant says so AND user came via PromptIQ
       const accessGrant = grant || {}
       setIsFree(cameFromPromptIQ && accessGrant.has_access === true && accessGrant.is_free === true)
 
@@ -835,7 +912,6 @@ export default function CinematicTransitionPage() {
       setSlots(draft.slots?.length ? draft.slots : [{ transitionId: null, duration: '5' }])
       setAspectRatio(draft.aspectRatio || '9:16')
       setWithSound(draft.withSound ?? false)
-      // Restore saved model only if it's still in the available list
       const savedModel = draft.model
       setModel(prev => {
         const stillAvailable = availableModels.some(m => m.value === savedModel)
@@ -856,6 +932,8 @@ export default function CinematicTransitionPage() {
   // ── Generate ──────────────────────────────────────────
   const handleGenerate = async () => {
     if (!activeProject || !user || !dbTemplate) return
+    if (!selectedModel) return toast.error('No model selected')
+
     const clipCount = frames.length - 1
     setSubmitting(true)
 
@@ -883,10 +961,10 @@ export default function CinematicTransitionPage() {
       const transitionMap = {}
       transitions.forEach(t => { transitionMap[t.id] = t.prompt_text })
 
-      const clipCreditCost = dbTemplate.credit_cost || 10
-
       await Promise.all(
         savedClips.map(async (clip, idx) => {
+          // ── Per-clip cost — derived from model + duration ──
+          const clipCreditCost = deriveClipCost(selectedModel, slots[idx].duration)
           const transitionPrompt = transitionMap[slots[idx].transitionId] || ''
 
           const { data: genRow, error: genErr } = await generationsDb.create({
@@ -895,7 +973,7 @@ export default function CinematicTransitionPage() {
             generation_type:     'start_end_frame',
             status:              'pending',
             prompt:              transitionPrompt,
-            model:               model || availableModels[0]?.value || dbTemplate.default_model,
+            model:               model,
             aspect_ratio:        aspectRatio,
             duration:            slots[idx].duration,
             credits_charged:     isFree ? 0 : clipCreditCost,
@@ -909,7 +987,6 @@ export default function CinematicTransitionPage() {
           if (genErr || !genRow) throw new Error(`Clip ${idx + 1}: failed to create generation`)
 
           if (isFree) {
-            // Free generation — deduct from staff pool
             const { data: poolResult } = await supabase.rpc('deduct_staff_pool', {
               p_staff_id:      user.id,
               p_generation_id: genRow.id,
@@ -918,7 +995,6 @@ export default function CinematicTransitionPage() {
             })
             if (!poolResult?.success) throw new Error(`Clip ${idx + 1}: pool error — ${poolResult?.error}`)
           } else {
-            // Paid generation — deduct from user's own credits
             const { data: deduct } = await generationsDb.deductCredits(user.id, clipCreditCost, genRow.id)
             if (!deduct?.success) throw new Error(`Clip ${idx + 1}: ${deduct?.error || 'Insufficient credits'}`)
           }
@@ -956,7 +1032,7 @@ export default function CinematicTransitionPage() {
         withSound={withSound}       setWithSound={setWithSound}
         model={model}               setModel={setModel}
         availableModels={availableModels}
-        creditCost={dbTemplate?.credit_cost || 10}
+        selectedModel={selectedModel}
         credits={credits}
         isFree={isFree}
         onGenerate={handleGenerate}
