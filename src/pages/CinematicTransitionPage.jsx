@@ -624,7 +624,7 @@ const ProjectActionSheet = ({
 
 // ── ProjectList ───────────────────────────────────────────
 const ProjectList = ({
-  projects, onNew, onOpen, loading,
+  projects, onNew, onOpen, onView, loading,
   onProjectAction, exporting, exportProgress, exportingProjectId,
 }) => {
   const [activeActionProject, setActiveActionProject] = useState(null)
@@ -698,13 +698,22 @@ const ProjectList = ({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                      {isExportingThis
-                        ? `Exporting… ${exportProgress}%`
-                        : `${p.status === 'draft' ? 'Draft'
-                            : p.status === 'processing' ? 'Processing…'
-                            : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
-                      }
-                    </p>
+  {isExportingThis
+    ? `Exporting… ${exportProgress}%`
+    : `${p.status === 'draft' ? 'Draft'
+        : p.status === 'processing' ? 'Processing…'
+        : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+  }
+</p>
+{p.status === 'processing' && (
+  <button
+    onClick={(e) => { e.stopPropagation(); onView(p.id) }}
+    className="text-xs font-bold mt-0.5"
+    style={{ color: 'var(--brand)' }}
+  >
+    View results →
+  </button>
+)}
                   </div>
                   <div
                     className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
@@ -1155,6 +1164,35 @@ export default function CinematicTransitionPage() {
     if (exportError) toast.error(exportError)
   }, [exportError])
 
+  // ── Poll processing projects → auto-complete ──────────
+  useEffect(() => {
+    if (!user) return
+    const processingIds = projects.filter(p => p.status === 'processing').map(p => p.id)
+    if (!processingIds.length) return
+
+    const interval = setInterval(async () => {
+      for (const projectId of processingIds) {
+        const { data: clips } = await supabase
+          .from('cinematic_clips')
+          .select('status')
+          .eq('project_id', projectId)
+        if (!clips?.length) continue
+        const allDone = clips.every(c => c.status === 'completed' || c.status === 'done')
+        if (allDone) {
+          await supabase
+            .from('cinematic_projects')
+            .update({ status: 'completed' })
+            .eq('id', projectId)
+          setProjects(prev =>
+            prev.map(p => p.id === projectId ? { ...p, status: 'completed' } : p)
+          )
+        }
+      }
+    }, 8000)
+
+    return () => clearInterval(interval)
+  }, [user, projects])
+
   // ── Load on mount ─────────────────────────────────────
   useEffect(() => {
     if (!user) return
@@ -1429,6 +1467,7 @@ export default function CinematicTransitionPage() {
           loading={loadingProj}
           onNew={() => setShowNewModal(true)}
           onOpen={openEditor}
+          onView={(id) => navigate(`/cinematic/${id}`)}
           onProjectAction={handleProjectAction}
           exporting={exporting}
           exportProgress={exportProgress}
