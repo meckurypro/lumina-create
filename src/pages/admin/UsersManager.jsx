@@ -1,8 +1,10 @@
+// src/pages/admin/UsersManager.jsx
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, ChevronRight, Zap, Clock, Star, TrendingDown, User, Calendar, Layers, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import PromptIQAccessManager from '@/pages/admin/PromptIQAccessManager'
 import toast from 'react-hot-toast'
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -231,9 +233,9 @@ const TierAdjuster = ({ user, onClose, onUpdated }) => {
 // ─── User Detail Sheet ────────────────────────────────────
 
 const SPEND_WINDOWS = [
-  { label: '7d',    days: 7  },
-  { label: '30d',   days: 30 },
-  { label: 'All',   days: null },
+  { label: '7d',  days: 7  },
+  { label: '30d', days: 30 },
+  { label: 'All', days: null },
 ]
 
 const StatCard = ({ icon: Icon, label, value, accent }) => (
@@ -247,14 +249,14 @@ const StatCard = ({ icon: Icon, label, value, accent }) => (
 )
 
 const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
-  const [email,       setEmail]       = useState(null)
+  const [email,        setEmail]        = useState(null)
   const [emailLoading, setEmailLoading] = useState(true)
-  const [spend,       setSpend]       = useState({})
+  const [spend,        setSpend]        = useState({})
   const [spendLoading, setSpendLoading] = useState(true)
   const [activeWindow, setActiveWindow] = useState('30d')
-  const isMaster = user.user_tier === 'master'
+  const isMaster   = user.user_tier === 'master'
+  const isStaffUser = user.is_staff || user.role === 'admin'
 
-  // Fetch email via RPC (requires admin_get_user_email function — see SQL note)
   useEffect(() => {
     const fetchEmail = async () => {
       setEmailLoading(true)
@@ -265,7 +267,6 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
     fetchEmail()
   }, [user.id])
 
-  // Fetch credits spent per window from credit_transactions (debit transactions)
   useEffect(() => {
     const fetchSpend = async () => {
       setSpendLoading(true)
@@ -291,15 +292,8 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
     fetchSpend()
   }, [user.id])
 
-  const handleAdjustFromDetail = () => {
-    onClose()
-    setTimeout(() => onAdjust(user), 200)
-  }
-
-  const handleTierFromDetail = () => {
-    onClose()
-    setTimeout(() => onSetTier(user), 200)
-  }
+  const handleAdjustFromDetail = () => { onClose(); setTimeout(() => onAdjust(user), 200) }
+  const handleTierFromDetail   = () => { onClose(); setTimeout(() => onSetTier(user), 200) }
 
   return (
     <motion.div
@@ -315,15 +309,13 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
         style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', maxHeight: '88vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
 
-        {/* Scrollable content */}
         <div className="overflow-y-auto flex flex-col gap-5 px-5 pb-8 pt-3">
 
-          {/* Header row */}
+          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg flex-shrink-0"
@@ -349,7 +341,7 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
             </button>
           </div>
 
-          {/* Tier + last seen strip */}
+          {/* Tier + last seen + joined */}
           <div className="flex gap-2">
             <div className="flex-1 flex items-center gap-2 rounded-2xl px-3 py-2.5"
               style={{ background: isMaster ? 'rgba(245,158,11,0.08)' : 'var(--bg-elevated)', border: `1px solid ${isMaster ? 'rgba(245,158,11,0.2)' : 'var(--border-color)'}` }}>
@@ -379,17 +371,17 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
             </div>
           </div>
 
-          {/* Credit stats */}
+          {/* Credits */}
           <div>
             <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>Credits</p>
             <div className="grid grid-cols-3 gap-2">
-              <StatCard icon={Zap}          label="Available"  value={`⚡ ${fmt(user.credits)}`}                accent="var(--brand)" />
-              <StatCard icon={TrendingDown} label="Used"       value={`⚡ ${fmt(user.total_credits_used)}`}     accent="#ef4444" />
+              <StatCard icon={Zap}          label="Available"  value={`⚡ ${fmt(user.credits)}`}                 accent="var(--brand)" />
+              <StatCard icon={TrendingDown} label="Used"       value={`⚡ ${fmt(user.total_credits_used)}`}      accent="#ef4444" />
               <StatCard icon={ShieldCheck}  label="Purchased"  value={`⚡ ${fmt(user.total_credits_purchased)}`} accent="#10b981" />
             </div>
           </div>
 
-          {/* Generations */}
+          {/* Activity */}
           <div>
             <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>Activity</p>
             <div className="grid grid-cols-2 gap-2">
@@ -398,7 +390,7 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
             </div>
           </div>
 
-          {/* Credits spent over time */}
+          {/* Credits spent */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Credits spent</p>
@@ -430,6 +422,16 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
               )}
             </div>
           </div>
+
+          {/* ── PromptIQ Access — only for staff / admin users ── */}
+          {isStaffUser && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+                PromptIQ
+              </p>
+              <PromptIQAccessManager staffUser={user} />
+            </div>
+          )}
 
           {/* Flags */}
           {(user.is_banned || user.is_staff) && (
@@ -500,6 +502,12 @@ const UserRow = ({ user, onSelect, onAdjust, onSetTier }) => (
           }}>
           {user.user_tier === 'master' ? '⭐ Master' : 'Novice'}
         </span>
+        {user.is_staff && (
+          <span className="text-xs px-1.5 py-0.5 rounded-full"
+            style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontWeight: 700 }}>
+            Staff
+          </span>
+        )}
       </div>
     </div>
     <ChevronRight size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -519,19 +527,18 @@ const SkeletonRows = ({ count = 8 }) => (
 
 // ─── Users Manager ────────────────────────────────────────
 
-const FIELDS = 'id, username, display_name, avatar_url, credits, total_credits_used, total_credits_purchased, total_generations, user_tier, tier_expires_at, tier_started_at, last_seen_at, created_at, is_staff, is_banned, purchase_count'
+const FIELDS = 'id, username, display_name, avatar_url, credits, total_credits_used, total_credits_purchased, total_generations, user_tier, tier_expires_at, tier_started_at, last_seen_at, created_at, is_staff, is_banned, purchase_count, role'
 
 export default function UsersManager() {
-  const [query,        setQuery]        = useState('')
-  const [users,        setUsers]        = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [isSearching,  setIsSearching]  = useState(false)
-  const [selectedUser, setSelectedUser] = useState(null)
-  const [adjustingUser,setAdjustingUser]= useState(null)
-  const [tierUser,     setTierUser]     = useState(null)
-  const debounceRef                     = useRef(null)
+  const [query,         setQuery]         = useState('')
+  const [users,         setUsers]         = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [isSearching,   setIsSearching]   = useState(false)
+  const [selectedUser,  setSelectedUser]  = useState(null)
+  const [adjustingUser, setAdjustingUser] = useState(null)
+  const [tierUser,      setTierUser]      = useState(null)
+  const debounceRef                       = useRef(null)
 
-  // ── Load latest 15 on mount ──
   useEffect(() => {
     const loadRecent = async () => {
       setLoading(true)
@@ -547,11 +554,9 @@ export default function UsersManager() {
     loadRecent()
   }, [])
 
-  // ── Search ──
   const search = useCallback(async (q) => {
     const trimmed = q.trim()
     if (!trimmed) {
-      // Reset to recent list
       setIsSearching(false)
       setLoading(true)
       const { data } = await supabase
@@ -583,12 +588,8 @@ export default function UsersManager() {
     debounceRef.current = setTimeout(() => search(val), 280)
   }
 
-  const handleClear = () => {
-    setQuery('')
-    search('')
-  }
+  const handleClear = () => { setQuery(''); search('') }
 
-  // ── Optimistic updates ──
   const handleCreditUpdated = useCallback((userId, newBalance) => {
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, credits: newBalance } : u))
     setSelectedUser((prev) => prev?.id === userId ? { ...prev, credits: newBalance } : prev)
@@ -605,7 +606,6 @@ export default function UsersManager() {
         Showing {isSearching ? 'search results' : 'recently active users'}. Tap a user to view details.
       </p>
 
-      {/* Search bar */}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
         <input
@@ -622,7 +622,6 @@ export default function UsersManager() {
         )}
       </div>
 
-      {/* Results */}
       <AnimatePresence mode="popLayout">
         {loading ? (
           <SkeletonRows count={isSearching ? 5 : 8} />
@@ -644,7 +643,6 @@ export default function UsersManager() {
         )}
       </AnimatePresence>
 
-      {/* Detail sheet */}
       <AnimatePresence>
         {selectedUser && (
           <UserDetailSheet
@@ -657,7 +655,6 @@ export default function UsersManager() {
         )}
       </AnimatePresence>
 
-      {/* Credit adjuster sheet */}
       <AnimatePresence>
         {adjustingUser && (
           <CreditAdjuster
