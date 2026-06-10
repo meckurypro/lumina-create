@@ -155,6 +155,44 @@ const MediaLightbox = ({ url, kind, filename, onClose }) => {
   )
 }
 
+// Row-level Preview + Download pair shown on each collapsed generation row.
+const RowMediaActions = ({ url, kind, filename }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        title="Preview output"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          padding: '4px 8px', borderRadius: 8,
+          background: 'rgba(16,185,129,0.1)', color: '#10b981',
+          fontSize: 10, fontWeight: 700,
+          border: '1px solid rgba(16,185,129,0.2)', cursor: 'pointer',
+        }}
+      >
+        <Eye size={9} /> Preview
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); blobDownload(url, filename) }}
+        title="Download output"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          padding: '4px 8px', borderRadius: 8,
+          background: 'rgba(99,102,241,0.1)', color: '#6366f1',
+          fontSize: 10, fontWeight: 700,
+          border: '1px solid rgba(99,102,241,0.2)', cursor: 'pointer',
+        }}
+      >
+        <Download size={9} /> Download
+      </button>
+      {open && (
+        <MediaLightbox url={url} kind={kind} filename={filename} onClose={() => setOpen(false)} />
+      )}
+    </>
+  )
+}
+
 // ─────────────────────────────────────────────────────────
 // Status Badge
 // ─────────────────────────────────────────────────────────
