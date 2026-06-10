@@ -1,31 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, Plus, Maximize2 } from 'lucide-react'
+import {
+  ArrowLeft, Zap, X, ImagePlus, Plus, Maximize2,
+  Film, AlertCircle, RefreshCw, CheckCircle2, Scissors,
+} from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
+// ─── theme ───────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
 
+// ─── session storage keys ─────────────────────────────────────────────────────
 const SS_PROMPT      = 'meckury_video_prompt'
 const SS_START_FRAME = 'meckury_video_start_frame'
 const SS_END_FRAME   = 'meckury_video_end_frame'
 const SS_REF_IMAGES  = 'meckury_video_ref_images'
-const SS_OMNI_REF    = 'meckury_video_omni_ref'   // plain-URL video reference from Assets
+const SS_OMNI_REF    = 'meckury_video_omni_ref'
 
+// ─── constants ────────────────────────────────────────────────────────────────
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
   { label: '16:9', value: '16:9' },
   { label: '1:1',  value: '1:1'  },
 ]
+const VIDEO_EDIT_MAX_BILLABLE = 8          // Grok Video Edit caps at 8s
+const VIDEO_EDIT_CPS          = 49         // credits per second after 10% margin
+const VIDEO_EDIT_CONVERT_COST = 2          // trim conversion fee
+const MAX_VIDEO_BYTES         = 40 * 1024 * 1024  // 40 MB upload cap
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
+// ─── helpers ──────────────────────────────────────────────────────────────────
 function getModelCaps(model) {
   if (!model) return {
     supportsStartFrame:    true,
@@ -33,6 +42,7 @@ function getModelCaps(model) {
     supportsFrameToFrame:  false,
     supportsMultiImage:    false,
     supportsVideoInput:    false,
+    isVideoEdit:           false,
     maxRefImages:          1,
     supportedDurations:    ['5', '8', '10'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
@@ -44,17 +54,18 @@ function getModelCaps(model) {
     supportsFrameToFrame:  model.supports_frame_to_frame ?? false,
     supportsMultiImage:    model.supports_multi_image    ?? false,
     supportsVideoInput:    model.supports_video_input    ?? false,
+    isVideoEdit:           model.feature === 'video_to_video',
     maxRefImages:          model.max_ref_images          ?? 1,
-    supportedDurations:    model.supported_durations     ?? ['5', '8', '10'],
+    supportedDurations:    model.supported_durations     ?? [],   // null → [] — no chips
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
     supportsSound:         model.supports_sound          ?? false,
   }
 }
 
 function detectAspectRatio(width, height) {
-  const ratio = width / height
-  if (ratio > 1.6)  return '16:9'
-  if (ratio < 0.75) return '9:16'
+  const r = width / height
+  if (r > 1.6)  return '16:9'
+  if (r < 0.75) return '9:16'
   return '1:1'
 }
 
@@ -66,6 +77,17 @@ function deriveVideoType(startFrame, endFrame) {
 }
 
 function tagForSlot(idx) { return `[img${idx + 1}]` }
+
+function formatDuration(secs) {
+  if (!secs && secs !== 0) return '—'
+  const s = Math.round(Number(secs))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60 ? `${s % 60}s` : ''}`.trim()
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 async function compressImage(file) {
   return new Promise((resolve) => {
@@ -92,28 +114,40 @@ async function compressImage(file) {
   })
 }
 
+const readVideoMetadata = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file)
+  const vid = document.createElement('video')
+  vid.preload = 'metadata'
+  vid.onloadedmetadata = () => {
+    const meta = {
+      duration:    vid.duration ? Math.round(vid.duration) : null,
+      width:       vid.videoWidth  || null,
+      height:      vid.videoHeight || null,
+      aspectRatio: vid.videoWidth && vid.videoHeight
+        ? detectAspectRatio(vid.videoWidth, vid.videoHeight) : null,
+    }
+    URL.revokeObjectURL(url)
+    resolve(meta)
+  }
+  vid.onerror = () => { URL.revokeObjectURL(url); resolve({ duration: null, width: null, height: null, aspectRatio: null }) }
+  vid.src = url
+})
+
 const persistFrame = (key, file) => {
   if (!file) { try { sessionStorage.removeItem(key) } catch {} ; return }
   try {
     const reader = new FileReader()
-    reader.onload = (ev) => {
-      sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
-    }
+    reader.onload = (ev) => sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
     reader.readAsDataURL(file)
   } catch {}
 }
-
 
 const restoreFrame = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
     if (!saved) return resolve(null)
     const item = JSON.parse(saved)
-    // URL-only payload from Assets { url, name, type }
-    if (item.url && !item.base64) {
-      return resolve({ file: null, url: item.url, name: item.name })
-    }
-    // Legacy base64 payload
+    if (item.url && !item.base64) return resolve({ file: null, url: item.url, name: item.name })
     const { base64, name, type } = item
     const byteString = atob(base64.split(',')[1])
     const ab = new ArrayBuffer(byteString.length)
@@ -124,13 +158,128 @@ const restoreFrame = (key) => new Promise((resolve) => {
   } catch { resolve(null) }
 })
 
-// ─── sub-components ─────────────────────────────────────────────────────────
+// ─── video compatibility check ────────────────────────────────────────────────
+function checkVideoEditCompat({ videoMeta, maxBillable }) {
+  if (!videoMeta?.duration) return { ok: false, tooShort: false, needsTrim: false, reason: null }
+  if (videoMeta.duration < 1) return { ok: false, tooShort: true, needsTrim: false, reason: 'Video is too short (min 1s).' }
+  if (videoMeta.duration > maxBillable) return { ok: false, tooShort: false, needsTrim: true, reason: `Video is ${videoMeta.duration}s — longer than the ${maxBillable}s billing cap. Trim it down.` }
+  return { ok: true, tooShort: false, needsTrim: false, reason: null }
+}
 
+// ─── trim edge function caller ────────────────────────────────────────────────
+async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTime, onProgress }) {
+  onProgress?.(5)
+
+  let sourceUrl = url
+  if (file) {
+    const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
+    const srcPath = `${userId}/video-edit-src/${crypto.randomUUID()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('generation-uploads')
+      .upload(srcPath, file, { upsert: false, cacheControl: '3600', contentType: file.type || 'video/mp4' })
+    if (upErr) throw new Error(upErr.message || 'Could not upload source video')
+    onProgress?.(20)
+    const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(srcPath)
+    sourceUrl = publicUrl
+    // cleanup source after
+    setTimeout(() => supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {}), 60_000)
+  }
+
+  onProgress?.(25)
+  let virtualPct = 25
+  const tick = setInterval(() => { virtualPct = Math.min(virtualPct + 2, 90); onProgress?.(virtualPct) }, 800)
+
+  let result
+  try {
+    // Reuse the existing process-video-for-motion edge function.
+    // We pass the video's own aspect ratio so the scale step is a no-op crop.
+    const { data, error } = await supabase.functions.invoke('process-video-for-motion', {
+      body: {
+        sourceUrl,
+        targetAspectRatio: '16:9',   // aspect ratio preserved — scale step is identity
+        targetDuration,
+        startTime,
+        trimOnly: true,              // hint: skip crop-scale if edge function supports it
+      },
+    })
+    if (error)          throw new Error(error.message || 'Trim edge function failed')
+    if (!data?.success) throw new Error(data?.error   || 'Trim failed')
+    result = data
+  } finally {
+    clearInterval(tick)
+  }
+
+  onProgress?.(100)
+  return result
+}
+
+// ─── compat badge ─────────────────────────────────────────────────────────────
+const CompatBadge = ({ status }) => {
+  if (!status) return null
+  const map = {
+    compatible:   { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready'             },
+    converted:    { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Trimmed · Ready'   },
+    incompatible: { bg: 'rgba(239,160,20,0.9)',   color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs trim'        },
+    rejected:     { bg: 'rgba(239,68,68,0.92)',   color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'         },
+  }
+  const cfg = map[status]
+  if (!cfg) return null
+  return (
+    <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+      style={{ background: cfg.bg, color: cfg.color }}>
+      {cfg.icon}
+      {cfg.text}
+    </div>
+  )
+}
+
+// ─── video upload zone ────────────────────────────────────────────────────────
+const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) => {
+  if (value) {
+    return (
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}>
+        <video
+          src={value.url}
+          className="w-full h-full object-cover"
+          muted loop autoPlay playsInline
+          style={{ filter: tooShort ? 'blur(4px)' : 'none' }}
+        />
+        {value.duration != null && (
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold"
+            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+            {formatDuration(value.duration)}
+            {value.size && <span className="ml-1.5 opacity-70">· {formatBytes(value.size)}</span>}
+          </div>
+        )}
+        <CompatBadge status={compatStatus} />
+        <button
+          onClick={onRemove}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)', color: 'white', zIndex: 10 }}
+        >
+          <X size={13} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <label
+      className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
+      style={{ aspectRatio: '16/9', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+    >
+      <input type="file" accept="video/*" className="hidden" onChange={onUpload} />
+      <Film size={24} style={{ color: ACCENT, marginBottom: 8 }} />
+      <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload video</span>
+      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>MP4 · MOV · WEBM · max 40 MB</span>
+    </label>
+  )
+}
+
+// ─── sub-components ───────────────────────────────────────────────────────────
 const SettingChips = ({ label, options, value, onChange }) => (
   <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
+    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
     <div className="flex gap-2 flex-wrap">
       {options.map((opt) => (
         <button
@@ -193,9 +342,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
                       {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
-                      {m.supports_multi_image && (
-                        <p className="text-xs mt-0.5" style={{ color: ACCENT, opacity: 0.8 }}>Multi-ref</p>
-                      )}
+                      {m.supports_multi_image && <p className="text-xs mt-0.5" style={{ color: ACCENT, opacity: 0.8 }}>Multi-ref</p>}
                     </div>
                     {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
                   </button>
@@ -221,8 +368,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
     </div>
   )
 }
-
-// ─── single frame upload slot ───────────────────────────────────────────────
 
 const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inactive = false }) => (
   <div className="flex flex-col gap-2">
@@ -265,8 +410,6 @@ const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inact
   </div>
 )
 
-// ─── multi-ref grid ──────────────────────────────────────────────────────────
-
 const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
   const slots       = Array.from({ length: maxImages }, (_, i) => images[i] || null)
   const filledCount = images.filter(Boolean).length
@@ -289,7 +432,6 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
         ))}{' '}
         tags into your prompt to describe how each image is used.
       </p>
-
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(maxImages, 4)}, 1fr)` }}>
         {slots.map((img, idx) => (
           <div key={idx} className="flex flex-col gap-1.5">
@@ -300,15 +442,8 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
                   style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}
                   onClick={() => onFullscreen(idx)}
                 >
-                  {/* Video refs show a video tag; image refs show img */}
                   {img.isVideo ? (
-                    <video
-                      src={img.url}
-                      className="w-full h-full object-cover"
-                      muted
-                      playsInline
-                      style={{ pointerEvents: 'none' }}
-                    />
+                    <video src={img.url} className="w-full h-full object-cover" muted playsInline style={{ pointerEvents: 'none' }} />
                   ) : (
                     <img src={img.url} alt={`ref ${idx + 1}`} className="w-full h-full" style={{ objectFit: 'cover' }} />
                   )}
@@ -318,9 +453,7 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
                   </div>
                   {img.isVideo && (
                     <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-xs font-bold"
-                      style={{ background: 'rgba(0,0,0,0.65)', color: '#fff' }}>
-                      Video
-                    </div>
+                      style={{ background: 'rgba(0,0,0,0.65)', color: '#fff' }}>Video</div>
                   )}
                 </div>
                 <button
@@ -370,13 +503,55 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
   )
 }
 
-// ─── main page ───────────────────────────────────────────────────────────────
+// ─── converting / generating overlay ─────────────────────────────────────────
+const ProcessingOverlay = ({ phase, convertProgress }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 px-8"
+    style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', background: 'rgba(0,0,0,0.45)' }}
+  >
+    {phase === 'converting' ? (
+      <>
+        <div className="relative w-16 h-16 flex items-center justify-center">
+          <svg className="absolute inset-0" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="4" />
+            <motion.circle
+              cx="32" cy="32" r="28" fill="none" stroke={ACCENT} strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 28}`}
+              strokeDashoffset={`${2 * Math.PI * 28 * (1 - convertProgress / 100)}`}
+              style={{ transformOrigin: '32px 32px', rotate: '-90deg' }}
+              transition={{ duration: 0.3 }}
+            />
+          </svg>
+          <span className="text-xs font-bold" style={{ color: '#fff' }}>{convertProgress}%</span>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold tracking-wide" style={{ color: '#fff' }}>Trimming your video</p>
+          <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,0.55)', maxWidth: 240, lineHeight: 1.6 }}>
+            Re-encoding for the model. Hang tight.
+          </p>
+        </div>
+      </>
+    ) : (
+      <>
+        <motion.div
+          animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+          className="w-10 h-10 rounded-full border-2"
+          style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
+        />
+        <p className="text-sm font-semibold tracking-wide" style={{ color: '#fff' }}>Generating…</p>
+      </>
+    )}
+  </motion.div>
+)
 
+// ─── main page ────────────────────────────────────────────────────────────────
 export default function CreateVideoPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
   const textareaRef = useRef(null)
 
+  // ── standard video state ─────────────────────────────────────────────────
   const [prompt,        setPrompt]        = useState('')
   const [startFrame,    setStartFrame]    = useState(null)
   const [endFrame,      setEndFrame]      = useState(null)
@@ -389,37 +564,37 @@ export default function CreateVideoPage() {
   const [model,         setModel]         = useState('')
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
-  const [submitting,    setSubmitting]    = useState(false)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
-  // Track whether we arrived from Assets with an omni video ref
+  // ── video_to_video state ─────────────────────────────────────────────────
+  const [editVideo,       setEditVideo]       = useState(null)   // { file, url, duration, size, _converted }
+  const [trimTarget,      setTrimTarget]      = useState(null)   // seconds
+  const [trimStart,       setTrimStart]       = useState(0)
+  const [phase,           setPhase]           = useState(null)   // null | 'converting' | 'submitting'
+  const [convertProgress, setConvertProgress] = useState(0)
+
+  // ── omni ref ─────────────────────────────────────────────────────────────
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // ── session restore ──────────────────────────────────────────────────────
-
   useEffect(() => {
-    // Prompt
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
       if (savedPrompt) setPrompt(savedPrompt)
     } catch {}
 
-    // Check for omni video ref (from Assets "Edit video")
     try {
       const omniRaw = sessionStorage.getItem(SS_OMNI_REF)
       if (omniRaw) {
         const { url, name } = JSON.parse(omniRaw)
         sessionStorage.removeItem(SS_OMNI_REF)
-        // Will be applied once models load — store pending ref
-        // Use a ref-like approach: set state that loadModels will pick up
         setOmniRefLoaded({ url, name })
-        return   // skip normal frame restore — omni path takes over
+        return
       }
     } catch {}
 
-    // Normal frame restores
     restoreFrame(SS_START_FRAME).then((frame) => {
       if (!frame) return
       setStartFrame(frame)
@@ -463,7 +638,7 @@ export default function CreateVideoPage() {
     try {
       if (!imgs.length) { sessionStorage.removeItem(SS_REF_IMAGES); return }
       Promise.all(imgs.map(({ file }) => new Promise((res) => {
-        if (!file) return res(null)  // URL-only ref — skip persisting
+        if (!file) return res(null)
         const reader = new FileReader()
         reader.onload = (ev) => res({ base64: ev.target.result, name: file.name, type: file.type })
         reader.readAsDataURL(file)
@@ -475,7 +650,6 @@ export default function CreateVideoPage() {
   }
 
   // ── load models ──────────────────────────────────────────────────────────
-
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -485,9 +659,9 @@ export default function CreateVideoPage() {
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-   const isMaster = profile?.user_tier === 'master'
+    const isMaster    = profile?.user_tier === 'master'
     const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
-    const list     = await applyModelPreferences(tierFiltered, user?.id)
+    const list        = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
     return list
@@ -497,30 +671,16 @@ export default function CreateVideoPage() {
     loadModels().then((list) => {
       const unlocked = list.filter((m) => !m.is_locked)
 
-      // If we have a pending omni video ref, auto-select the first
-      // model that supports both multi_image and video_input
       setOmniRefLoaded((pending) => {
         if (pending && pending.url) {
-          const omniModel = unlocked.find(
-            (m) => m.supports_multi_image && m.supports_video_input
-          ) || unlocked[0]
-
+          const omniModel = unlocked.find((m) => m.supports_multi_image && m.supports_video_input) || unlocked[0]
           if (omniModel) {
             setModel(omniModel.value)
             setMultiMode(true)
-            // Inject the video URL as the first ref slot (no file — URL-only)
-            setRefImages([{
-              file:    null,
-              url:     pending.url,
-              ar:      '9:16',
-              isVideo: true,
-              name:    pending.name,
-            }])
+            setRefImages([{ file: null, url: pending.url, ar: '9:16', isVideo: true, name: pending.name }])
           }
-          return false  // clear pending
+          return false
         }
-
-        // Normal model selection
         const preferred = profile?.preferred_model
         const match     = preferred && unlocked.find((m) => m.value === preferred)
         setModel((match || unlocked[0])?.value || '')
@@ -532,21 +692,24 @@ export default function CreateVideoPage() {
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  // ── reset multi-mode when model loses multi-image support ────────────────
-
+  // ── reset when model changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!caps.supportsMultiImage) {
       setMultiMode(false)
       setRefImages([])
       try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
     }
+    // clear edit video when switching away from video_to_video
+    if (!caps.isVideoEdit) {
+      setEditVideo(null)
+      setTrimTarget(null)
+      setTrimStart(0)
+    }
   }, [model]) // eslint-disable-line
-
-  // ── duration / ratio enforcement on model change ─────────────────────────
 
   useEffect(() => {
     if (!selectedModel) return
-    if (!caps.supportedDurations.includes(duration)) {
+    if (caps.supportedDurations.length > 0 && !caps.supportedDurations.includes(duration)) {
       setDuration(caps.supportedDurations[0] || '5')
     }
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) {
@@ -558,41 +721,89 @@ export default function CreateVideoPage() {
     if (!modelsLoading && !caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound, modelsLoading])
 
-  // ── active frames ────────────────────────────────────────────────────────
+  // ── trim target default for video_to_video ───────────────────────────────
+  useEffect(() => {
+    if (!caps.isVideoEdit || !editVideo?.duration) return
+    // default to min(actual, max_billable)
+    setTrimTarget(Math.min(editVideo.duration, VIDEO_EDIT_MAX_BILLABLE))
+    setTrimStart(0)
+  }, [editVideo?.duration, caps.isVideoEdit])
 
+  // clamp trimStart
+  useEffect(() => {
+    if (!editVideo?.duration || !trimTarget) return
+    const maxStart = Math.max(0, editVideo.duration - trimTarget)
+    if (trimStart > maxStart) setTrimStart(maxStart)
+  }, [editVideo?.duration, trimTarget, trimStart])
+
+  // ── video_to_video compatibility ─────────────────────────────────────────
+  const editCompat = useMemo(() => {
+    if (!caps.isVideoEdit || !editVideo) return null
+    return checkVideoEditCompat({ videoMeta: editVideo, maxBillable: VIDEO_EDIT_MAX_BILLABLE })
+  }, [caps.isVideoEdit, editVideo])
+
+  const editCompatStatus = useMemo(() => {
+    if (!editVideo || !editCompat) return null
+    if (editCompat.tooShort)   return 'rejected'
+    if (editVideo._converted)  return 'converted'
+    if (editCompat.ok)         return 'compatible'
+    if (editCompat.needsTrim)  return 'incompatible'
+    return null
+  }, [editVideo, editCompat])
+
+  const needsTrim     = !!editCompat?.needsTrim && !editVideo?._converted
+  const canGenerate_v2v = caps.isVideoEdit
+    && !!editVideo
+    && !editCompat?.tooShort
+    && (editCompat?.ok || editVideo?._converted)
+    && !prompt.trim() === false   // prompt required
+    && credits >= (editVideo ? Math.min(trimTarget ?? editVideo.duration ?? 8, VIDEO_EDIT_MAX_BILLABLE) * VIDEO_EDIT_CPS : 0)
+
+  // ── active frames (non-video_to_video) ───────────────────────────────────
   const activeStartFrame = startFrame && caps.supportsStartFrame                              ? startFrame : null
   const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame) ? endFrame   : null
-
-  // ── generation type ──────────────────────────────────────────────────────
 
   const type = multiMode && refImages.length > 0
     ? 'image_to_video'
     : deriveVideoType(activeStartFrame, activeEndFrame)
 
-  const isI2V = multiMode
-    ? refImages.length > 0
-    : !!(activeStartFrame || activeEndFrame)
+  const isI2V = multiMode ? refImages.length > 0 : !!(activeStartFrame || activeEndFrame)
 
   // ── credit cost ──────────────────────────────────────────────────────────
-
-  const creditsPerSecond = selectedModel
-    ? (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
-    : 0
-  const isFlatRate = selectedModel?.is_flat_rate ?? false
-  const creditCost = (() => {
+  const creditCost = useMemo(() => {
     if (!selectedModel) return 0
+
+    // video_to_video: per-second up to 8s cap
+    if (caps.isVideoEdit) {
+      const billable = Math.min(trimTarget ?? editVideo?.duration ?? VIDEO_EDIT_MAX_BILLABLE, VIDEO_EDIT_MAX_BILLABLE)
+      return billable * VIDEO_EDIT_CPS
+    }
+
+    const creditsPerSecond = (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
+    const isFlatRate       = selectedModel?.is_flat_rate ?? false
     if (isFlatRate) return creditsPerSecond
     const base = creditsPerSecond * parseInt(duration || '5')
     return withSound && caps.supportsSound
       ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
       : Math.ceil(base)
-  })()
+  }, [selectedModel, caps, isI2V, duration, withSound, trimTarget, editVideo])
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
 
-  // ── frame upload handlers ────────────────────────────────────────────────
+  // ── mode label ───────────────────────────────────────────────────────────
+  const modeLabel = caps.isVideoEdit
+    ? 'Video Edit'
+    : multiMode && refImages.length > 0
+      ? `Multi-Ref · ${refImages.length} ref${refImages.length > 1 ? 's' : ''}`
+      : {
+          text_to_video:   'Text to Video',
+          image_to_video:  'Image to Video',
+          end_frame_text:  'End Frame + Text',
+          start_end_frame: 'Start + End Frame',
+        }[type]
 
+  // ── frame upload handlers ────────────────────────────────────────────────
   const handleFrameUpload = (setter, ssKey) => (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -613,16 +824,12 @@ export default function CreateVideoPage() {
     if (!otherFrame) { setAutoRatio(false); setAspectRatio('9:16') }
   }
 
-  // ── multi-ref image/video handlers ──────────────────────────────────────
-
+  // ── multi-ref handlers ───────────────────────────────────────────────────
   const handleAddRefImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     const isVideoFile = file.type.startsWith('video/')
-
     if (isVideoFile) {
-      // Video ref: use object URL directly, no compression
       const url = URL.createObjectURL(file)
       setRefImages((prev) => {
         const next = [...prev]
@@ -632,7 +839,6 @@ export default function CreateVideoPage() {
         return trimmed
       })
     } else {
-      // Image ref: compress as before
       const compressed = await compressImage(file)
       setRefImages((prev) => {
         const next = [...prev]
@@ -654,8 +860,87 @@ export default function CreateVideoPage() {
     })
   }
 
-  // ── tag insertion ────────────────────────────────────────────────────────
+  // ── video_to_video upload handler ────────────────────────────────────────
+  const handleEditVideoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast.error(`Video must be under ${formatBytes(MAX_VIDEO_BYTES)}. Yours is ${formatBytes(file.size)}.`)
+      e.target.value = ''
+      return
+    }
+
+    const meta = await readVideoMetadata(file)
+
+    if (meta.duration != null && meta.duration < 1) {
+      toast.error('Video is too short — minimum 1 second.')
+      e.target.value = ''
+      return
+    }
+
+    const url = URL.createObjectURL(file)
+    setEditVideo({ file, url, duration: meta.duration, size: file.size })
+    setTrimStart(0)
+    e.target.value = ''
+  }
+
+  const handleRemoveEditVideo = () => {
+    if (editVideo?.url && editVideo?.file) URL.revokeObjectURL(editVideo.url)
+    setEditVideo(null)
+    setTrimTarget(null)
+    setTrimStart(0)
+  }
+
+  // ── trim / convert ───────────────────────────────────────────────────────
+  const handleConvert = async () => {
+    if (!user)         return toast.error('Please sign in')
+    if (!editVideo)    return toast.error('Upload a video first')
+    if (!trimTarget)   return toast.error('Select a trim duration')
+    if (credits < VIDEO_EDIT_CONVERT_COST) return toast.error(`Trim costs ${VIDEO_EDIT_CONVERT_COST} credits.`)
+
+    setPhase('converting')
+    setConvertProgress(0)
+
+    let processed
+    try {
+      processed = await callTrimEdgeFunction({
+        file:           editVideo.file,
+        url:            editVideo.url,
+        userId:         user.id,
+        targetDuration: trimTarget,
+        startTime:      trimStart,
+        onProgress:     (p) => setConvertProgress(p),
+      })
+    } catch (err) {
+      setPhase(null)
+      setConvertProgress(0)
+      toast.error(err?.message || 'Trim failed.')
+      return
+    }
+
+    try {
+      await supabase.rpc('deduct_credits', {
+        p_user_id:       user.id,
+        p_amount:        VIDEO_EDIT_CONVERT_COST,
+        p_generation_id: null,
+        p_description:   'Video Edit trim conversion',
+      })
+    } catch {}
+
+    refreshProfile()
+    setPhase(null)
+    setConvertProgress(0)
+    setEditVideo({
+      file:       null,
+      url:        processed.url,
+      duration:   processed.duration ?? trimTarget,
+      _converted: true,
+    })
+    toast.success('Video trimmed — ready to generate!', { duration: 3000 })
+  }
+
+  // ── tag insertion ────────────────────────────────────────────────────────
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
@@ -673,27 +958,74 @@ export default function CreateVideoPage() {
     })
   }
 
-  // ── mode label ───────────────────────────────────────────────────────────
-
-  const modeLabel = multiMode && refImages.length > 0
-    ? `Multi-Ref · ${refImages.length} ref${refImages.length > 1 ? 's' : ''}`
-    : {
-        text_to_video:   'Text to Video',
-        image_to_video:  'Image to Video',
-        end_frame_text:  'End Frame + Text',
-        start_end_frame: 'Start + End Frame',
-      }[type]
-
   // ── generate ─────────────────────────────────────────────────────────────
-
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
-    setSubmitting(true)
+    // video_to_video guard
+    if (caps.isVideoEdit) {
+      if (!editVideo)           return toast.error('Upload a video to edit')
+      if (editCompat?.tooShort) return toast.error('Video is too short for this model')
+      if (needsTrim)            return toast.error('Trim your video first, then generate')
+    }
+
+    setPhase('submitting')
     try {
+      // ── video_to_video path ──────────────────────────────────────────────
+      if (caps.isVideoEdit) {
+        let videoUrl
+        if (!editVideo.file) {
+          videoUrl = editVideo.url
+        } else {
+          const ext  = (editVideo.file.name.split('.').pop() || 'mp4').toLowerCase()
+          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('generation-uploads')
+            .upload(path, editVideo.file, { upsert: false, cacheControl: '3600', contentType: editVideo.file.type || 'video/mp4' })
+          if (upErr) throw new Error('Video upload failed')
+          const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(path)
+          videoUrl = publicUrl
+        }
+
+        const billableSecs = Math.min(editVideo.duration ?? trimTarget ?? VIDEO_EDIT_MAX_BILLABLE, VIDEO_EDIT_MAX_BILLABLE)
+        const finalCost    = billableSecs * VIDEO_EDIT_CPS
+
+        const { data: genRow, error: genErr } = await generationsDb.create({
+          user_id:                user.id,
+          generation_type:        'video_to_video',
+          status:                 'pending',
+          prompt,
+          model,
+          aspect_ratio:           aspectRatio,
+          duration:               String(editVideo.duration ?? trimTarget ?? VIDEO_EDIT_MAX_BILLABLE),
+          credits_charged:        finalCost,
+          output_type:            'video',
+          input_image_urls:       [videoUrl],
+          with_sound:             false,
+          skip_prompt_refinement: true,
+        })
+        if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
+
+        const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, finalCost, genRow.id)
+        if (dErr || !deduct?.success) {
+          await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
+          throw new Error(deduct?.error || 'Not enough credits')
+        }
+
+        supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
+          .catch((e) => console.error('video-generate invoke error', e))
+
+        refreshProfile()
+        toast.success('Your edited video is being generated. Check your Media page.', { duration: 4000 })
+        setPrompt('')
+        handleRemoveEditVideo()
+        return
+      }
+
+      // ── standard path ────────────────────────────────────────────────────
       let startFrameUrl = null
       if (!multiMode && activeStartFrame) {
         if (activeStartFrame.file) {
@@ -722,16 +1054,11 @@ export default function CreateVideoPage() {
         endFrameUrl = publicUrl
       }
 
-      // Upload multi-ref images/videos
       const uploadedRefUrls = []
       if (multiMode && refImages.length > 0) {
         for (const img of refImages) {
           if (!img) continue
-          // URL-only refs (e.g. from Assets) — use the URL directly
-          if (!img.file) {
-            uploadedRefUrls.push(img.url)
-            continue
-          }
+          if (!img.file) { uploadedRefUrls.push(img.url); continue }
           const contentType = img.file.type || 'image/jpeg'
           const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
           const path = `${user.id}/${crypto.randomUUID()}.${ext}`
@@ -739,9 +1066,7 @@ export default function CreateVideoPage() {
             .from('generation-uploads')
             .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
           if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-          const { data: { publicUrl } } = supabase.storage
-            .from('generation-uploads')
-            .getPublicUrl(uploadData.path)
+          const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(uploadData.path)
           uploadedRefUrls.push(publicUrl)
         }
       }
@@ -792,31 +1117,24 @@ export default function CreateVideoPage() {
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
     } finally {
-      setSubmitting(false)
+      setPhase(null)
     }
   }
 
   const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
+  const isProcessing    = phase !== null
 
+  // ── generate button state ────────────────────────────────────────────────
+  const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
+    || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
+
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
+      {/* Processing overlay */}
       <AnimatePresence>
-        {submitting && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
-          >
-            <motion.div
-              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-              className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
-            />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>Generating…</p>
-          </motion.div>
-        )}
+        {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
       </AnimatePresence>
 
       {/* Fullscreen viewer */}
@@ -878,79 +1196,243 @@ export default function CreateVideoPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* Frame / Reference section */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                {caps.supportsMultiImage && multiMode ? 'Reference' : 'Frames'}
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
-              </p>
+          {/* ── VIDEO_TO_VIDEO SECTION ─────────────────────────────────── */}
+          {caps.isVideoEdit ? (
+            <>
+              {/* Info banner */}
+              <div className="rounded-2xl px-4 py-3 flex gap-3 items-start"
+                style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+                <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  Upload a video and describe the style transformation. The model edits across all frames.{' '}
+                  <strong style={{ color: 'var(--text-primary)' }}>Billed per second · max 8s · {VIDEO_EDIT_CPS} cr/s.</strong>
+                </p>
+              </div>
 
-              {caps.supportsMultiImage && (
-                <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
-                  {[
-                    { value: false, label: 'Frames'    },
-                    { value: true,  label: 'Multi-ref' },
-                  ].map((opt) => (
-                    <button
-                      key={String(opt.value)}
-                      onClick={() => {
-                        setMultiMode(opt.value)
-                        if (!opt.value) {
-                          setRefImages([])
-                          try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
-                        }
-                      }}
-                      className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-                      style={{
-                        background: multiMode === opt.value ? ACCENT    : 'transparent',
-                        color:      multiMode === opt.value ? '#ffffff' : 'var(--text-muted)',
-                      }}
+              {/* Video upload */}
+              <div>
+                <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Source Video
+                </p>
+                <VideoUploadZone
+                  value={editVideo}
+                  onUpload={handleEditVideoUpload}
+                  onRemove={handleRemoveEditVideo}
+                  compatStatus={editCompatStatus}
+                  tooShort={!!editCompat?.tooShort}
+                />
+
+                {/* Too short rejection */}
+                <AnimatePresence>
+                  {editCompat?.tooShort && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
+                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}
                     >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                      <AlertCircle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      <p className="text-xs" style={{ color: '#ef4444' }}>{editCompat.reason}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-            {caps.supportsMultiImage && multiMode ? (
-              <MultiRefGrid
-                images={refImages}
-                maxImages={caps.maxRefImages}
-                onAdd={handleAddRefImage}
-                onRemove={handleRemoveRefImage}
-                onTagInsert={handleTagInsert}
-                onFullscreen={(idx) => setFullscreenIdx(idx)}
-              />
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <FrameUpload
-                    label="Start Frame"
-                    value={startFrame}
-                    onChange={handleFrameUpload(setStartFrame, SS_START_FRAME)}
-                    onRemove={() => handleRemoveFrame(setStartFrame, SS_START_FRAME, true)}
-                    disabled={!caps.supportsStartFrame && !startFrame}
-                    inactive={!!startFrame && !caps.supportsStartFrame}
-                  />
-                  <FrameUpload
-                    label="End Frame"
-                    value={endFrame}
-                    onChange={handleFrameUpload(setEndFrame, SS_END_FRAME)}
-                    onRemove={() => handleRemoveFrame(setEndFrame, SS_END_FRAME, false)}
-                    disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
-                    inactive={!!endFrame && !(caps.supportsEndFrame || caps.supportsFrameToFrame)}
-                  />
-                </div>
-                {autoRatio && !multiMode && (
+                {/* Ready confirmation */}
+                {(editCompat?.ok || editVideo?._converted) && editVideo && (
                   <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                    Aspect ratio auto-set to <strong>{aspectRatio}</strong> from uploaded frame
+                    Video is{' '}
+                    <strong style={{ color: ACCENT }}>
+                      {editVideo.duration}s{editVideo._converted ? ' · trimmed' : ''}
+                    </strong>{' '}
+                    — ready to generate.
                   </p>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+
+              {/* Trim UI — shown when video > 8s */}
+              {editVideo && !editCompat?.tooShort && editCompat?.needsTrim && !editVideo._converted && (
+                <div className="rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Scissors size={14} style={{ color: ACCENT }} />
+                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                      Trim to duration
+                    </p>
+                  </div>
+
+                  {/* Trim duration chips — 1s steps up to 8s */}
+                  <div className="flex gap-2 flex-wrap mb-4">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((d) => {
+                      const tooLong = editVideo.duration != null && d > editVideo.duration
+                      return (
+                        <button
+                          key={d}
+                          disabled={tooLong}
+                          onClick={() => { setTrimTarget(d); setTrimStart(0) }}
+                          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                          style={{
+                            background: d === trimTarget ? ACCENT    : 'var(--bg-card)',
+                            color:      d === trimTarget ? '#ffffff' : 'var(--text-secondary)',
+                            opacity:    tooLong ? 0.3 : 1,
+                            cursor:     tooLong ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {d}s
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Start time slider */}
+                  {trimTarget != null && editVideo.duration > trimTarget && (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start time</p>
+                        <p className="text-xs font-bold" style={{ color: ACCENT }}>
+                          {trimStart}s → {trimStart + trimTarget}s
+                        </p>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(0, editVideo.duration - trimTarget)}
+                        step={1}
+                        value={trimStart}
+                        onChange={(e) => setTrimStart(Number(e.target.value))}
+                        className="w-full"
+                        style={{ accentColor: ACCENT }}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Conversion panel */}
+              <AnimatePresence>
+                {needsTrim && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-2xl p-4 flex flex-col gap-3"
+                    style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold" style={{ color: '#efa014' }}>Video needs trimming</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                          {editCompat?.reason}
+                          {trimTarget && (
+                            <> · Clip: <strong>{trimStart}s → {trimStart + trimTarget}s</strong></>
+                          )}
+                        </p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                          Trim cost: <strong style={{ color: 'var(--text-primary)' }}>{VIDEO_EDIT_CONVERT_COST} credits</strong>.
+                          Trimmed video loads here — no redirect needed.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleConvert}
+                        disabled={credits < VIDEO_EDIT_CONVERT_COST || isProcessing || !trimTarget}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: credits >= VIDEO_EDIT_CONVERT_COST && !isProcessing && trimTarget ? ACCENT : 'var(--bg-elevated)',
+                          color:      credits >= VIDEO_EDIT_CONVERT_COST && !isProcessing && trimTarget ? '#fff'  : 'var(--text-muted)',
+                          cursor:     credits >= VIDEO_EDIT_CONVERT_COST && !isProcessing && trimTarget ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        Trim &amp; Continue · {VIDEO_EDIT_CONVERT_COST} cr
+                      </button>
+                      <button
+                        onClick={handleRemoveEditVideo}
+                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {credits < VIDEO_EDIT_CONVERT_COST && (
+                      <p className="text-xs" style={{ color: '#ef4444' }}>
+                        Not enough credits to trim.{' '}
+                        <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Top up</button>
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
+          ) : (
+            /* ── STANDARD FRAMES / MULTI-REF SECTION ───────────────────── */
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  {caps.supportsMultiImage && multiMode ? 'Reference' : 'Frames'}
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+                </p>
+                {caps.supportsMultiImage && (
+                  <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+                    {[{ value: false, label: 'Frames' }, { value: true, label: 'Multi-ref' }].map((opt) => (
+                      <button
+                        key={String(opt.value)}
+                        onClick={() => {
+                          setMultiMode(opt.value)
+                          if (!opt.value) {
+                            setRefImages([])
+                            try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
+                          }
+                        }}
+                        className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                          background: multiMode === opt.value ? ACCENT    : 'transparent',
+                          color:      multiMode === opt.value ? '#ffffff' : 'var(--text-muted)',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {caps.supportsMultiImage && multiMode ? (
+                <MultiRefGrid
+                  images={refImages}
+                  maxImages={caps.maxRefImages}
+                  onAdd={handleAddRefImage}
+                  onRemove={handleRemoveRefImage}
+                  onTagInsert={handleTagInsert}
+                  onFullscreen={(idx) => setFullscreenIdx(idx)}
+                />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FrameUpload
+                      label="Start Frame"
+                      value={startFrame}
+                      onChange={handleFrameUpload(setStartFrame, SS_START_FRAME)}
+                      onRemove={() => handleRemoveFrame(setStartFrame, SS_START_FRAME, true)}
+                      disabled={!caps.supportsStartFrame && !startFrame}
+                      inactive={!!startFrame && !caps.supportsStartFrame}
+                    />
+                    <FrameUpload
+                      label="End Frame"
+                      value={endFrame}
+                      onChange={handleFrameUpload(setEndFrame, SS_END_FRAME)}
+                      onRemove={() => handleRemoveFrame(setEndFrame, SS_END_FRAME, false)}
+                      disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
+                      inactive={!!endFrame && !(caps.supportsEndFrame || caps.supportsFrameToFrame)}
+                    />
+                  </div>
+                  {autoRatio && !multiMode && (
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                      Aspect ratio auto-set to <strong>{aspectRatio}</strong> from uploaded frame
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Prompt */}
           <Textarea
@@ -959,15 +1441,17 @@ export default function CreateVideoPage() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={
-              caps.supportsMultiImage && multiMode && refImages.length > 0
-                ? `e.g. ${tagForSlot(0)} walks through a neon-lit street, medium tracking shot`
-                : 'Describe the motion, scene, or action…'
+              caps.isVideoEdit
+                ? 'Describe the style transformation e.g. "animate style with vibrant colors"'
+                : caps.supportsMultiImage && multiMode && refImages.length > 0
+                  ? `e.g. ${tagForSlot(0)} walks through a neon-lit street, medium tracking shot`
+                  : 'Describe the motion, scene, or action…'
             }
             rows={3}
             maxLength={500}
           />
 
-          {/* Settings */}
+          {/* Settings — hide duration chips when null (video_to_video) */}
           <div>
             <SettingChips
               label="Aspect Ratio"
@@ -978,12 +1462,14 @@ export default function CreateVideoPage() {
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
             />
-            <SettingChips
-              label="Duration"
-              options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d, disabled: false }))}
-              value={duration}
-              onChange={setDuration}
-            />
+            {caps.supportedDurations.length > 0 && (
+              <SettingChips
+                label="Duration"
+                options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d, disabled: false }))}
+                value={duration}
+                onChange={setDuration}
+              />
+            )}
             {caps.supportsSound && (
               <SettingChips
                 label="Sound"
@@ -1005,16 +1491,33 @@ export default function CreateVideoPage() {
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
-            disabled={submitting || !canAfford || promptEmpty || !selectedModel}
+            disabled={generateDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: (submitting || !canAfford || promptEmpty || !selectedModel) ? 'var(--bg-elevated)' : ACCENT,
-              color:      (submitting || !canAfford || promptEmpty || !selectedModel) ? 'var(--text-muted)'  : '#ffffff',
+              background: generateDisabled ? 'var(--bg-elevated)' : ACCENT,
+              color:      generateDisabled ? 'var(--text-muted)'  : '#ffffff',
             }}
           >
             <Zap size={15} fill="currentColor" />
-            {submitting ? 'Generating…' : `Generate · ${creditCost} cr`}
+            {isProcessing
+              ? phase === 'converting' ? 'Trimming…' : 'Generating…'
+              : caps.isVideoEdit
+                ? `Generate · ${creditCost} cr`
+                : `Generate · ${creditCost} cr`
+            }
           </button>
+
+          {/* Contextual hint text */}
+          {caps.isVideoEdit && needsTrim && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              Trim your video above to continue.
+            </p>
+          )}
+          {caps.isVideoEdit && editCompat?.tooShort && (
+            <p className="text-xs text-center mt-2" style={{ color: '#ef4444' }}>
+              Video is too short — upload a different one.
+            </p>
+          )}
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
