@@ -1164,31 +1164,66 @@ export default function CinematicTransitionPage() {
     if (exportError) toast.error(exportError)
   }, [exportError])
 
-  // ── Poll processing projects → auto-complete ──────────
+  // ── Poll processing projects via generation rows ───────
   useEffect(() => {
     if (!user) return
-    const processingIds = projects.filter(p => p.status === 'processing').map(p => p.id)
-    if (!processingIds.length) return
+    const processingProjects = projects.filter(p => p.status === 'processing')
+    if (!processingProjects.length) return
 
     const interval = setInterval(async () => {
-      for (const projectId of processingIds) {
-        const { data: clips } = await supabase
-          .from('cinematic_clips')
-          .select('status')
-          .eq('project_id', projectId)
-        if (!clips?.length) continue
-        const allDone = clips.every(c => c.status === 'completed' || c.status === 'done')
-        if (allDone) {
-          await supabase
-            .from('cinematic_projects')
-            .update({ status: 'completed' })
-            .eq('id', projectId)
-          setProjects(prev =>
-            prev.map(p => p.id === projectId ? { ...p, status: 'completed' } : p)
+      for (const project of processingProjects) {
+        // 1. Get clip→generation links for this project
+        const { data: versions } = await supabase
+          .from('cinematic_clip_versions')
+          .select('generation_id, clip_id')
+          .in(
+            'clip_id',
+            (await supabase
+              .from('cinematic_clips')
+              .select('id')
+              .eq('project_id', project.id)
+            ).data?.map(c => c.id) || []
           )
-        }
+
+        if (!versions?.length) continue
+
+        const genIds = versions.map(v => v.generation_id).filter(Boolean)
+        if (!genIds.length) continue
+
+        // 2. Check generation statuses — same source of truth MediaPageCore uses
+        const { data: gens } = await supabase
+          .from('generations')
+          .select('id, status, output_url')
+          .in('id', genIds)
+
+        if (!gens?.length) continue
+
+        const allDone = gens.every(g => g.status === 'completed' || g.status === 'failed')
+        if (!allDone) continue
+
+        // 3. Update clip statuses to match their generations
+        await Promise.all(
+          versions.map(async v => {
+            const gen = gens.find(g => g.id === v.generation_id)
+            if (!gen) return
+            await supabase
+              .from('cinematic_clips')
+              .update({ status: gen.status === 'completed' ? 'completed' : 'failed' })
+              .eq('id', v.clip_id)
+          })
+        )
+
+        // 4. Promote project to completed
+        await supabase
+          .from('cinematic_projects')
+          .update({ status: 'completed' })
+          .eq('id', project.id)
+
+        setProjects(prev =>
+          prev.map(p => p.id === project.id ? { ...p, status: 'completed' } : p)
+        )
       }
-    }, 8000)
+    }, 6000)
 
     return () => clearInterval(interval)
   }, [user, projects])
