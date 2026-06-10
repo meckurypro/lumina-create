@@ -1,9 +1,10 @@
+
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, ImagePlus, Plus, Maximize2,
-  Film, AlertCircle, RefreshCw, CheckCircle2, Scissors,
+  Film, AlertCircle, RefreshCw, CheckCircle2, Scissors, Lock,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
@@ -11,7 +12,7 @@ import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
-// ─── theme ───────────────────────────────────────────────────────────────────
+// ─── theme ────────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
@@ -29,10 +30,10 @@ const ALL_ASPECT_RATIOS = [
   { label: '16:9', value: '16:9' },
   { label: '1:1',  value: '1:1'  },
 ]
-const VIDEO_EDIT_MAX_BILLABLE = 8          // Grok Video Edit caps at 8s
-const VIDEO_EDIT_CPS          = 49         // credits per second after 10% margin
-const VIDEO_EDIT_CONVERT_COST = 2          // trim conversion fee
-const MAX_VIDEO_BYTES         = 40 * 1024 * 1024  // 40 MB upload cap
+const VIDEO_EDIT_MAX_BILLABLE = 8
+const VIDEO_EDIT_CPS          = 49
+const VIDEO_EDIT_CONVERT_COST = 2
+const MAX_VIDEO_BYTES         = 40 * 1024 * 1024
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function getModelCaps(model) {
@@ -56,7 +57,7 @@ function getModelCaps(model) {
     supportsVideoInput:    model.supports_video_input    ?? false,
     isVideoEdit:           model.feature === 'video_to_video',
     maxRefImages:          model.max_ref_images          ?? 1,
-    supportedDurations:    model.supported_durations     ?? [],   // null → [] — no chips
+    supportedDurations:    model.supported_durations     ?? [],
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
     supportsSound:         model.supports_sound          ?? false,
   }
@@ -181,7 +182,6 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
     onProgress?.(20)
     const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(srcPath)
     sourceUrl = publicUrl
-    // cleanup source after
     setTimeout(() => supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {}), 60_000)
   }
 
@@ -191,15 +191,13 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
 
   let result
   try {
-    // Reuse the existing process-video-for-motion edge function.
-    // We pass the video's own aspect ratio so the scale step is a no-op crop.
     const { data, error } = await supabase.functions.invoke('process-video-for-motion', {
       body: {
         sourceUrl,
-        targetAspectRatio: '16:9',   // aspect ratio preserved — scale step is identity
+        targetAspectRatio: '16:9',
         targetDuration,
         startTime,
-        trimOnly: true,              // hint: skip crop-scale if edge function supports it
+        trimOnly: true,
       },
     })
     if (error)          throw new Error(error.message || 'Trim edge function failed')
@@ -217,10 +215,10 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
 const CompatBadge = ({ status }) => {
   if (!status) return null
   const map = {
-    compatible:   { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready'             },
-    converted:    { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Trimmed · Ready'   },
-    incompatible: { bg: 'rgba(239,160,20,0.9)',   color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs trim'        },
-    rejected:     { bg: 'rgba(239,68,68,0.92)',   color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'         },
+    compatible:   { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Ready'           },
+    converted:    { bg: 'rgba(16,185,129,0.85)',  color: '#fff', icon: <CheckCircle2 size={11} />, text: 'Trimmed · Ready' },
+    incompatible: { bg: 'rgba(239,160,20,0.9)',   color: '#fff', icon: <RefreshCw   size={11} />, text: 'Needs trim'      },
+    rejected:     { bg: 'rgba(239,68,68,0.92)',   color: '#fff', icon: <AlertCircle size={11} />, text: 'Too short'       },
   }
   const cfg = map[status]
   if (!cfg) return null
@@ -237,7 +235,8 @@ const CompatBadge = ({ status }) => {
 const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) => {
   if (value) {
     return (
-      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: (value.aspectRatio?.replace(':', '/') || '16/9'), background: 'var(--bg-elevated)' }}>
+      <div className="relative w-full rounded-2xl overflow-hidden"
+        style={{ aspectRatio: (value.aspectRatio?.replace(':', '/') || '16/9'), background: 'var(--bg-elevated)' }}>
         <video
           src={value.url}
           className="w-full h-full object-cover"
@@ -503,7 +502,7 @@ const MultiRefGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFulls
   )
 }
 
-// ─── converting / generating overlay ─────────────────────────────────────────
+// ─── processing overlay ───────────────────────────────────────────────────────
 const ProcessingOverlay = ({ phase, convertProgress }) => (
   <motion.div
     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
@@ -551,7 +550,7 @@ export default function CreateVideoPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const textareaRef = useRef(null)
 
-  // ── standard video state ─────────────────────────────────────────────────
+  // ── standard video state ──────────────────────────────────────────────────
   const [prompt,        setPrompt]        = useState('')
   const [startFrame,    setStartFrame]    = useState(null)
   const [endFrame,      setEndFrame]      = useState(null)
@@ -566,19 +565,26 @@ export default function CreateVideoPage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
-  // ── video_to_video state ─────────────────────────────────────────────────
-  const [editVideo,       setEditVideo]       = useState(null)   // { file, url, duration, size, _converted }
-  const [trimTarget,      setTrimTarget]      = useState(null)   // seconds
+  // ── video_to_video state ──────────────────────────────────────────────────
+  const [editVideo,       setEditVideo]       = useState(null)
+  const [trimTarget,      setTrimTarget]      = useState(null)
   const [trimStart,       setTrimStart]       = useState(0)
-  const [phase,           setPhase]           = useState(null)   // null | 'converting' | 'submitting'
+  const [phase,           setPhase]           = useState(null)
   const [convertProgress, setConvertProgress] = useState(0)
 
-  // ── omni ref ─────────────────────────────────────────────────────────────
+  // ── convertedSettings: snapshot of what the trim actually produced ────────
+  // Shape: { duration: number } | null
+  // Set after a successful trim, cleared on video removal or fresh upload.
+  // Prevents the user from silently changing trimTarget post-trim and inflating
+  // the credit cost against a video the model will never see at that duration.
+  const [convertedSettings, setConvertedSettings] = useState(null)
+
+  // ── omni ref ──────────────────────────────────────────────────────────────
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // ── session restore ──────────────────────────────────────────────────────
+  // ── session restore ───────────────────────────────────────────────────────
   useEffect(() => {
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
@@ -649,7 +655,7 @@ export default function CreateVideoPage() {
     } catch {}
   }
 
-  // ── load models ──────────────────────────────────────────────────────────
+  // ── load models ───────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -659,9 +665,9 @@ export default function CreateVideoPage() {
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-    const isMaster    = profile?.user_tier === 'master'
+    const isMaster     = profile?.user_tier === 'master'
     const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
-    const list        = await applyModelPreferences(tierFiltered, user?.id)
+    const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
     return list
@@ -692,18 +698,18 @@ export default function CreateVideoPage() {
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  // ── reset when model changes ─────────────────────────────────────────────
+  // ── reset when model changes ──────────────────────────────────────────────
   useEffect(() => {
     if (!caps.supportsMultiImage) {
       setMultiMode(false)
       setRefImages([])
       try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
     }
-    // clear edit video when switching away from video_to_video
     if (!caps.isVideoEdit) {
       setEditVideo(null)
       setTrimTarget(null)
       setTrimStart(0)
+      setConvertedSettings(null)
     }
   }, [model]) // eslint-disable-line
 
@@ -721,10 +727,9 @@ export default function CreateVideoPage() {
     if (!modelsLoading && !caps.supportsSound) setWithSound(false)
   }, [caps.supportsSound, modelsLoading])
 
-  // ── trim target default for video_to_video ───────────────────────────────
+  // ── trim target default ───────────────────────────────────────────────────
   useEffect(() => {
     if (!caps.isVideoEdit || !editVideo?.duration) return
-    // default to min(actual, max_billable)
     setTrimTarget(Math.min(editVideo.duration, VIDEO_EDIT_MAX_BILLABLE))
     setTrimStart(0)
   }, [editVideo?.duration, caps.isVideoEdit])
@@ -736,7 +741,7 @@ export default function CreateVideoPage() {
     if (trimStart > maxStart) setTrimStart(maxStart)
   }, [editVideo?.duration, trimTarget, trimStart])
 
-  // ── video_to_video compatibility ─────────────────────────────────────────
+  // ── video_to_video compatibility ──────────────────────────────────────────
   const editCompat = useMemo(() => {
     if (!caps.isVideoEdit || !editVideo) return null
     return checkVideoEditCompat({ videoMeta: editVideo, maxBillable: VIDEO_EDIT_MAX_BILLABLE })
@@ -751,15 +756,19 @@ export default function CreateVideoPage() {
     return null
   }, [editVideo, editCompat])
 
-  const needsTrim     = !!editCompat?.needsTrim && !editVideo?._converted
-  const canGenerate_v2v = caps.isVideoEdit
-    && !!editVideo
-    && !editCompat?.tooShort
-    && (editCompat?.ok || editVideo?._converted)
-    && !prompt.trim() === false   // prompt required
-    && credits >= (editVideo ? Math.min(trimTarget ?? editVideo.duration ?? 8, VIDEO_EDIT_MAX_BILLABLE) * VIDEO_EDIT_CPS : 0)
+  const needsTrim = !!editCompat?.needsTrim && !editVideo?._converted
 
-  // ── active frames (non-video_to_video) ───────────────────────────────────
+  // ── billable duration — authoritative for cost and generation payload ─────
+  // After conversion, always trust convertedSettings.duration, not the live
+  // trimTarget chip (which the user might have changed post-trim).
+  const billableDuration = useMemo(() => {
+    if (!caps.isVideoEdit) return null
+    if (convertedSettings) return convertedSettings.duration          // locked to actual trim output
+    if (editVideo?._converted) return editVideo.duration              // fallback: video's own duration
+    return Math.min(trimTarget ?? editVideo?.duration ?? VIDEO_EDIT_MAX_BILLABLE, VIDEO_EDIT_MAX_BILLABLE)
+  }, [caps.isVideoEdit, convertedSettings, editVideo, trimTarget])
+
+  // ── active frames ─────────────────────────────────────────────────────────
   const activeStartFrame = startFrame && caps.supportsStartFrame                              ? startFrame : null
   const activeEndFrame   = endFrame   && (caps.supportsEndFrame || caps.supportsFrameToFrame) ? endFrame   : null
 
@@ -769,16 +778,13 @@ export default function CreateVideoPage() {
 
   const isI2V = multiMode ? refImages.length > 0 : !!(activeStartFrame || activeEndFrame)
 
-  // ── credit cost ──────────────────────────────────────────────────────────
+  // ── credit cost ───────────────────────────────────────────────────────────
   const creditCost = useMemo(() => {
     if (!selectedModel) return 0
-
-    // video_to_video: per-second up to 8s cap
     if (caps.isVideoEdit) {
-      const billable = Math.min(trimTarget ?? editVideo?.duration ?? VIDEO_EDIT_MAX_BILLABLE, VIDEO_EDIT_MAX_BILLABLE)
+      const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
       return billable * VIDEO_EDIT_CPS
     }
-
     const creditsPerSecond = (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     const isFlatRate       = selectedModel?.is_flat_rate ?? false
     if (isFlatRate) return creditsPerSecond
@@ -786,12 +792,12 @@ export default function CreateVideoPage() {
     return withSound && caps.supportsSound
       ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
       : Math.ceil(base)
-  }, [selectedModel, caps, isI2V, duration, withSound, trimTarget, editVideo])
+  }, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
 
-  // ── mode label ───────────────────────────────────────────────────────────
+  // ── mode label ────────────────────────────────────────────────────────────
   const modeLabel = caps.isVideoEdit
     ? 'Video Edit'
     : multiMode && refImages.length > 0
@@ -803,7 +809,7 @@ export default function CreateVideoPage() {
           start_end_frame: 'Start + End Frame',
         }[type]
 
-  // ── frame upload handlers ────────────────────────────────────────────────
+  // ── frame upload handlers ─────────────────────────────────────────────────
   const handleFrameUpload = (setter, ssKey) => (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -824,7 +830,7 @@ export default function CreateVideoPage() {
     if (!otherFrame) { setAutoRatio(false); setAspectRatio('9:16') }
   }
 
-  // ── multi-ref handlers ───────────────────────────────────────────────────
+  // ── multi-ref handlers ────────────────────────────────────────────────────
   const handleAddRefImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -860,7 +866,7 @@ export default function CreateVideoPage() {
     })
   }
 
-  // ── video_to_video upload handler ────────────────────────────────────────
+  // ── video_to_video upload ─────────────────────────────────────────────────
   const handleEditVideoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -881,11 +887,12 @@ export default function CreateVideoPage() {
 
     const url = URL.createObjectURL(file)
     setEditVideo({ file, url, duration: meta.duration, size: file.size, aspectRatio: meta.aspectRatio })
-setTrimStart(0)
-if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
-  setAspectRatio(meta.aspectRatio)
-  setAutoRatio(true)
-}
+    setTrimStart(0)
+    setConvertedSettings(null) // fresh upload — clear any prior conversion snapshot
+    if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
+      setAspectRatio(meta.aspectRatio)
+      setAutoRatio(true)
+    }
     e.target.value = ''
   }
 
@@ -894,13 +901,14 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
     setEditVideo(null)
     setTrimTarget(null)
     setTrimStart(0)
+    setConvertedSettings(null)
   }
 
-  // ── trim / convert ───────────────────────────────────────────────────────
+  // ── trim / convert ────────────────────────────────────────────────────────
   const handleConvert = async () => {
-    if (!user)         return toast.error('Please sign in')
-    if (!editVideo)    return toast.error('Upload a video first')
-    if (!trimTarget)   return toast.error('Select a trim duration')
+    if (!user)       return toast.error('Please sign in')
+    if (!editVideo)  return toast.error('Upload a video first')
+    if (!trimTarget) return toast.error('Select a trim duration')
     if (credits < VIDEO_EDIT_CONVERT_COST) return toast.error(`Trim costs ${VIDEO_EDIT_CONVERT_COST} credits.`)
 
     setPhase('converting')
@@ -935,16 +943,26 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
     refreshProfile()
     setPhase(null)
     setConvertProgress(0)
+
+    const actualDuration = processed.duration ?? trimTarget
+
+    // Hydrate the video card and lock in what was actually produced
     setEditVideo({
-      file:       null,
-      url:        processed.url,
-      duration:   processed.duration ?? trimTarget,
-      _converted: true,
+      file:        null,
+      url:         processed.url,
+      duration:    actualDuration,
+      _converted:  true,
     })
+    setConvertedSettings({ duration: actualDuration })
+
+    // Snap the chip to match the actual output so the UI is consistent
+    setTrimTarget(actualDuration)
+    setTrimStart(0)
+
     toast.success('Video trimmed — ready to generate!', { duration: 3000 })
   }
 
-  // ── tag insertion ────────────────────────────────────────────────────────
+  // ── tag insertion ─────────────────────────────────────────────────────────
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
@@ -962,14 +980,13 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
     })
   }
 
-  // ── generate ─────────────────────────────────────────────────────────────
+  // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
-    // video_to_video guard
     if (caps.isVideoEdit) {
       if (!editVideo)           return toast.error('Upload a video to edit')
       if (editCompat?.tooShort) return toast.error('Video is too short for this model')
@@ -978,7 +995,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
 
     setPhase('submitting')
     try {
-      // ── video_to_video path ──────────────────────────────────────────────
+      // ── video_to_video path ───────────────────────────────────────────────
       if (caps.isVideoEdit) {
         let videoUrl
         if (!editVideo.file) {
@@ -994,8 +1011,9 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
           videoUrl = publicUrl
         }
 
-        const billableSecs = Math.min(editVideo.duration ?? trimTarget ?? VIDEO_EDIT_MAX_BILLABLE, VIDEO_EDIT_MAX_BILLABLE)
-        const finalCost    = billableSecs * VIDEO_EDIT_CPS
+        // Use billableDuration — locked to convertedSettings when available
+        const finalDuration = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
+        const finalCost     = finalDuration * VIDEO_EDIT_CPS
 
         const { data: genRow, error: genErr } = await generationsDb.create({
           user_id:                user.id,
@@ -1004,7 +1022,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
           prompt,
           model,
           aspect_ratio:           aspectRatio,
-          duration:               String(editVideo.duration ?? trimTarget ?? VIDEO_EDIT_MAX_BILLABLE),
+          duration:               String(finalDuration),
           credits_charged:        finalCost,
           output_type:            'video',
           input_image_urls:       [videoUrl],
@@ -1029,7 +1047,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
         return
       }
 
-      // ── standard path ────────────────────────────────────────────────────
+      // ── standard path ─────────────────────────────────────────────────────
       let startFrameUrl = null
       if (!multiMode && activeStartFrame) {
         if (activeStartFrame.file) {
@@ -1128,15 +1146,13 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
   const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
   const isProcessing    = phase !== null
 
-  // ── generate button state ────────────────────────────────────────────────
   const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
 
-  // ── render ────────────────────────────────────────────────────────────────
+  // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Processing overlay */}
       <AnimatePresence>
         {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
       </AnimatePresence>
@@ -1200,7 +1216,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── VIDEO_TO_VIDEO SECTION ─────────────────────────────────── */}
+          {/* ── VIDEO_TO_VIDEO SECTION ────────────────────────────────────── */}
           {caps.isVideoEdit ? (
             <>
               {/* Info banner */}
@@ -1208,7 +1224,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
                 style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                 <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                  Upload a video and describe the style transformation. The model edits across all frames.{' '}
+                  Upload a video and describe the style transformation. The model edits across all frames.
                 </p>
               </div>
 
@@ -1248,11 +1264,16 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
                       {editVideo.duration}s{editVideo._converted ? ' · trimmed' : ''}
                     </strong>{' '}
                     — ready to generate.
+                    {convertedSettings && (
+                      <span className="ml-1" style={{ color: 'var(--text-muted)' }}>
+                        · Billing locked to <strong style={{ color: ACCENT }}>{convertedSettings.duration}s</strong>.
+                      </span>
+                    )}
                   </p>
                 )}
               </div>
 
-              {/* Trim UI — shown when video > 8s */}
+              {/* Trim UI — shown when video > 8s and not yet converted */}
               {editVideo && !editCompat?.tooShort && editCompat?.needsTrim && !editVideo._converted && (
                 <div className="rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2 mb-3">
@@ -1262,7 +1283,6 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
                     </p>
                   </div>
 
-                  {/* Trim duration chips — 1s steps up to 8s */}
                   <div className="flex gap-2 flex-wrap mb-4">
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((d) => {
                       const tooLong = editVideo.duration != null && d > editVideo.duration
@@ -1285,7 +1305,6 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
                     })}
                   </div>
 
-                  {/* Start time slider */}
                   {trimTarget != null && editVideo.duration > trimTarget && (
                     <>
                       <div className="flex items-center justify-between mb-1.5">
@@ -1306,6 +1325,26 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
                       />
                     </>
                   )}
+                </div>
+              )}
+
+              {/* Post-trim locked duration display — replaces trim UI after conversion */}
+              {editVideo?._converted && convertedSettings && (
+                <div className="rounded-2xl p-4 flex items-center gap-3"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                  <Lock size={14} style={{ color: ACCENT, flexShrink: 0 }} />
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Trimmed to {convertedSettings.duration}s
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      Duration is locked. Remove the video and re-upload to trim differently.
+                    </p>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-lg text-xs font-bold"
+                    style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                    {convertedSettings.duration * VIDEO_EDIT_CPS} cr
+                  </div>
                 </div>
               )}
 
@@ -1366,7 +1405,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
               </AnimatePresence>
             </>
           ) : (
-            /* ── STANDARD FRAMES / MULTI-REF SECTION ───────────────────── */
+            /* ── STANDARD FRAMES / MULTI-REF SECTION ────────────────────── */
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -1454,7 +1493,7 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
             maxLength={500}
           />
 
-          {/* Settings — hide duration chips when null (video_to_video) */}
+          {/* Settings */}
           <div>
             <SettingChips
               label="Aspect Ratio"
@@ -1504,13 +1543,10 @@ if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
             <Zap size={15} fill="currentColor" />
             {isProcessing
               ? phase === 'converting' ? 'Trimming…' : 'Generating…'
-              : caps.isVideoEdit
-                ? `Generate · ${creditCost} cr`
-                : `Generate · ${creditCost} cr`
+              : `Generate · ${creditCost} cr`
             }
           </button>
 
-          {/* Contextual hint text */}
           {caps.isVideoEdit && needsTrim && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Trim your video above to continue.
