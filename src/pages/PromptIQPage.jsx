@@ -160,7 +160,7 @@ export default function PromptIQPage({ onClose }) {
     const grant = accessMap[TOOL_CINEMATIC]
     if (!grant?.has_access) return
     onClose?.()
-    navigate('/cinematic', {
+    navigate('/create/cinematic-transition', {
       state: { isPromptIQ: true, skipCreditCharge: grant.is_free },
     })
   }
