@@ -1,21 +1,40 @@
 // src/hooks/useCinematicExport.js
 //
 // Two export modes:
-//   1. mergeAndExport  — single merged mp4 via FFmpeg WASM
-//   2. downloadAll     — individual numbered mp4s, sequential download
+//   1. 'merge'    — concat all clips → single mp4 via FFmpeg WASM
+//   2. 'download' — individual numbered mp4s, sequential fetch+download
+//                   (NO FFmpeg needed — fast, was working before)
 //
-// ── ROOT CAUSE OF "failed to import ffmpeg-core.js" ───────────────────────────
-// Vite mis-bundles the internal `new Worker(new URL(...))` call inside
-// @ffmpeg/ffmpeg, so the classWorker (ffmpeg.wasm's own JS worker thread) can
-// never be found. Fix: copy worker.js from node_modules into /public and pass
-// its URL explicitly via `classWorkerURL`.
+// ── WHY THE WORKER USED TO FAIL ──────────────────────────────────────────────
+// The original code set:
+//   classWorkerURL: '/ffmpeg-worker.js'   ← served from your own origin
 //
-// SETUP REQUIRED (one-time):
-//   1. Copy the worker file into your public folder so it's served from your origin:
-//        cp node_modules/@ffmpeg/ffmpeg/dist/esm/worker.js public/ffmpeg-worker.js
-//   2. If you have a postinstall/build script, automate this:
-//        "postinstall": "cp node_modules/@ffmpeg/ffmpeg/dist/esm/worker.js public/ffmpeg-worker.js"
-//   3. No COOP/COEP headers needed — we use single-threaded @ffmpeg/core (not core-mt).
+// On Vercel with a catch-all SPA rewrite, ANY path that doesn't match a real
+// static file returns index.html with Content-Type: text/html.
+// The browser rejects a <script type="module"> with a non-JS MIME type, so the
+// worker dies immediately with:
+//   "Failed to load module script: non-JavaScript MIME type of text/html"
+//
+// ── THE FIX ───────────────────────────────────────────────────────────────────
+// Don't rely on your own origin for the worker file at all.
+// Both the @ffmpeg/ffmpeg worker (classWorkerURL) AND the @ffmpeg/core assets
+// (coreURL / wasmURL) are fetched from jsDelivr and wrapped in Blob URLs via
+// toBlobURL(). A Blob URL is same-origin by definition, so the worker loads
+// fine regardless of your server's routing rules.
+//
+// Specifically:
+//   classWorkerURL → toBlobURL of @ffmpeg/ffmpeg's worker.js from jsDelivr
+//   coreURL        → toBlobURL of @ffmpeg/core's ffmpeg-core.js from jsDelivr
+//   wasmURL        → toBlobURL of @ffmpeg/core's ffmpeg-core.wasm from jsDelivr
+//
+// No files need to be copied into /public. No vercel.json routing exclusions
+// needed for worker files. Works identically in dev and production.
+//
+// ── VERSION PINNING ───────────────────────────────────────────────────────────
+// @ffmpeg/ffmpeg  v0.12.10  ← classWorkerURL support added in v0.12.9
+// @ffmpeg/core   v0.12.6   ← single-threaded (no SharedArrayBuffer required)
+// These must be kept in sync. The CDN worker.js is from the @ffmpeg/ffmpeg
+// package, not @ffmpeg/core — they are different files.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState, useCallback } from 'react'
@@ -23,17 +42,10 @@ import { FFmpeg }                         from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL }           from '@ffmpeg/util'
 import { supabase }                       from '@/lib/supabase'
 
-// ── CDN base for single-threaded core ────────────────────
-// @ffmpeg/core (NOT core-mt) — no SharedArrayBuffer required.
-// Pinned to 0.12.6 (latest confirmed on unpkg as of June 2026).
-// Using jsDelivr as primary — better uptime and global CDN than unpkg.
-const CORE_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd'
-
-// ── Worker URL ────────────────────────────────────────────
-// Must be served from your own origin (same-origin worker requirement).
-// This is the worker.js from @ffmpeg/ffmpeg/dist/esm/worker.js
-// copied into /public at build time (see SETUP REQUIRED above).
-const CLASS_WORKER_URL = '/ffmpeg-worker.js'
+// ── CDN roots ─────────────────────────────────────────────
+// Using jsDelivr — better global uptime than unpkg, same files.
+const FFMPEG_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm'
+const CORE_CDN   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd'
 
 export function useCinematicExport() {
   const ffmpegRef = useRef(null)
@@ -77,39 +89,46 @@ export function useCinematicExport() {
   }, [])
 
   // ── Load FFmpeg WASM (idempotent) ──────────────────────
-  // Key fix: pass classWorkerURL so Vite doesn't mis-bundle the worker.
-  // toBlobURL is still used for coreURL + wasmURL to handle CORS on the
-  // CDN assets — the blob acts as a same-origin proxy for those files.
+  //
+  // All three URLs are fetched from jsDelivr and wrapped in Blob URLs.
+  // This sidesteps every same-origin / MIME-type / Vercel-rewrite issue:
+  //
+  //  classWorkerURL  The JS worker spawned by @ffmpeg/ffmpeg itself.
+  //                  Must come from the same package version as your
+  //                  installed @ffmpeg/ffmpeg — here v0.12.10.
+  //                  We blobify it so the browser sees it as same-origin.
+  //
+  //  coreURL         The Emscripten glue JS for @ffmpeg/core (single-thread).
+  //
+  //  wasmURL         The compiled WebAssembly binary.
+  //
+  // No SharedArrayBuffer / COOP / COEP headers required because we use the
+  // single-threaded @ffmpeg/core (not core-mt).
   const ensureLoaded = useCallback(async () => {
     if (loadedRef.current) return ffmpegRef.current
 
     const ff = new FFmpeg()
 
     ff.on('progress', ({ progress }) => {
-      // progress covers the FFmpeg encode phase (mapped to 60–95% of total)
+      // FFmpeg encode phase mapped to 60–95 % of overall progress
       setExportProgress(Math.round(60 + progress * 35))
     })
 
-    ff.on('log', ({ message }) => {
-      if (import.meta.env.DEV) console.debug('[ffmpeg]', message)
-    })
+    if (import.meta.env.DEV) {
+      ff.on('log', ({ message }) => console.debug('[ffmpeg]', message))
+    }
 
-    // Blobify the CDN assets — required to bypass CORS restrictions on
-    // cross-origin JS/WASM files being loaded as worker scripts.
-    const [coreURL, wasmURL] = await Promise.all([
-      toBlobURL(`${CORE_CDN}/ffmpeg-core.js`,   'text/javascript'),
-      toBlobURL(`${CORE_CDN}/ffmpeg-core.wasm`, 'application/wasm'),
+    // Fetch all three assets in parallel and blobify them.
+    // toBlobURL(url, mimeType) → fetch → Blob → blob: URL
+    // The resulting blob: URL is always same-origin, so the browser's
+    // worker origin check passes unconditionally.
+    const [classWorkerURL, coreURL, wasmURL] = await Promise.all([
+      toBlobURL(`${FFMPEG_CDN}/worker.js`,         'text/javascript'),
+      toBlobURL(`${CORE_CDN}/ffmpeg-core.js`,      'text/javascript'),
+      toBlobURL(`${CORE_CDN}/ffmpeg-core.wasm`,    'application/wasm'),
     ])
 
-    await ff.load({
-      coreURL,
-      wasmURL,
-      // classWorkerURL is the critical fix:
-      // Points to the worker.js served from our own origin.
-      // Without this, Vite's bundler cannot resolve the internal
-      // new Worker(new URL(...)) call and throws "failed to import ffmpeg-core.js".
-      classWorkerURL: CLASS_WORKER_URL,
-    })
+    await ff.load({ classWorkerURL, coreURL, wasmURL })
 
     ffmpegRef.current = ff
     loadedRef.current = true
@@ -131,21 +150,19 @@ export function useCinematicExport() {
     const ff = await ensureLoaded()
     setExportProgress(20)
 
-    // 3. Fetch each video into the WASM virtual FS
+    // 3. Fetch each video into WASM virtual FS
     const fileNames = []
     for (let i = 0; i < videoUrls.length; i++) {
       const name = `clip_${i}.mp4`
       fileNames.push(name)
-      const fileData = await fetchFile(videoUrls[i])
-      await ff.writeFile(name, fileData)
+      await ff.writeFile(name, await fetchFile(videoUrls[i]))
       setExportProgress(Math.round(20 + ((i + 1) / videoUrls.length) * 38))
     }
 
     // 4. Write concat manifest
-    const concatList = fileNames.map(n => `file '${n}'`).join('\n')
-    await ff.writeFile('concat.txt', concatList)
+    await ff.writeFile('concat.txt', fileNames.map(n => `file '${n}'`).join('\n'))
 
-    // 5. Concat — stream copy, no re-encode (fast + lossless)
+    // 5. Concat — stream copy (no re-encode, lossless, fast)
     await ff.exec([
       '-f',    'concat',
       '-safe', '0',
@@ -156,7 +173,7 @@ export function useCinematicExport() {
 
     setExportProgress(95)
 
-    // 6. Read output and trigger browser download
+    // 6. Read output and trigger download
     const data   = await ff.readFile('output.mp4')
     const blob   = new Blob([data.buffer], { type: 'video/mp4' })
     const url    = URL.createObjectURL(blob)
@@ -167,14 +184,17 @@ export function useCinematicExport() {
     URL.revokeObjectURL(url)
 
     // 7. Clean up WASM virtual FS
-    const cleanupFiles = [...fileNames, 'concat.txt', 'output.mp4']
-    await Promise.allSettled(cleanupFiles.map(name => ff.deleteFile(name)))
+    await Promise.allSettled(
+      [...fileNames, 'concat.txt', 'output.mp4'].map(name => ff.deleteFile(name))
+    )
 
     setExportProgress(100)
   }, [fetchClips, ensureLoaded])
 
   // ── Mode 2: Download all clips individually ────────────
-  // FFmpeg not needed here — just fetch + trigger download per clip.
+  // FFmpeg is NOT used here — just fetch + trigger download per clip.
+  // This is the fast path that was working before, restored to its
+  // original behaviour. No WASM loading, no worker, no MIME issues.
   const downloadAll = useCallback(async (projectId, projectName) => {
     const slug = projectName
       .toLowerCase()
@@ -205,7 +225,7 @@ export function useCinematicExport() {
   }, [fetchClips])
 
   // ── Public entry point ─────────────────────────────────
-  // mode: 'merge' (default) | 'download'
+  // mode: 'merge' | 'download'
   const exportProject = useCallback(async (
     projectId,
     projectName = 'cinematic',
