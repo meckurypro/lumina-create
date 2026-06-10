@@ -193,32 +193,55 @@ const StatusBadge = ({ status }) => {
 // ─────────────────────────────────────────────────────────
 
 const UrlChip = ({ label, url, color = '#6366f1' }) => {
+  const [previewOpen, setPreviewOpen] = useState(false)
   if (!url) return null
-  const isVideo = url.endsWith('.mp4') || url.includes('/generations/')
+  const isVideo = looksLikeVideo(url)
+  const kind    = isVideo ? 'video' : 'image'
+  const ext     = isVideo ? 'mp4' : (url.match(/\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i)?.[1] || 'png')
+  const safeLabel = label.toLowerCase().replace(/\s+/g, '-')
+  const filename  = `${safeLabel}.${ext}`
+
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* Preview — in-app lightbox, no redirect */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setPreviewOpen(true) }}
+        title={`Preview ${label}`}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 3,
           padding: '2px 7px', borderRadius: 6,
           background: `${color}15`, color,
-          fontSize: 10, fontWeight: 700, textDecoration: 'none',
-          border: `1px solid ${color}30`,
+          fontSize: 10, fontWeight: 700,
+          border: `1px solid ${color}30`, cursor: 'pointer',
         }}
       >
         {isVideo ? <Film size={8} /> : <Image size={8} />}
         {label}
-        <ExternalLink size={8} />
-      </a>
+        <Eye size={8} />
+      </button>
+      {/* One-click download — blob fetch, never navigates */}
       <button
-        onClick={() => copyToClipboard(url, `${label} URL copied`)}
+        onClick={(e) => { e.stopPropagation(); blobDownload(url, filename) }}
+        title={`Download ${label}`}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}
+      >
+        <Download size={9} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); copyToClipboard(url, `${label} URL copied`) }}
+        title="Copy URL"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}
       >
         <Copy size={9} />
       </button>
+      {previewOpen && (
+        <MediaLightbox
+          url={url}
+          kind={kind}
+          filename={filename}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </span>
   )
 }
