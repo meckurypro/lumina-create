@@ -1205,7 +1205,6 @@ export default function CreateVideoPage() {
                 <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                   Upload a video and describe the style transformation. The model edits across all frames.{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>Billed per second · max 8s · {VIDEO_EDIT_CPS} cr/s.</strong>
                 </p>
               </div>
 
