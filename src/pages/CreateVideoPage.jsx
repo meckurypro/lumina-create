@@ -237,7 +237,7 @@ const CompatBadge = ({ status }) => {
 const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) => {
   if (value) {
     return (
-      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}>
+      <div className="relative w-full rounded-2xl overflow-hidden" style={{ aspectRatio: (value.aspectRatio?.replace(':', '/') || '16/9'), background: 'var(--bg-elevated)' }}>
         <video
           src={value.url}
           className="w-full h-full object-cover"
@@ -266,7 +266,7 @@ const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) 
   return (
     <label
       className="flex flex-col items-center justify-center w-full rounded-2xl cursor-pointer transition-all"
-      style={{ aspectRatio: '16/9', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+      style={{ aspectRatio: '9/16', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
     >
       <input type="file" accept="video/*" className="hidden" onChange={onUpload} />
       <Film size={24} style={{ color: ACCENT, marginBottom: 8 }} />
@@ -880,8 +880,12 @@ export default function CreateVideoPage() {
     }
 
     const url = URL.createObjectURL(file)
-    setEditVideo({ file, url, duration: meta.duration, size: file.size })
-    setTrimStart(0)
+    setEditVideo({ file, url, duration: meta.duration, size: file.size, aspectRatio: meta.aspectRatio })
+setTrimStart(0)
+if (meta.aspectRatio && caps.supportedAspectRatios.includes(meta.aspectRatio)) {
+  setAspectRatio(meta.aspectRatio)
+  setAutoRatio(true)
+}
     e.target.value = ''
   }
 
