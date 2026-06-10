@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle,
-  ChevronDown, ChevronUp, ExternalLink, Copy, Zap, Film,
+  ChevronDown, ChevronUp, Copy, Zap, Film,
   Image, User, Calendar, Search, X, Filter, Download, Eye,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
