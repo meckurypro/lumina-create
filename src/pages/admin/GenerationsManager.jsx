@@ -532,21 +532,11 @@ const GenRow = ({ gen, onSync, syncing }) => {
           )}
 
           {gen.output_url && (
-            <a
-              href={gen.output_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 3,
-                padding: '4px 8px', borderRadius: 8,
-                background: 'rgba(16,185,129,0.1)', color: '#10b981',
-                fontSize: 10, fontWeight: 700, textDecoration: 'none',
-                border: '1px solid rgba(16,185,129,0.2)',
-              }}
-            >
-              <ExternalLink size={9} /> View
-            </a>
+            <RowMediaActions
+              url={gen.output_url}
+              filename={`gen-${gen.id.slice(0,8)}.${looksLikeVideo(gen.output_url) ? 'mp4' : 'png'}`}
+              kind={looksLikeVideo(gen.output_url) ? 'video' : 'image'}
+            />
           )}
 
           <span style={{ color: 'var(--text-muted)', display: 'flex' }}>
