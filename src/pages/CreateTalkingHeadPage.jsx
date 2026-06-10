@@ -27,7 +27,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-const VIDEO_TRIM_COST = 2   // credits to trim subject video
+const VIDEO_TRIM_COST = 2
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPABILITY HELPERS
@@ -135,21 +135,28 @@ function getAudioDuration(fileOrBlob) {
   })
 }
 
-// ── NEW: client-side audio trim to maxSeconds ─────────────────────────────
-async function trimAudioToLimit(blob, maxSeconds) {
-  const buffer     = await decodeBlob(blob)
-  const maxSamples = Math.floor(maxSeconds * buffer.sampleRate)
-  if (buffer.length <= maxSamples) return blob   // already fits — no-op
+// FIX 1 + 2: trimAudioToLimit now accepts startTime so user can pick which
+// portion to keep. startTime defaults to 0 (original behaviour).
+async function trimAudioToLimit(blob, maxSeconds, startTime = 0) {
+  const buffer      = await decodeBlob(blob)
+  const startSample = Math.floor(startTime * buffer.sampleRate)
+  const maxSamples  = Math.floor(maxSeconds * buffer.sampleRate)
+  const endSample   = Math.min(startSample + maxSamples, buffer.length)
+  const trimSamples = endSample - startSample
+
+  // Already fits with no offset — no-op
+  if (startSample === 0 && buffer.length <= maxSamples) return blob
 
   const ctx = new OfflineAudioContext(
     buffer.numberOfChannels,
-    maxSamples,
+    trimSamples,
     buffer.sampleRate,
   )
   const src = ctx.createBufferSource()
   src.buffer = buffer
   src.connect(ctx.destination)
-  src.start(0)
+  // Play from startSample, offset into the destination at t=0
+  src.start(0, startTime, maxSeconds)
   const trimmed = await ctx.startRendering()
   return audioBufferToWav(trimmed)
 }
@@ -177,7 +184,7 @@ async function concatenateAudioBlobs(blobs) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIDEO HELPERS (metadata + trim edge function)
+// VIDEO HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function detectAspectRatio(w, h) {
@@ -220,9 +227,14 @@ const readVideoMetadata = (file) => new Promise((resolve) => {
   vid.src = url
 })
 
+// FIX 5: source file deletion moved to AFTER edge function returns, not 60s timer.
+// The caller is responsible for cleanup — callTrimEdgeFunction returns srcPath
+// so the caller can delete it safely after success.
 async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTime, onProgress }) {
   onProgress?.(5)
   let sourceUrl = url
+  let tempStoragePath = null  // track for cleanup after edge fn succeeds
+
   if (file) {
     const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
     const srcPath = `${userId}/th-video-src/${crypto.randomUUID()}.${ext}`
@@ -232,9 +244,11 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
     if (upErr) throw new Error(upErr.message || 'Could not upload source video')
     onProgress?.(20)
     const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(srcPath)
-    sourceUrl = publicUrl
-    setTimeout(() => supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {}), 60_000)
+    sourceUrl       = publicUrl
+    tempStoragePath = srcPath
+    // FIX 5: NO setTimeout deletion here — caller deletes after edge fn returns
   }
+
   onProgress?.(25)
   let virtualPct = 25
   const tick = setInterval(() => { virtualPct = Math.min(virtualPct + 2, 90); onProgress?.(virtualPct) }, 800)
@@ -248,7 +262,12 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
     result = data
   } finally {
     clearInterval(tick)
+    // FIX 5: delete temp source now that edge fn has finished (success OR failure)
+    if (tempStoragePath) {
+      supabase.storage.from('generation-uploads').remove([tempStoragePath]).catch(() => {})
+    }
   }
+
   onProgress?.(100)
   return result
 }
@@ -465,7 +484,6 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
     )
   }
 
-  // video mode
   if (videoFile) {
     const compatMap = {
       compatible:   { bg: 'rgba(16,185,129,0.85)',  icon: <CheckCircle2 size={11} />, text: 'Ready'           },
@@ -682,7 +700,6 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           const isExpanded = expandedId === gen.id
           const chunks     = chunksMap[gen.id] || []
           const hasChunks  = gen.chunk_count > 0
-          // Audio is never hard-rejected — it gets trimmed. Show a soft "will trim" warning.
           const willTrim   = gen.duration_seconds != null && gen.duration_seconds > maxDurationS + 0.25
 
           return (
@@ -793,10 +810,10 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CHAINED AUDIO PLAYER
+// FIX 1 + 2: CHAINED AUDIO PLAYER — preview respects trim start + limit
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
+function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
   const [playing,  setPlaying]  = useState(false)
   const [progress, setProgress] = useState(0)
   const audioRef   = useRef(null)
@@ -806,20 +823,27 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   const filledSlots = audioSlots.filter(Boolean)
   const totalDur    = filledSlots.reduce((a, s) => a + (s.duration_seconds ?? 0), 0)
   const fmtTime     = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+  const fmtS        = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
+  // FIX 1: buildChain now applies the same trim (start + limit) as buildAudioUrl
   const buildChain = useCallback(async () => {
     const blobs = await Promise.all(
       filledSlots.map(async (slot) => {
-        if (slot.file) return slot.file
-        const res = await fetch(slot.url)
-        if (!res.ok) throw new Error('fetch failed')
-        return res.blob()
+        let blob = slot.file
+          ? slot.file
+          : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
+
+        // Apply trim: respect both startTime and limit — mirrors buildAudioUrl exactly
+        if (slot._needsTrim && slot._trimToSeconds > 0) {
+          blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
+        }
+        return blob
       })
     )
     if (blobs.length === 1) return URL.createObjectURL(blobs[0])
     const combined = await concatenateAudioBlobs(blobs)
     return URL.createObjectURL(combined)
-  }, [filledSlots.map((s) => s.url).join('|')]) // eslint-disable-line
+  }, [filledSlots.map((s) => `${s.url}|${s._trimStartTime ?? 0}|${s._trimToSeconds ?? 0}`).join('|')]) // eslint-disable-line
 
   useEffect(() => {
     return () => {
@@ -847,7 +871,9 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
   const handlePlayPause = async () => {
     if (playing) { audioRef.current?.pause(); setPlaying(false); return }
     try {
-      if (!blobUrlRef.current) blobUrlRef.current = await buildChain()
+      // Rebuild chain whenever start times may have changed
+      if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
+      blobUrlRef.current = await buildChain()
       if (!audioRef.current) {
         const a = new Audio(blobUrlRef.current)
         a.onended = () => { setPlaying(false); setProgress(0) }
@@ -906,22 +932,53 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
           </div>
         </div>
       </div>
+
+      {/* FIX 2: per-slot trim start slider shown when slot needs trim */}
       <div className="flex flex-col gap-1">
         {audioSlots.map((slot, i) => slot && (
-          <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-xl" style={{ background: 'var(--bg-card)' }}>
-            <span className="text-xs font-bold flex-shrink-0 w-5 text-center" style={{ color: ACCENT }}>{i + 1}</span>
-            <p className="text-xs flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
-              {slot.fromChunk ? slot.chunkLabel : slot.name}
-            </p>
-            <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-              {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
-            </span>
-            <button
-              onClick={() => onSlotClear(i)}
-              className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-              <X size={10} />
-            </button>
+          <div key={i} className="flex flex-col gap-1 px-2 py-1.5 rounded-xl" style={{ background: 'var(--bg-card)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold flex-shrink-0 w-5 text-center" style={{ color: ACCENT }}>{i + 1}</span>
+              <p className="text-xs flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+                {slot.fromChunk ? slot.chunkLabel : slot.name}
+              </p>
+              <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
+              </span>
+              <button
+                onClick={() => onSlotClear(i)}
+                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                <X size={10} />
+              </button>
+            </div>
+            {/* FIX 2: show start-time slider only when this slot needs trimming */}
+            {slot._needsTrim && slot._rawDuration != null && slot._trimToSeconds != null && (
+              <div className="flex flex-col gap-1 pt-1" style={{ borderTop: '1px solid var(--border-color)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <Scissors size={9} style={{ display: 'inline', marginRight: 3 }} />
+                    Start from
+                  </span>
+                  <span className="text-xs font-bold" style={{ color: ACCENT }}>
+                    {fmtS(slot._trimStartTime ?? 0)} → {fmtS((slot._trimStartTime ?? 0) + slot._trimToSeconds)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, slot._rawDuration - slot._trimToSeconds)}
+                  step={0.1}
+                  value={slot._trimStartTime ?? 0}
+                  onChange={(e) => onSlotStartChange(i, Number(e.target.value))}
+                  className="w-full"
+                  style={{ accentColor: ACCENT }}
+                />
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Source is {fmtS(slot._rawDuration)} — drag to pick which {fmtS(slot._trimToSeconds)} to keep
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -935,7 +992,8 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear }) {
 
 function MultiSlotAudio({
   label, audioSlots, durationS,
-  onSlotFill, onSlotClear, audioMode, onAudioModeChange,
+  onSlotFill, onSlotClear, onSlotStartChange,
+  audioMode, onAudioModeChange,
   script, onScriptChange, supportsTextScript, charIndex, userId,
 }) {
   const charLabel   = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
@@ -987,7 +1045,11 @@ function MultiSlotAudio({
       {audioMode === 'upload' && (
         <div className="flex flex-col gap-2">
           {filledCount > 0 && (
-            <ChainedAudioPlayer audioSlots={audioSlots} onSlotClear={onSlotClear} />
+            <ChainedAudioPlayer
+              audioSlots={audioSlots}
+              onSlotClear={onSlotClear}
+              onSlotStartChange={onSlotStartChange}
+            />
           )}
           {!isFull && (
             <motion.div
@@ -1076,12 +1138,12 @@ export default function CreateTalkingHeadPage() {
   // Subject
   const [subjectMode, setSubjectMode] = useState('face')
   const [faceImage,   setFaceImage]   = useState(null)
-  const [videoFile,   setVideoFile]   = useState(null)   // { file, url, name, duration, size, aspectRatio, _trimmed }
+  const [videoFile,   setVideoFile]   = useState(null)
 
-  // Video trim state
-  const [videoTrimStart,      setVideoTrimStart]      = useState(0)
-  const [phase,               setPhase]               = useState(null)   // null | 'trimming_video' | 'submitting'
-  const [convertProgress,     setConvertProgress]     = useState(0)
+  // Video trim
+  const [videoTrimStart,  setVideoTrimStart]  = useState(0)
+  const [phase,           setPhase]           = useState(null)
+  const [convertProgress, setConvertProgress] = useState(0)
 
   // Audio — per-character slot arrays
   const [audioSlots1, setAudioSlots1] = useState([])
@@ -1204,6 +1266,8 @@ export default function CreateTalkingHeadPage() {
   }, [caps.videoInput, videoFile, durationNum])
 
   const videoNeedsTrim = videoCompat === 'incompatible'
+  // FIX 3: distinguish "already trimmed but duration changed" from fresh incompatible
+  const videoTrimmedButStale = videoFile?._trimmed && videoNeedsTrim
   const videoTooShort  = videoCompat === 'rejected'
 
   // ── Credit cost ──────────────────────────────────────────────────────────
@@ -1308,7 +1372,7 @@ export default function CreateTalkingHeadPage() {
     try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {}
   }
 
-  // ── Video trim / convert ─────────────────────────────────────────────────
+  // ── Video trim ───────────────────────────────────────────────────────────
   const handleTrimVideo = async () => {
     if (!user)      return toast.error('Please sign in')
     if (!videoFile) return toast.error('Upload a video first')
@@ -1331,6 +1395,14 @@ export default function CreateTalkingHeadPage() {
       setPhase(null)
       setConvertProgress(0)
       toast.error(err?.message || 'Video trim failed.')
+      return
+    }
+
+    // FIX 4: validate URL before deducting credits
+    if (!processed?.url || typeof processed.url !== 'string' || !processed.url.startsWith('http')) {
+      setPhase(null)
+      setConvertProgress(0)
+      toast.error('Trim returned an invalid result. No credits were charged.')
       return
     }
 
@@ -1365,10 +1437,10 @@ export default function CreateTalkingHeadPage() {
     const remaining = Math.max(0, durationNum - usedSoFar)
 
     if (imported) {
-      const durS = imported.duration_seconds ?? null
-      // If audio is longer than remaining budget, trim it client-side
-      if (durS !== null && durS > remaining + 0.25) {
-        toast(`Trimming audio to ${remaining.toFixed(1)}s to fit the budget.`, { icon: '✂️', duration: 3000 })
+      const durS      = imported.duration_seconds ?? null
+      const needsTrim = durS !== null && durS > remaining + 0.25
+      if (needsTrim) {
+        toast(`Trimming audio to ${remaining.toFixed(1)}s — drag the slider to pick which part to keep.`, { icon: '✂️', duration: 4000 })
       }
       const filled = {
         file:             null,
@@ -1378,8 +1450,10 @@ export default function CreateTalkingHeadPage() {
         fromGeneration:   !imported.fromChunk,
         chunkLabel:       imported.chunkLabel ?? null,
         duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
-        _needsTrim:       durS !== null && durS > remaining + 0.25,
+        _needsTrim:       needsTrim,
         _trimToSeconds:   remaining,
+        _trimStartTime:   0,           // FIX 2: user-adjustable start
+        _rawDuration:     durS,        // FIX 2: keep original for slider max
       }
       setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
       return
@@ -1389,9 +1463,9 @@ export default function CreateTalkingHeadPage() {
     let durS = null
     try { durS = await getAudioDuration(file) } catch {}
 
-    // Auto-trim: report to user but don't block
-    if (durS !== null && durS > remaining + 0.25) {
-      toast(`Audio is ${durS.toFixed(1)}s — trimming to ${remaining.toFixed(1)}s.`, { icon: '✂️', duration: 4000 })
+    const needsTrim = durS !== null && durS > remaining + 0.25
+    if (needsTrim) {
+      toast(`Audio is ${durS.toFixed(1)}s — trimming to ${remaining.toFixed(1)}s. Drag the slider to pick which part to keep.`, { icon: '✂️', duration: 4500 })
     }
 
     const filled = {
@@ -1401,8 +1475,10 @@ export default function CreateTalkingHeadPage() {
       fromChunk:        false,
       fromGeneration:   false,
       duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
-      _needsTrim:       durS !== null && durS > remaining + 0.25,
+      _needsTrim:       needsTrim,
       _trimToSeconds:   remaining,
+      _trimStartTime:   0,             // FIX 2: user-adjustable start
+      _rawDuration:     durS,          // FIX 2: keep original for slider max
     }
     setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
   }
@@ -1413,6 +1489,17 @@ export default function CreateTalkingHeadPage() {
       const next = [...prev]
       next[slotIndex] = null
       while (next.length > 0 && !next[next.length - 1]) next.pop()
+      return next
+    })
+  }
+
+  // FIX 2: handler to update trim start time for a specific slot
+  const handleSlotStartChange = (charSlot) => (slotIndex, startTime) => {
+    const setSlots = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
+    setSlots((prev) => {
+      const next = [...prev]
+      if (!next[slotIndex]) return prev
+      next[slotIndex] = { ...next[slotIndex], _trimStartTime: startTime }
       return next
     })
   }
@@ -1440,21 +1527,20 @@ export default function CreateTalkingHeadPage() {
     return publicUrl
   }
 
-  // ── Build final audio URL — trims slots that need it client-side ─────────
+  // FIX 1: buildAudioUrl now passes _trimStartTime to trimAudioToLimit
   const buildAudioUrl = async (slots) => {
     const filled = slots.filter(Boolean)
     if (filled.length === 0) return null
 
-    // Fetch or use file blob for each slot, trimming if needed
     const blobs = await Promise.all(
       filled.map(async (slot) => {
         let blob = slot.file
           ? slot.file
           : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
 
-        // Client-side trim if this slot was flagged
         if (slot._needsTrim && slot._trimToSeconds > 0) {
-          blob = await trimAudioToLimit(blob, slot._trimToSeconds)
+          // FIX 1 + 2: use user-selected start time
+          blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
         }
         return blob
       })
@@ -1478,7 +1564,6 @@ export default function CreateTalkingHeadPage() {
 
     setPhase('submitting')
     try {
-      // ── Upload subject ─────────────────────────────────────────────────
       let startFrameUrl   = null
       let subjectVideoUrl = null
 
@@ -1493,7 +1578,6 @@ export default function CreateTalkingHeadPage() {
           : videoFile.url
       }
 
-      // ── Upload audio ───────────────────────────────────────────────────
       let audio1Url = null
       let audio2Url = null
 
@@ -1571,7 +1655,6 @@ export default function CreateTalkingHeadPage() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Processing overlay */}
       <AnimatePresence>
         {isProcessing && (
           <ProcessingOverlay
@@ -1680,7 +1763,57 @@ export default function CreateTalkingHeadPage() {
                 </p>
               )}
 
-              {/* ── Trim UI — shown when video > selected duration ─────── */}
+              {/* FIX 3: already-trimmed video but duration changed — distinct warning */}
+              <AnimatePresence>
+                {videoTrimmedButStale && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
+                    style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.25)' }}>
+                    <div className="flex items-start gap-2">
+                      <Scissors size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold" style={{ color: ACCENT }}>Duration changed after trim</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                          Your trimmed video is {formatDuration(videoFile.duration)} but you switched to {durationNum}s.
+                          Re-trim to match the new duration, or revert your duration selection.
+                        </p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                          Re-trim cost: <strong style={{ color: 'var(--text-primary)' }}>{VIDEO_TRIM_COST} credits</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleTrimVideo}
+                        disabled={credits < VIDEO_TRIM_COST || isProcessing}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: credits >= VIDEO_TRIM_COST && !isProcessing ? ACCENT : 'var(--bg-elevated)',
+                          color:      credits >= VIDEO_TRIM_COST && !isProcessing ? '#fff'  : 'var(--text-muted)',
+                          cursor:     credits >= VIDEO_TRIM_COST && !isProcessing ? 'pointer' : 'not-allowed',
+                        }}>
+                        Re-trim to {durationNum}s · {VIDEO_TRIM_COST} cr
+                      </button>
+                      <button
+                        onClick={handleRemoveVideo}
+                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                        Remove video
+                      </button>
+                    </div>
+                    {credits < VIDEO_TRIM_COST && (
+                      <p className="text-xs" style={{ color: '#ef4444' }}>
+                        Not enough credits.{' '}
+                        <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Top up</button>
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Trim start slider — only for fresh incompatible (not already-trimmed) */}
               {caps.videoInput && videoFile && !videoTooShort && videoNeedsTrim && !videoFile._trimmed && (
                 <div className="mt-4 rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2 mb-3">
@@ -1692,8 +1825,6 @@ export default function CreateTalkingHeadPage() {
                       Source: {formatDuration(videoFile.duration)}
                     </span>
                   </div>
-
-                  {/* Start time slider */}
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start time</p>
                     <p className="text-xs font-bold" style={{ color: ACCENT }}>
@@ -1713,7 +1844,7 @@ export default function CreateTalkingHeadPage() {
                 </div>
               )}
 
-              {/* ── Conversion panel ──────────────────────────────────── */}
+              {/* Standard trim panel — fresh incompatible only */}
               <AnimatePresence>
                 {caps.videoInput && videoNeedsTrim && !videoFile?._trimmed && (
                   <motion.div
@@ -1807,6 +1938,7 @@ export default function CreateTalkingHeadPage() {
               durationS={durationNum}
               onSlotFill={handleSlotFill(1)}
               onSlotClear={handleSlotClear(1)}
+              onSlotStartChange={handleSlotStartChange(1)}
               audioMode={audioMode1}
               onAudioModeChange={setAudioMode1}
               script={audioMode1 === 'text' ? script1 : ''}
@@ -1823,6 +1955,7 @@ export default function CreateTalkingHeadPage() {
                 durationS={durationNum}
                 onSlotFill={handleSlotFill(2)}
                 onSlotClear={handleSlotClear(2)}
+                onSlotStartChange={handleSlotStartChange(2)}
                 audioMode={audioMode2}
                 onAudioModeChange={setAudioMode2}
                 script={audioMode2 === 'text' ? script2 : ''}
