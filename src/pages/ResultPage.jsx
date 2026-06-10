@@ -71,24 +71,34 @@ export default function ResultPage() {
     return () => { cancelled = true }
   }, [id])
 
-  // ── Download — anchor for remote URLs (no re-fetch) ─────
-  // Falls back to fetch+blob only on CORS-restricted origins
+  // ── Download ────────────────────────────────────────────
+  // The `download` HTML attribute is IGNORED for cross-origin
+  // URLs, so clicking would navigate to Supabase Storage instead
+  // of saving. We fetch the asset as a blob and trigger a save
+  // from a same-origin object URL. This guarantees one-click
+  // download with no redirect.
   const handleDownload = useCallback(async () => {
     if (!displayUrl) return
     setDlLoading(true)
+    const filename = `meckury-${id}.${displayType === 'video' ? 'mp4' : 'png'}`
     try {
-      // Try the fast path: direct anchor download
-      const a      = document.createElement('a')
-      a.href       = displayUrl
-      a.download   = `meckury-${id}.${displayType === 'video' ? 'mp4' : 'png'}`
-      a.target     = '_blank'
-      a.rel        = 'noopener noreferrer'
+      const res = await fetch(displayUrl, { mode: 'cors', credentials: 'omit' })
+      if (!res.ok) throw new Error('Network response was not ok')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
+      // Revoke after a tick so the download has time to start
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
       toast.success('Download started!')
-    } catch {
-      window.open(displayUrl, '_blank')
+    } catch (err) {
+      console.error('Download failed', err)
+      toast.error('Download failed — opening in a new tab')
+      window.open(displayUrl, '_blank', 'noopener,noreferrer')
     } finally {
       setDlLoading(false)
     }
