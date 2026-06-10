@@ -1307,6 +1307,7 @@ export type Database = {
       models: {
         Row: {
           aka: string | null
+          cfg_scale_default: number | null
           created_at: string | null
           credit_cost_i2i: number
           credit_cost_per_second: number | null
@@ -1314,11 +1315,13 @@ export type Database = {
           credit_cost_t2i: number
           credit_multiplier: number
           description: string | null
+          endpoint_path: string | null
           feature: string
           id: string
           is_active: boolean | null
           is_flat_rate: boolean
           is_locked: boolean | null
+          is_required: boolean
           is_user_facing: boolean
           is_verified: boolean
           label: string
@@ -1333,11 +1336,15 @@ export type Database = {
           sound_cost_multiplier: number
           sublabel: string | null
           supported_aspect_ratios: string[] | null
+          supported_cfg_scale: boolean | null
           supported_durations: string[] | null
+          supported_negative_prompt: boolean | null
+          supports_element_list: boolean | null
           supports_end_frame: boolean
           supports_frame_to_frame: boolean
           supports_image: boolean
           supports_multi_image: boolean
+          supports_multi_prompt: boolean | null
           supports_sound: boolean
           supports_start_frame: boolean
           supports_text_script: boolean
@@ -1349,6 +1356,7 @@ export type Database = {
         }
         Insert: {
           aka?: string | null
+          cfg_scale_default?: number | null
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_per_second?: number | null
@@ -1356,11 +1364,13 @@ export type Database = {
           credit_cost_t2i?: number
           credit_multiplier?: number
           description?: string | null
+          endpoint_path?: string | null
           feature?: string
           id?: string
           is_active?: boolean | null
           is_flat_rate?: boolean
           is_locked?: boolean | null
+          is_required?: boolean
           is_user_facing?: boolean
           is_verified?: boolean
           label: string
@@ -1375,11 +1385,15 @@ export type Database = {
           sound_cost_multiplier?: number
           sublabel?: string | null
           supported_aspect_ratios?: string[] | null
+          supported_cfg_scale?: boolean | null
           supported_durations?: string[] | null
+          supported_negative_prompt?: boolean | null
+          supports_element_list?: boolean | null
           supports_end_frame?: boolean
           supports_frame_to_frame?: boolean
           supports_image?: boolean
           supports_multi_image?: boolean
+          supports_multi_prompt?: boolean | null
           supports_sound?: boolean
           supports_start_frame?: boolean
           supports_text_script?: boolean
@@ -1391,6 +1405,7 @@ export type Database = {
         }
         Update: {
           aka?: string | null
+          cfg_scale_default?: number | null
           created_at?: string | null
           credit_cost_i2i?: number
           credit_cost_per_second?: number | null
@@ -1398,11 +1413,13 @@ export type Database = {
           credit_cost_t2i?: number
           credit_multiplier?: number
           description?: string | null
+          endpoint_path?: string | null
           feature?: string
           id?: string
           is_active?: boolean | null
           is_flat_rate?: boolean
           is_locked?: boolean | null
+          is_required?: boolean
           is_user_facing?: boolean
           is_verified?: boolean
           label?: string
@@ -1417,11 +1434,15 @@ export type Database = {
           sound_cost_multiplier?: number
           sublabel?: string | null
           supported_aspect_ratios?: string[] | null
+          supported_cfg_scale?: boolean | null
           supported_durations?: string[] | null
+          supported_negative_prompt?: boolean | null
+          supports_element_list?: boolean | null
           supports_end_frame?: boolean
           supports_frame_to_frame?: boolean
           supports_image?: boolean
           supports_multi_image?: boolean
+          supports_multi_prompt?: boolean | null
           supports_sound?: boolean
           supports_start_frame?: boolean
           supports_text_script?: boolean
@@ -1607,6 +1628,97 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      promptiq_staff_access: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          has_access: boolean
+          id: string
+          is_free: boolean
+          staff_id: string
+          tool_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          has_access?: boolean
+          id?: string
+          is_free?: boolean
+          staff_id: string
+          tool_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          has_access?: boolean
+          id?: string
+          is_free?: boolean
+          staff_id?: string
+          tool_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promptiq_staff_access_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promptiq_staff_access_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promptiq_staff_access_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "promptiq_tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promptiq_tools: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_name: string
+          id: string
+          identifier: string
+          is_active: boolean
+          sort_order: number
+          tool_type: Database["public"]["Enums"]["promptiq_tool_type"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_name: string
+          id?: string
+          identifier: string
+          is_active?: boolean
+          sort_order?: number
+          tool_type: Database["public"]["Enums"]["promptiq_tool_type"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          id?: string
+          identifier?: string
+          is_active?: boolean
+          sort_order?: number
+          tool_type?: Database["public"]["Enums"]["promptiq_tool_type"]
+          updated_at?: string
+        }
+        Relationships: []
       }
       referrals: {
         Row: {
@@ -2416,6 +2528,45 @@ export type Database = {
           },
         ]
       }
+      user_model_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          model_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          model_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          model_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_model_preferences_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_model_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -2542,6 +2693,16 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_set_staff_tool_access: {
+        Args: {
+          p_admin_id: string
+          p_has_access: boolean
+          p_is_free: boolean
+          p_staff_id: string
+          p_tool_identifier: string
+        }
+        Returns: Json
+      }
       apply_referral: {
         Args: { p_referral_code: string; p_referred_user_id: string }
         Returns: Json
@@ -2589,6 +2750,7 @@ export type Database = {
       get_active_prompt: { Args: { p_template_slug: string }; Returns: string }
       get_admin_stats: { Args: never; Returns: Json }
       get_app_setting: { Args: { p_key: string }; Returns: string }
+      get_staff_all_tool_access: { Args: { p_staff_id: string }; Returns: Json }
       get_staff_summary: {
         Args: never
         Returns: {
@@ -2601,6 +2763,10 @@ export type Database = {
           total_gens: number
           username: string
         }[]
+      }
+      get_staff_tool_access: {
+        Args: { p_staff_id: string; p_tool_identifier: string }
+        Returns: Json
       }
       has_role: {
         Args: {
@@ -2813,6 +2979,7 @@ export type Database = {
         | "lipsync"
       model_tier: "free" | "master"
       payment_provider: "paystack" | "google" | "admin"
+      promptiq_tool_type: "template" | "tool"
       subscription_tier: "free" | "starter" | "pro" | "enterprise"
       template_category:
         | "handover"
@@ -3168,6 +3335,7 @@ export const Constants = {
       ],
       model_tier: ["free", "master"],
       payment_provider: ["paystack", "google", "admin"],
+      promptiq_tool_type: ["template", "tool"],
       subscription_tier: ["free", "starter", "pro", "enterprise"],
       template_category: [
         "handover",
