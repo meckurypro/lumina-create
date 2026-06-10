@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, ImagePlus, VideoIcon, Mic, FileText,
   Users, User, Library, Play, Pause, Loader2, ChevronDown,
-  AlertTriangle, CheckCircle2,
+  AlertTriangle, CheckCircle2, RefreshCw, Scissors,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
@@ -27,25 +27,27 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
+const VIDEO_TRIM_COST = 2   // credits to trim subject video
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPABILITY HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getModelCaps(model) {
   if (!model) return {
-    faceInput:       true,
-    videoInput:      false,
-    textScript:      false,
-    multiChar:       false,
-    maxRefImages:    1,
+    faceInput:             true,
+    videoInput:            false,
+    textScript:            false,
+    multiChar:             false,
+    maxRefImages:          1,
     supportedDurations:    ['5', '10'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
-    supportsSound:   false,
-    isFlatRate:      false,
-    requiresImage:   false,
-    requiresAudio:   false,
-    requiresVideo:   false,
-    requiresVoiceId: false,
+    supportsSound:         false,
+    isFlatRate:            false,
+    requiresImage:         false,
+    requiresAudio:         false,
+    requiresVideo:         false,
+    requiresVoiceId:       false,
   }
   return {
     faceInput:             model.supports_start_frame    ?? true,
@@ -57,7 +59,6 @@ function getModelCaps(model) {
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
     supportsSound:         model.supports_sound          ?? false,
     isFlatRate:            model.is_flat_rate            ?? false,
-    // Required-input flags — populated by migration
     requiresImage:         model.requires_image          ?? false,
     requiresAudio:         model.requires_audio          ?? false,
     requiresVideo:         model.requires_video          ?? false,
@@ -134,6 +135,25 @@ function getAudioDuration(fileOrBlob) {
   })
 }
 
+// ── NEW: client-side audio trim to maxSeconds ─────────────────────────────
+async function trimAudioToLimit(blob, maxSeconds) {
+  const buffer     = await decodeBlob(blob)
+  const maxSamples = Math.floor(maxSeconds * buffer.sampleRate)
+  if (buffer.length <= maxSamples) return blob   // already fits — no-op
+
+  const ctx = new OfflineAudioContext(
+    buffer.numberOfChannels,
+    maxSamples,
+    buffer.sampleRate,
+  )
+  const src = ctx.createBufferSource()
+  src.buffer = buffer
+  src.connect(ctx.destination)
+  src.start(0)
+  const trimmed = await ctx.startRendering()
+  return audioBufferToWav(trimmed)
+}
+
 async function concatenateAudioBlobs(blobs) {
   if (blobs.length === 1) {
     const buf = await decodeBlob(blobs[0])
@@ -157,7 +177,7 @@ async function concatenateAudioBlobs(blobs) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IMAGE HELPERS
+// VIDEO HELPERS (metadata + trim edge function)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function detectAspectRatio(w, h) {
@@ -166,6 +186,76 @@ function detectAspectRatio(w, h) {
   if (r < 0.75) return '9:16'
   return '1:1'
 }
+
+function formatDuration(secs) {
+  if (!secs && secs !== 0) return '—'
+  const s = Math.round(Number(secs))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60 ? `${s % 60}s` : ''}`.trim()
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const readVideoMetadata = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file)
+  const vid = document.createElement('video')
+  vid.preload = 'metadata'
+  vid.onloadedmetadata = () => {
+    const meta = {
+      duration:    vid.duration ? Math.round(vid.duration) : null,
+      width:       vid.videoWidth  || null,
+      height:      vid.videoHeight || null,
+      aspectRatio: vid.videoWidth && vid.videoHeight
+        ? detectAspectRatio(vid.videoWidth, vid.videoHeight) : null,
+    }
+    URL.revokeObjectURL(url)
+    resolve(meta)
+  }
+  vid.onerror = () => {
+    URL.revokeObjectURL(url)
+    resolve({ duration: null, width: null, height: null, aspectRatio: null })
+  }
+  vid.src = url
+})
+
+async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTime, onProgress }) {
+  onProgress?.(5)
+  let sourceUrl = url
+  if (file) {
+    const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
+    const srcPath = `${userId}/th-video-src/${crypto.randomUUID()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('generation-uploads')
+      .upload(srcPath, file, { upsert: false, cacheControl: '3600', contentType: file.type || 'video/mp4' })
+    if (upErr) throw new Error(upErr.message || 'Could not upload source video')
+    onProgress?.(20)
+    const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(srcPath)
+    sourceUrl = publicUrl
+    setTimeout(() => supabase.storage.from('generation-uploads').remove([srcPath]).catch(() => {}), 60_000)
+  }
+  onProgress?.(25)
+  let virtualPct = 25
+  const tick = setInterval(() => { virtualPct = Math.min(virtualPct + 2, 90); onProgress?.(virtualPct) }, 800)
+  let result
+  try {
+    const { data, error } = await supabase.functions.invoke('process-video-for-motion', {
+      body: { sourceUrl, targetDuration, startTime, trimOnly: true },
+    })
+    if (error)          throw new Error(error.message || 'Trim edge function failed')
+    if (!data?.success) throw new Error(data?.error   || 'Trim failed')
+    result = data
+  } finally {
+    clearInterval(tick)
+  }
+  onProgress?.(100)
+  return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMAGE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function compressImage(file) {
   return new Promise((resolve) => {
@@ -286,11 +376,11 @@ const ModelDropdown = ({ models, value, onChange }) => {
                 {unlocked.map((m) => {
                   const caps = getModelCaps(m)
                   const tags = [
-                    caps.requiresImage  && 'Photo',
-                    caps.requiresVideo  && 'Video',
-                    caps.requiresAudio  && 'Audio',
+                    caps.requiresImage   && 'Photo',
+                    caps.requiresVideo   && 'Video',
+                    caps.requiresAudio   && 'Audio',
                     caps.requiresVoiceId && 'Script→Voice',
-                    caps.multiChar      && '2-char',
+                    caps.multiChar       && '2-char',
                   ].filter(Boolean)
                   return (
                     <button
@@ -306,9 +396,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                         {tags.length > 0 && (
                           <div className="flex gap-1 flex-wrap mt-1">
                             {tags.map((t) => (
-                              <span
-                                key={t}
-                                className="px-1.5 py-0.5 rounded-md font-semibold"
+                              <span key={t} className="px-1.5 py-0.5 rounded-md font-semibold"
                                 style={{ background: ACCENT_SUB, color: ACCENT, fontSize: 10 }}>
                                 {t}
                               </span>
@@ -348,7 +436,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
 // SUBJECT SLOT
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove }) => {
+const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove, videoCompatStatus }) => {
   if (mode === 'face') {
     return faceImage ? (
       <div className="relative flex justify-center">
@@ -356,8 +444,7 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
           <div className="relative overflow-hidden rounded-2xl" style={{ aspectRatio: '1/1', background: 'var(--bg-elevated)' }}>
             <img src={faceImage.url} alt="Subject" className="w-full h-full object-cover" />
           </div>
-          <button
-            onClick={onFaceRemove}
+          <button onClick={onFaceRemove}
             className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center z-10"
             style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}>
             <X size={13} />
@@ -378,36 +465,102 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
     )
   }
 
-  return videoFile ? (
-    <div className="relative">
-      <div className="flex items-center gap-3 p-4 rounded-2xl"
-        style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ACCENT_SUB }}>
-          <VideoIcon size={18} style={{ color: ACCENT }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{videoFile.name}</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Video subject ready</p>
-        </div>
-        <button
-          onClick={onVideoRemove}
-          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+  // video mode
+  if (videoFile) {
+    const compatMap = {
+      compatible:   { bg: 'rgba(16,185,129,0.85)',  icon: <CheckCircle2 size={11} />, text: 'Ready'           },
+      incompatible: { bg: 'rgba(239,160,20,0.9)',   icon: <RefreshCw   size={11} />, text: 'Needs trim'      },
+      converted:    { bg: 'rgba(16,185,129,0.85)',  icon: <CheckCircle2 size={11} />, text: 'Trimmed · Ready' },
+      rejected:     { bg: 'rgba(239,68,68,0.92)',   icon: <AlertTriangle size={11} />, text: 'Too short'      },
+    }
+    const badge = videoCompatStatus ? compatMap[videoCompatStatus] : null
+
+    return (
+      <div className="relative w-full rounded-2xl overflow-hidden"
+        style={{ aspectRatio: videoFile.aspectRatio?.replace(':', '/') || '9/16', background: 'var(--bg-elevated)', maxHeight: 320 }}>
+        <video src={videoFile.url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+        {videoFile.duration != null && (
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold"
+            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+            {formatDuration(videoFile.duration)}
+            {videoFile.size && <span className="ml-1.5 opacity-70">· {formatBytes(videoFile.size)}</span>}
+          </div>
+        )}
+        {badge && (
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+            style={{ background: badge.bg, color: '#fff' }}>
+            {badge.icon}{badge.text}
+          </div>
+        )}
+        <button onClick={onVideoRemove}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)', color: 'white', zIndex: 10 }}>
           <X size={13} />
         </button>
       </div>
-    </div>
-  ) : (
+    )
+  }
+
+  return (
     <label
       className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-      style={{ minHeight: 120, border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
+      style={{ minHeight: 160, border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
       <input type="file" accept="video/*" className="hidden" onChange={onVideoUpload} />
       <VideoIcon size={24} style={{ color: ACCENT, marginBottom: 8 }} />
       <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload subject video</span>
-      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>The video will be re-animated</span>
+      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>MP4 · MOV · max 40 MB</span>
     </label>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROCESSING OVERLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ProcessingOverlay = ({ phase, convertProgress, audioSlots1, audioSlots2 }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    transition={{ duration: 0.2 }}
+    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+    style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}>
+    {phase === 'trimming_video' ? (
+      <>
+        <div className="relative w-16 h-16 flex items-center justify-center">
+          <svg className="absolute inset-0" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="4" />
+            <motion.circle
+              cx="32" cy="32" r="28" fill="none" stroke={ACCENT} strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 28}`}
+              strokeDashoffset={`${2 * Math.PI * 28 * (1 - convertProgress / 100)}`}
+              style={{ transformOrigin: '32px 32px', rotate: '-90deg' }}
+              transition={{ duration: 0.3 }}
+            />
+          </svg>
+          <span className="text-xs font-bold" style={{ color: '#fff' }}>{convertProgress}%</span>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold tracking-wide" style={{ color: '#fff' }}>Trimming video</p>
+          <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,0.55)', maxWidth: 240, lineHeight: 1.6 }}>
+            Re-encoding for the model. Hang tight.
+          </p>
+        </div>
+      </>
+    ) : (
+      <>
+        <motion.div
+          animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+          className="w-10 h-10 rounded-full border-2"
+          style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
+        />
+        <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
+          {audioSlots1?.filter(Boolean).length > 1 || audioSlots2?.filter(Boolean).length > 1
+            ? 'Joining audio parts…'
+            : 'Generating…'}
+        </p>
+      </>
+    )}
+  </motion.div>
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUDIO SOURCE PICKER
@@ -469,10 +622,6 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
 
   const handleImportChunk = (gen, chunk) => {
     const chunkDur = chunk.duration_ms ? chunk.duration_ms / 1000 : null
-    if (chunkDur !== null && chunkDur > maxDurationS + 0.25) {
-      toast.error(`This chunk is ${chunkDur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains.`, { duration: 5000 })
-      return
-    }
     stopAudio()
     onImport({
       output_url:       chunk.public_url,
@@ -485,11 +634,6 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
   }
 
   const handleImportFull = (gen) => {
-    const dur = gen.duration_seconds ?? null
-    if (dur !== null && dur > maxDurationS + 0.25) {
-      toast.error(`This audio is ${dur.toFixed(1)}s but only ${fmtS(maxDurationS)} remains.`, { duration: 5000 })
-      return
-    }
     stopAudio(); onImport(gen)
   }
 
@@ -502,7 +646,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           <input type="file" accept="audio/*" className="hidden" onChange={onAudioUpload} />
           <Mic size={20} style={{ color: ACCENT }} />
           <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload file</span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Max {fmtS(maxDurationS)}</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Auto-trimmed to fit</span>
         </label>
         <button
           onClick={openPicker}
@@ -538,7 +682,8 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
           const isExpanded = expandedId === gen.id
           const chunks     = chunksMap[gen.id] || []
           const hasChunks  = gen.chunk_count > 0
-          const tooLong    = gen.duration_seconds != null && gen.duration_seconds > maxDurationS + 0.25
+          // Audio is never hard-rejected — it gets trimmed. Show a soft "will trim" warning.
+          const willTrim   = gen.duration_seconds != null && gen.duration_seconds > maxDurationS + 0.25
 
           return (
             <div key={gen.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -557,9 +702,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     {gen.voice?.name ?? 'Voice'} · {dur}{hasChunks ? ` · ${gen.chunk_count} parts` : ''} · {date}
                   </p>
-                  {tooLong && !hasChunks && (
+                  {willTrim && !hasChunks && (
                     <p className="text-xs mt-0.5 font-semibold" style={{ color: '#f59e0b' }}>
-                      Too long · only {fmtS(maxDurationS)} remaining
+                      Will trim to {fmtS(maxDurationS)}
                     </p>
                   )}
                 </button>
@@ -574,10 +719,9 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                 ) : (
                   <button
                     onClick={() => handleImportFull(gen)}
-                    disabled={tooLong}
                     className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
-                    style={{ background: tooLong ? 'var(--bg-card)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff', opacity: tooLong ? 0.5 : 1 }}>
-                    Use
+                    style={{ background: ACCENT, color: '#fff' }}>
+                    {willTrim ? 'Import & trim' : 'Use'}
                   </button>
                 )}
               </div>
@@ -600,17 +744,16 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Parts not ready — use full audio</p>
                           <button
                             onClick={() => handleImportFull(gen)}
-                            disabled={tooLong}
                             className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                            style={{ background: tooLong ? 'var(--bg-elevated)' : ACCENT, color: tooLong ? 'var(--text-muted)' : '#fff' }}>
+                            style={{ background: ACCENT, color: '#fff' }}>
                             Use full
                           </button>
                         </div>
                       ) : chunks.map((chunk) => {
-                        const chunkDur     = chunk.duration_ms ? chunk.duration_ms / 1000 : null
-                        const chunkDurStr  = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
-                        const chunkTooLong = chunkDur != null && chunkDur > maxDurationS + 0.25
-                        const isPlayingCk  = playing === chunk.id
+                        const chunkDur    = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+                        const chunkDurStr = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
+                        const willTrimCk  = chunkDur != null && chunkDur > maxDurationS + 0.25
+                        const isPlayingCk = playing === chunk.id
                         return (
                           <div key={chunk.id} className="flex items-center gap-2 py-1.5 px-2 rounded-xl"
                             style={{ background: 'var(--bg-elevated)' }}>
@@ -624,16 +767,15 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                             </button>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{chunk.label}</p>
-                              <p className="text-xs" style={{ color: chunkTooLong ? '#f59e0b' : 'var(--text-muted)' }}>
-                                {chunkDurStr}{chunkTooLong ? ` · only ${fmtS(maxDurationS)} left` : ''}
+                              <p className="text-xs" style={{ color: willTrimCk ? '#f59e0b' : 'var(--text-muted)' }}>
+                                {chunkDurStr}{willTrimCk ? ` · will trim to ${fmtS(maxDurationS)}` : ''}
                               </p>
                             </div>
                             <button
                               onClick={() => handleImportChunk(gen, chunk)}
-                              disabled={chunkTooLong}
                               className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95"
-                              style={{ background: chunkTooLong ? 'var(--bg-card)' : ACCENT, color: chunkTooLong ? 'var(--text-muted)' : '#fff', opacity: chunkTooLong ? 0.5 : 1 }}>
-                              Use
+                              style={{ background: ACCENT, color: '#fff' }}>
+                              {willTrimCk ? 'Import & trim' : 'Use'}
                             </button>
                           </div>
                         )
@@ -821,7 +963,7 @@ function MultiSlotAudio({
 
       {durationS > 0 && filledCount === 0 && (
         <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Upload audio up to {durationS}s total. Add multiple clips — they will be joined in order.
+          Upload audio up to {durationS}s total. Longer files are trimmed automatically.
         </p>
       )}
 
@@ -885,11 +1027,11 @@ function MultiSlotAudio({
           rows={3}
           className="w-full px-4 py-3 rounded-2xl text-sm resize-none outline-none transition-all"
           style={{
-            background:  'var(--bg-elevated)',
-            border:      `1px solid ${ACCENT_BDR}`,
-            color:       'var(--text-primary)',
-            fontFamily:  'inherit',
-            lineHeight:  1.6,
+            background: 'var(--bg-elevated)',
+            border:     `1px solid ${ACCENT_BDR}`,
+            color:      'var(--text-primary)',
+            fontFamily: 'inherit',
+            lineHeight: 1.6,
           }} />
       )}
     </div>
@@ -898,7 +1040,6 @@ function MultiSlotAudio({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VALIDATION BANNER
-// Shows all blocking errors above the generate button.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ValidationBanner({ errors }) {
@@ -911,11 +1052,7 @@ function ValidationBanner({ errors }) {
         <div
           key={i}
           className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
-          style={{
-            background: 'rgba(239,68,68,0.08)',
-            color:      '#ef4444',
-            border:     '1px solid rgba(239,68,68,0.18)',
-          }}>
+          style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.18)' }}>
           <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
           <span>{err}</span>
         </div>
@@ -939,7 +1076,12 @@ export default function CreateTalkingHeadPage() {
   // Subject
   const [subjectMode, setSubjectMode] = useState('face')
   const [faceImage,   setFaceImage]   = useState(null)
-  const [videoFile,   setVideoFile]   = useState(null)
+  const [videoFile,   setVideoFile]   = useState(null)   // { file, url, name, duration, size, aspectRatio, _trimmed }
+
+  // Video trim state
+  const [videoTrimStart,      setVideoTrimStart]      = useState(0)
+  const [phase,               setPhase]               = useState(null)   // null | 'trimming_video' | 'submitting'
+  const [convertProgress,     setConvertProgress]     = useState(0)
 
   // Audio — per-character slot arrays
   const [audioSlots1, setAudioSlots1] = useState([])
@@ -955,11 +1097,11 @@ export default function CreateTalkingHeadPage() {
   const [autoRatio,   setAutoRatio]   = useState(false)
   const [duration,    setDuration]    = useState('5')
 
-  const [submitting,          setSubmitting]          = useState(false)
   const [pendingVideoSubject, setPendingVideoSubject] = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
   const durationNum    = parseInt(duration || '5', 10)
+  const isProcessing   = phase !== null
 
   // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -985,7 +1127,7 @@ export default function CreateTalkingHeadPage() {
     } catch {}
   }, [prompt])
 
-  // ── Trim audio slots when duration changes ───────────────────────────────
+  // ── Trim audio slots when duration chip changes ──────────────────────────
   useEffect(() => {
     const trimAndNotify = (slots, setSlots, charLabel) => {
       const { kept, dropped } = trimSlotsToLimit(slots, durationNum)
@@ -1000,6 +1142,13 @@ export default function CreateTalkingHeadPage() {
     trimAndNotify(audioSlots2, setAudioSlots2, 'Character 2')
   }, [durationNum]) // eslint-disable-line
 
+  // ── Clamp videoTrimStart when duration or video changes ──────────────────
+  useEffect(() => {
+    if (!videoFile?.duration) return
+    const maxStart = Math.max(0, videoFile.duration - durationNum)
+    if (videoTrimStart > maxStart) setVideoTrimStart(maxStart)
+  }, [videoFile?.duration, durationNum, videoTrimStart])
+
   // ── Load models ──────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -1010,14 +1159,11 @@ export default function CreateTalkingHeadPage() {
       .eq('is_active', true)
       .eq('is_user_facing', true)
       .order('sort_order')
-
-   const isMaster     = profile?.user_tier === 'master'
+    const isMaster     = profile?.user_tier === 'master'
     const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     const list         = await applyModelPreferences(tierFiltered, user?.id)
-
     setModels(list)
     setModelsLoading(false)
-
     setPendingVideoSubject((isPending) => {
       if (isPending) {
         const videoModel = list.find((m) => !m.is_locked && (m.supports_video_input ?? false))
@@ -1045,9 +1191,20 @@ export default function CreateTalkingHeadPage() {
     if (!caps.multiChar) { setAudioSlots2([]); setScript2('') }
     if (!caps.supportedDurations.includes(duration)) setDuration(caps.supportedDurations[0] || '5')
     if (!autoRatio && !caps.supportedAspectRatios.includes(aspectRatio)) setAspectRatio(caps.supportedAspectRatios[0] || '9:16')
-    // Auto-set audio mode for script-only models
     if (caps.requiresVoiceId && !caps.requiresAudio) setAudioMode1('text')
   }, [model]) // eslint-disable-line
+
+  // ── Video compatibility ──────────────────────────────────────────────────
+  const videoCompat = useMemo(() => {
+    if (!caps.videoInput || !videoFile?.duration) return null
+    if (videoFile.duration < 1) return 'rejected'
+    if (videoFile._trimmed)     return 'converted'
+    if (videoFile.duration > durationNum) return 'incompatible'
+    return 'compatible'
+  }, [caps.videoInput, videoFile, durationNum])
+
+  const videoNeedsTrim = videoCompat === 'incompatible'
+  const videoTooShort  = videoCompat === 'rejected'
 
   // ── Credit cost ──────────────────────────────────────────────────────────
   const creditCost = (() => {
@@ -1059,49 +1216,40 @@ export default function CreateTalkingHeadPage() {
 
   const canAfford = credits >= creditCost
 
-  // ── Validation — derives from caps, not hardcoded ────────────────────────
-  // This is the single source of truth for what blocks submission.
-  const validationErrors = (() => {
+  // ── Validation ───────────────────────────────────────────────────────────
+  const validationErrors = useMemo(() => {
     if (!selectedModel) return ['Select a model to continue']
     const errors = []
 
-    // Subject photo
-    if (caps.requiresImage && !faceImage) {
+    if (caps.requiresImage && !faceImage)
       errors.push('Upload a face photo — this model requires one')
-    }
 
-    // Subject video
-    if (caps.requiresVideo && !videoFile) {
+    if (caps.requiresVideo && !videoFile)
       errors.push('Upload a subject video — this model requires one')
-    }
 
-    // Audio track
+    if (caps.requiresVideo && videoTooShort)
+      errors.push('Subject video is too short — minimum 1 second')
+
+    if (caps.requiresVideo && videoNeedsTrim)
+      errors.push('Subject video is longer than the selected duration — trim it first')
+
     if (caps.requiresAudio) {
-      if (audioMode1 === 'upload' && audioSlots1.filter(Boolean).length === 0) {
+      if (audioMode1 === 'upload' && audioSlots1.filter(Boolean).length === 0)
         errors.push(caps.multiChar ? 'Add audio for Character 1' : 'Add an audio track')
-      }
-      if (caps.multiChar && audioMode2 === 'upload' && audioSlots2.filter(Boolean).length === 0) {
+      if (caps.multiChar && audioMode2 === 'upload' && audioSlots2.filter(Boolean).length === 0)
         errors.push('Add audio for Character 2')
-      }
     }
 
-    // Script (text-to-speech models)
-    if (caps.requiresVoiceId) {
-      if (!script1.trim()) {
-        errors.push('Type a script — this model converts your text to speech')
-      }
-      // Note: voice_id / voice_language picker to be added when kling_lipsync_text_to_video is activated
-    }
+    if (caps.requiresVoiceId && !script1.trim())
+      errors.push('Type a script — this model converts your text to speech')
 
-    // Credits
-    if (!canAfford) {
-      errors.push('Not enough credits')
-    }
+    if (!canAfford) errors.push('Not enough credits')
 
     return errors
-  })()
+  }, [selectedModel, caps, faceImage, videoFile, videoTooShort, videoNeedsTrim,
+      audioMode1, audioSlots1, audioMode2, audioSlots2, script1, canAfford])
 
-  const buttonDisabled = submitting || validationErrors.length > 0
+  const buttonDisabled = isProcessing || validationErrors.length > 0
 
   // ── Mode label ───────────────────────────────────────────────────────────
   const modeLabel = (() => {
@@ -1122,10 +1270,91 @@ export default function CreateTalkingHeadPage() {
     setAutoRatio(true)
   }
 
-  const handleVideoUpload = (e) => {
+  const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
-    setVideoFile({ file, name: file.name, url: URL.createObjectURL(file) })
+
+    if (file.size > 40 * 1024 * 1024) {
+      toast.error(`Video must be under 40 MB. Yours is ${formatBytes(file.size)}.`)
+      e.target.value = ''
+      return
+    }
+
+    const meta = await readVideoMetadata(file)
+
+    if (meta.duration != null && meta.duration < 1) {
+      toast.error('Video is too short — minimum 1 second.')
+      e.target.value = ''
+      return
+    }
+
+    const url = URL.createObjectURL(file)
+    setVideoFile({
+      file,
+      url,
+      name:        file.name,
+      duration:    meta.duration,
+      size:        file.size,
+      aspectRatio: meta.aspectRatio,
+    })
+    setVideoTrimStart(0)
     persistFile(SS_SUBJECT_VID, file)
+    e.target.value = ''
+  }
+
+  const handleRemoveVideo = () => {
+    if (videoFile?.url && videoFile?.file) URL.revokeObjectURL(videoFile.url)
+    setVideoFile(null)
+    setVideoTrimStart(0)
+    try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {}
+  }
+
+  // ── Video trim / convert ─────────────────────────────────────────────────
+  const handleTrimVideo = async () => {
+    if (!user)      return toast.error('Please sign in')
+    if (!videoFile) return toast.error('Upload a video first')
+    if (credits < VIDEO_TRIM_COST) return toast.error(`Video trim costs ${VIDEO_TRIM_COST} credits.`)
+
+    setPhase('trimming_video')
+    setConvertProgress(0)
+
+    let processed
+    try {
+      processed = await callTrimEdgeFunction({
+        file:           videoFile.file,
+        url:            videoFile.url,
+        userId:         user.id,
+        targetDuration: durationNum,
+        startTime:      videoTrimStart,
+        onProgress:     (p) => setConvertProgress(p),
+      })
+    } catch (err) {
+      setPhase(null)
+      setConvertProgress(0)
+      toast.error(err?.message || 'Video trim failed.')
+      return
+    }
+
+    try {
+      await supabase.rpc('deduct_credits', {
+        p_user_id:       user.id,
+        p_amount:        VIDEO_TRIM_COST,
+        p_generation_id: null,
+        p_description:   'Talking Head subject video trim',
+      })
+    } catch {}
+
+    refreshProfile()
+    setPhase(null)
+    setConvertProgress(0)
+    setVideoFile({
+      file:        null,
+      url:         processed.url,
+      name:        videoFile.name,
+      duration:    processed.duration ?? durationNum,
+      aspectRatio: videoFile.aspectRatio,
+      _trimmed:    true,
+    })
+    toast.success('Video trimmed — ready to generate!', { duration: 3000 })
   }
 
   // ── Audio slot fill ──────────────────────────────────────────────────────
@@ -1137,12 +1366,9 @@ export default function CreateTalkingHeadPage() {
 
     if (imported) {
       const durS = imported.duration_seconds ?? null
+      // If audio is longer than remaining budget, trim it client-side
       if (durS !== null && durS > remaining + 0.25) {
-        toast.error(
-          `This audio is ${durS.toFixed(1)}s but only ${remaining <= 0 ? '0s' : remaining.toFixed(1) + 's'} remains in your ${durationNum}s budget.`,
-          { duration: 5000 }
-        )
-        return
+        toast(`Trimming audio to ${remaining.toFixed(1)}s to fit the budget.`, { icon: '✂️', duration: 3000 })
       }
       const filled = {
         file:             null,
@@ -1151,7 +1377,9 @@ export default function CreateTalkingHeadPage() {
         fromChunk:        !!imported.fromChunk,
         fromGeneration:   !imported.fromChunk,
         chunkLabel:       imported.chunkLabel ?? null,
-        duration_seconds: durS,
+        duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
+        _needsTrim:       durS !== null && durS > remaining + 0.25,
+        _trimToSeconds:   remaining,
       }
       setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
       return
@@ -1161,12 +1389,9 @@ export default function CreateTalkingHeadPage() {
     let durS = null
     try { durS = await getAudioDuration(file) } catch {}
 
+    // Auto-trim: report to user but don't block
     if (durS !== null && durS > remaining + 0.25) {
-      toast.error(
-        `This audio is ${durS.toFixed(1)}s but only ${remaining.toFixed(1)}s remains. Upload a shorter clip or use a chunk.`,
-        { duration: 6000 }
-      )
-      return
+      toast(`Audio is ${durS.toFixed(1)}s — trimming to ${remaining.toFixed(1)}s.`, { icon: '✂️', duration: 4000 })
     }
 
     const filled = {
@@ -1175,7 +1400,9 @@ export default function CreateTalkingHeadPage() {
       name:             file.name,
       fromChunk:        false,
       fromGeneration:   false,
-      duration_seconds: durS,
+      duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
+      _needsTrim:       durS !== null && durS > remaining + 0.25,
+      _trimToSeconds:   remaining,
     }
     setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
   }
@@ -1195,6 +1422,7 @@ export default function CreateTalkingHeadPage() {
     setAudioSlots1([]); setAudioSlots2([])
     setScript1(''); setScript2('')
     setAutoRatio(false); setAspectRatio('9:16'); setPrompt('')
+    setVideoTrimStart(0)
     try {
       [SS_PROMPT, SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach((k) => sessionStorage.removeItem(k))
     } catch {}
@@ -1212,40 +1440,43 @@ export default function CreateTalkingHeadPage() {
     return publicUrl
   }
 
-  // ── Build final audio URL for a character ───────────────────────────────
+  // ── Build final audio URL — trims slots that need it client-side ─────────
   const buildAudioUrl = async (slots) => {
     const filled = slots.filter(Boolean)
     if (filled.length === 0) return null
-    if (filled.length === 1 && !filled[0].file) return filled[0].url
 
+    // Fetch or use file blob for each slot, trimming if needed
     const blobs = await Promise.all(
       filled.map(async (slot) => {
-        if (slot.file) return slot.file
-        const res = await fetch(slot.url)
-        if (!res.ok) throw new Error(`Could not fetch audio: ${slot.url}`)
-        return res.blob()
+        let blob = slot.file
+          ? slot.file
+          : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
+
+        // Client-side trim if this slot was flagged
+        if (slot._needsTrim && slot._trimToSeconds > 0) {
+          blob = await trimAudioToLimit(blob, slot._trimToSeconds)
+        }
+        return blob
       })
     )
 
-    if (blobs.length === 1 && filled[0].file) {
+    if (blobs.length === 1 && filled[0].file && !filled[0]._needsTrim) {
       return uploadToStorage(filled[0].file, filled[0].name)
     }
 
-    const combined = await concatenateAudioBlobs(blobs)
+    const combined = blobs.length === 1 ? blobs[0] : await concatenateAudioBlobs(blobs)
     return uploadToStorage(combined, 'combined.wav')
   }
 
   // ── Generate ─────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    // Final guard — validationErrors drives the button state, but double-check
     if (validationErrors.length) return toast.error(validationErrors[0])
     if (!user) return toast.error('Please sign in')
 
-    // Safety trim before submitting
     const { kept: safe1 } = trimSlotsToLimit(audioSlots1, durationNum)
     const { kept: safe2 } = trimSlotsToLimit(audioSlots2, durationNum)
 
-    setSubmitting(true)
+    setPhase('submitting')
     try {
       // ── Upload subject ─────────────────────────────────────────────────
       let startFrameUrl   = null
@@ -1271,16 +1502,12 @@ export default function CreateTalkingHeadPage() {
         if (caps.multiChar && audioMode2 === 'upload') audio2Url = await buildAudioUrl(safe2)
       }
 
-      // ── Validate audio URLs were actually produced ─────────────────────
-      // This catches silent upload failures before the generation row is created.
       if (caps.requiresAudio && !audio1Url && audioMode1 === 'upload') {
         throw new Error('Audio upload failed — please try again')
       }
 
-      // ── Build input_image_urls (subject video only — audio goes in meta) ─
       const inputImageUrls = [subjectVideoUrl].filter(Boolean)
 
-      // ── Metadata for edge function ─────────────────────────────────────
       const metadata = {
         lipsync:           true,
         subject_mode:      subjectMode,
@@ -1292,13 +1519,11 @@ export default function CreateTalkingHeadPage() {
         audio_1_url:       audio1Url,
         audio_2_url:       audio2Url,
         subject_video_url: subjectVideoUrl,
-        // kling_lipsync_text_to_video fields (populated when voice picker is built)
         voice_id:          null,
         voice_language:    null,
         voice_speed:       null,
       }
 
-      // ── Create generation row ──────────────────────────────────────────
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        'lipsync',
@@ -1317,14 +1542,12 @@ export default function CreateTalkingHeadPage() {
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
-      // ── Deduct credits ─────────────────────────────────────────────────
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // ── Invoke edge function ───────────────────────────────────────────
       supabase.functions
         .invoke('talking-head-generate', { body: { generationId: genRow.id, meta: metadata } })
         .catch((e) => console.error('talking-head-generate invoke error', e))
@@ -1337,7 +1560,7 @@ export default function CreateTalkingHeadPage() {
       toast.error(err.message || 'Something went wrong')
       console.error('TalkingHead generate error:', err)
     } finally {
-      setSubmitting(false)
+      setPhase(null)
     }
   }
 
@@ -1348,25 +1571,15 @@ export default function CreateTalkingHeadPage() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
+      {/* Processing overlay */}
       <AnimatePresence>
-        {submitting && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
-            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}>
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
-              className="w-10 h-10 rounded-full border-2"
-              style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }} />
-            <p className="text-sm font-semibold tracking-wide" style={{ color: '#ffffff' }}>
-              {audioSlots1.filter(Boolean).length > 1 || audioSlots2.filter(Boolean).length > 1
-                ? 'Joining audio parts…'
-                : 'Generating…'}
-            </p>
-          </motion.div>
+        {isProcessing && (
+          <ProcessingOverlay
+            phase={phase}
+            convertProgress={convertProgress}
+            audioSlots1={audioSlots1}
+            audioSlots2={audioSlots2}
+          />
         )}
       </AnimatePresence>
 
@@ -1403,7 +1616,7 @@ export default function CreateTalkingHeadPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── Subject ────────────────────────────────────────────────── */}
+          {/* ── Subject ──────────────────────────────────────────────────── */}
           {(caps.faceInput || caps.videoInput) && (
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -1427,6 +1640,7 @@ export default function CreateTalkingHeadPage() {
                   </div>
                 )}
               </div>
+
               <SubjectSlot
                 mode={subjectMode}
                 faceImage={faceImage}
@@ -1437,15 +1651,122 @@ export default function CreateTalkingHeadPage() {
                   setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16')
                   try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {}
                 }}
-                onVideoRemove={() => {
-                  setVideoFile(null)
-                  try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {}
-                }}
+                onVideoRemove={handleRemoveVideo}
+                videoCompatStatus={videoCompat}
               />
+
+              {/* Video too short */}
+              <AnimatePresence>
+                {videoTooShort && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }}
+                    className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
+                    style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                    <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                    <p className="text-xs" style={{ color: '#ef4444' }}>Video is too short — minimum 1 second.</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Ready confirmation */}
+              {(videoCompat === 'compatible' || videoCompat === 'converted') && videoFile && (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                  Video is{' '}
+                  <strong style={{ color: ACCENT }}>
+                    {videoFile.duration}s{videoFile._trimmed ? ' · trimmed' : ''}
+                  </strong>{' '}
+                  — ready to generate.
+                </p>
+              )}
+
+              {/* ── Trim UI — shown when video > selected duration ─────── */}
+              {caps.videoInput && videoFile && !videoTooShort && videoNeedsTrim && !videoFile._trimmed && (
+                <div className="mt-4 rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Scissors size={14} style={{ color: ACCENT }} />
+                    <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                      Trim to {durationNum}s
+                    </p>
+                    <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>
+                      Source: {formatDuration(videoFile.duration)}
+                    </span>
+                  </div>
+
+                  {/* Start time slider */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start time</p>
+                    <p className="text-xs font-bold" style={{ color: ACCENT }}>
+                      {videoTrimStart}s → {videoTrimStart + durationNum}s
+                    </p>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, (videoFile.duration ?? durationNum) - durationNum)}
+                    step={1}
+                    value={videoTrimStart}
+                    onChange={(e) => setVideoTrimStart(Number(e.target.value))}
+                    className="w-full"
+                    style={{ accentColor: ACCENT }}
+                  />
+                </div>
+              )}
+
+              {/* ── Conversion panel ──────────────────────────────────── */}
+              <AnimatePresence>
+                {caps.videoInput && videoNeedsTrim && !videoFile?._trimmed && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
+                    style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}>
+                    <div className="flex items-start gap-2">
+                      <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold" style={{ color: '#efa014' }}>Video needs trimming</p>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                          Source is {formatDuration(videoFile.duration)} but selected duration is {durationNum}s.
+                          Clip: <strong>{videoTrimStart}s → {videoTrimStart + durationNum}s</strong>
+                        </p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                          Trim cost: <strong style={{ color: 'var(--text-primary)' }}>{VIDEO_TRIM_COST} credits</strong>.
+                          Trimmed video loads here — no redirect needed.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleTrimVideo}
+                        disabled={credits < VIDEO_TRIM_COST || isProcessing}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: credits >= VIDEO_TRIM_COST && !isProcessing ? ACCENT : 'var(--bg-elevated)',
+                          color:      credits >= VIDEO_TRIM_COST && !isProcessing ? '#fff'  : 'var(--text-muted)',
+                          cursor:     credits >= VIDEO_TRIM_COST && !isProcessing ? 'pointer' : 'not-allowed',
+                        }}>
+                        Trim &amp; Continue · {VIDEO_TRIM_COST} cr
+                      </button>
+                      <button
+                        onClick={handleRemoveVideo}
+                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                        Cancel
+                      </button>
+                    </div>
+                    {credits < VIDEO_TRIM_COST && (
+                      <p className="text-xs" style={{ color: '#ef4444' }}>
+                        Not enough credits to trim.{' '}
+                        <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Top up</button>
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 
-          {/* ── Settings ───────────────────────────────────────────────── */}
+          {/* ── Settings ─────────────────────────────────────────────────── */}
           <div>
             <SettingChips
               label="Aspect Ratio"
@@ -1463,7 +1784,7 @@ export default function CreateTalkingHeadPage() {
             )}
           </div>
 
-          {/* ── Audio ──────────────────────────────────────────────────── */}
+          {/* ── Audio ────────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -1513,7 +1834,7 @@ export default function CreateTalkingHeadPage() {
             )}
           </div>
 
-          {/* ── Prompt ─────────────────────────────────────────────────── */}
+          {/* ── Prompt ───────────────────────────────────────────────────── */}
           <Textarea
             label="Prompt"
             value={prompt}
@@ -1539,15 +1860,15 @@ export default function CreateTalkingHeadPage() {
               background: buttonDisabled ? 'var(--bg-elevated)' : ACCENT,
               color:      buttonDisabled ? 'var(--text-muted)'  : '#ffffff',
             }}>
-            {submitting ? (
+            {isProcessing ? (
               <Loader2 size={15} className="animate-spin" />
             ) : validationErrors.length === 0 ? (
               <Zap size={15} fill="currentColor" />
             ) : (
               <AlertTriangle size={15} />
             )}
-            {submitting
-              ? 'Generating…'
+            {isProcessing
+              ? phase === 'trimming_video' ? 'Trimming video…' : 'Generating…'
               : validationErrors.length > 0
               ? 'Fix issues above to continue'
               : `Generate · ${creditCost} cr`}
@@ -1556,10 +1877,7 @@ export default function CreateTalkingHeadPage() {
           {!canAfford && (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
-              <button
-                onClick={() => navigate('/profile')}
-                className="font-semibold"
-                style={{ color: ACCENT }}>
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                 Top up
               </button>
             </p>
