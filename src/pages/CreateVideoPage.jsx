@@ -143,12 +143,10 @@ const readVideoMetadata = (file) => new Promise((resolve) => {
   vid.src = url
 })
 
-const persistFrame = (key, file) => {
-  if (!file) { try { sessionStorage.removeItem(key) } catch {} ; return }
+const persistFrame = (key, url, name) => {
+  if (!url) { try { sessionStorage.removeItem(key) } catch {} ; return }
   try {
-    const reader = new FileReader()
-    reader.onload = (ev) => sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
-    reader.readAsDataURL(file)
+    sessionStorage.setItem(key, JSON.stringify({ url, name }))
   } catch {}
 }
 
@@ -679,21 +677,10 @@ export default function CreateVideoPage() {
     } catch {}
   }, [prompt])
 
-  const persistRefImages = (imgs) => {
-    try {
-      if (!imgs.length) { sessionStorage.removeItem(SS_REF_IMAGES); return }
-      Promise.all(imgs.map(({ file }) => new Promise((res) => {
-        if (!file) return res(null)
-        const reader = new FileReader()
-        reader.onload = (ev) => res({ base64: ev.target.result, name: file.name, type: file.type })
-        reader.readAsDataURL(file)
-      }))).then((arr) => {
-        const filtered = arr.filter(Boolean)
-        if (filtered.length) sessionStorage.setItem(SS_REF_IMAGES, JSON.stringify(filtered))
-      })
-    } catch {}
-  }
-
+const persistRefImages = (imgs) => {
+  // No-op: ref images are not persisted to avoid sessionStorage quota exhaustion.
+  // The base64 approach filled the 5MB limit and caused generation failures.
+}
   // ── load models ───────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -839,7 +826,8 @@ export default function CreateVideoPage() {
       img.src = url
     }
     setter({ file, url })
-    persistFrame(ssKey, file)
+    // called after upload completes in handleGenerate, not on local file select
+// remove the persistFrame call from handleFrameUpload entirely
   }
 
   const handleRemoveFrame = (setter, ssKey, isStart) => {
