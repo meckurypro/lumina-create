@@ -339,7 +339,15 @@ export default function CinematicResultPage() {
           // ffmpeg progress is 0-1 during the stitch phase
           setDlProgress(60 + progress * 35)   // 60–95 range for stitching phase
         })
-        await ff.load()
+        const { toBlobURL } = await import('@ffmpeg/util')
+const BASE_CORE     = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
+const BASE_WORKER   = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm'
+const [classWorkerURL, coreURL, wasmURL] = await Promise.all([
+  toBlobURL(`${BASE_WORKER}/worker.js`,     'text/javascript'),
+  toBlobURL(`${BASE_CORE}/ffmpeg-core.js`,  'text/javascript'),
+  toBlobURL(`${BASE_CORE}/ffmpeg-core.wasm','application/wasm'),
+])
+await ff.load({ classWorkerURL, coreURL, wasmURL })
         ffmpegRef.current = ff
       }
 
