@@ -710,9 +710,9 @@ const ProjectList = ({
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
               >
                 <button
-                  onClick={() => onOpen(p)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                >
+  onClick={() => p.status === 'completed' ? onView(p.id) : onOpen(p)}
+  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+>
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
                        style={{ background: isExportingThis ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)' }}>
                     {isExportingThis
@@ -735,15 +735,15 @@ const ProjectList = ({
                             : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
                       }
                     </p>
-                    {p.status === 'processing' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onView(p.id) }}
-                        className="text-xs font-bold mt-0.5"
-                        style={{ color: 'var(--brand)' }}
-                      >
-                        View results →
-                      </button>
-                    )}
+                   {(p.status === 'processing' || p.status === 'completed') && (
+  <button
+    onClick={(e) => { e.stopPropagation(); onView(p.id) }}
+    className="text-xs font-bold mt-0.5"
+    style={{ color: 'var(--brand)' }}
+  >
+    {p.status === 'completed' ? 'View & export →' : 'View results →'}
+  </button>
+)}
                   </div>
                   <div
                     className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
