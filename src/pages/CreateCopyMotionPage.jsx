@@ -697,6 +697,15 @@ export default function CreateCopyMotionPage() {
   const [convertedSettings, setConvertedSettings] = useState(null)
   // { aspectRatio, duration } — set when a conversion completes, cleared on video removal.
 
+// ── Cleanup on unmount ───────────────────────────────────
+  useEffect(() => {
+    return () => {
+      try {
+        [SS_SUBJECT_IMG, SS_VIDEO_META, SS_COPY_MOTION_VIDEO].forEach(k => sessionStorage.removeItem(k))
+      } catch {}
+    }
+  }, [])
+
   // ── Load models ──────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
