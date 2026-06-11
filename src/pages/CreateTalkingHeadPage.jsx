@@ -291,13 +291,10 @@ async function compressImage(file) {
 // SESSION PERSISTENCE
 // ─────────────────────────────────────────────────────────────────────────────
 
-const persistFile = (key, file) => {
-  if (!file) { try { sessionStorage.removeItem(key) } catch {} ; return }
+const persistFile = (key, url, name) => {
+  if (!url) { try { sessionStorage.removeItem(key) } catch {} ; return }
   try {
-    const reader = new FileReader()
-    reader.onload = (ev) =>
-      sessionStorage.setItem(key, JSON.stringify({ base64: ev.target.result, name: file.name, type: file.type }))
-    reader.readAsDataURL(file)
+    sessionStorage.setItem(key, JSON.stringify({ url, name }))
   } catch {}
 }
 
@@ -1334,8 +1331,7 @@ export default function CreateTalkingHeadPage() {
     const file = e.target.files?.[0]; if (!file) return
     const compressed = await compressImage(file)
     setFaceImage(compressed)
-    persistFile(SS_SUBJECT_IMG, compressed.file)
-    setAspectRatio(compressed.ar)
+     setAspectRatio(compressed.ar)
     setAutoRatio(true)
   }
 
@@ -1353,7 +1349,6 @@ export default function CreateTalkingHeadPage() {
     const url = URL.createObjectURL(file)
     setVideoFile({ file, url, name: file.name, duration: meta.duration, size: file.size, aspectRatio: meta.aspectRatio })
     setVideoTrimStart(0)
-    persistFile(SS_SUBJECT_VID, file)
     e.target.value = ''
   }
 
