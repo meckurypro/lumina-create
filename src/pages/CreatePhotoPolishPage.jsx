@@ -260,6 +260,15 @@ export default function CreatePhotoPolishPage() {
   const [resultUrl,      setResultUrl]      = useState(null)
   const [showCompare,    setShowCompare]    = useState(false)
 
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      try {
+        sessionStorage.removeItem('meckury_polish_image')
+      } catch {}
+    }
+  }, [])
+
   // ── load i2i-capable models ───────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
