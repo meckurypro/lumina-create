@@ -40,6 +40,13 @@ export function useCinematicExport() {
 
   // ── Fetch completed clip URLs from DB ──────────────────
   const fetchClips = useCallback(async (projectId) => {
+    const { data: project, error: projErr } = await supabase
+      .from('cinematic_projects')
+      .select('id, name, aspect_ratio, with_sound')
+      .eq('id', projectId)
+      .single()
+    if (projErr) throw new Error(`Failed to fetch project: ${projErr.message}`)
+
     const { data: clips, error } = await supabase
       .from('cinematic_clips')
       .select(`
@@ -62,13 +69,14 @@ export function useCinematicExport() {
     if (error) throw new Error(`Failed to fetch clips: ${error.message}`)
     if (!clips?.length) throw new Error('No completed clips found for this project.')
 
-    return clips.map((clip) => {
+    const urls = clips.map((clip) => {
       const versions = clip.cinematic_clip_versions || []
       const latest   = versions.sort((a, b) => b.version_number - a.version_number)[0]
       const url      = latest?.generations?.output_url
       if (!url) throw new Error(`Clip ${clip.slot_index + 1} has no output URL.`)
       return url
     })
+    return { urls, project }
   }, [])
 
   // ── Load FFmpeg WASM (idempotent) ──────────────────────
@@ -102,7 +110,24 @@ export function useCinematicExport() {
     return ff
   }, [])
 
+  // ── Target dims by aspect ─────────────────────────────
+  // Modest 720p target keeps ffmpeg.wasm encoding tractable on mobile/desktop.
+  const targetDims = (aspect) => {
+    switch (aspect) {
+      case '16:9': return { w: 1280, h: 720 }
+      case '1:1' : return { w: 720,  h: 720 }
+      case '9:16':
+      default    : return { w: 720,  h: 1280 }
+    }
+  }
+
   // ── Mode 1: Merge all clips → single mp4 ──────────────
+  //
+  // Real-world clips from different generators have mismatched codecs,
+  // resolutions, framerates, timebases, and audio configs — `-c copy`
+  // concat fails silently or produces broken output. We normalize each
+  // clip to a common encoding first (libx264 + aac, fixed dims/fps,
+  // SAR 1:1), then concat-copy. This is reliable but slower than -c copy.
   const mergeAndExport = useCallback(async (projectId, projectName) => {
     const slug = projectName
       .toLowerCase()
@@ -110,28 +135,78 @@ export function useCinematicExport() {
       .replace(/[^a-z0-9-]/g, '')
 
     // 1. Fetch clip URLs from DB (0–5%)
-    const videoUrls = await fetchClips(projectId)
+    const { urls: videoUrls, project } = await fetchClips(projectId)
+    const { w, h } = targetDims(project?.aspect_ratio)
+    const withSound = project?.with_sound !== false
     setExportProgress(5)
 
     // 2. Load FFmpeg WASM (5–20%)
     const ff = await ensureLoaded()
     setExportProgress(20)
 
-    // 3. Fetch each video into WASM virtual FS (20–58%)
-    const fileNames = []
+    // 3. Fetch each clip into WASM virtual FS (20–40%)
+    const inputNames = []
     for (let i = 0; i < videoUrls.length; i++) {
-      const name = `clip_${i}.mp4`
-      fileNames.push(name)
+      const name = `in_${i}.mp4`
+      inputNames.push(name)
       await ff.writeFile(name, await fetchFile(videoUrls[i]))
-      setExportProgress(Math.round(20 + ((i + 1) / videoUrls.length) * 38))
+      setExportProgress(Math.round(20 + ((i + 1) / videoUrls.length) * 20))
     }
 
-    // 4. Write concat manifest
-    await ff.writeFile('concat.txt', fileNames.map(n => `file '${n}'`).join('\n'))
+    // 4. Normalize each clip to common params (40–90%)
+    const vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
+               `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30`
+    const normNames = []
+    for (let i = 0; i < inputNames.length; i++) {
+      const out = `norm_${i}.ts`  // MPEG-TS supports clean concat-copy
+      normNames.push(out)
+      const args = [
+        '-y', '-i', inputNames[i],
+        '-vf', vf,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+        '-r', '30', '-g', '60',
+      ]
+      if (withSound) {
+        // Add silent audio if input has none so concat stream count matches.
+        args.push(
+          '-af', 'aresample=async=1:first_pts=0',
+          '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '128k',
+        )
+      } else {
+        args.push('-an')
+      }
+      args.push('-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', out)
 
-    // 5. Concat — stream copy, no re-encode, lossless (58–95% via progress event)
-    await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4'])
+      try {
+        await ff.exec(args)
+      } catch (e) {
+        // Retry without audio if the input had no audio stream and -af failed.
+        if (withSound) {
+          await ff.exec([
+            '-y', '-i', inputNames[i],
+            '-vf', vf,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+            '-r', '30', '-g', '60', '-an',
+            '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', out,
+          ])
+        } else {
+          throw e
+        }
+      }
+      // free input ASAP
+      try { await ff.deleteFile(inputNames[i]) } catch {}
+      setExportProgress(Math.round(40 + ((i + 1) / inputNames.length) * 50))
+    }
 
+    // 5. Concat MPEG-TS segments — stream copy into mp4 (90–95%)
+    const concatInput = `concat:${normNames.join('|')}`
+    await ff.exec([
+      '-y', '-i', concatInput,
+      '-c', 'copy',
+      '-bsf:a', 'aac_adtstoasc',
+      '-movflags', '+faststart',
+      'output.mp4',
+    ])
     setExportProgress(95)
 
     // 6. Read and trigger download
@@ -141,12 +216,14 @@ export function useCinematicExport() {
     const anchor = document.createElement('a')
     anchor.href     = url
     anchor.download = `${slug}-cinematic.mp4`
+    document.body.appendChild(anchor)
     anchor.click()
+    anchor.remove()
     URL.revokeObjectURL(url)
 
     // 7. Clean up WASM virtual FS
     await Promise.allSettled(
-      [...fileNames, 'concat.txt', 'output.mp4'].map(name => ff.deleteFile(name))
+      [...normNames, 'output.mp4'].map(name => ff.deleteFile(name))
     )
 
     setExportProgress(100)
@@ -160,7 +237,7 @@ export function useCinematicExport() {
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '')
 
-    const videoUrls = await fetchClips(projectId)
+    const { urls: videoUrls } = await fetchClips(projectId)
 
     for (let i = 0; i < videoUrls.length; i++) {
       setExportProgress(Math.round((i / videoUrls.length) * 100))
@@ -173,7 +250,9 @@ export function useCinematicExport() {
       const anchor = document.createElement('a')
       anchor.href     = url
       anchor.download = `${slug}-clip-${String(i + 1).padStart(2, '0')}.mp4`
+      document.body.appendChild(anchor)
       anchor.click()
+      anchor.remove()
       URL.revokeObjectURL(url)
 
       if (i < videoUrls.length - 1) await new Promise(r => setTimeout(r, 600))
