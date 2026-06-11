@@ -12,11 +12,64 @@ const ACCENT     = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
 const ACCENT_BDR = 'var(--tool-polish-border)'
 
+// ── New face presets — prepended to PHOTO_POLISH_PRESETS at render time ───────
+export const FACE_PRESETS = [
+  {
+    id:          'face_shot',
+    label:       'Face Shot',
+    emoji:       '🎯',
+    description: 'Tight cinematic close-up from any photo',
+    isMaster:    false,
+    prompt: `Transform this image into an ultra-close hyperrealistic portrait crop. 
+Reframe tightly on the face from forehead to chin, head and shoulders only, eliminating any body below the chest. 
+Preserve every facial feature exactly as-is — skin tone, bone structure, eye colour, hair colour and texture, piercings, and all distinguishing marks must remain identical. 
+Do NOT alter, lighten, or smooth the skin; enhance its natural texture so every pore, micro-detail, and luminous quality is visible at magazine resolution. 
+Eyes must be razor-sharp with vivid clarity and natural catch-lights. 
+Render a shallow depth-of-field with the background dissolved into smooth warm bokeh (neutral beige/amber tones). 
+Apply cinematic golden-hour rim lighting that wraps the face with warm specular highlights without overexposing. 
+Output as a 2K photorealistic portrait with zero AI smoothing, zero makeup addition, zero skin tone alteration.`,
+  },
+  {
+    id:          'face_90p',
+    label:       'Face 90°',
+    emoji:       '↩️',
+    description: 'Rotate any front face to a full side profile',
+    isMaster:    false,
+    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic 90-degree side profile of the same person. 
+The subject must face directly left or right — a true orthographic profile with the nose, lips, jaw, and ear fully visible in silhouette. 
+Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour, hair length, and all distinguishing features must be faithfully reproduced as seen in the source image. 
+Frame as a square or portrait crop from crown to upper chest, centered on the profile. 
+Background should be a clean neutral warm beige (similar to a professional studio seamless backdrop), softly out of focus. 
+Lighting: even north-facing studio light with a subtle warm fill, no harsh shadows. 
+Render every hair strand, skin pore, and facial micro-detail at 2K hyperrealistic quality. 
+Do NOT add makeup, alter skin tone, or change any feature. Output must look like a real photograph, not an illustration.`,
+  },
+  {
+    id:          'face_3q',
+    label:       'Face ¾',
+    emoji:       '🔄',
+    description: 'Turn a front face into a cinematic ¾ profile',
+    isMaster:    false,
+    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic three-quarter (45-degree) profile of the same person. 
+The subject's face should be turned approximately 45 degrees from camera — both eyes visible, strong cheekbone and jaw line reading, slight off-axis gaze. 
+Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour and texture, piercings, and all distinguishing features must match the source precisely. 
+Frame tight from crown to upper chest as a portrait or square crop. 
+Background: clean neutral warm beige seamless studio tone, gently defocused. 
+Lighting: cinematic directional light from the front-facing side with subtle fill on the shadow side, creating natural facial dimension. 
+Render at 2K hyperrealistic quality — every skin pore, individual hair strand, and eye detail must be photographic. 
+Do NOT add makeup, alter skin tone, smooth skin, or change any feature. Output must look indistinguishable from a professional studio photograph.`,
+  },
+]
+
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
   { label: '16:9', value: '16:9' },
   { label: '1:1',  value: '1:1'  },
 ]
+
+const OUTPUT_RESOLUTION = 2048   // 2K
+
+const DEFAULT_MODEL_VALUE = 'nano-banana-edit-pro'   // nano banana edit pro
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -247,12 +300,18 @@ export default function CreatePhotoPolishPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const isMaster = profile?.user_tier === 'master'
 
+  // Merge face presets at the front, then the rest from config
+  const ALL_PRESETS = [
+    ...FACE_PRESETS,
+    ...PHOTO_POLISH_PRESETS.filter((p) => !FACE_PRESETS.some((fp) => fp.id === p.id)),
+  ]
+
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
   const [modelValue,    setModelValue]    = useState('')
 
   const [photo,          setPhoto]          = useState(null)
-  const [selectedPreset, setSelectedPreset] = useState('hyperrealistic')
+  const [selectedPreset, setSelectedPreset] = useState('face_shot')   // default to first face preset
   const [aspectRatio,    setAspectRatio]    = useState('9:16')
   const [autoRatio,      setAutoRatio]      = useState(false)
   const [submitting,     setSubmitting]     = useState(false)
@@ -282,10 +341,17 @@ export default function CreatePhotoPolishPage() {
       .order('sort_order')
     const list = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
-    const unlocked  = list.filter((m) => !m.is_locked)
+    const unlocked = list.filter((m) => !m.is_locked)
+
+    // Prefer nano banana edit pro, then user's preferred model, then first unlocked
+    const nanoBanana = unlocked.find((m) =>
+      m.value === DEFAULT_MODEL_VALUE ||
+      m.aka?.toLowerCase().includes('nano banana') ||
+      m.label?.toLowerCase().includes('nano banana')
+    )
     const preferred = profile?.preferred_model
-    const match     = preferred && unlocked.find((m) => m.value === preferred)
-    setModelValue((match || unlocked[0])?.value || '')
+    const prefMatch = preferred && unlocked.find((m) => m.value === preferred)
+    setModelValue((nanoBanana || prefMatch || unlocked[0])?.value || '')
     setModelsLoading(false)
   }, []) // eslint-disable-line
 
@@ -299,7 +365,6 @@ export default function CreatePhotoPolishPage() {
       sessionStorage.removeItem('meckury_polish_image')
       const item = JSON.parse(saved)
       if (item.url && !item.base64) {
-        // URL payload from Assets — display-only, no file needed
         const img = new Image()
         img.onload = () => {
           const ar = detectAspectRatio(img.width, img.height)
@@ -312,7 +377,6 @@ export default function CreatePhotoPolishPage() {
         }
         img.src = item.url
       } else if (item.base64) {
-        // Legacy base64 payload
         const byteString = atob(item.base64.split(',')[1])
         const ab = new ArrayBuffer(byteString.length)
         const ia = new Uint8Array(ab)
@@ -336,7 +400,7 @@ export default function CreatePhotoPolishPage() {
   const selectedModel = models.find((m) => m.value === modelValue)
   const creditCost    = selectedModel?.credit_cost_i2i ?? 0
 
-  const preset      = PHOTO_POLISH_PRESETS.find((p) => p.id === selectedPreset)
+  const preset      = ALL_PRESETS.find((p) => p.id === selectedPreset)
   const canAfford   = credits >= creditCost
   const canGenerate = !!photo && !!preset && canAfford && !submitting && !!selectedModel
 
@@ -386,7 +450,6 @@ export default function CreatePhotoPolishPage() {
       // Get the public URL — either direct from Assets or upload the local file
       let publicUrl
       if (!photo.file) {
-        // URL-only asset from Assets page — use directly
         publicUrl = photo.url
       } else {
         const contentType = photo.file.type || 'image/jpeg'
@@ -410,6 +473,7 @@ export default function CreatePhotoPolishPage() {
         aspect_ratio:           aspectRatio,
         credits_charged:        creditCost,
         output_type:            'image',
+        output_resolution:      OUTPUT_RESOLUTION,
         input_image_urls:       [publicUrl],
         skip_prompt_refinement: true,
         title:                  `Photo Polish — ${preset.label}`,
@@ -619,7 +683,7 @@ export default function CreatePhotoPolishPage() {
               )}
             </div>
             <div className="grid grid-cols-3 gap-2.5">
-              {PHOTO_POLISH_PRESETS.map((p) => {
+              {ALL_PRESETS.map((p) => {
                 const locked = p.isMaster && !isMaster
                 return (
                   <PresetCard
