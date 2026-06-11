@@ -309,13 +309,6 @@ const ModelPicker = ({ models, value, onChange }) => {
 }
 
 // ── ProjectActionSheet ────────────────────────────────────
-// Bottom sheet: rename / delete / export.
-//
-// FIX: onExport is now called with (projectId, projectName, mode) where
-// mode is explicitly 'merge' or 'download'. Previously mode was passed
-// as a third arg to onExport but was silently dropped by the intermediate
-// onProjectAction wrapper in ProjectList, so both buttons always triggered
-// merge mode and the fast downloadAll path was never reached.
 const ProjectActionSheet = ({
   project,
   onClose,
@@ -459,10 +452,9 @@ const ProjectActionSheet = ({
                 </div>
               </button>
 
-              {/* Export — Merge & Export */}
+              {/* ── DISABLED: Merge & Export (FFmpeg WASM — re-enable when stable) ──
               <button
                 onClick={() => {
-                  // Pass mode='merge' explicitly so it survives the prop chain
                   onExport(project.id, project.name, 'merge')
                   onClose()
                 }}
@@ -497,12 +489,11 @@ const ProjectActionSheet = ({
                   </p>
                 </div>
               </button>
+              ── END DISABLED ── */}
 
-              {/* Export — Download All Clips */}
+              {/* Download All Clips */}
               <button
                 onClick={() => {
-                  // Pass mode='download' explicitly — this is the fast path,
-                  // no FFmpeg involved, just fetch + download each clip directly.
                   onExport(project.id, project.name, 'download')
                   onClose()
                 }}
@@ -516,11 +507,19 @@ const ProjectActionSheet = ({
               >
                 <div className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
                      style={{ background: 'rgba(91,110,247,0.12)' }}>
-                  <Film size={16} style={{ color: 'var(--brand)' }} />
+                  {exporting
+                    ? <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+                        className="w-4 h-4 rounded-full border-2"
+                        style={{ borderColor: 'rgba(91,110,247,0.2)', borderTopColor: 'var(--brand)' }}
+                      />
+                    : <Film size={16} style={{ color: 'var(--brand)' }} />
+                  }
                 </div>
                 <div>
                   <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Download All Clips
+                    {exporting ? `Downloading… ${exportProgress}%` : 'Download All Clips'}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {project.status !== 'completed'
@@ -652,8 +651,6 @@ const ProjectActionSheet = ({
 }
 
 // ── ProjectList ───────────────────────────────────────────
-// FIX: onExport now threads all three args (id, name, mode) through to
-// onProjectAction, previously the mode arg was silently dropped here.
 const ProjectList = ({
   projects, onNew, onOpen, onView, loading,
   onProjectAction, exporting, exportProgress, exportingProjectId,
@@ -710,9 +707,9 @@ const ProjectList = ({
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
               >
                 <button
-  onClick={() => p.status === 'completed' ? onView(p.id) : onOpen(p)}
-  className="flex items-center gap-3 flex-1 min-w-0 text-left"
->
+                  onClick={() => p.status === 'completed' ? onView(p.id) : onOpen(p)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0"
                        style={{ background: isExportingThis ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)' }}>
                     {isExportingThis
@@ -729,21 +726,21 @@ const ProjectList = ({
                     <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {isExportingThis
-                        ? `Exporting… ${exportProgress}%`
+                        ? `Downloading… ${exportProgress}%`
                         : `${p.status === 'draft' ? 'Draft'
                             : p.status === 'processing' ? 'Processing…'
                             : 'Completed'} · ${new Date(p.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
                       }
                     </p>
-                   {(p.status === 'processing' || p.status === 'completed') && (
-  <button
-    onClick={(e) => { e.stopPropagation(); onView(p.id) }}
-    className="text-xs font-bold mt-0.5"
-    style={{ color: 'var(--brand)' }}
-  >
-    {p.status === 'completed' ? 'View & export →' : 'View results →'}
-  </button>
-)}
+                    {(p.status === 'processing' || p.status === 'completed') && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onView(p.id) }}
+                        className="text-xs font-bold mt-0.5"
+                        style={{ color: 'var(--brand)' }}
+                      >
+                        {p.status === 'completed' ? 'View & export →' : 'View results →'}
+                      </button>
+                    )}
                   </div>
                   <div
                     className="text-xs px-2 py-1 rounded-full font-semibold flex-shrink-0"
@@ -782,7 +779,6 @@ const ProjectList = ({
             onClose={() => setActiveActionProject(null)}
             onRenamed={(id, name) => onProjectAction('rename', id, name)}
             onDeleted={(id) => onProjectAction('delete', id)}
-            // FIX: thread mode (3rd arg) through to onProjectAction as 4th arg
             onExport={(id, name, mode) => onProjectAction('export', id, name, mode)}
           />
         )}
@@ -1388,11 +1384,6 @@ export default function CinematicTransitionPage() {
   }
 
   // ── Project list actions (rename / delete / export) ───
-  // FIX: accept `mode` as 4th arg and pass it through to exportProject.
-  // Previously this function only accepted 3 args, silently discarding the
-  // mode that ProjectActionSheet was already sending, so both export buttons
-  // always fell through to the default ('merge') and the fast downloadAll
-  // path was never reached.
   const handleProjectAction = useCallback(async (action, projectId, payload, mode) => {
     if (action === 'rename') {
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: payload } : p))
@@ -1404,10 +1395,10 @@ export default function CinematicTransitionPage() {
 
     if (action === 'export') {
       setExportingProjectId(projectId)
-      // mode is 'merge' or 'download', passed from ProjectActionSheet → ProjectList → here
+      // mode is always 'download' now — merge is disabled
       const ok = await exportProject(projectId, payload, mode)
       setExportingProjectId(null)
-      if (ok) toast.success('Export complete — check your downloads')
+      if (ok) toast.success('Download complete — check your downloads')
     }
   }, [exportProject])
 
