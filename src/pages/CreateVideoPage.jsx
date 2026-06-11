@@ -622,6 +622,15 @@ export default function CreateVideoPage() {
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // ── session restore ───────────────────────────────────────────────────────
+  // ── cleanup on unmount ───────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      try {
+        [SS_START_FRAME, SS_END_FRAME, SS_REF_IMAGES].forEach(k => sessionStorage.removeItem(k))
+      } catch {}
+    }
+  }, [])
+
   useEffect(() => {
     try {
       const savedPrompt = sessionStorage.getItem(SS_PROMPT)
