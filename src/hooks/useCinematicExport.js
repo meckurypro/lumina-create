@@ -4,29 +4,22 @@
 //   1. 'merge'    — concat all clips → single mp4 via FFmpeg WASM
 //   2. 'download' — individual numbered mp4s, sequential fetch+download (no FFmpeg)
 //
-// ── THE DEFINITIVE FIX ────────────────────────────────────────────────────────
-// Every CDN approach has failed because:
-//   - jsdelivr: not on Meckury's allowed-domain list
-//   - cdnjs: strips .wasm binary files entirely (only serves .js)
-//   - unpkg: same structural problems
+// ── APPROACH: ALL CDN, ALL RUNTIME, NO BUILD-TIME IMPORTS ────────────────────
+// Every previous attempt broke at either build time or runtime:
+//   - ?url imports → build fails because @ffmpeg/core isn't in package.json
+//   - jsdelivr      → wrong paths / not on allowed-domain list
+//   - cdnjs         → strips .wasm binary files (only serves .js)
 //
-// The correct solution for a Vite project is ?url imports, which tell Vite to:
-//   1. Resolve the file from node_modules at build time
-//   2. Copy it into the build output with a content-hash filename
-//   3. Return the hashed /assets/ffmpeg-core-[hash].wasm URL as a string
-//   4. Serve it from YOUR OWN ORIGIN with correct MIME types
+// The working pattern (confirmed from official ffmpeg.wasm docs and examples):
+//   All three assets fetched at RUNTIME from unpkg via toBlobURL().
+//   toBlobURL(url, mime) → fetch → Blob → blob: URL (always same-origin).
+//   No build-time resolution. No package.json entry for @ffmpeg/core needed.
+//   No vite.config changes needed beyond optimizeDeps.exclude.
 //
-// No CDN. No copying files to /public. No postinstall scripts.
-// No domain allowlist issues. Works identically in dev and production.
-//
-// REQUIRES these two changes to vite.config.js (see below):
-//   optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] }
-//   assetsInclude: ['**/*.wasm']
-//
-// The worker is still loaded via classWorkerURL from unpkg, blobified.
-// The worker.js from @ffmpeg/ffmpeg doesn't contain binary data (it's pure JS),
-// so unpkg serves it fine with the correct MIME type, and we blobify it to
-// make it same-origin. Only the .wasm binary must come from your own origin.
+// Verified URLs:
+//   https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js   ← core glue JS
+//   https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm ← WASM binary
+//   https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js      ← orchestrator worker
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState, useCallback } from 'react'
@@ -34,16 +27,8 @@ import { FFmpeg }                         from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL }           from '@ffmpeg/util'
 import { supabase }                       from '@/lib/supabase'
 
-// ?url imports — Vite resolves these at build time from node_modules,
-// copies the files into /assets/ with content-hash names, and returns
-// the URL string. Served from your own origin with correct MIME types.
-import coreJsUrl  from '@ffmpeg/core/dist/esm/ffmpeg-core.js?url'
-import coreWasmUrl from '@ffmpeg/core/dist/esm/ffmpeg-core.wasm?url'
-
-// Worker JS from unpkg — pure JS (no binary), blobified to same-origin.
-// This is the worker from @ffmpeg/ffmpeg (the orchestrator), NOT @ffmpeg/core.
-// Must match your installed @ffmpeg/ffmpeg version.
-const WORKER_CDN = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js'
+const BASE_CORE   = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
+const BASE_WORKER = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm'
 
 export function useCinematicExport() {
   const ffmpegRef = useRef(null)
@@ -88,11 +73,9 @@ export function useCinematicExport() {
 
   // ── Load FFmpeg WASM (idempotent) ──────────────────────
   //
-  // coreURL  — served from your own origin via Vite ?url import (correct MIME, no CORS)
-  // wasmURL  — same, Vite handles the .wasm binary correctly
-  // classWorkerURL — pure JS from unpkg, blobified to satisfy same-origin worker rule
-  //
-  // No SharedArrayBuffer / COOP / COEP needed — single-threaded @ffmpeg/core.
+  // All three assets are fetched at runtime from unpkg and blobified.
+  // blob: URLs are always same-origin, so no CORS/MIME/worker-origin issues.
+  // Single-threaded core — no SharedArrayBuffer, COOP, or COEP needed.
   const ensureLoaded = useCallback(async () => {
     if (loadedRef.current) return ffmpegRef.current
 
@@ -106,16 +89,13 @@ export function useCinematicExport() {
       ff.on('log', ({ message }) => console.debug('[ffmpeg]', message))
     }
 
-    // Blobify the worker JS so the browser treats it as same-origin
-    const classWorkerURL = await toBlobURL(WORKER_CDN, 'text/javascript')
+    const [classWorkerURL, coreURL, wasmURL] = await Promise.all([
+      toBlobURL(`${BASE_WORKER}/worker.js`,          'text/javascript'),
+      toBlobURL(`${BASE_CORE}/ffmpeg-core.js`,        'text/javascript'),
+      toBlobURL(`${BASE_CORE}/ffmpeg-core.wasm`,      'application/wasm'),
+    ])
 
-    // coreJsUrl and coreWasmUrl are already served from your own origin,
-    // so no blobifying needed — pass them directly.
-    await ff.load({
-      classWorkerURL,
-      coreURL: coreJsUrl,
-      wasmURL: coreWasmUrl,
-    })
+    await ff.load({ classWorkerURL, coreURL, wasmURL })
 
     ffmpegRef.current = ff
     loadedRef.current = true
@@ -129,12 +109,15 @@ export function useCinematicExport() {
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '')
 
+    // 1. Fetch clip URLs from DB (0–5%)
     const videoUrls = await fetchClips(projectId)
     setExportProgress(5)
 
+    // 2. Load FFmpeg WASM (5–20%)
     const ff = await ensureLoaded()
     setExportProgress(20)
 
+    // 3. Fetch each video into WASM virtual FS (20–58%)
     const fileNames = []
     for (let i = 0; i < videoUrls.length; i++) {
       const name = `clip_${i}.mp4`
@@ -143,13 +126,15 @@ export function useCinematicExport() {
       setExportProgress(Math.round(20 + ((i + 1) / videoUrls.length) * 38))
     }
 
+    // 4. Write concat manifest
     await ff.writeFile('concat.txt', fileNames.map(n => `file '${n}'`).join('\n'))
 
-    // Stream copy — no re-encode, lossless, fast
+    // 5. Concat — stream copy, no re-encode, lossless (58–95% via progress event)
     await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4'])
 
     setExportProgress(95)
 
+    // 6. Read and trigger download
     const data   = await ff.readFile('output.mp4')
     const blob   = new Blob([data.buffer], { type: 'video/mp4' })
     const url    = URL.createObjectURL(blob)
@@ -159,6 +144,7 @@ export function useCinematicExport() {
     anchor.click()
     URL.revokeObjectURL(url)
 
+    // 7. Clean up WASM virtual FS
     await Promise.allSettled(
       [...fileNames, 'concat.txt', 'output.mp4'].map(name => ff.deleteFile(name))
     )
