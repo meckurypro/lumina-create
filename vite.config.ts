@@ -43,7 +43,7 @@ export default defineConfig({
       manifest: {
         name:             'Meckury AI',
         short_name:       'Meckury',
-        description:      'AI-powered content creation — imagine it, create it.',
+        description:      'Build AI characters, clone your voice, and create cinematic content effortlessly. Meckury AI — the future of storytelling.',
         start_url:        '/',
         display:          'standalone',
         orientation:      'portrait',
