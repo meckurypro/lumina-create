@@ -42,21 +42,12 @@ function detectAspectRatio(width, height) {
   return '1:1'
 }
 
-const persistImage = (key, file) => {
-  if (!file) { try { sessionStorage.removeItem(key) } catch { /* noop */ }; return }
+const persistImage = (key, url, name) => {
+  if (!url) { try { sessionStorage.removeItem(key) } catch {} ; return }
   try {
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      sessionStorage.setItem(key, JSON.stringify({
-        base64: ev.target.result,
-        name:   file.name,
-        type:   file.type,
-      }))
-    }
-    reader.readAsDataURL(file)
-  } catch { /* noop */ }
+    sessionStorage.setItem(key, JSON.stringify({ url, name }))
+  } catch {}
 }
-
 const restoreImage = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
@@ -951,8 +942,7 @@ export default function CreateCopyMotionPage() {
 
     setSubjectSizeErr(false)
     setSubjectImage({ file, url: URL.createObjectURL(file) })
-    persistImage(SS_SUBJECT_IMG, file)
-  }
+    }
 
   const handleRemoveVideo = () => {
     if (motionVideo?.url && motionVideo?.file) URL.revokeObjectURL(motionVideo.url)
