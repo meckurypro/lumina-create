@@ -9,15 +9,15 @@ export async function applyModelPreferences(models, userId) {
     .select('model_id, is_active')
     .eq('user_id', userId)
 
-  // On any error or no rows, return models unfiltered
+  // No rows at all = user predates the prefs system → show everything
   if (error || !prefs || !prefs.length) return models
 
   const prefMap = {}
   prefs.forEach((p) => { prefMap[p.model_id] = p.is_active })
 
   return models.filter((m) => {
-    if (m.is_required) return true
-    if (prefMap[m.id] === undefined) return true
-    return prefMap[m.id]
+    if (m.is_required) return true          // always show required
+    if (prefMap[m.id] === undefined) return false  // has prefs but model not in them = hidden
+    return prefMap[m.id]                    // respect explicit preference
   })
 }
