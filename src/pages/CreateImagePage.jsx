@@ -379,6 +379,15 @@ const [submitting,    setSubmitting]    = useState(false)
     } catch { /* corrupt storage — ignore */ }
   }, [])
 
+ // ── cleanup on unmount ───────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      try {
+        [SS_PROMPT, SS_IMAGES].forEach(k => sessionStorage.removeItem(k))
+      } catch {}
+    }
+  }, [])
+
   // ── persist prompt ───────────────────────────────────────────────────────
   useEffect(() => {
     try {
