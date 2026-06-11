@@ -8,19 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-
-      // ── Off in dev — prevents the hangs/stale cache issues
       devOptions: {
         enabled: false,
       },
-
       workbox: {
-        // Cache app shell assets only
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-
         runtimeCaching: [
           {
-            // Google Fonts — cache forever
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
@@ -29,7 +23,6 @@ export default defineConfig({
             },
           },
           {
-            // Supabase Storage (images/videos) — network first
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
             handler: 'NetworkFirst',
             options: {
@@ -39,18 +32,14 @@ export default defineConfig({
             },
           },
           {
-            // Supabase API/auth/functions — NEVER cache
             urlPattern: /^https:\/\/.*\.supabase\.co\/(rest|auth|functions)\/.*/i,
             handler: 'NetworkOnly',
           },
         ],
-
-        // Prevents "stuck on old version" — new SW activates immediately on deploy
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
       },
-
       manifest: {
         name:             'Meckury AI',
         short_name:       'Meck AI',
@@ -62,7 +51,6 @@ export default defineConfig({
         theme_color:      '#000000',
         lang:             'en',
         scope:            '/',
-
         icons: [
           { src: '/icon-72.png',  sizes: '72x72',   type: 'image/png', purpose: 'any'           },
           { src: '/icon-96.png',  sizes: '96x96',   type: 'image/png', purpose: 'any'           },
@@ -73,7 +61,6 @@ export default defineConfig({
           { src: '/icon-384.png', sizes: '384x384', type: 'image/png', purpose: 'any'           },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable'  },
         ],
-
         shortcuts: [
           { name: 'Create', short_name: 'Create', url: '/create', icons: [{ src: '/icon-96.png', sizes: '96x96' }] },
           { name: 'Feed',   short_name: 'Feed',   url: '/feed',   icons: [{ src: '/icon-96.png', sizes: '96x96' }] },
@@ -84,6 +71,30 @@ export default defineConfig({
 
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
+  },
+
+  // ── FFmpeg WASM support ───────────────────────────────────────────────────
+  // 1. assetsInclude: tells Vite to treat .wasm files as static assets so
+  //    the `?url` import in useCinematicExport.js resolves to a hashed URL
+  //    instead of throwing "unknown file extension .wasm" at build time.
+  //
+  // 2. optimizeDeps.exclude: prevents Vite's dep-optimizer from pre-bundling
+  //    @ffmpeg/ffmpeg and @ffmpeg/util. These packages use dynamic new Worker()
+  //    and WebAssembly.instantiate() internally — esbuild can't handle them and
+  //    will produce broken bundles. Excluding them makes Vite serve them as-is.
+  //
+  // 3. build.target: 'esnext': required for top-level await and modern WASM
+  //    APIs used by @ffmpeg/ffmpeg. Without this, esbuild downtranspiles to
+  //    ES2015 and breaks dynamic imports inside the ffmpeg packages.
+  // ─────────────────────────────────────────────────────────────────────────
+  assetsInclude: ['**/*.wasm'],
+
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
+
+  build: {
+    target: 'esnext',
   },
 
   server: {
