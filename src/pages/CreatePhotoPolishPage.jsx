@@ -8,55 +8,55 @@ import { supabase, generations as generationsDb, profiles as profilesApi } from 
 import { PHOTO_POLISH_PRESETS } from '@/config/photoPolishPresets'
 import toast from 'react-hot-toast'
 
-const ACCENT     = 'var(--tool-polish)'
+const ACCENT = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
 const ACCENT_BDR = 'var(--tool-polish-border)'
 
 // ── New face presets — prepended to PHOTO_POLISH_PRESETS at render time ───────
 export const FACE_PRESETS = [
   {
-    id:          'face_shot',
-    label:       'Face Shot',
-    emoji:       '🎯',
+    id: 'face_shot',
+    label: 'Face Shot',
+    emoji: '🎯',
     description: 'Tight cinematic close-up from any photo',
-    isMaster:    false,
-    prompt: `Transform this image into an ultra-close hyperrealistic portrait crop. 
-Reframe tightly on the face from forehead to chin, head and shoulders only, eliminating any body below the chest. 
-Preserve every facial feature exactly as-is — skin tone, bone structure, eye colour, hair colour and texture, piercings, and all distinguishing marks must remain identical. 
-Do NOT alter, lighten, or smooth the skin; enhance its natural texture so every pore, micro-detail, and luminous quality is visible at magazine resolution. 
-Eyes must be razor-sharp with vivid clarity and natural catch-lights. 
-Render a shallow depth-of-field with the background dissolved into smooth warm bokeh (neutral beige/amber tones). 
-Apply cinematic golden-hour rim lighting that wraps the face with warm specular highlights without overexposing. 
+    isMaster: false,
+    prompt: `Transform this image into an ultra-close hyperrealistic portrait crop.
+Reframe tightly on the face from forehead to chin, head and shoulders only, eliminating any body below the chest.
+Preserve every facial feature exactly as-is — skin tone, bone structure, eye colour, hair colour and texture, piercings, and all distinguishing marks must remain identical.
+Do NOT alter, lighten, or smooth the skin; enhance its natural texture so every pore, micro-detail, and luminous quality is visible at magazine resolution.
+Eyes must be razor-sharp with vivid clarity and natural catch-lights.
+Render a shallow depth-of-field with the background dissolved into smooth warm bokeh (neutral beige/amber tones).
+Apply cinematic golden-hour rim lighting that wraps the face with warm specular highlights without overexposing.
 Output as a 2K photorealistic portrait with zero AI smoothing, zero makeup addition, zero skin tone alteration.`,
   },
   {
-    id:          'face_90p',
-    label:       'Face 90°',
-    emoji:       '↩️',
+    id: 'face_90p',
+    label: 'Face 90°',
+    emoji: '↩️',
     description: 'Rotate any front face to a full side profile',
-    isMaster:    false,
-    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic 90-degree side profile of the same person. 
-The subject must face directly left or right — a true orthographic profile with the nose, lips, jaw, and ear fully visible in silhouette. 
-Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour, hair length, and all distinguishing features must be faithfully reproduced as seen in the source image. 
-Frame as a square or portrait crop from crown to upper chest, centered on the profile. 
-Background should be a clean neutral warm beige (similar to a professional studio seamless backdrop), softly out of focus. 
-Lighting: even north-facing studio light with a subtle warm fill, no harsh shadows. 
-Render every hair strand, skin pore, and facial micro-detail at 2K hyperrealistic quality. 
+    isMaster: false,
+    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic 90-degree side profile of the same person.
+The subject must face directly left or right — a true orthographic profile with the nose, lips, jaw, and ear fully visible in silhouette.
+Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour, hair length, and all distinguishing features must be faithfully reproduced as seen in the source image.
+Frame as a square or portrait crop from crown to upper chest, centered on the profile.
+Background should be a clean neutral warm beige (similar to a professional studio seamless backdrop), softly out of focus.
+Lighting: even north-facing studio light with a subtle warm fill, no harsh shadows.
+Render every hair strand, skin pore, and facial micro-detail at 2K hyperrealistic quality.
 Do NOT add makeup, alter skin tone, or change any feature. Output must look like a real photograph, not an illustration.`,
   },
   {
-    id:          'face_3q',
-    label:       'Face ¾',
-    emoji:       '🔄',
+    id: 'face_3q',
+    label: 'Face ¾',
+    emoji: '🔄',
     description: 'Turn a front face into a cinematic ¾ profile',
-    isMaster:    false,
-    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic three-quarter (45-degree) profile of the same person. 
-The subject's face should be turned approximately 45 degrees from camera — both eyes visible, strong cheekbone and jaw line reading, slight off-axis gaze. 
-Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour and texture, piercings, and all distinguishing features must match the source precisely. 
-Frame tight from crown to upper chest as a portrait or square crop. 
-Background: clean neutral warm beige seamless studio tone, gently defocused. 
-Lighting: cinematic directional light from the front-facing side with subtle fill on the shadow side, creating natural facial dimension. 
-Render at 2K hyperrealistic quality — every skin pore, individual hair strand, and eye detail must be photographic. 
+    isMaster: false,
+    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic three-quarter (45-degree) profile of the same person.
+The subject's face should be turned approximately 45 degrees from camera — both eyes visible, strong cheekbone and jaw line reading, slight off-axis gaze.
+Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour and texture, piercings, and all distinguishing features must match the source precisely.
+Frame tight from crown to upper chest as a portrait or square crop.
+Background: clean neutral warm beige seamless studio tone, gently defocused.
+Lighting: cinematic directional light from the front-facing side with subtle fill on the shadow side, creating natural facial dimension.
+Render at 2K hyperrealistic quality — every skin pore, individual hair strand, and eye detail must be photographic.
 Do NOT add makeup, alter skin tone, smooth skin, or change any feature. Output must look indistinguishable from a professional studio photograph.`,
   },
 ]
@@ -64,18 +64,16 @@ Do NOT add makeup, alter skin tone, smooth skin, or change any feature. Output m
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
   { label: '16:9', value: '16:9' },
-  { label: '1:1',  value: '1:1'  },
+  { label: '1:1', value: '1:1' },
 ]
 
-const OUTPUT_RESOLUTION = 2048   // 2K
-
-const DEFAULT_MODEL_VALUE = 'nano-banana-edit-pro'   // nano banana edit pro
+const OUTPUT_RESOLUTION = 2048 // 2K
+const DEFAULT_MODEL_VALUE = 'nano-banana-edit-pro' // nano banana edit pro
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
 function detectAspectRatio(width, height) {
   const ratio = width / height
-  if (ratio > 1.6)  return '16:9'
+  if (ratio > 1.6) return '16:9'
   if (ratio < 0.75) return '9:16'
   return '1:1'
 }
@@ -86,18 +84,18 @@ async function compressImage(file) {
     const img = new Image()
     img.onload = () => {
       const MAX_PX = 1568
-      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
+      const scale = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
       const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
+      canvas.width = Math.round(img.width * scale)
       canvas.height = Math.round(img.height * scale)
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
       canvas.toBlob((blob) => {
         resolve({
           file: new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }),
-          url:  URL.createObjectURL(blob),
-          ar:   detectAspectRatio(canvas.width, canvas.height),
-          w:    canvas.width,
-          h:    canvas.height,
+          url: URL.createObjectURL(blob),
+          ar: detectAspectRatio(canvas.width, canvas.height),
+          w: canvas.width,
+          h: canvas.height,
         })
       }, 'image/jpeg', 0.92)
     }
@@ -106,11 +104,10 @@ async function compressImage(file) {
 }
 
 // ── Model Dropdown ────────────────────────────────────────────────────────────
-
 const ModelDropdown = ({ models, value, onChange }) => {
   const [open, setOpen] = useState(false)
   const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
+  const locked = models.filter((m) => m.is_locked)
   const selected = models.find((m) => m.value === value) || unlocked[0]
 
   return (
@@ -131,8 +128,8 @@ const ModelDropdown = ({ models, value, onChange }) => {
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <motion.div
               initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.97 }}
               transition={{ duration: 0.13 }}
               className="absolute right-0 top-9 z-50 w-52 rounded-2xl overflow-hidden"
               style={{
@@ -183,7 +180,6 @@ const ModelDropdown = ({ models, value, onChange }) => {
 }
 
 // ── Preset Card ───────────────────────────────────────────────────────────────
-
 const PresetCard = ({ preset, selected, onSelect, locked }) => (
   <motion.button
     whileTap={{ scale: locked ? 1 : 0.97 }}
@@ -225,7 +221,6 @@ const PresetCard = ({ preset, selected, onSelect, locked }) => (
 )
 
 // ── Before/After Preview ──────────────────────────────────────────────────────
-
 const BeforeAfterPreview = ({ original, result, onClose }) => {
   const [sliderX, setSliderX] = useState(50)
   const [dragging, setDragging] = useState(false)
@@ -294,9 +289,8 @@ const BeforeAfterPreview = ({ original, result, onClose }) => {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-
 export default function CreatePhotoPolishPage() {
-  const navigate                                   = useNavigate()
+  const navigate = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
   const isMaster = profile?.user_tier === 'master'
 
@@ -306,18 +300,17 @@ export default function CreatePhotoPolishPage() {
     ...PHOTO_POLISH_PRESETS.filter((p) => !FACE_PRESETS.some((fp) => fp.id === p.id)),
   ]
 
-  const [models,        setModels]        = useState([])
+  const [models, setModels] = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
-  const [modelValue,    setModelValue]    = useState('')
-
-  const [photo,          setPhoto]          = useState(null)
-  const [selectedPreset, setSelectedPreset] = useState('face_shot')   // default to first face preset
-  const [aspectRatio,    setAspectRatio]    = useState('9:16')
-  const [autoRatio,      setAutoRatio]      = useState(false)
-  const [submitting,     setSubmitting]     = useState(false)
-  const [fullscreen,     setFullscreen]     = useState(false)
-  const [resultUrl,      setResultUrl]      = useState(null)
-  const [showCompare,    setShowCompare]    = useState(false)
+  const [modelValue, setModelValue] = useState('')
+  const [photo, setPhoto] = useState(null)
+  const [selectedPreset, setSelectedPreset] = useState('face_shot')
+  const [aspectRatio, setAspectRatio] = useState('9:16')
+  const [autoRatio, setAutoRatio] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [resultUrl, setResultUrl] = useState(null)
+  const [showCompare, setShowCompare] = useState(false)
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
@@ -342,8 +335,6 @@ export default function CreatePhotoPolishPage() {
     const list = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
     setModels(list)
     const unlocked = list.filter((m) => !m.is_locked)
-
-    // Prefer nano banana edit pro, then user's preferred model, then first unlocked
     const nanoBanana = unlocked.find((m) =>
       m.value === DEFAULT_MODEL_VALUE ||
       m.aka?.toLowerCase().includes('nano banana') ||
@@ -353,7 +344,7 @@ export default function CreatePhotoPolishPage() {
     const prefMatch = preferred && unlocked.find((m) => m.value === preferred)
     setModelValue((nanoBanana || prefMatch || unlocked[0])?.value || '')
     setModelsLoading(false)
-  }, []) // eslint-disable-line
+  }, [isMaster, profile?.preferred_model])
 
   useEffect(() => { loadModels() }, [loadModels])
 
@@ -382,7 +373,7 @@ export default function CreatePhotoPolishPage() {
         const ia = new Uint8Array(ab)
         for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
         const blob = new Blob([ab], { type: item.type })
-        const url  = URL.createObjectURL(blob)
+        const url = URL.createObjectURL(blob)
         const file = new File([blob], item.name, { type: item.type })
         const imgEl = new Image()
         imgEl.onload = () => {
@@ -398,10 +389,9 @@ export default function CreatePhotoPolishPage() {
 
   // ── derived from selected model ───────────────────────────────────────────
   const selectedModel = models.find((m) => m.value === modelValue)
-  const creditCost    = selectedModel?.credit_cost_i2i ?? 0
-
-  const preset      = ALL_PRESETS.find((p) => p.id === selectedPreset)
-  const canAfford   = credits >= creditCost
+  const creditCost = selectedModel?.credit_cost_i2i ?? 0
+  const preset = ALL_PRESETS.find((p) => p.id === selectedPreset)
+  const canAfford = credits >= creditCost
   const canGenerate = !!photo && !!preset && canAfford && !submitting && !!selectedModel
 
   // ── model change — persist preference ────────────────────────────────────
@@ -432,12 +422,11 @@ export default function CreatePhotoPolishPage() {
 
   // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
-    if (!photo)         return toast.error('Upload a photo first')
-    if (!preset)        return toast.error('Select a preset')
+    if (!photo) return toast.error('Upload a photo first')
+    if (!preset) return toast.error('Select a preset')
     if (!selectedModel) return toast.error('Select a model')
-    if (!canAfford)     return toast.error('Not enough credits')
-    if (!user)          return toast.error('Please sign in')
-
+    if (!canAfford) return toast.error('Not enough credits')
+    if (!user) return toast.error('Please sign in')
     if (preset.isMaster && !isMaster) {
       toast.error('This preset requires Master plan')
       return
@@ -453,7 +442,7 @@ export default function CreatePhotoPolishPage() {
         publicUrl = photo.url
       } else {
         const contentType = photo.file.type || 'image/jpeg'
-        const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+        const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
         const { data: uploadData, error: upErr } = await supabase.storage
           .from('generation-uploads')
@@ -465,19 +454,21 @@ export default function CreatePhotoPolishPage() {
       }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                user.id,
-        generation_type:        'image_to_image',
-        status:                 'pending',
-        prompt:                 preset.prompt,
-        model:                  modelValue,
-        aspect_ratio:           aspectRatio,
-        credits_charged:        creditCost,
-        output_type:            'image',
-        output_resolution:      OUTPUT_RESOLUTION,
-        input_image_urls:       [publicUrl],
-        skip_prompt_refinement: true,
-        title:                  `Photo Polish — ${preset.label}`,
+        user_id: user.id,
+        generation_type: 'image_to_image',
+        status: 'pending',
+        prompt: preset.prompt,
+        model: modelValue,
+        aspect_ratio: aspectRatio,
+        credits_charged: creditCost,
+        output_type: 'image',
+        output_resolution: OUTPUT_RESOLUTION,
+        input_image_urls: [publicUrl],
+        skip_prompt_refinement: false,        // ← CHANGE: enable prompt engineering
+        refinement_mode: 'photo_polish',      // ← ADD: triggers vision-guided pipeline
+        title: `Photo Polish — ${preset.label}`,
       })
+
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
@@ -521,7 +512,6 @@ export default function CreatePhotoPolishPage() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-
       {/* Generating overlay */}
       <AnimatePresence>
         {submitting && (
@@ -608,7 +598,6 @@ export default function CreatePhotoPolishPage() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
-
           {/* Photo upload */}
           <div>
             <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -710,8 +699,8 @@ export default function CreatePhotoPolishPage() {
                   onClick={() => { setAspectRatio(opt.value); setAutoRatio(false) }}
                   className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
                   style={{
-                    background: aspectRatio === opt.value ? ACCENT    : 'var(--bg-elevated)',
-                    color:      aspectRatio === opt.value ? '#ffffff' : 'var(--text-secondary)',
+                    background: aspectRatio === opt.value ? ACCENT : 'var(--bg-elevated)',
+                    color: aspectRatio === opt.value ? '#ffffff' : 'var(--text-secondary)',
                   }}
                 >
                   {opt.label}
@@ -722,7 +711,6 @@ export default function CreatePhotoPolishPage() {
               <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Auto-set from your photo</p>
             )}
           </div>
-
         </div>
       </div>
 
@@ -735,7 +723,7 @@ export default function CreatePhotoPolishPage() {
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
               background: canGenerate ? ACCENT : 'var(--bg-elevated)',
-              color:      canGenerate ? '#ffffff' : 'var(--text-muted)',
+              color: canGenerate ? '#ffffff' : 'var(--text-muted)',
             }}
           >
             <Zap size={15} fill="currentColor" />
@@ -746,7 +734,6 @@ export default function CreatePhotoPolishPage() {
               : `Polish · ${creditCost} cr`
             }
           </button>
-
           {!canAfford && photo && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
@@ -755,7 +742,6 @@ export default function CreatePhotoPolishPage() {
               </button>
             </p>
           )}
-
           {resultUrl && (
             <button
               onClick={() => setShowCompare(true)}
@@ -767,7 +753,6 @@ export default function CreatePhotoPolishPage() {
           )}
         </div>
       </div>
-
     </div>
   )
 }
