@@ -1145,6 +1145,15 @@ export default function CreateTalkingHeadPage() {
   const durationNum    = parseInt(duration || '5', 10)
   const isProcessing   = phase !== null
 
+// ── Cleanup on unmount ───────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      try {
+        [SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach(k => sessionStorage.removeItem(k))
+      } catch {}
+    }
+  }, [])
+
   // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
     // ── Lipsync prefill from video page redirect ──────────────────────────
