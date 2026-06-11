@@ -470,17 +470,9 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
   }
 
   // ── image persistence helpers ─────────────────────────────────────────────
-  const persistImages = (imgs) => {
-    try {
-      if (!imgs.length) { sessionStorage.removeItem(SS_IMAGES); return }
-      const promises = imgs.map(({ file }) => new Promise((res) => {
-        const reader = new FileReader()
-        reader.onload = (ev) => res({ base64: ev.target.result, name: file.name, type: file.type })
-        reader.readAsDataURL(file)
-      }))
-      Promise.all(promises).then((arr) => sessionStorage.setItem(SS_IMAGES, JSON.stringify(arr)))
-    } catch { /* noop */ }
-  }
+const persistImages = (_imgs) => {
+  // No-op: base64 image persistence removed to prevent sessionStorage quota exhaustion.
+}
 
   const clearAllImages = () => {
     setImages([])
