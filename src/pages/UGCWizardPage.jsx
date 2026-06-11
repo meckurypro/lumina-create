@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
+import UGCPhotoValidator from '@/components/ugc/UGCPhotoValidator'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -310,7 +311,16 @@ const PhotoSlot = ({ slot, value, onChange, onRemove, uploading }) => {
           className="relative flex flex-col items-center justify-center rounded-2xl overflow-hidden transition-all cursor-pointer"
           style={{ aspectRatio: '3/4', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
         >
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(slot.key, e.target.files?.[0])} />
+         <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) onChange(slot.key, file)
+              e.target.value = ''
+            }}
+          />
           <img
             src={PLACEHOLDER[slot.key]}
             alt={slot.label}
@@ -353,6 +363,7 @@ export default function UGCWizardPage() {
   const [profileId,     setProfileId]     = useState(loadId)
   const [saving,        setSaving]        = useState(false)
   const [uploadingSlot, setUploadingSlot] = useState(null)
+  const [pendingPhoto,  setPendingPhoto]  = useState(null) // { slotKey, file }
 
   // ── Photo refinement state (commented out — kept for future use) ──────────
   // const [refineEnabled,    setRefineEnabled]    = useState(false)
@@ -458,6 +469,10 @@ export default function UGCWizardPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+ const openValidator = (slotKey, file) => {
+    setPendingPhoto({ slotKey, file })
   }
 
   const handlePhotoUpload = async (slotKey, file) => {
@@ -680,12 +695,12 @@ export default function UGCWizardPage() {
 
                   {/* Photo slots */}
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 mb-6">
-                    {PHOTO_SLOTS.map((slot) => (
+                   {PHOTO_SLOTS.map((slot) => (
                       <PhotoSlot
                         key={slot.key}
                         slot={slot}
                         value={form[slot.key]}
-                        onChange={handlePhotoUpload}
+                        onChange={openValidator}
                         onRemove={handlePhotoRemove}
                         uploading={uploadingSlot === slot.key}
                       />
@@ -738,7 +753,7 @@ export default function UGCWizardPage() {
         </div>
       </div>
 
-      {/* Footer CTA */}
+     {/* Footer CTA */}
       <div className="flex-shrink-0 px-4 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl">
           <button
@@ -767,6 +782,19 @@ export default function UGCWizardPage() {
           </button>
         </div>
       </div>
+
+      {/* Photo validator overlay */}
+      {pendingPhoto && (
+        <UGCPhotoValidator
+          file={pendingPhoto.file}
+          slotKey={pendingPhoto.slotKey}
+          onApprove={(processedFile) => {
+            handlePhotoUpload(pendingPhoto.slotKey, processedFile)
+            setPendingPhoto(null)
+          }}
+          onCancel={() => setPendingPhoto(null)}
+        />
+      )}
 
     </div>
   )
