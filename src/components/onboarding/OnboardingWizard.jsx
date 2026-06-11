@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { profiles } from '@/lib/supabase'
+import { profiles, supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/Input'
 import toast from 'react-hot-toast'
 
@@ -248,6 +248,35 @@ export default function OnboardingWizard({ onComplete }) {
       preferred_aspect_ratio: data.preferred_aspect_ratio,
     })
     if (error) { setLoading(false); toast.error(error.message || 'Failed to save profile'); return }
+
+    // ── Seed user_model_preferences with all required models ──────────────────
+    // Required models become the user's baseline. They can add more from
+    // the Model Preferences page. Non-fatal if this fails — applyModelPreferences
+    // already handles missing rows gracefully by returning all models unfiltered.
+    try {
+      const { data: requiredModels } = await supabase
+        .from('models')
+        .select('id')
+        .eq('is_required', true)
+        .eq('is_active', true)
+
+      if (requiredModels?.length) {
+        await supabase
+          .from('user_model_preferences')
+          .upsert(
+            requiredModels.map((m) => ({
+              user_id:   user.id,
+              model_id:  m.id,
+              is_active: true,
+            })),
+            { onConflict: 'user_id,model_id' }
+          )
+      }
+    } catch (e) {
+      console.warn('[onboarding] failed to seed model preferences:', e)
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     await refreshProfile()
     toast.success('Welcome to Meckury AI! 🎉')
     setLoading(false)
