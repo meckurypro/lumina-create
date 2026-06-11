@@ -8,7 +8,6 @@ import { promptiqAccess } from '@/lib/promptiq'
 import { useAuth } from '@/context/AuthContext'
 import { TemplateCard } from '@/components/templates/TemplateCard'
 
-// ── Category pill ─────────────────────────────────────────
 const CategoryPill = ({ label, active, onClick }) => (
   <button
     onClick={onClick}
@@ -23,7 +22,6 @@ const CategoryPill = ({ label, active, onClick }) => (
   </button>
 )
 
-// ── Tool entry card (generic, for Filma / Cinematic / future tools) ──
 const ToolEntryCard = ({ icon: Icon, title, description, accentVar, borderVar, onClick }) => (
   <motion.button
     initial={{ opacity: 0, y: 8 }}
@@ -54,7 +52,6 @@ const ToolEntryCard = ({ icon: Icon, title, description, accentVar, borderVar, o
   </motion.button>
 )
 
-// ── Empty state ────────────────────────────────────────────
 const EmptyState = ({ query }) => (
   <div className="flex flex-col items-center justify-center py-20 gap-3">
     <div
@@ -72,7 +69,6 @@ const EmptyState = ({ query }) => (
   </div>
 )
 
-// ── Skeleton loader ────────────────────────────────────────
 const SkeletonCard = ({ i }) => (
   <motion.div
     key={i}
@@ -90,16 +86,15 @@ const SkeletonCard = ({ i }) => (
   </motion.div>
 )
 
-// ── Tool identifier constants (must match promptiq_tools.identifier seeds) ──
-const TOOL_FILMA       = 'filma'
-const TOOL_CINEMATIC   = 'cinematic_transition'
+const TOOL_FILMA     = 'filma'
+const TOOL_CINEMATIC = 'cinematic_transition'
 
 export default function PromptIQPage({ onClose }) {
-  const navigate             = useNavigate()
+  const navigate = useNavigate()
   const { isStaff, isAdmin, credits, user } = useAuth()
 
   const [templates,      setTemplates]      = useState([])
-  const [accessMap,      setAccessMap]      = useState({})  // { [identifier]: { has_access, is_free } }
+  const [accessMap,      setAccessMap]      = useState({})
   const [loading,        setLoading]        = useState(true)
   const [search,         setSearch]         = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
@@ -107,7 +102,6 @@ export default function PromptIQPage({ onClose }) {
 
   const hasStaffAccess = isStaff || isAdmin
 
-  // ── Load templates + access map in parallel ──
   useEffect(() => {
     if (!hasStaffAccess || !user) return
     const load = async () => {
@@ -116,6 +110,7 @@ export default function PromptIQPage({ onClose }) {
         templatesDb.getAll(),
         promptiqAccess.getMyAccess(user.id),
       ])
+      // Show ALL active promptiq templates to staff — no per-template grant required
       setTemplates((tmplData || []).filter((t) => t.visibility === 'promptiq' && t.is_active))
       setAccessMap(access || {})
       setLoading(false)
@@ -126,10 +121,6 @@ export default function PromptIQPage({ onClose }) {
   const categories = ['All', ...new Set(templates.map((t) => t.category).filter(Boolean))]
 
   const filtered = templates.filter((t) => {
-    // Only show templates this staff member has access to
-    const grant = accessMap[t.slug]
-    if (!grant?.has_access) return false
-
     const matchesSearch =
       !search ||
       t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -139,6 +130,7 @@ export default function PromptIQPage({ onClose }) {
   })
 
   const handleSelectTemplate = (template) => {
+    // Check if there's a specific grant; fall back to free=false if not set
     const grant  = accessMap[template.slug]
     const isFree = grant?.is_free ?? false
     onClose?.()
@@ -168,7 +160,6 @@ export default function PromptIQPage({ onClose }) {
   const filmaGrant     = accessMap[TOOL_FILMA]
   const cinematicGrant = accessMap[TOOL_CINEMATIC]
 
-  // ── Locked view ────────────────────────────────────────
   if (!hasStaffAccess) {
     return (
       <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)' }}>
@@ -273,8 +264,8 @@ export default function PromptIQPage({ onClose }) {
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 lg:px-8 py-4">
 
-          {/* ── Built-in tools — only shown if access granted ── */}
-          {loading ? null : (
+          {/* Built-in tools — gated by access grants */}
+          {!loading && (
             <>
               {filmaGrant?.has_access && (
                 <ToolEntryCard
@@ -299,20 +290,10 @@ export default function PromptIQPage({ onClose }) {
             </>
           )}
 
-          {/* ── Templates ── */}
+          {/* Templates */}
           {loading ? (
             <div className="grid grid-cols-2 gap-3">
               {[...Array(4)].map((_, i) => <SkeletonCard key={i} i={i} />)}
-            </div>
-          ) : filtered.length === 0 && !filmaGrant?.has_access && !cinematicGrant?.has_access ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: 'var(--bg-elevated)' }}>
-                <Lock size={24} style={{ color: 'var(--text-muted)' }} />
-              </div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No tools assigned yet</p>
-              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-                Ask your admin to grant you access to PromptIQ tools
-              </p>
             </div>
           ) : filtered.length === 0 ? (
             <EmptyState query={search} />
@@ -333,7 +314,6 @@ export default function PromptIQPage({ onClose }) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-4 py-4 text-center">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             ⚡ Credit usage per tool is controlled by your admin
