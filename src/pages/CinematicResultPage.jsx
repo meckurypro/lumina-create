@@ -5,7 +5,7 @@ import { motion, AnimatePresence }                  from 'framer-motion'
 import {
   ArrowLeft, Download, RefreshCw,
   ChevronDown, Film, CheckCircle, Loader2,
-  AlertCircle, Clapperboard,
+  AlertCircle,
 } from 'lucide-react'
 import {
   supabase,
@@ -179,53 +179,6 @@ const ClipCard = ({ clip, slotIndex, activeVersionId, onVersionChange, onRegener
   )
 }
 
-// ── Full Download Progress Overlay ────────────────────────
-const DownloadOverlay = ({ stage, progress, clipCount }) => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{    opacity: 0 }}
-    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 px-8"
-    style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
-  >
-    {/* Animated film strip icon */}
-    <motion.div
-      animate={{ scale: [1, 1.08, 1] }}
-      transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
-      className="flex h-16 w-16 items-center justify-center rounded-3xl"
-      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
-    >
-      <Clapperboard size={28} style={{ color: '#fff' }} />
-    </motion.div>
-
-    <div className="flex flex-col items-center gap-1.5 text-center">
-      <p className="text-base font-black text-white">
-        {stage === 'fetching'  && `Fetching clips…`}
-        {stage === 'stitching' && `Stitching video…`}
-        {stage === 'exporting' && `Exporting…`}
-      </p>
-      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
-        {stage === 'fetching'  && `Downloading ${clipCount} clip${clipCount !== 1 ? 's' : ''} from storage`}
-        {stage === 'stitching' && 'Concatenating with FFmpeg — this may take a moment'}
-        {stage === 'exporting' && 'Almost there, preparing your file'}
-      </p>
-    </div>
-
-    {/* Progress bar */}
-    <div className="w-full max-w-xs rounded-full overflow-hidden" style={{ height: 4, background: 'rgba(255,255,255,0.1)' }}>
-      <motion.div
-        className="h-full rounded-full"
-        style={{ background: 'var(--brand, #6366f1)' }}
-        animate={{ width: `${progress}%` }}
-        transition={{ ease: 'easeOut', duration: 0.4 }}
-      />
-    </div>
-    <p className="text-xs font-bold tabular-nums" style={{ color: 'rgba(255,255,255,0.35)' }}>
-      {Math.round(progress)}%
-    </p>
-  </motion.div>
-)
-
 // ── Main Page ─────────────────────────────────────────────
 export default function CinematicResultPage() {
   const navigate         = useNavigate()
@@ -234,15 +187,9 @@ export default function CinematicResultPage() {
 
   const [project,        setProject]        = useState(null)
   const [loading,        setLoading]        = useState(true)
-  // Map of clipId → activeVersionId (lifted from ClipCard)
   const [activeVersions, setActiveVersions] = useState({})
-  // Full-video download state
-  const [downloading,    setDownloading]    = useState(false)
-  const [dlStage,        setDlStage]        = useState('fetching')   // 'fetching' | 'stitching' | 'exporting'
-  const [dlProgress,     setDlProgress]     = useState(0)
 
-  const pollRef  = useRef(null)
-  const ffmpegRef = useRef(null)
+  const pollRef = useRef(null)
 
   const isPromptIQ = (isStaff || isAdmin) && project?.templates?.visibility === 'promptiq'
 
@@ -253,11 +200,10 @@ export default function CinematicResultPage() {
     setProject(data)
     setLoading(false)
 
-    // Initialise activeVersions map from DB is_active flags (only on first load)
     setActiveVersions(prev => {
       const next = { ...prev }
       for (const clip of (data.cinematic_clips || [])) {
-        if (next[clip.id]) continue  // already set — user may have changed it
+        if (next[clip.id]) continue
         const versions = clip.cinematic_clip_versions || []
         const active   = versions.find(v => v.is_active) || versions[0]
         if (active) next[clip.id] = active.id
@@ -280,7 +226,7 @@ export default function CinematicResultPage() {
     return () => clearInterval(pollRef.current)
   }, [project, loadProject])
 
-  // ── Version change (lifted from ClipCard) ───────────────
+  // ── Version change ───────────────────────────────────────
   const handleVersionChange = (clipId, versionId) => {
     setActiveVersions(prev => ({ ...prev, [clipId]: versionId }))
   }
@@ -301,120 +247,10 @@ export default function CinematicResultPage() {
     }
   }
 
-  // ── Full video download via ffmpeg.wasm ──────────────────
-  const handleDownloadFull = async () => {
-    const clips = [...(project?.cinematic_clips || [])].sort((a, b) => a.slot_index - b.slot_index)
-
-    // Collect the chosen output URL for each clip
-    const urls = clips.map(clip => {
-      const versions    = clip.cinematic_clip_versions || []
-      const activeId    = activeVersions[clip.id]
-      const activeVer   = versions.find(v => v.id === activeId) || versions.find(v => v.is_active) || versions[0]
-      return activeVer?.generations?.output_url || null
-    })
-
-    const missing = urls.filter(u => !u).length
-    if (missing > 0) {
-      toast.error(`${missing} clip${missing !== 1 ? 's are' : ' is'} not ready yet`)
-      return
-    }
-
-    setDownloading(true)
-    setDlStage('fetching')
-    setDlProgress(0)
-
-    try {
-      // ── Lazy-load ffmpeg.wasm ──────────────────────────
-      // We import dynamically so the ~30 MB wasm bundle is only
-      // fetched when the user actually clicks "Download Full Video"
-      const { FFmpeg }     = await import('@ffmpeg/ffmpeg')
-      const { fetchFile }  = await import('@ffmpeg/util')
-
-      if (!ffmpegRef.current) {
-        const ff = new FFmpeg()
-        // Wire ffmpeg log to console for debugging
-        ff.on('log', ({ message }) => console.debug('[ffmpeg]', message))
-        // Wire ffmpeg progress to our UI progress bar
-        ff.on('progress', ({ progress }) => {
-          // ffmpeg progress is 0-1 during the stitch phase
-          setDlProgress(60 + progress * 35)   // 60–95 range for stitching phase
-        })
-        const { toBlobURL } = await import('@ffmpeg/util')
-        const BASE_CORE   = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
-        const BASE_WORKER = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm'
-        const [classWorkerURL, coreURL, wasmURL] = await Promise.all([
-          toBlobURL(`${BASE_WORKER}/worker.js`,      'text/javascript'),
-          toBlobURL(`${BASE_CORE}/ffmpeg-core.js`,   'text/javascript'),
-          toBlobURL(`${BASE_CORE}/ffmpeg-core.wasm`, 'application/wasm'),
-        ])
-        await ff.load({ classWorkerURL, coreURL, wasmURL })
-        ffmpegRef.current = ff
-      }
-
-      const ff = ffmpegRef.current
-
-      // ── Phase 1: Fetch all clips ───────────────────────
-      const clipNames = []
-      for (let i = 0; i < urls.length; i++) {
-        setDlProgress(Math.round((i / urls.length) * 55))   // 0–55 range for fetch phase
-        const fileName = `clip_${i}.mp4`
-        const fileData = await fetchFile(urls[i])
-        await ff.writeFile(fileName, fileData)
-        clipNames.push(fileName)
-      }
-
-      setDlStage('stitching')
-      setDlProgress(60)
-
-      // ── Phase 2: Write concat manifest ────────────────
-      const manifest = clipNames.map(n => `file '${n}'`).join('\n')
-      await ff.writeFile('manifest.txt', manifest)
-
-      // ── Phase 3: Concatenate ──────────────────────────
-      // -f concat          : use the concat demuxer
-      // -safe 0            : allow relative paths in manifest
-      // -c copy            : stream copy — no re-encode, fast & lossless
-      await ff.exec([
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', 'manifest.txt',
-        '-c', 'copy',
-        'output.mp4',
-      ])
-
-      setDlStage('exporting')
-      setDlProgress(96)
-
-      // ── Phase 4: Read output & trigger download ────────
-      const data = await ff.readFile('output.mp4')
-      const blob = new Blob([data.buffer], { type: 'video/mp4' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = `${project.name} — Full Video.mp4`
-      a.click()
-      URL.revokeObjectURL(url)
-
-      // ── Cleanup ffmpeg virtual FS ──────────────────────
-      for (const name of clipNames) {
-        try { await ff.deleteFile(name) } catch {}
-      }
-      try { await ff.deleteFile('manifest.txt') } catch {}
-      try { await ff.deleteFile('output.mp4')   } catch {}
-
-      setDlProgress(100)
-      toast.success('Full video downloaded!', { duration: 4000 })
-
-    } catch (err) {
-      console.error('Full download error:', err)
-      toast.error(err.message || 'Download failed — check console for details')
-    } finally {
-      setTimeout(() => {
-        setDownloading(false)
-        setDlProgress(0)
-      }, 600)
-    }
-  }
+  // ── DISABLED: Download Full Video via FFmpeg WASM ────────
+  // FFmpeg merge is unstable — use individual clip Save buttons above instead.
+  // Re-enable handleDownloadFull + DownloadOverlay + canDownloadFull CTA
+  // once FFmpeg WASM concat is confirmed working in production.
 
   // ── Regenerate a single clip ─────────────────────────────
   const handleRegenerate = async (clip, slotIndex) => {
@@ -495,27 +331,8 @@ export default function CinematicResultPage() {
   const allDone    = clips.length > 0 && clips.every(c => c.status === 'completed')
   const anyPending = clips.some(c => c.status === 'pending' || c.status === 'processing')
 
-  // Full download is available only when every clip has a completed output
-  const canDownloadFull = allDone && clips.every(clip => {
-    const versions  = clip.cinematic_clip_versions || []
-    const activeId  = activeVersions[clip.id]
-    const activeVer = versions.find(v => v.id === activeId) || versions.find(v => v.is_active) || versions[0]
-    return !!activeVer?.generations?.output_url
-  })
-
   return (
     <div className="min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
-
-      {/* Full-video download overlay */}
-      <AnimatePresence>
-        {downloading && (
-          <DownloadOverlay
-            stage={dlStage}
-            progress={dlProgress}
-            clipCount={clips.length}
-          />
-        )}
-      </AnimatePresence>
 
       {/* Header */}
       <div
@@ -559,7 +376,7 @@ export default function CinematicResultPage() {
       {/* Clips */}
       <div
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-5"
-        style={{ paddingBottom: 'calc(56px + 96px)' }}
+        style={{ paddingBottom: 'calc(56px + 32px)' }}
       >
         {clips.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -589,7 +406,10 @@ export default function CinematicResultPage() {
         </button>
       </div>
 
-      {/* ── Download Full Video CTA ── */}
+      {/* ── DISABLED: Download Full Video CTA (FFmpeg WASM merge) ──────────────
+      Removed until FFmpeg WASM concat is stable in production.
+      Individual clip Save buttons above remain fully functional.
+
       <AnimatePresence>
         {canDownloadFull && (
           <motion.div
@@ -627,6 +447,8 @@ export default function CinematicResultPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      ── END DISABLED ── */}
+
     </div>
   )
 }
