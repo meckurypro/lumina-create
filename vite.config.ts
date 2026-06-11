@@ -42,7 +42,7 @@ export default defineConfig({
       },
       manifest: {
         name:             'Meckury AI',
-        short_name:       'Meck AI',
+        short_name:       'Meckury',
         description:      'AI-powered content creation — imagine it, create it.',
         start_url:        '/',
         display:          'standalone',
