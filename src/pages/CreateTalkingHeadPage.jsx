@@ -17,9 +17,10 @@ const ACCENT     = 'var(--tool-talking-head)'
 const ACCENT_SUB = 'var(--tool-talking-head-subtle)'
 const ACCENT_BDR = 'var(--tool-talking-head-border)'
 
-const SS_PROMPT      = 'meckury_th_prompt'
-const SS_SUBJECT_IMG = 'meckury_th_subject_img'
-const SS_SUBJECT_VID = 'meckury_th_subject_vid'
+const SS_PROMPT         = 'meckury_th_prompt'
+const SS_SUBJECT_IMG    = 'meckury_th_subject_img'
+const SS_SUBJECT_VID    = 'meckury_th_subject_vid'
+const SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
 
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
@@ -135,8 +136,6 @@ function getAudioDuration(fileOrBlob) {
   })
 }
 
-// FIX 1 + 2: trimAudioToLimit now accepts startTime so user can pick which
-// portion to keep. startTime defaults to 0 (original behaviour).
 async function trimAudioToLimit(blob, maxSeconds, startTime = 0) {
   const buffer      = await decodeBlob(blob)
   const startSample = Math.floor(startTime * buffer.sampleRate)
@@ -144,18 +143,12 @@ async function trimAudioToLimit(blob, maxSeconds, startTime = 0) {
   const endSample   = Math.min(startSample + maxSamples, buffer.length)
   const trimSamples = endSample - startSample
 
-  // Already fits with no offset — no-op
   if (startSample === 0 && buffer.length <= maxSamples) return blob
 
-  const ctx = new OfflineAudioContext(
-    buffer.numberOfChannels,
-    trimSamples,
-    buffer.sampleRate,
-  )
+  const ctx = new OfflineAudioContext(buffer.numberOfChannels, trimSamples, buffer.sampleRate)
   const src = ctx.createBufferSource()
   src.buffer = buffer
   src.connect(ctx.destination)
-  // Play from startSample, offset into the destination at t=0
   src.start(0, startTime, maxSeconds)
   const trimmed = await ctx.startRendering()
   return audioBufferToWav(trimmed)
@@ -227,13 +220,10 @@ const readVideoMetadata = (file) => new Promise((resolve) => {
   vid.src = url
 })
 
-// FIX 5: source file deletion moved to AFTER edge function returns, not 60s timer.
-// The caller is responsible for cleanup — callTrimEdgeFunction returns srcPath
-// so the caller can delete it safely after success.
 async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTime, onProgress }) {
   onProgress?.(5)
-  let sourceUrl = url
-  let tempStoragePath = null  // track for cleanup after edge fn succeeds
+  let sourceUrl       = url
+  let tempStoragePath = null
 
   if (file) {
     const ext     = (file.name.split('.').pop() || 'mp4').toLowerCase()
@@ -246,7 +236,6 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
     const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(srcPath)
     sourceUrl       = publicUrl
     tempStoragePath = srcPath
-    // FIX 5: NO setTimeout deletion here — caller deletes after edge fn returns
   }
 
   onProgress?.(25)
@@ -262,7 +251,6 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
     result = data
   } finally {
     clearInterval(tick)
-    // FIX 5: delete temp source now that edge fn has finished (success OR failure)
     if (tempStoragePath) {
       supabase.storage.from('generation-uploads').remove([tempStoragePath]).catch(() => {})
     }
@@ -329,6 +317,41 @@ const restoreFile = (key) => new Promise((resolve) => {
     resolve({ file: new File([blob], name, { type }), url: URL.createObjectURL(blob) })
   } catch { resolve(null) }
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIPSYNC PREFILL BANNER
+// Shown briefly at top when user arrives via the redirect from CreateVideoPage
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LipsyncPrefillBanner = ({ script, onDismiss }) => (
+  <motion.div
+    initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+    transition={{ duration: 0.2 }}
+    className="mx-auto w-full max-w-xl px-4 lg:px-0 pt-4"
+  >
+    <div
+      className="rounded-2xl px-4 py-3 flex items-start gap-3"
+      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold" style={{ color: ACCENT }}>
+          Transferred from Video — ready to go
+        </p>
+        {script && (
+          <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
+            Script: "{script.length > 60 ? script.slice(0, 60) + '…' : script}"
+          </p>
+        )}
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          Your image and script are pre-filled below. Choose a voice model and hit Generate.
+        </p>
+      </div>
+      <button onClick={onDismiss} className="flex-shrink-0 p-1 rounded-lg" style={{ color: 'var(--text-muted)' }}>
+        <X size={13} />
+      </button>
+    </div>
+  </motion.div>
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTING CHIPS
@@ -651,9 +674,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
     })
   }
 
-  const handleImportFull = (gen) => {
-    stopAudio(); onImport(gen)
-  }
+  const handleImportFull = (gen) => { stopAudio(); onImport(gen) }
 
   if (mode === null) {
     return (
@@ -745,10 +766,8 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.18, ease: 'easeInOut' }}
+                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18, ease: 'easeInOut' }}
                     style={{ overflow: 'hidden' }}>
                     <div className="px-3 pb-2 pt-1 flex flex-col gap-1.5"
                       style={{ borderTop: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
@@ -759,8 +778,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                       ) : chunks.length === 0 ? (
                         <div className="flex items-center justify-between py-2">
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Parts not ready — use full audio</p>
-                          <button
-                            onClick={() => handleImportFull(gen)}
+                          <button onClick={() => handleImportFull(gen)}
                             className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
                             style={{ background: ACCENT, color: '#fff' }}>
                             Use full
@@ -774,8 +792,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                         return (
                           <div key={chunk.id} className="flex items-center gap-2 py-1.5 px-2 rounded-xl"
                             style={{ background: 'var(--bg-elevated)' }}>
-                            <button
-                              onClick={() => togglePlay(chunk.id, chunk.public_url)}
+                            <button onClick={() => togglePlay(chunk.id, chunk.public_url)}
                               className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
                               style={{ background: isPlayingCk ? ACCENT : ACCENT_SUB }}>
                               {isPlayingCk
@@ -788,8 +805,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
                                 {chunkDurStr}{willTrimCk ? ` · will trim to ${fmtS(maxDurationS)}` : ''}
                               </p>
                             </div>
-                            <button
-                              onClick={() => handleImportChunk(gen, chunk)}
+                            <button onClick={() => handleImportChunk(gen, chunk)}
                               className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95"
                               style={{ background: ACCENT, color: '#fff' }}>
                               {willTrimCk ? 'Import & trim' : 'Use'}
@@ -810,7 +826,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIX 1 + 2: CHAINED AUDIO PLAYER — preview respects trim start + limit
+// CHAINED AUDIO PLAYER
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
@@ -825,15 +841,12 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
   const fmtTime     = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   const fmtS        = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
 
-  // FIX 1: buildChain now applies the same trim (start + limit) as buildAudioUrl
   const buildChain = useCallback(async () => {
     const blobs = await Promise.all(
       filledSlots.map(async (slot) => {
         let blob = slot.file
           ? slot.file
           : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
-
-        // Apply trim: respect both startTime and limit — mirrors buildAudioUrl exactly
         if (slot._needsTrim && slot._trimToSeconds > 0) {
           blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
         }
@@ -847,18 +860,17 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
 
   useEffect(() => {
     return () => {
-      if (rafRef.current)   cancelAnimationFrame(rafRef.current)
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+      if (rafRef.current)     cancelAnimationFrame(rafRef.current)
+      if (audioRef.current)   { audioRef.current.pause(); audioRef.current = null }
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
     }
   }, [])
 
   useEffect(() => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    if (audioRef.current)   { audioRef.current.pause(); audioRef.current = null }
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    setPlaying(false)
-    setProgress(0)
+    if (rafRef.current)     cancelAnimationFrame(rafRef.current)
+    setPlaying(false); setProgress(0)
   }, [filledSlots.length])
 
   const tickProgress = () => {
@@ -871,7 +883,6 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
   const handlePlayPause = async () => {
     if (playing) { audioRef.current?.pause(); setPlaying(false); return }
     try {
-      // Rebuild chain whenever start times may have changed
       if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
       blobUrlRef.current = await buildChain()
       if (!audioRef.current) {
@@ -885,8 +896,7 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
       setPlaying(true)
       rafRef.current = requestAnimationFrame(tickProgress)
     } catch (err) {
-      toast.error('Could not play audio')
-      console.error(err)
+      toast.error('Could not play audio'); console.error(err)
     }
   }
 
@@ -902,14 +912,11 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
   if (filledSlots.length === 0) return null
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
       className="flex flex-col gap-2 p-3 rounded-2xl"
       style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
       <div className="flex items-center gap-3">
-        <button
-          onClick={handlePlayPause}
+        <button onClick={handlePlayPause}
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
           style={{ background: ACCENT }}>
           {playing
@@ -917,9 +924,7 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
             : <Play  size={14} style={{ color: '#fff' }} fill="currentColor" />}
         </button>
         <div className="flex-1 flex flex-col gap-1 min-w-0">
-          <div
-            className="relative h-1.5 rounded-full cursor-pointer"
-            style={{ background: 'var(--bg-card)' }}
+          <div className="relative h-1.5 rounded-full cursor-pointer" style={{ background: 'var(--bg-card)' }}
             onClick={handleSeek}>
             <div className="absolute inset-y-0 left-0 rounded-full transition-all"
               style={{ width: `${progress * 100}%`, background: ACCENT }} />
@@ -933,7 +938,6 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
         </div>
       </div>
 
-      {/* FIX 2: per-slot trim start slider shown when slot needs trim */}
       <div className="flex flex-col gap-1">
         {audioSlots.map((slot, i) => slot && (
           <div key={i} className="flex flex-col gap-1 px-2 py-1.5 rounded-xl" style={{ background: 'var(--bg-card)' }}>
@@ -945,14 +949,12 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
               <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
                 {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
               </span>
-              <button
-                onClick={() => onSlotClear(i)}
+              <button onClick={() => onSlotClear(i)}
                 className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
                 <X size={10} />
               </button>
             </div>
-            {/* FIX 2: show start-time slider only when this slot needs trimming */}
             {slot._needsTrim && slot._rawDuration != null && slot._trimToSeconds != null && (
               <div className="flex flex-col gap-1 pt-1" style={{ borderTop: '1px solid var(--border-color)' }}>
                 <div className="flex items-center justify-between">
@@ -964,16 +966,10 @@ function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
                     {fmtS(slot._trimStartTime ?? 0)} → {fmtS((slot._trimStartTime ?? 0) + slot._trimToSeconds)}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, slot._rawDuration - slot._trimToSeconds)}
-                  step={0.1}
-                  value={slot._trimStartTime ?? 0}
+                <input type="range" min={0} max={Math.max(0, slot._rawDuration - slot._trimToSeconds)}
+                  step={0.1} value={slot._trimStartTime ?? 0}
                   onChange={(e) => onSlotStartChange(i, Number(e.target.value))}
-                  className="w-full"
-                  style={{ accentColor: ACCENT }}
-                />
+                  className="w-full" style={{ accentColor: ACCENT }} />
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   Source is {fmtS(slot._rawDuration)} — drag to pick which {fmtS(slot._trimToSeconds)} to keep
                 </p>
@@ -1011,8 +1007,7 @@ function MultiSlotAudio({
           {label}{charLabel}
         </p>
         {filledCount > 0 && (
-          <span
-            className="text-xs px-2 py-0.5 rounded-lg font-semibold"
+          <span className="text-xs px-2 py-0.5 rounded-lg font-semibold"
             style={{ background: isFull ? ACCENT : ACCENT_SUB, color: isFull ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
             {fmtS(totalUsed)} / {durationS}s {isFull ? '· full' : `· ${fmtS(remaining)} left`}
           </span>
@@ -1031,9 +1026,7 @@ function MultiSlotAudio({
             { value: 'upload', label: 'Audio',  icon: Mic      },
             { value: 'text',   label: 'Script',  icon: FileText },
           ].map(({ value, label: lbl, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => onAudioModeChange(value)}
+            <button key={value} onClick={() => onAudioModeChange(value)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{ background: audioMode === value ? ACCENT : 'transparent', color: audioMode === value ? '#ffffff' : 'var(--text-muted)' }}>
               <Icon size={11} />{lbl}
@@ -1045,17 +1038,10 @@ function MultiSlotAudio({
       {audioMode === 'upload' && (
         <div className="flex flex-col gap-2">
           {filledCount > 0 && (
-            <ChainedAudioPlayer
-              audioSlots={audioSlots}
-              onSlotClear={onSlotClear}
-              onSlotStartChange={onSlotStartChange}
-            />
+            <ChainedAudioPlayer audioSlots={audioSlots} onSlotClear={onSlotClear} onSlotStartChange={onSlotStartChange} />
           )}
           {!isFull && (
-            <motion.div
-              key={`picker-${filledCount}`}
-              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}>
+            <motion.div key={`picker-${filledCount}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
               {filledCount > 0 && (
                 <p className="text-xs mb-1.5 font-medium" style={{ color: 'var(--text-muted)' }}>
                   Part {filledCount + 1} · {fmtS(remaining)} remaining
@@ -1064,17 +1050,13 @@ function MultiSlotAudio({
               <AudioSourcePicker
                 onAudioUpload={(e) => onSlotFill(filledCount, e)}
                 onImport={(gen) => onSlotFill(filledCount, null, gen)}
-                userId={userId}
-                maxDurationS={remaining}
-                slotIndex={filledCount}
+                userId={userId} maxDurationS={remaining} slotIndex={filledCount}
               />
             </motion.div>
           )}
           {isFull && filledCount > 0 && (
-            <motion.p
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="text-xs text-center py-1 font-semibold"
-              style={{ color: ACCENT }}>
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="text-xs text-center py-1 font-semibold" style={{ color: ACCENT }}>
               Budget full · {durationS}s used ✓
             </motion.p>
           )}
@@ -1082,9 +1064,7 @@ function MultiSlotAudio({
       )}
 
       {audioMode === 'text' && (
-        <textarea
-          value={script}
-          onChange={(e) => onScriptChange(e.target.value)}
+        <textarea value={script} onChange={(e) => onScriptChange(e.target.value)}
           placeholder="Type the script this character will speak…"
           rows={3}
           className="w-full px-4 py-3 rounded-2xl text-sm resize-none outline-none transition-all"
@@ -1107,13 +1087,9 @@ function MultiSlotAudio({
 function ValidationBanner({ errors }) {
   if (!errors.length) return null
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col gap-1.5">
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-1.5">
       {errors.map((err, i) => (
-        <div
-          key={i}
-          className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
+        <div key={i} className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs font-medium"
           style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.18)' }}>
           <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
           <span>{err}</span>
@@ -1161,13 +1137,36 @@ export default function CreateTalkingHeadPage() {
 
   const [pendingVideoSubject, setPendingVideoSubject] = useState(false)
 
+  // ── Lipsync prefill (from CreateVideoPage redirect) ──────────────────────
+  // Stored as { script, model, audioMode } from session storage.
+  // We keep it visible in a banner until the user dismisses it.
+  const [lipsyncPrefill,      setLipsyncPrefill]      = useState(null)
+  // Pending model to set once the models list is loaded
+  const pendingModelRef = useRef(null)
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
   const durationNum    = parseInt(duration || '5', 10)
   const isProcessing   = phase !== null
 
   // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
+    // ── Lipsync prefill from video page redirect ──────────────────────────
+    try {
+      const raw = sessionStorage.getItem(SS_LIPSYNC_PREFILL)
+      if (raw) {
+        sessionStorage.removeItem(SS_LIPSYNC_PREFILL)
+        const prefill = JSON.parse(raw)
+        if (prefill.script)    setScript1(prefill.script)
+        if (prefill.audioMode) setAudioMode1(prefill.audioMode)
+        if (prefill.model)     pendingModelRef.current = prefill.model
+        // Store for banner display
+        setLipsyncPrefill(prefill)
+      }
+    } catch {}
+
+    // ── Standard prompt / subject restore ────────────────────────────────
     try { const p = sessionStorage.getItem(SS_PROMPT); if (p) setPrompt(p) } catch {}
+
     restoreFile(SS_SUBJECT_IMG).then((f) => {
       if (!f) return
       setFaceImage(f)
@@ -1226,7 +1225,18 @@ export default function CreateTalkingHeadPage() {
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
+
     setPendingVideoSubject((isPending) => {
+      // ── Apply pending model from lipsync prefill ──────────────────────
+      if (pendingModelRef.current) {
+        const preferredModel = list.find((m) => m.value === pendingModelRef.current && !m.is_locked)
+        pendingModelRef.current = null
+        if (preferredModel) {
+          setModel(preferredModel.value)
+          return isPending ? true : false
+        }
+      }
+
       if (isPending) {
         const videoModel = list.find((m) => !m.is_locked && (m.supports_video_input ?? false))
                         || list.find((m) => !m.is_locked)
@@ -1265,10 +1275,9 @@ export default function CreateTalkingHeadPage() {
     return 'compatible'
   }, [caps.videoInput, videoFile, durationNum])
 
-  const videoNeedsTrim = videoCompat === 'incompatible'
-  // FIX 3: distinguish "already trimmed but duration changed" from fresh incompatible
+  const videoNeedsTrim       = videoCompat === 'incompatible'
   const videoTrimmedButStale = videoFile?._trimmed && videoNeedsTrim
-  const videoTooShort  = videoCompat === 'rejected'
+  const videoTooShort        = videoCompat === 'rejected'
 
   // ── Credit cost ──────────────────────────────────────────────────────────
   const creditCost = (() => {
@@ -1287,13 +1296,10 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresImage && !faceImage)
       errors.push('Upload a face photo — this model requires one')
-
     if (caps.requiresVideo && !videoFile)
       errors.push('Upload a subject video — this model requires one')
-
     if (caps.requiresVideo && videoTooShort)
       errors.push('Subject video is too short — minimum 1 second')
-
     if (caps.requiresVideo && videoNeedsTrim)
       errors.push('Subject video is longer than the selected duration — trim it first')
 
@@ -1306,7 +1312,6 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
-
     if (!canAfford) errors.push('Not enough credits')
 
     return errors
@@ -1336,30 +1341,17 @@ export default function CreateTalkingHeadPage() {
 
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
-
     if (file.size > 40 * 1024 * 1024) {
       toast.error(`Video must be under 40 MB. Yours is ${formatBytes(file.size)}.`)
-      e.target.value = ''
-      return
+      e.target.value = ''; return
     }
-
     const meta = await readVideoMetadata(file)
-
     if (meta.duration != null && meta.duration < 1) {
       toast.error('Video is too short — minimum 1 second.')
-      e.target.value = ''
-      return
+      e.target.value = ''; return
     }
-
     const url = URL.createObjectURL(file)
-    setVideoFile({
-      file,
-      url,
-      name:        file.name,
-      duration:    meta.duration,
-      size:        file.size,
-      aspectRatio: meta.aspectRatio,
-    })
+    setVideoFile({ file, url, name: file.name, duration: meta.duration, size: file.size, aspectRatio: meta.aspectRatio })
     setVideoTrimStart(0)
     persistFile(SS_SUBJECT_VID, file)
     e.target.value = ''
@@ -1367,8 +1359,7 @@ export default function CreateTalkingHeadPage() {
 
   const handleRemoveVideo = () => {
     if (videoFile?.url && videoFile?.file) URL.revokeObjectURL(videoFile.url)
-    setVideoFile(null)
-    setVideoTrimStart(0)
+    setVideoFile(null); setVideoTrimStart(0)
     try { sessionStorage.removeItem(SS_SUBJECT_VID) } catch {}
   }
 
@@ -1378,53 +1369,34 @@ export default function CreateTalkingHeadPage() {
     if (!videoFile) return toast.error('Upload a video first')
     if (credits < VIDEO_TRIM_COST) return toast.error(`Video trim costs ${VIDEO_TRIM_COST} credits.`)
 
-    setPhase('trimming_video')
-    setConvertProgress(0)
-
+    setPhase('trimming_video'); setConvertProgress(0)
     let processed
     try {
       processed = await callTrimEdgeFunction({
-        file:           videoFile.file,
-        url:            videoFile.url,
-        userId:         user.id,
-        targetDuration: durationNum,
-        startTime:      videoTrimStart,
-        onProgress:     (p) => setConvertProgress(p),
+        file: videoFile.file, url: videoFile.url, userId: user.id,
+        targetDuration: durationNum, startTime: videoTrimStart,
+        onProgress: (p) => setConvertProgress(p),
       })
     } catch (err) {
-      setPhase(null)
-      setConvertProgress(0)
-      toast.error(err?.message || 'Video trim failed.')
-      return
+      setPhase(null); setConvertProgress(0); toast.error(err?.message || 'Video trim failed.'); return
     }
 
-    // FIX 4: validate URL before deducting credits
     if (!processed?.url || typeof processed.url !== 'string' || !processed.url.startsWith('http')) {
-      setPhase(null)
-      setConvertProgress(0)
-      toast.error('Trim returned an invalid result. No credits were charged.')
-      return
+      setPhase(null); setConvertProgress(0)
+      toast.error('Trim returned an invalid result. No credits were charged.'); return
     }
 
     try {
       await supabase.rpc('deduct_credits', {
-        p_user_id:       user.id,
-        p_amount:        VIDEO_TRIM_COST,
-        p_generation_id: null,
-        p_description:   'Talking Head subject video trim',
+        p_user_id: user.id, p_amount: VIDEO_TRIM_COST,
+        p_generation_id: null, p_description: 'Talking Head subject video trim',
       })
     } catch {}
 
-    refreshProfile()
-    setPhase(null)
-    setConvertProgress(0)
+    refreshProfile(); setPhase(null); setConvertProgress(0)
     setVideoFile({
-      file:        null,
-      url:         processed.url,
-      name:        videoFile.name,
-      duration:    processed.duration ?? durationNum,
-      aspectRatio: videoFile.aspectRatio,
-      _trimmed:    true,
+      file: null, url: processed.url, name: videoFile.name,
+      duration: processed.duration ?? durationNum, aspectRatio: videoFile.aspectRatio, _trimmed: true,
     })
     toast.success('Video trimmed — ready to generate!', { duration: 3000 })
   }
@@ -1443,17 +1415,12 @@ export default function CreateTalkingHeadPage() {
         toast(`Trimming audio to ${remaining.toFixed(1)}s — drag the slider to pick which part to keep.`, { icon: '✂️', duration: 4000 })
       }
       const filled = {
-        file:             null,
-        url:              imported.output_url,
-        name:             imported.name ?? imported.chunkLabel ?? 'Audio',
-        fromChunk:        !!imported.fromChunk,
-        fromGeneration:   !imported.fromChunk,
-        chunkLabel:       imported.chunkLabel ?? null,
+        file: null, url: imported.output_url,
+        name: imported.name ?? imported.chunkLabel ?? 'Audio',
+        fromChunk: !!imported.fromChunk, fromGeneration: !imported.fromChunk,
+        chunkLabel: imported.chunkLabel ?? null,
         duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
-        _needsTrim:       needsTrim,
-        _trimToSeconds:   remaining,
-        _trimStartTime:   0,           // FIX 2: user-adjustable start
-        _rawDuration:     durS,        // FIX 2: keep original for slider max
+        _needsTrim: needsTrim, _trimToSeconds: remaining, _trimStartTime: 0, _rawDuration: durS,
       }
       setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
       return
@@ -1469,16 +1436,10 @@ export default function CreateTalkingHeadPage() {
     }
 
     const filled = {
-      file,
-      url:              URL.createObjectURL(file),
-      name:             file.name,
-      fromChunk:        false,
-      fromGeneration:   false,
+      file, url: URL.createObjectURL(file), name: file.name,
+      fromChunk: false, fromGeneration: false,
       duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
-      _needsTrim:       needsTrim,
-      _trimToSeconds:   remaining,
-      _trimStartTime:   0,             // FIX 2: user-adjustable start
-      _rawDuration:     durS,          // FIX 2: keep original for slider max
+      _needsTrim: needsTrim, _trimToSeconds: remaining, _trimStartTime: 0, _rawDuration: durS,
     }
     setSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
   }
@@ -1486,19 +1447,16 @@ export default function CreateTalkingHeadPage() {
   const handleSlotClear = (charSlot) => (slotIndex) => {
     const setSlots = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
     setSlots((prev) => {
-      const next = [...prev]
-      next[slotIndex] = null
+      const next = [...prev]; next[slotIndex] = null
       while (next.length > 0 && !next[next.length - 1]) next.pop()
       return next
     })
   }
 
-  // FIX 2: handler to update trim start time for a specific slot
   const handleSlotStartChange = (charSlot) => (slotIndex, startTime) => {
     const setSlots = charSlot === 1 ? setAudioSlots1 : setAudioSlots2
     setSlots((prev) => {
-      const next = [...prev]
-      if (!next[slotIndex]) return prev
+      const next = [...prev]; if (!next[slotIndex]) return prev
       next[slotIndex] = { ...next[slotIndex], _trimStartTime: startTime }
       return next
     })
@@ -1509,7 +1467,7 @@ export default function CreateTalkingHeadPage() {
     setAudioSlots1([]); setAudioSlots2([])
     setScript1(''); setScript2('')
     setAutoRatio(false); setAspectRatio('9:16'); setPrompt('')
-    setVideoTrimStart(0)
+    setVideoTrimStart(0); setLipsyncPrefill(null)
     try {
       [SS_PROMPT, SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach((k) => sessionStorage.removeItem(k))
     } catch {}
@@ -1527,7 +1485,6 @@ export default function CreateTalkingHeadPage() {
     return publicUrl
   }
 
-  // FIX 1: buildAudioUrl now passes _trimStartTime to trimAudioToLimit
   const buildAudioUrl = async (slots) => {
     const filled = slots.filter(Boolean)
     if (filled.length === 0) return null
@@ -1537,9 +1494,7 @@ export default function CreateTalkingHeadPage() {
         let blob = slot.file
           ? slot.file
           : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
-
         if (slot._needsTrim && slot._trimToSeconds > 0) {
-          // FIX 1 + 2: use user-selected start time
           blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
         }
         return blob
@@ -1658,10 +1613,8 @@ export default function CreateTalkingHeadPage() {
       <AnimatePresence>
         {isProcessing && (
           <ProcessingOverlay
-            phase={phase}
-            convertProgress={convertProgress}
-            audioSlots1={audioSlots1}
-            audioSlots2={audioSlots2}
+            phase={phase} convertProgress={convertProgress}
+            audioSlots1={audioSlots1} audioSlots2={audioSlots2}
           />
         )}
       </AnimatePresence>
@@ -1697,6 +1650,17 @@ export default function CreateTalkingHeadPage() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
+
+        {/* Lipsync prefill banner — shown when user arrived via redirect */}
+        <AnimatePresence>
+          {lipsyncPrefill && (
+            <LipsyncPrefillBanner
+              script={lipsyncPrefill.script}
+              onDismiss={() => setLipsyncPrefill(null)}
+            />
+          )}
+        </AnimatePresence>
+
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
           {/* ── Subject ──────────────────────────────────────────────────── */}
@@ -1712,9 +1676,7 @@ export default function CreateTalkingHeadPage() {
                 {caps.faceInput && caps.videoInput && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                     {[{ value: 'face', label: 'Photo', icon: User }, { value: 'video', label: 'Video', icon: VideoIcon }].map(({ value, label, icon: Icon }) => (
-                      <button
-                        key={value}
-                        onClick={() => setSubjectMode(value)}
+                      <button key={value} onClick={() => setSubjectMode(value)}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                         style={{ background: subjectMode === value ? ACCENT : 'transparent', color: subjectMode === value ? '#ffffff' : 'var(--text-muted)' }}>
                         <Icon size={11} />{label}
@@ -1725,11 +1687,8 @@ export default function CreateTalkingHeadPage() {
               </div>
 
               <SubjectSlot
-                mode={subjectMode}
-                faceImage={faceImage}
-                videoFile={videoFile}
-                onFaceUpload={handleFaceUpload}
-                onVideoUpload={handleVideoUpload}
+                mode={subjectMode} faceImage={faceImage} videoFile={videoFile}
+                onFaceUpload={handleFaceUpload} onVideoUpload={handleVideoUpload}
                 onFaceRemove={() => {
                   setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16')
                   try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {}
@@ -1738,13 +1697,10 @@ export default function CreateTalkingHeadPage() {
                 videoCompatStatus={videoCompat}
               />
 
-              {/* Video too short */}
               <AnimatePresence>
                 {videoTooShort && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.18 }}
-                    className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
+                  <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }} className="mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2"
                     style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
                     <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
                     <p className="text-xs" style={{ color: '#ef4444' }}>Video is too short — minimum 1 second.</p>
@@ -1752,7 +1708,6 @@ export default function CreateTalkingHeadPage() {
                 )}
               </AnimatePresence>
 
-              {/* Ready confirmation */}
               {(videoCompat === 'compatible' || videoCompat === 'converted') && videoFile && (
                 <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                   Video is{' '}
@@ -1763,13 +1718,10 @@ export default function CreateTalkingHeadPage() {
                 </p>
               )}
 
-              {/* FIX 3: already-trimmed video but duration changed — distinct warning */}
               <AnimatePresence>
                 {videoTrimmedButStale && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }} className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
                     style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.25)' }}>
                     <div className="flex items-start gap-2">
                       <Scissors size={14} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
@@ -1785,9 +1737,7 @@ export default function CreateTalkingHeadPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={handleTrimVideo}
-                        disabled={credits < VIDEO_TRIM_COST || isProcessing}
+                      <button onClick={handleTrimVideo} disabled={credits < VIDEO_TRIM_COST || isProcessing}
                         className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
                         style={{
                           background: credits >= VIDEO_TRIM_COST && !isProcessing ? ACCENT : 'var(--bg-elevated)',
@@ -1796,9 +1746,7 @@ export default function CreateTalkingHeadPage() {
                         }}>
                         Re-trim to {durationNum}s · {VIDEO_TRIM_COST} cr
                       </button>
-                      <button
-                        onClick={handleRemoveVideo}
-                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                      <button onClick={handleRemoveVideo} className="px-4 py-2.5 rounded-xl text-sm font-semibold"
                         style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
                         Remove video
                       </button>
@@ -1813,7 +1761,6 @@ export default function CreateTalkingHeadPage() {
                 )}
               </AnimatePresence>
 
-              {/* Trim start slider — only for fresh incompatible (not already-trimmed) */}
               {caps.videoInput && videoFile && !videoTooShort && videoNeedsTrim && !videoFile._trimmed && (
                 <div className="mt-4 rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2 mb-3">
@@ -1831,26 +1778,16 @@ export default function CreateTalkingHeadPage() {
                       {videoTrimStart}s → {videoTrimStart + durationNum}s
                     </p>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(0, (videoFile.duration ?? durationNum) - durationNum)}
-                    step={1}
-                    value={videoTrimStart}
-                    onChange={(e) => setVideoTrimStart(Number(e.target.value))}
-                    className="w-full"
-                    style={{ accentColor: ACCENT }}
-                  />
+                  <input type="range" min={0} max={Math.max(0, (videoFile.duration ?? durationNum) - durationNum)}
+                    step={1} value={videoTrimStart} onChange={(e) => setVideoTrimStart(Number(e.target.value))}
+                    className="w-full" style={{ accentColor: ACCENT }} />
                 </div>
               )}
 
-              {/* Standard trim panel — fresh incompatible only */}
               <AnimatePresence>
                 {caps.videoInput && videoNeedsTrim && !videoFile?._trimmed && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }} className="mt-3 rounded-2xl p-4 flex flex-col gap-3"
                     style={{ background: 'rgba(239,160,20,0.08)', border: '1px solid rgba(239,160,20,0.25)' }}>
                     <div className="flex items-start gap-2">
                       <RefreshCw size={14} style={{ color: '#efa014', marginTop: 2, flexShrink: 0 }} />
@@ -1867,9 +1804,7 @@ export default function CreateTalkingHeadPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={handleTrimVideo}
-                        disabled={credits < VIDEO_TRIM_COST || isProcessing}
+                      <button onClick={handleTrimVideo} disabled={credits < VIDEO_TRIM_COST || isProcessing}
                         className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
                         style={{
                           background: credits >= VIDEO_TRIM_COST && !isProcessing ? ACCENT : 'var(--bg-elevated)',
@@ -1878,9 +1813,7 @@ export default function CreateTalkingHeadPage() {
                         }}>
                         Trim &amp; Continue · {VIDEO_TRIM_COST} cr
                       </button>
-                      <button
-                        onClick={handleRemoveVideo}
-                        className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                      <button onClick={handleRemoveVideo} className="px-4 py-2.5 rounded-xl text-sm font-semibold"
                         style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
                         Cancel
                       </button>
@@ -1933,44 +1866,30 @@ export default function CreateTalkingHeadPage() {
             </div>
 
             <MultiSlotAudio
-              label="Audio"
-              audioSlots={audioSlots1}
-              durationS={durationNum}
-              onSlotFill={handleSlotFill(1)}
-              onSlotClear={handleSlotClear(1)}
+              label="Audio" audioSlots={audioSlots1} durationS={durationNum}
+              onSlotFill={handleSlotFill(1)} onSlotClear={handleSlotClear(1)}
               onSlotStartChange={handleSlotStartChange(1)}
-              audioMode={audioMode1}
-              onAudioModeChange={setAudioMode1}
-              script={audioMode1 === 'text' ? script1 : ''}
-              onScriptChange={setScript1}
+              audioMode={audioMode1} onAudioModeChange={setAudioMode1}
+              script={audioMode1 === 'text' ? script1 : ''} onScriptChange={setScript1}
               supportsTextScript={caps.textScript}
-              charIndex={caps.multiChar ? 0 : undefined}
-              userId={user?.id}
+              charIndex={caps.multiChar ? 0 : undefined} userId={user?.id}
             />
 
             {caps.multiChar && (
               <MultiSlotAudio
-                label="Audio"
-                audioSlots={audioSlots2}
-                durationS={durationNum}
-                onSlotFill={handleSlotFill(2)}
-                onSlotClear={handleSlotClear(2)}
+                label="Audio" audioSlots={audioSlots2} durationS={durationNum}
+                onSlotFill={handleSlotFill(2)} onSlotClear={handleSlotClear(2)}
                 onSlotStartChange={handleSlotStartChange(2)}
-                audioMode={audioMode2}
-                onAudioModeChange={setAudioMode2}
-                script={audioMode2 === 'text' ? script2 : ''}
-                onScriptChange={setScript2}
-                supportsTextScript={caps.textScript}
-                charIndex={1}
-                userId={user?.id}
+                audioMode={audioMode2} onAudioModeChange={setAudioMode2}
+                script={audioMode2 === 'text' ? script2 : ''} onScriptChange={setScript2}
+                supportsTextScript={caps.textScript} charIndex={1} userId={user?.id}
               />
             )}
           </div>
 
           {/* ── Prompt ───────────────────────────────────────────────────── */}
           <Textarea
-            label="Prompt"
-            value={prompt}
+            label="Prompt" value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Optional: describe pose, expression, background scene…"
             rows={3}
