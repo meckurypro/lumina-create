@@ -617,7 +617,6 @@ export default function CreateVideoPage() {
   // Holds the redirect payload from edge fn: { extractedSpeech, generationId }
   // and a callback to proceed with the generation anyway.
   const [lipsyncRedirect,  setLipsyncRedirect]  = useState(null)
-  const proceedWithGenRef = useRef(null)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -1132,68 +1131,21 @@ const persistRefImages = (imgs) => {
       if (invokeErr) {
         // Edge fn hard-failed — generation already has status pending, let poller handle it
         console.error('video-generate invoke error', invokeErr)
-      } else if (invokeData?.lipsync_redirect) {
+} else if (invokeData?.lipsync_redirect) {
         // ── Lipsync redirect intercepted ──────────────────────────────────
+        // The edge fn has already:
+        //   1. Cancelled + refunded the i2v row
+        //   2. Forwarded to lipsync-generate which created a new row + charged credits
+        //   3. Returned the new lipsync generationId
+        // We just refresh credits and show the modal.
         setPhase(null)
-
-        // Store a callback so "Generate anyway" can re-submit without re-uploading
-        // We create a NEW generation record since the old one was cancelled by the edge fn
-        proceedWithGenRef.current = async () => {
-          setLipsyncRedirect(null)
-          setPhase('submitting')
-          try {
-            const { data: newRow, error: newErr } = await generationsDb.create({
-              user_id:                user.id,
-              generation_type:        type,
-              status:                 'pending',
-              prompt,
-              model,
-              aspect_ratio:           aspectRatio,
-              duration,
-              credits_charged:        creditCost,
-              output_type:            'video',
-              start_frame_url:        startFrameUrl,
-              end_frame_url:          endFrameUrl,
-              input_image_urls:       uploadedRefUrls.length ? uploadedRefUrls : null,
-              with_sound:             withSound,
-              skip_prompt_refinement: true, // skip so edge fn doesn't detect again
-            })
-            if (newErr || !newRow) throw new Error(newErr?.message || 'Could not create generation')
-
-            const { data: d2, error: e2 } = await generationsDb.deductCredits(user.id, creditCost, newRow.id)
-            if (e2 || !d2?.success) {
-              await generationsDb.update(newRow.id, { status: 'failed', error_message: d2?.error || 'Insufficient credits' })
-              throw new Error(d2?.error || 'Not enough credits')
-            }
-
-            supabase.functions.invoke('video-generate', { body: { generationId: newRow.id } })
-              .catch((e) => console.error('video-generate re-invoke error', e))
-
-            refreshProfile()
-            toast.success('Your video is being generated. Check your Media page.', { duration: 4000 })
-            setPrompt('')
-            setStartFrame(null); setEndFrame(null); setRefImages([])
-            setAutoRatio(false); setAspectRatio('9:16'); setWithSound(true)
-            try {
-              sessionStorage.removeItem(SS_PROMPT); sessionStorage.removeItem(SS_START_FRAME)
-              sessionStorage.removeItem(SS_END_FRAME); sessionStorage.removeItem(SS_REF_IMAGES)
-            } catch {}
-          } catch (err) {
-            toast.error(err.message || 'Something went wrong')
-          } finally {
-            setPhase(null)
-          }
-        }
-
-        // The edge fn already refunded credits for the cancelled gen.
-        // Refund the credits we deducted on the frontend too.
-        await generationsDb.deductCredits(user.id, -creditCost, genRow.id).catch(() => {})
         refreshProfile()
 
         setLipsyncRedirect({
-          extractedSpeech: invokeData.extracted_speech,
-          startFrameFile:  activeStartFrame?.file ?? null,
-          startFrameUrl:   startFrameUrl,
+          extractedSpeech:    invokeData.extracted_speech,
+          lipsyncGenerationId: invokeData.generationId,  // new lipsync row already queued
+          startFrameFile:     activeStartFrame?.file ?? null,
+          startFrameUrl:      startFrameUrl,
         })
         return
       }
@@ -1238,9 +1190,19 @@ const persistRefImages = (imgs) => {
             startFrameUrl={lipsyncRedirect.startFrameUrl}
             startFrameFile={lipsyncRedirect.startFrameFile}
             onRedirect={() => handleLipsyncRedirect(lipsyncRedirect)}
-            onDismiss={() => {
+         onDismiss={() => {
+              // lipsync-generate already queued the job — dismissing just closes the modal.
+              // The generation is running regardless of which button the user picks.
               setLipsyncRedirect(null)
-              proceedWithGenRef.current?.()
+              refreshProfile()
+              toast.success('Your talking head is being generated. Check your Media page.', { duration: 4000 })
+              setPrompt('')
+              setStartFrame(null); setEndFrame(null); setRefImages([])
+              setAutoRatio(false); setAspectRatio('9:16'); setWithSound(true)
+              try {
+                sessionStorage.removeItem(SS_PROMPT); sessionStorage.removeItem(SS_START_FRAME)
+                sessionStorage.removeItem(SS_END_FRAME); sessionStorage.removeItem(SS_REF_IMAGES)
+              } catch {}
             }}
           />
         )}
