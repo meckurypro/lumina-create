@@ -21,6 +21,14 @@
 //
 //  5. All existing lazy thumbnail, IntersectionObserver, and pagination
 //     behaviour is preserved unchanged.
+//
+//  6. END-FRAME EXTRACTION — COLOR ACCURACY FIX.
+//     extractLastFrame() now (a) pins the canvas to the 'srgb' color space
+//     before drawImage(), and (b) precisely seeks to the true final
+//     decodable frame instead of an approximate (duration - 0.001) offset.
+//     This minimises the level/contrast shift that was visible as a brief
+//     "flash" when the extracted end frame is later used as the start frame
+//     of the next chained clip. See extractLastFrame for details.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
@@ -109,8 +117,32 @@ function buildUrlPayload(asset, fallbackType) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// extractLastFrame  (unchanged logic)
+// extractLastFrame
+//
+// Two corrections vs. the previous version, both aimed at eliminating the
+// "flash" visible when this exported frame is later used as the start frame
+// of the next chained clip:
+//
+//  1. EXPLICIT sRGB CANVAS COLOR SPACE.
+//     drawImage() performs an implicit color-space conversion from the
+//     video's decoded color space into the canvas backing store's color
+//     space. If left unspecified, browsers may apply a conversion (or a
+//     display-referred adjustment) that introduces a small, consistent
+//     level/contrast shift in the exported PNG relative to the source video
+//     frame. Pinning the canvas to 'srgb' — the space AI providers generally
+//     assume for image inputs — minimises that shift and keeps the
+//     extraction path consistent across browsers/devices.
+//
+//  2. PRECISE LAST-FRAME SEEK.
+//     Seeking directly to (duration - 0.001) can land 1-2 frames before the
+//     true final frame on some codecs/containers, or on a black/transitional
+//     frame some encoders write right at EOF. We seek to a conservative
+//     point slightly before the end, then step forward in small increments
+//     — capturing on whichever 'seeked' event is closest to video.duration
+//     without overshooting — landing precisely on the last decodable frame.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const FRAME_STEP_SECONDS = 1 / 24 // conservative default frame duration assumption
 
 async function extractLastFrame(videoUrl) {
   const res    = await fetch(videoUrl)
@@ -122,25 +154,89 @@ async function extractLastFrame(videoUrl) {
     video.muted       = true
     video.preload     = 'auto'
     video.crossOrigin = 'anonymous'
+    video.playsInline = true
 
-    video.onerror = () => {
-      URL.revokeObjectURL(objUrl)
-      reject(new Error('Could not load video for frame extraction'))
+    let settled = false
+    const cleanup = () => URL.revokeObjectURL(objUrl)
+    const fail = (err) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(err)
     }
+
+    video.onerror = () => fail(new Error('Could not load video for frame extraction'))
+
+    const captureCurrentFrame = () => {
+      if (settled) return
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width  = video.videoWidth
+        canvas.height = video.videoHeight
+
+        if (!canvas.width || !canvas.height) {
+          fail(new Error('Video has no decodable dimensions'))
+          return
+        }
+
+        // Pin canvas color space to sRGB so the exported pixel values match
+        // what AI providers expect for image inputs, minimising the
+        // conversion delta introduced by drawImage(). Falls back gracefully
+        // on browsers that don't support the colorSpace option.
+        let ctx
+        try {
+          ctx = canvas.getContext('2d', { colorSpace: 'srgb' })
+        } catch {
+          ctx = null
+        }
+        if (!ctx) ctx = canvas.getContext('2d')
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+        canvas.toBlob((pngBlob) => {
+          settled = true
+          cleanup()
+          if (pngBlob) resolve(pngBlob)
+          else reject(new Error('Canvas toBlob failed'))
+        }, 'image/png')
+      } catch (err) {
+        fail(err)
+      }
+    }
+
+    // Safety timeout — if seeking never settles (corrupt file, stalled
+    // network), fail cleanly instead of hanging the UI indefinitely.
+    const safetyTimer = setTimeout(() => {
+      fail(new Error('Frame extraction timed out'))
+    }, 30_000)
+    const clearSafety = () => clearTimeout(safetyTimer)
+
     video.onloadedmetadata = () => {
-      video.currentTime = Math.max(0, video.duration - 0.001)
+      const duration = video.duration
+      if (!isFinite(duration) || duration <= 0) {
+        clearSafety()
+        fail(new Error('Video has no readable duration'))
+        return
+      }
+
+      const target = Math.max(0, duration - FRAME_STEP_SECONDS)
+      let lastSeekTime = -1
+
+      video.onseeked = () => {
+        const reachedEnd     = video.currentTime >= duration - 0.0005
+        const noFurtherMove  = video.currentTime <= lastSeekTime
+        if (reachedEnd || noFurtherMove) {
+          clearSafety()
+          captureCurrentFrame()
+          return
+        }
+        lastSeekTime = video.currentTime
+        video.currentTime = Math.min(duration, video.currentTime + FRAME_STEP_SECONDS / 4)
+      }
+
+      video.currentTime = target
     }
-    video.onseeked = () => {
-      const canvas  = document.createElement('canvas')
-      canvas.width  = video.videoWidth
-      canvas.height = video.videoHeight
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((pngBlob) => {
-        URL.revokeObjectURL(objUrl)
-        if (pngBlob) resolve(pngBlob)
-        else reject(new Error('Canvas toBlob failed'))
-      }, 'image/png')
-    }
+
     video.src = objUrl
   })
 }
