@@ -1591,9 +1591,16 @@ export default function CreateTalkingHeadPage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
+      // Route to the correct edge function.
+      // lipsync models (feature === 'lipsync') are handled by lipsync-generate.
+      // Other talking-head models (e.g. ElevenLabs voice cloning) use talking-head-generate.
+      const edgeFn = selectedModel?.feature === 'lipsync'
+        ? 'lipsync-generate'
+        : 'talking-head-generate'
+
       supabase.functions
-        .invoke('talking-head-generate', { body: { generationId: genRow.id, meta: metadata } })
-        .catch((e) => console.error('talking-head-generate invoke error', e))
+        .invoke(edgeFn, { body: { generationId: genRow.id, meta: metadata } })
+        .catch((e) => console.error(`${edgeFn} invoke error`, e))
 
       refreshProfile()
       toast.success('Your talking head video is being generated. Check your Media page.', { duration: 4000 })
