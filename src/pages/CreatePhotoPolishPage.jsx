@@ -462,8 +462,7 @@ export default function CreatePhotoPolishPage() {
         aspect_ratio: aspectRatio,
         credits_charged: creditCost,
         output_type: 'image',
-        output_resolution: OUTPUT_RESOLUTION,
-        input_image_urls: [publicUrl],
+                input_image_urls: [publicUrl],
         skip_prompt_refinement: false,        // ← CHANGE: enable prompt engineering
         refinement_mode: 'photo_polish',      // ← ADD: triggers vision-guided pipeline
         title: `Photo Polish — ${preset.label}`,
