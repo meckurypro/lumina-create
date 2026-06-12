@@ -413,8 +413,7 @@ export default function MediaPageCore({
     if (name === null) return
     const displayName  = (name || defaultName).trim() || defaultName
 
-    setSavingAsset(true)
-    const toastId = toast.loading('Saving to your Assets…')
+   setSavingAsset(true)
     try {
       const res  = await fetch(gen.output_url)
       if (!res.ok) throw new Error('Could not fetch media')
@@ -422,9 +421,9 @@ export default function MediaPageCore({
       const fallbackType = isVideo ? 'video/mp4' : 'image/png'
       const file = new File([blob], `${displayName}.${ext}`, { type: blob.type || fallbackType })
       await uploadAsset(user.id, file, displayName)
-      toast.success('Saved to Assets', { id: toastId })
+      toast.success('Saved to Assets')
     } catch (e) {
-      toast.error(e?.message || 'Failed to save asset', { id: toastId })
+      toast.error(e?.message || 'Failed to save asset')
     } finally {
       setSavingAsset(false)
     }
