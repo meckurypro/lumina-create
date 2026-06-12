@@ -777,21 +777,20 @@ export default function MediaPageCore({
         )}
       </AnimatePresence>
 
-      {/* Save-as-asset overlay */}
+     {/* Save-as-asset overlay */}
       <AnimatePresence>
         {savingAsset && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+            className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4"
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
-            <div
-              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-            >
-              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--text-primary)' }} />
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Saving to your Assets…</p>
-            </div>
+            <motion.div
+              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
+            />
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Saving to your Assets…</p>
           </motion.div>
         )}
       </AnimatePresence>
