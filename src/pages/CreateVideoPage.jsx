@@ -68,7 +68,8 @@ function getModelCaps(model) {
     maxRefImages:          model.max_ref_images          ?? 1,
     supportedDurations:    model.supported_durations     ?? [],
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    supportsSound:         model.supports_sound          ?? false,
+supportsSound:         model.supports_sound          ?? false,
+    requiresEndFrame:      model.requires_end_frame       ?? false,
   }
 }
 
@@ -1173,6 +1174,7 @@ const persistRefImages = (imgs) => {
 
   const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
+    || (caps.requiresEndFrame && !activeEndFrame)
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -1441,7 +1443,7 @@ const persistRefImages = (imgs) => {
                       onRemove={() => handleRemoveFrame(setStartFrame, SS_START_FRAME, true)}
                       disabled={!caps.supportsStartFrame && !startFrame}
                       inactive={!!startFrame && !caps.supportsStartFrame} />
-                    <FrameUpload label="End Frame" value={endFrame}
+                    <FrameUpload label={caps.requiresEndFrame ? 'End Frame (required)' : 'End Frame'} value={endFrame}
                       onChange={handleFrameUpload(setEndFrame, SS_END_FRAME)}
                       onRemove={() => handleRemoveFrame(setEndFrame, SS_END_FRAME, false)}
                       disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
