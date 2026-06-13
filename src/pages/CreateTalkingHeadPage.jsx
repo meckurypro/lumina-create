@@ -316,41 +316,6 @@ const restoreFile = (key) => new Promise((resolve) => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LIPSYNC PREFILL BANNER
-// Shown briefly at top when user arrives via the redirect from CreateVideoPage
-// ─────────────────────────────────────────────────────────────────────────────
-
-const LipsyncPrefillBanner = ({ script, onDismiss }) => (
-  <motion.div
-    initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-    transition={{ duration: 0.2 }}
-    className="mx-auto w-full max-w-xl px-4 lg:px-0 pt-4"
-  >
-    <div
-      className="rounded-2xl px-4 py-3 flex items-start gap-3"
-      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-    >
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold" style={{ color: ACCENT }}>
-          Transferred from Video — ready to go
-        </p>
-        {script && (
-          <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-            Script: "{script.length > 60 ? script.slice(0, 60) + '…' : script}"
-          </p>
-        )}
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Your image and script are pre-filled below. Choose a voice model and hit Generate.
-        </p>
-      </div>
-      <button onClick={onDismiss} className="flex-shrink-0 p-1 rounded-lg" style={{ color: 'var(--text-muted)' }}>
-        <X size={13} />
-      </button>
-    </div>
-  </motion.div>
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
 // SETTING CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1137,7 +1102,6 @@ export default function CreateTalkingHeadPage() {
   // ── Lipsync prefill (from CreateVideoPage redirect) ──────────────────────
   // Stored as { script, model, audioMode } from session storage.
   // We keep it visible in a banner until the user dismisses it.
-  const [lipsyncPrefill,      setLipsyncPrefill]      = useState(null)
   // Pending model to set once the models list is loaded
   const pendingModelRef = useRef(null)
 
@@ -1162,11 +1126,17 @@ export default function CreateTalkingHeadPage() {
       if (raw) {
         sessionStorage.removeItem(SS_LIPSYNC_PREFILL)
         const prefill = JSON.parse(raw)
-        if (prefill.script)    setScript1(prefill.script)
+      if (prefill.script)    setScript1(prefill.script)
         if (prefill.audioMode) setAudioMode1(prefill.audioMode)
         if (prefill.model)     pendingModelRef.current = prefill.model
-        // Store for banner display
-        setLipsyncPrefill(prefill)
+        // Fire toast — image and script are pre-loaded
+        toast.success(
+          prefill.script
+            ? `Talking Head ready — script pre-filled. Choose a voice model and generate.`
+            : `Talking Head ready — image pre-loaded. Add a script and generate.`,
+          { duration: 5000 }
+        )
+        // Banner suppressed — toast is sufficient
       }
     } catch {}
 
@@ -1662,17 +1632,7 @@ export default function CreateTalkingHeadPage() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* Lipsync prefill banner — shown when user arrived via redirect */}
-        <AnimatePresence>
-          {lipsyncPrefill && (
-            <LipsyncPrefillBanner
-              script={lipsyncPrefill.script}
-              onDismiss={() => setLipsyncPrefill(null)}
-            />
-          )}
-        </AnimatePresence>
-
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
+         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
           {/* ── Subject ──────────────────────────────────────────────────── */}
           {(caps.faceInput || caps.videoInput) && (
