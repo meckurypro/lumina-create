@@ -428,7 +428,15 @@ const modelMaxRefImages   = selectedModel?.max_ref_images ?? 1
 const [multiMode, setMultiMode] = useState(false)
 
 // Reset multiMode when model changes
-useEffect(() => { setMultiMode(false); setResolution('1k') }, [model])
+useEffect(() => {
+    setMultiMode(false)
+    setResolution('1k')
+    if (!modelSupportsImage) {
+      clearAllImages()
+    } else if (!modelSupportsMulti && images.length > 1) {
+      setImages([images[0]])
+    }
+  }, [model]) // eslint-disable-line
 
 const maxImages = (modelSupportsMulti && multiMode)
   ? modelMaxRefImages
@@ -450,6 +458,7 @@ const creditCost = selectedModel
   const promptEmpty    = !prompt.trim()
   const imageRequired  = modelRequiresImage && !hasImages
 const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired
+  || (creditCost === 0 && !!selectedModel)
 
   // ── enforce aspect ratio when model changes ──────────────────────────────
   useEffect(() => {
@@ -701,9 +710,10 @@ const uploadedUrls = []
   <div className="flex items-center justify-between mb-3">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
       Reference Image
-      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+        {modelRequiresImage ? ' — required' : ' — optional'}
+      </span>
     </p>
-
     {/* Multi-ref toggle — only shown for multi-image capable models */}
     {modelSupportsMulti && modelSupportsImage && (
       <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
@@ -828,6 +838,11 @@ const uploadedUrls = []
               ? 'Not enough credits'
               : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
+          {promptEmpty && !submitting && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              Enter a prompt to continue.
+            </p>
+          )}
           {!canAfford && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
