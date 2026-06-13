@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Film, MoreVertical, Trash2, ArrowLeft, Clapperboard } from 'lucide-react'
+import { Plus, Film, MoreVertical, Trash2, ArrowLeft, Clapperboard, Pencil } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { filmaFilms } from '@/lib/filma'
 import toast from 'react-hot-toast'
@@ -36,7 +36,7 @@ const SkeletonCard = () => (
 )
 
 // ── Film card ─────────────────────────────────────────────────────────────
-const FilmCard = ({ film, index, onOpen, onDelete }) => {
+const FilmCard = ({ film, index, onOpen, onDelete, onEdit }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const status = STATUS_LABEL[film.status] || STATUS_LABEL.draft
 
@@ -108,6 +108,11 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
                     minWidth: 130,
                   }}
                 >
+                 <button onClick={() => { onEdit(film); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                    style={{ color: 'var(--text-primary)' }}>
+                    <Pencil size={12} /> Edit
+                  </button>
                   <button onClick={() => { onDelete(film); setMenuOpen(false) }}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
                     style={{ color: '#ef4444' }}>
@@ -224,8 +229,9 @@ export default function FilmaHubPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {films.map((film, i) => (
-                <FilmCard key={film.id} film={film} index={i}
-                  onOpen={handleOpen} onDelete={handleDelete} />
+               <FilmCard key={film.id} film={film} index={i}
+                  onOpen={handleOpen} onDelete={handleDelete}
+                  onEdit={(f) => navigate(`/filma/${f.id}/edit`)} />
               ))}
               <CreateCard onClick={() => navigate('/filma/new')} index={films.length} />
             </div>
