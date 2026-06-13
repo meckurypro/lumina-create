@@ -62,8 +62,10 @@ function getModelCaps(model) {
     maxRefImages:          model.max_ref_images          ?? 1,
     supportedDurations:    model.supported_durations     ?? [],
     supportedAspectRatios: model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-supportsSound:         model.supports_sound          ?? false,
-    requiresEndFrame:      model.requires_end_frame       ?? false,
+    supportsSound:         model.supports_sound          ?? false,
+    requiresEndFrame:      model.requires_end_frame      ?? false,
+    requiresImage:         model.requires_image          ?? false,
+    requiresVideo:         model.requires_video          ?? false,
   }
 }
 
@@ -640,8 +642,8 @@ const persistRefImages = (imgs) => {
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-  useEffect(() => {
-    if (!caps.supportsMultiImage) {
+useEffect(() => {
+    if (!caps.supportsMultiImage || caps.requiresEndFrame) {
       setMultiMode(false); setRefImages([])
       try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
     }
@@ -1082,9 +1084,13 @@ const persistRefImages = (imgs) => {
   const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
   const isProcessing    = phase !== null
 
-  const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
+ const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
     || (caps.requiresEndFrame && !activeEndFrame)
+    || (caps.requiresImage && !multiMode && !activeStartFrame)
+    || (caps.requiresImage &&  multiMode && refImages.length === 0)
+    || (caps.requiresVideo && !caps.isVideoEdit && !editVideo)
+    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit)
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -1294,9 +1300,11 @@ const persistRefImages = (imgs) => {
             /* ── STANDARD FRAMES / MULTI-REF SECTION ────────────────────── */
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                   {caps.supportsMultiImage && multiMode ? 'Reference' : 'Frames'}
-                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                    {caps.requiresImage ? ' — required' : ' — optional'}
+                  </span>
                 </p>
                 {caps.supportsMultiImage && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
@@ -1390,7 +1398,7 @@ const persistRefImages = (imgs) => {
               : `Generate · ${creditCost} cr`}
           </button>
 
-          {caps.isVideoEdit && needsTrim && (
+{caps.isVideoEdit && needsTrim && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Trim your video above to continue.
             </p>
@@ -1398,6 +1406,21 @@ const persistRefImages = (imgs) => {
           {caps.isVideoEdit && editCompat?.tooShort && (
             <p className="text-xs text-center mt-2" style={{ color: '#ef4444' }}>
               Video is too short — upload a different one.
+            </p>
+          )}
+          {caps.requiresImage && !multiMode && !activeStartFrame && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              This model requires a start frame image.
+            </p>
+          )}
+          {caps.requiresImage && multiMode && refImages.length === 0 && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              This model requires at least one reference image.
+            </p>
+          )}
+          {caps.requiresVideo && !caps.isVideoEdit && !editVideo && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              This model requires a source video.
             </p>
           )}
           {!canAfford && (
