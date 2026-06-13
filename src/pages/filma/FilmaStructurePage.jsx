@@ -264,7 +264,7 @@ export default function FilmaStructurePage() {
   // ── Add part ──────────────────────────────────────────────────────────────
   const handleAddPart = async () => {
     setWorking(true)
-    const partNumber = parts.length + 1
+    const partNumber = parts.length === 0 ? 1 : Math.max(...parts.map(p => p.part_number)) + 1
     const label =
       film.structure_type === 'series'     ? `Episode ${partNumber}`
       : film.structure_type === 'multi_part' ? `Part ${partNumber}`
