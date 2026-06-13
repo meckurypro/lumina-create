@@ -51,9 +51,14 @@ const FilmCard = ({ film, index, onOpen, onDelete, onEdit }) => {
       {/* Thumbnail / placeholder */}
       <button onClick={() => onOpen(film)} className="relative w-full overflow-hidden flex-shrink-0"
         style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)' }}>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Clapperboard size={32} style={{ color: ACCENT, opacity: 0.25 }} />
-        </div>
+        {film.thumbnail_url ? (
+          <img src={film.thumbnail_url} alt={film.title}
+            className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Clapperboard size={32} style={{ color: ACCENT, opacity: 0.25 }} />
+          </div>
+        )}
         <div className="absolute inset-0"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)' }} />
         <div className="absolute bottom-2 left-3 flex items-center gap-1.5">
