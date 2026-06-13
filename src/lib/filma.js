@@ -124,9 +124,17 @@ export const filmaFilms = {
     return { error }
   },
 
-  /** Update film status */
+ /** Update film status */
   async setStatus(filmId, status) {
     return filmaFilms.update(filmId, { status })
+  },
+
+  /** Upload thumbnail and save URL to film */
+  async uploadThumbnail(userId, filmId, file) {
+    const { url } = await filmaUpload(userId, file, 'thumbnails')
+    const { data, error } = await filmaFilms.update(filmId, { thumbnail_url: url })
+    if (error) throw new Error(error.message)
+    return url
   },
 }
 
