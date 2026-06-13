@@ -1006,6 +1006,27 @@ const persistRefImages = (imgs) => {
         }
       }
 
+      // ── Lipsync pre-check before creating any row ─────────────────────────
+      // Only runs for image_to_video with an image. Sends just the prompt to
+      // a lightweight check endpoint. If lipsync is detected, navigate without
+      // ever creating a row or charging credits.
+      if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
+        const { data: checkData } = await supabase.functions.invoke(
+          'video-generate',
+          { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0], aspect_ratio: aspectRatio } }
+        )
+        if (checkData?.lipsync_redirect) {
+          setPhase(null)
+          handleLipsyncRedirect({
+            extractedSpeech: checkData.extracted_speech,
+            startFrameFile:  activeStartFrame?.file ?? null,
+            startFrameUrl:   startFrameUrl ?? checkData.image_url,
+          })
+          return
+        }
+      }
+
+      // ── Create row + charge credits (lipsync check passed) ────────────────
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        type,
@@ -1030,25 +1051,14 @@ const persistRefImages = (imgs) => {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // ── Invoke edge function + intercept lipsync redirect ─────────────────
+      // ── Invoke edge function ───────────────────────────────────────────────
       const { data: invokeData, error: invokeErr } = await supabase.functions.invoke(
         'video-generate',
         { body: { generationId: genRow.id } }
       )
 
       if (invokeErr) {
-        // Edge fn hard-failed — generation already has status pending, let poller handle it
         console.error('video-generate invoke error', invokeErr)
-} else if (invokeData?.lipsync_redirect) {
-        // ── Lipsync redirect — navigate directly to Talking Head ──────────
-        setPhase(null)
-        refreshProfile()
-        handleLipsyncRedirect({
-          extractedSpeech: invokeData.extracted_speech,
-          startFrameFile:  activeStartFrame?.file ?? null,
-          startFrameUrl:   startFrameUrl ?? invokeData.image_url,
-        })
-        return
       }
 
       // ── Normal success path ───────────────────────────────────────────────
