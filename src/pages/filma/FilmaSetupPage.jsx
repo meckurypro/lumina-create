@@ -350,16 +350,7 @@ const [loading,         setLoading]        = useState(isEdit)
       aspectRatio, structureType,
       totalParts, totalSeasons,
     })
-  }, [
-    title, filmType, filmTypeCustom,
-    genre, genreCustom,
-    setting, settingCustom,
-    visualStyle, visualStyleCustom,
-    colorGrading, colorGradingCustom,
-    aspectRatio, structureType,
-    totalParts, totalSeasons,
-  ])
-  }, [
+ }, [
     title, filmType, filmTypeCustom,
     genre, genreCustom,
     setting, settingCustom,
