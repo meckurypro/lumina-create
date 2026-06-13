@@ -897,16 +897,17 @@ export default function CreateCopyMotionPage() {
   const hasSubject       = !!subjectImage
   const isProcessing     = phase !== null
 
+const videoRequired   = selectedModel?.requires_video ?? true
+  const subjectRequired = selectedModel?.requires_image ?? true
+
   const canGenerate =
-    hasVideo &&
-    compat.compatible &&
-    !settingsDrifted &&
-    hasSubject &&
-    !subjectSizeErr &&
+    (!videoRequired   || (hasVideo && compat.compatible && !settingsDrifted)) &&
+    (!subjectRequired || (hasSubject && !subjectSizeErr)) &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
-    !weeklyBlocked
+    !weeklyBlocked &&
+    creditCost > 0
 
   // ── Upload handlers ──────────────────────────────────────
   const handleVideoUpload = async (e) => {
