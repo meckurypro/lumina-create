@@ -20,7 +20,7 @@ const PHYSIQUE_OPTIONS = ['slim', 'athletic', 'average', 'muscular', 'plus_size'
 const AGE_RANGES       = ['Child', 'Teen', '20s', '30s', '40s', '50s', '60s', '70+']
 
 // ── Actor card ────────────────────────────────────────────────────────────
-const ActorCard = ({ actor, index, onEdit, onDelete }) => (
+const ActorCard = ({ actor, index, onEdit, onDelete, onProfile }) => (
   <motion.div
     initial={{ opacity: 0, y: 12 }}
     animate={{ opacity: 1, y: 0 }}
@@ -57,6 +57,12 @@ const ActorCard = ({ actor, index, onEdit, onDelete }) => (
 
     {/* Actions */}
     <div className="flex items-center gap-1.5 flex-shrink-0">
+      <button onClick={() => onProfile(actor)}
+        className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+        style={{ background: ACCENT_SUB, color: ACCENT,
+          border: `1px solid ${ACCENT_BDR}` }}>
+        Profile
+      </button>
       <button onClick={() => onEdit(actor)}
         className="px-3 py-1.5 rounded-xl text-xs font-semibold"
         style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
@@ -436,7 +442,7 @@ export default function FilmaCastPage() {
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-4">
 
           {/* Add buttons */}
-          <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
             <button onClick={() => { setEditActor(null); setUgcPending(null); setShowForm(true) }}
               className="flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
               style={{ background: ACCENT, color: '#000' }}>
@@ -448,6 +454,15 @@ export default function FilmaCastPage() {
               <Download size={15} /> Import UGC
             </button>
           </div>
+
+          {/* Actor profile builder */}
+          <button
+            onClick={() => navigate(`/filma/${filmId}/actor/new`)}
+            className="flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+              border: `1.5px dashed ${ACCENT_BDR}` }}>
+            <User size={15} style={{ color: ACCENT }} /> Build Actor Profile
+          </button>
 
           {/* Hint */}
           <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
@@ -473,9 +488,10 @@ export default function FilmaCastPage() {
           ) : (
             <div className="flex flex-col gap-3">
               {actors.map((actor, i) => (
-                <ActorCard key={actor.id} actor={actor} index={i}
+               <ActorCard key={actor.id} actor={actor} index={i}
                   onEdit={(a) => { setEditActor(a); setUgcPending(null); setShowForm(true) }}
-                  onDelete={handleDeleteActor} />
+                  onDelete={handleDeleteActor}
+                  onProfile={(a) => navigate(`/filma/${filmId}/actor/${a.id}`)} />
               ))}
             </div>
           )}
