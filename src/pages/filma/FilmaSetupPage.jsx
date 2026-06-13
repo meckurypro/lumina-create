@@ -1,6 +1,6 @@
 // src/pages/filma/FilmaSetupPage.jsx
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { filmaFilms, filmaDropdownCustoms } from '@/lib/filma'
@@ -283,32 +283,61 @@ const Stepper = ({ label, value, onChange, min = 1, max = 50 }) => (
 
 // ── Main ──────────────────────────────────────────────────────────────────
 export default function FilmaSetupPage() {
-  const navigate = useNavigate()
-  const { user } = useAuth()
+  const navigate       = useNavigate()
+  const { filmId }     = useParams()
+  const { user }       = useAuth()
+  const isEdit         = !!filmId
+  const [loading,      setLoading]  = useState(isEdit)
+  const [saving,       setSaving]   = useState(false)
 
-  const [saving, setSaving] = useState(false)
+  // ── Form state — default first, overwritten by DB load in edit mode ───────
+  const draft = (!isEdit && loadDraft()) || {}
 
-  // ── Form state — initialised from sessionStorage draft if available ───────
-  const draft = loadDraft() || {}
+  const [title,              setTitle]              = useState(draft.title              ?? DEFAULT_STATE.title)
+  const [filmType,           setFilmType]           = useState(draft.filmType           ?? DEFAULT_STATE.filmType)
+  const [filmTypeCustom,     setFilmTypeCustom]     = useState(draft.filmTypeCustom     ?? DEFAULT_STATE.filmTypeCustom)
+  const [genre,              setGenre]              = useState(draft.genre              ?? DEFAULT_STATE.genre)
+  const [genreCustom,        setGenreCustom]        = useState(draft.genreCustom        ?? DEFAULT_STATE.genreCustom)
+  const [setting,            setSetting]            = useState(draft.setting            ?? DEFAULT_STATE.setting)
+  const [settingCustom,      setSettingCustom]      = useState(draft.settingCustom      ?? DEFAULT_STATE.settingCustom)
+  const [visualStyle,        setVisualStyle]        = useState(draft.visualStyle        ?? DEFAULT_STATE.visualStyle)
+  const [visualStyleCustom,  setVisualStyleCustom]  = useState(draft.visualStyleCustom  ?? DEFAULT_STATE.visualStyleCustom)
+  const [colorGrading,       setColorGrading]       = useState(draft.colorGrading       ?? DEFAULT_STATE.colorGrading)
+  const [colorGradingCustom, setColorGradingCustom] = useState(draft.colorGradingCustom ?? DEFAULT_STATE.colorGradingCustom)
+  const [aspectRatio,        setAspectRatio]        = useState(draft.aspectRatio        ?? DEFAULT_STATE.aspectRatio)
+  const [structureType,      setStructureType]      = useState(draft.structureType      ?? DEFAULT_STATE.structureType)
+  const [totalParts,         setTotalParts]         = useState(draft.totalParts         ?? DEFAULT_STATE.totalParts)
+  const [totalSeasons,       setTotalSeasons]       = useState(draft.totalSeasons       ?? DEFAULT_STATE.totalSeasons)
 
-  const [title,              setTitle]             = useState(draft.title              ?? DEFAULT_STATE.title)
-  const [filmType,           setFilmType]          = useState(draft.filmType           ?? DEFAULT_STATE.filmType)
-  const [filmTypeCustom,     setFilmTypeCustom]    = useState(draft.filmTypeCustom     ?? DEFAULT_STATE.filmTypeCustom)
-  const [genre,              setGenre]             = useState(draft.genre              ?? DEFAULT_STATE.genre)
-  const [genreCustom,        setGenreCustom]       = useState(draft.genreCustom        ?? DEFAULT_STATE.genreCustom)
-  const [setting,            setSetting]           = useState(draft.setting            ?? DEFAULT_STATE.setting)
-  const [settingCustom,      setSettingCustom]     = useState(draft.settingCustom      ?? DEFAULT_STATE.settingCustom)
-  const [visualStyle,        setVisualStyle]       = useState(draft.visualStyle        ?? DEFAULT_STATE.visualStyle)
-  const [visualStyleCustom,  setVisualStyleCustom] = useState(draft.visualStyleCustom  ?? DEFAULT_STATE.visualStyleCustom)
-  const [colorGrading,       setColorGrading]      = useState(draft.colorGrading       ?? DEFAULT_STATE.colorGrading)
-  const [colorGradingCustom, setColorGradingCustom]= useState(draft.colorGradingCustom ?? DEFAULT_STATE.colorGradingCustom)
-  const [aspectRatio,        setAspectRatio]       = useState(draft.aspectRatio        ?? DEFAULT_STATE.aspectRatio)
-  const [structureType,      setStructureType]     = useState(draft.structureType      ?? DEFAULT_STATE.structureType)
-  const [totalParts,         setTotalParts]        = useState(draft.totalParts         ?? DEFAULT_STATE.totalParts)
-  const [totalSeasons,       setTotalSeasons]      = useState(draft.totalSeasons       ?? DEFAULT_STATE.totalSeasons)
-
-  // ── Persist draft on every change ────────────────────────────────────────
+  // ── Load existing film in edit mode ───────────────────────────────────────
   useEffect(() => {
+    if (!isEdit) return
+    const load = async () => {
+      const { data, error } = await filmaFilms.getById(filmId)
+      if (error || !data) { toast.error('Film not found'); navigate('/filma'); return }
+      setTitle(data.title                  ?? DEFAULT_STATE.title)
+      setFilmType(data.film_type           ?? DEFAULT_STATE.filmType)
+      setFilmTypeCustom(data.film_type_custom ?? DEFAULT_STATE.filmTypeCustom)
+      setGenre(Array.isArray(data.genre) ? data.genre : DEFAULT_STATE.genre)
+      setGenreCustom(data.genre_custom     ?? DEFAULT_STATE.genreCustom)
+      setSetting(Array.isArray(data.setting) ? data.setting : DEFAULT_STATE.setting)
+      setSettingCustom(data.setting_custom ?? DEFAULT_STATE.settingCustom)
+      setVisualStyle(data.visual_style     ?? DEFAULT_STATE.visualStyle)
+      setVisualStyleCustom(data.visual_style_custom ?? DEFAULT_STATE.visualStyleCustom)
+      setColorGrading(data.color_grading   ?? DEFAULT_STATE.colorGrading)
+      setColorGradingCustom(data.color_grading_custom ?? DEFAULT_STATE.colorGradingCustom)
+      setAspectRatio(data.aspect_ratio     ?? DEFAULT_STATE.aspectRatio)
+      setStructureType(data.structure_type ?? DEFAULT_STATE.structureType)
+      setTotalParts(data.total_parts       ?? DEFAULT_STATE.totalParts)
+      setTotalSeasons(data.total_seasons   ?? DEFAULT_STATE.totalSeasons)
+      setLoading(false)
+    }
+    load()
+  }, [filmId]) // eslint-disable-line
+
+  // ── Persist draft on every change (create mode only) ─────────────────────
+  useEffect(() => {
+    if (isEdit) return
     saveDraft({
       title, filmType, filmTypeCustom,
       genre, genreCustom,
@@ -318,6 +347,15 @@ export default function FilmaSetupPage() {
       aspectRatio, structureType,
       totalParts, totalSeasons,
     })
+  }, [
+    title, filmType, filmTypeCustom,
+    genre, genreCustom,
+    setting, settingCustom,
+    visualStyle, visualStyleCustom,
+    colorGrading, colorGradingCustom,
+    aspectRatio, structureType,
+    totalParts, totalSeasons,
+  ])
   }, [
     title, filmType, filmTypeCustom,
     genre, genreCustom,
@@ -340,9 +378,35 @@ export default function FilmaSetupPage() {
     structureType
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  const handleSave = async () => {
+ const handleSave = async () => {
     if (!isValid || saving) return
     setSaving(true)
+
+    if (isEdit) {
+      const payload = {
+        title:               title.trim(),
+        film_type:           filmType,
+        film_type_custom:    filmType === 'other' ? filmTypeCustom.trim() : null,
+        genre,
+        genre_custom:        genre.includes('other') ? genreCustom.trim() : null,
+        setting,
+        setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
+        visual_style:        visualStyle,
+        visual_style_custom: visualStyle === 'other' ? visualStyleCustom.trim() : null,
+        color_grading:       colorGrading,
+        color_grading_custom:colorGrading === 'other' ? colorGradingCustom.trim() : null,
+        aspect_ratio:        aspectRatio,
+        structure_type:      structureType,
+        total_parts:         structureType === 'series' ? totalSeasons : totalParts,
+        total_seasons:       structureType === 'series' ? totalSeasons : 1,
+      }
+      const { error } = await filmaFilms.update(filmId, payload)
+      setSaving(false)
+      if (error) { toast.error('Could not update film'); return }
+      toast.success('Film updated')
+      navigate(`/filma/${filmId}/structure`)
+      return
+    }
 
     // Log any "Other" custom entries
     const logCustom = async (field, val, custom) => {
@@ -405,8 +469,10 @@ setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
         >
           <ArrowLeft size={20} />
         </button>
-        <div className="flex flex-col items-center">
-          <h1 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>New Film</h1>
+       <div className="flex flex-col items-center">
+          <h1 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+            {isEdit ? 'Edit Film' : 'New Film'}
+          </h1>
           <span className="text-xs font-medium" style={{ color: ACCENT }}>Project Setup</span>
         </div>
         <div style={{ width: 36 }} />
@@ -577,7 +643,9 @@ setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
               color:      isValid && !saving ? '#000'  : 'var(--text-muted)',
             }}
           >
-            {saving ? 'Creating…' : (
+           {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? (
+              <><span>Save Changes</span><ArrowRight size={16} /></>
+            ) : (
               <><span>Continue to Cast</span><ArrowRight size={16} /></>
             )}
           </button>
