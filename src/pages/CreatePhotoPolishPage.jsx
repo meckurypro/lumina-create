@@ -12,7 +12,7 @@ const ACCENT = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
 const ACCENT_BDR = 'var(--tool-polish-border)'
 
-// ── New face presets — prepended to PHOTO_POLISH_PRESETS at render time ───────
+// ── Face presets — prepended to PHOTO_POLISH_PRESETS at render time ───────────
 export const FACE_PRESETS = [
   {
     id: 'face_shot',
@@ -35,14 +35,22 @@ Output as a 2K photorealistic portrait with zero AI smoothing, zero makeup addit
     emoji: '↩️',
     description: 'Rotate any front face to a full side profile',
     isMaster: false,
-    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic 90-degree side profile of the same person.
-The subject must face directly left or right — a true orthographic profile with the nose, lips, jaw, and ear fully visible in silhouette.
-Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour, hair length, and all distinguishing features must be faithfully reproduced as seen in the source image.
-Frame as a square or portrait crop from crown to upper chest, centered on the profile.
-Background should be a clean neutral warm beige (similar to a professional studio seamless backdrop), softly out of focus.
-Lighting: even north-facing studio light with a subtle warm fill, no harsh shadows.
-Render every hair strand, skin pore, and facial micro-detail at 2K hyperrealistic quality.
-Do NOT add makeup, alter skin tone, or change any feature. Output must look like a real photograph, not an illustration.`,
+    prompt: `Edit this photo: rotate this exact person's head to a 90-degree side profile.
+
+This is a photo editing task. Do not create a new person. Do not use this image as a "reference" — edit the actual person in this image.
+
+What to change: turn the head so the face points directly left or right — a true side profile where the nose, lips, jaw, and one ear are visible in silhouette.
+
+What must NOT change:
+- This exact person's identity
+- Skin tone — do not lighten, darken, or shift undertones by any amount
+- Facial bone structure, nose shape, lip shape, jaw shape
+- Eye shape and colour
+- Hair colour, texture, length, and cut
+- Any distinguishing marks, scars, or features
+- Background and lighting
+
+Output must be photorealistic. The person in the output must be unmistakably and identically the same individual as in the input photo.`,
   },
   {
     id: 'face_3q',
@@ -50,14 +58,22 @@ Do NOT add makeup, alter skin tone, or change any feature. Output must look like
     emoji: '🔄',
     description: 'Turn a front face into a cinematic ¾ profile',
     isMaster: false,
-    prompt: `Using this front-facing portrait as the identity reference, generate a photorealistic three-quarter (45-degree) profile of the same person.
-The subject's face should be turned approximately 45 degrees from camera — both eyes visible, strong cheekbone and jaw line reading, slight off-axis gaze.
-Preserve the subject's exact identity: skin tone, facial structure, eye colour, hair colour and texture, piercings, and all distinguishing features must match the source precisely.
-Frame tight from crown to upper chest as a portrait or square crop.
-Background: clean neutral warm beige seamless studio tone, gently defocused.
-Lighting: cinematic directional light from the front-facing side with subtle fill on the shadow side, creating natural facial dimension.
-Render at 2K hyperrealistic quality — every skin pore, individual hair strand, and eye detail must be photographic.
-Do NOT add makeup, alter skin tone, smooth skin, or change any feature. Output must look indistinguishable from a professional studio photograph.`,
+    prompt: `Edit this photo: rotate this exact person's head to a three-quarter (45-degree) angle.
+
+This is a photo editing task. Do not create a new person. Do not use this image as a "reference" — edit the actual person in this image.
+
+What to change: turn the head approximately 45 degrees from its current position so the near cheekbone, jaw line, and one ear become partially visible. Both eyes should still be visible.
+
+What must NOT change:
+- This exact person's identity
+- Skin tone — do not lighten, darken, or shift undertones by any amount
+- Facial bone structure, nose shape, lip shape, jaw shape
+- Eye shape and colour
+- Hair colour, texture, length, and cut
+- Any distinguishing marks, scars, or features
+- Background and lighting
+
+Output must be photorealistic. The person in the output must be unmistakably and identically the same individual as in the input photo.`,
   },
 ]
 
@@ -464,9 +480,9 @@ export default function CreatePhotoPolishPage() {
         aspect_ratio: aspectRatio,
         credits_charged: creditCost,
         output_type: 'image',
-                input_image_urls: [publicUrl],
-        skip_prompt_refinement: false,        // ← CHANGE: enable prompt engineering
-        refinement_mode: 'photo_polish',      // ← ADD: triggers vision-guided pipeline
+        input_image_urls: [publicUrl],
+        skip_prompt_refinement: false,
+        refinement_mode: 'photo_polish',
         title: `Photo Polish — ${preset.label}`,
       })
 
@@ -735,7 +751,7 @@ export default function CreatePhotoPolishPage() {
               : `Polish · ${creditCost} cr`
             }
           </button>
-        {preset?.isMaster && !isMaster && (
+          {preset?.isMaster && !isMaster && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               This preset requires Master plan.{' '}
               <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
