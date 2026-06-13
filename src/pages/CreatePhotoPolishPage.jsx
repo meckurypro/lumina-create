@@ -393,6 +393,8 @@ export default function CreatePhotoPolishPage() {
   const preset = ALL_PRESETS.find((p) => p.id === selectedPreset)
   const canAfford = credits >= creditCost
   const canGenerate = !!photo && !!preset && canAfford && !submitting && !!selectedModel
+    && creditCost > 0
+    && !(preset.isMaster && !isMaster)
 
   // ── model change — persist preference ────────────────────────────────────
   const handleModelChange = async (value) => {
@@ -733,6 +735,14 @@ export default function CreatePhotoPolishPage() {
               : `Polish · ${creditCost} cr`
             }
           </button>
+        {preset?.isMaster && !isMaster && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              This preset requires Master plan.{' '}
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
+                Upgrade
+              </button>
+            </p>
+          )}
           {!canAfford && photo && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
