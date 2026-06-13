@@ -1,7 +1,7 @@
 // src/pages/filma/FilmaSetupPage.jsx
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ImagePlus, Clapperboard } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { filmaFilms, filmaDropdownCustoms } from '@/lib/filma'
 import toast from 'react-hot-toast'
@@ -287,8 +287,10 @@ export default function FilmaSetupPage() {
   const { filmId }     = useParams()
   const { user }       = useAuth()
   const isEdit         = !!filmId
-  const [loading,      setLoading]  = useState(isEdit)
-  const [saving,       setSaving]   = useState(false)
+const [loading,         setLoading]        = useState(isEdit)
+  const [saving,          setSaving]         = useState(false)
+  const [thumbnail,       setThumbnail]      = useState(null)
+  const [uploadingThumb,  setUploadingThumb] = useState(false)
 
   // ── Form state — default first, overwritten by DB load in edit mode ───────
   const draft = (!isEdit && loadDraft()) || {}
@@ -330,6 +332,7 @@ export default function FilmaSetupPage() {
       setStructureType(data.structure_type ?? DEFAULT_STATE.structureType)
       setTotalParts(data.total_parts       ?? DEFAULT_STATE.totalParts)
       setTotalSeasons(data.total_seasons   ?? DEFAULT_STATE.totalSeasons)
+      setThumbnail(data.thumbnail_url      || null)
       setLoading(false)
     }
     load()
@@ -481,6 +484,45 @@ setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
       {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-7">
+
+          {/* Thumbnail — edit mode only */}
+          {isEdit && (
+            <div>
+              <SectionLabel>Film Thumbnail</SectionLabel>
+              <div className="flex items-center gap-4">
+                <div className="w-24 h-16 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+                  style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+                  {thumbnail ? (
+                    <img src={thumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                  ) : (
+                    <Clapperboard size={20} style={{ color: ACCENT, opacity: 0.3 }} />
+                  )}
+                </div>
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all active:scale-95"
+                  style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      setUploadingThumb(true)
+                      try {
+                        const url = await filmaFilms.uploadThumbnail(user.id, filmId, file)
+                        setThumbnail(url)
+                        toast.success('Thumbnail updated')
+                      } catch (err) {
+                        toast.error('Upload failed')
+                      } finally {
+                        setUploadingThumb(false)
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                  <ImagePlus size={13} />
+                  {uploadingThumb ? 'Uploading…' : thumbnail ? 'Change Thumbnail' : 'Upload Thumbnail'}
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Title */}
           <div>
