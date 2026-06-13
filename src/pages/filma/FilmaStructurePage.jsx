@@ -302,21 +302,16 @@ export default function FilmaStructurePage() {
   }
 
   // ── Add scene ─────────────────────────────────────────────────────────────
-  const handleAddScene = async (part) => {
+ const handleAddScene = async (part) => {
     const existing = scenes[part.id] || []
     const nextNum  = (existing[existing.length - 1]?.scene_number || 0) + 1
 
-    // bulkCreate(count=1) then fix the scene_number
-    const { data: rows } = await filmaScenes.bulkCreate(filmId, part.id, 1)
-    if (!rows?.[0]) { toast.error('Could not add scene'); return }
-
-    const { data, error } = await filmaScenes.update(rows[0].id, { scene_number: nextNum })
-    if (error) { toast.error('Could not add scene'); return }
+    const { data, error } = await filmaScenes.create(filmId, part.id, nextNum)
+    if (error || !data) { toast.error('Could not add scene'); return }
 
     setScenes((prev) => ({ ...prev, [part.id]: [...(prev[part.id] || []), data] }))
     await filmaParts.update(part.id, { total_scenes: nextNum })
   }
-
   // ── Rename scene ──────────────────────────────────────────────────────────
   const handleRenameScene = async (sceneId, title) => {
     const { error } = await filmaScenes.update(sceneId, { title })
