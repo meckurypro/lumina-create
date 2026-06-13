@@ -80,7 +80,8 @@ const FilmCard = ({ film, index, onOpen, onDelete }) => {
             </span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
             <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
-              {(film.genre ?? '').split('_').join(' ')}
+              {(Array.isArray(film.genre) ? film.genre : [film.genre ?? ''])
+                .map(g => g.split('_').join(' ')).join(', ')}
             </span>
           </div>
         </button>
