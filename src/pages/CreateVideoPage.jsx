@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, ImagePlus, Plus, Maximize2,
   Film, AlertCircle, RefreshCw, CheckCircle2, Scissors, Lock,
-  Mic2, MessageSquare,
-} from 'lucide-react'
+  } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
@@ -16,11 +15,6 @@ import { applyModelPreferences } from '@/hooks/useModelPreferences'
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
-
-// TH accent used only in the redirect modal
-const TH_ACCENT     = 'var(--tool-talking-head)'
-const TH_ACCENT_SUB = 'var(--tool-talking-head-subtle)'
-const TH_ACCENT_BDR = 'var(--tool-talking-head-border)'
 
 // ─── session storage keys ─────────────────────────────────────────────────────
 const SS_PROMPT      = 'meckury_video_prompt'
@@ -260,88 +254,6 @@ const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) 
       <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload video</span>
       <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>MP4 · MOV · WEBM · max 40 MB</span>
     </label>
-  )
-}
-
-// ─── lipsync redirect modal ───────────────────────────────────────────────────
-
-/**
- * Shown when the edge function returns { lipsync_redirect: true }.
- * Lets user choose: go to Talking Head (pre-filled) or generate anyway.
- */
-const LipsyncRedirectModal = ({ extractedSpeech, startFrameUrl, startFrameFile, onRedirect, onDismiss }) => {
-  const speechPreview = extractedSpeech
-    ? (extractedSpeech.length > 80 ? extractedSpeech.slice(0, 80) + '…' : extractedSpeech)
-    : null
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
-      onClick={onDismiss}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 32, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0,  scale: 1    }}
-        exit={{    opacity: 0, y: 24, scale: 0.97 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-sm rounded-3xl p-5 flex flex-col gap-4"
-        style={{ background: 'var(--bg-card)', border: `1px solid ${TH_ACCENT_BDR}`, boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Icon + title */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: TH_ACCENT_SUB }}>
-            <Mic2 size={18} style={{ color: TH_ACCENT }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-              Looks like you want speech
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              Your prompt asks the character to speak. The <strong style={{ color: TH_ACCENT }}>Talking Head</strong> tool is built for exactly this — image + script → lip-synced video.
-            </p>
-          </div>
-        </div>
-
-        {/* Extracted speech preview */}
-        {speechPreview && (
-          <div className="rounded-xl px-3 py-2.5 flex items-start gap-2"
-            style={{ background: TH_ACCENT_SUB, border: `1px solid ${TH_ACCENT_BDR}` }}>
-            <MessageSquare size={13} style={{ color: TH_ACCENT, marginTop: 1, flexShrink: 0 }} />
-            <p className="text-xs font-medium" style={{ color: TH_ACCENT, lineHeight: 1.6 }}>
-              "{speechPreview}"
-            </p>
-          </div>
-        )}
-
-        <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          {startFrameUrl
-            ? 'Your image and script will be transferred automatically — no re-upload needed.'
-            : 'Your script will be transferred automatically.'}
-        </p>
-
-        {/* Actions */}
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={onRedirect}
-            className="w-full py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-            style={{ background: TH_ACCENT, color: '#fff' }}
-          >
-            Switch to Talking Head
-          </button>
-          <button
-            onClick={onDismiss}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-          >
-            Generate as video anyway
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
   )
 }
 
@@ -613,11 +525,6 @@ export default function CreateVideoPage() {
 
   // ── omni ref ──────────────────────────────────────────────────────────────
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
-
-  // ── lipsync redirect modal state ──────────────────────────────────────────
-  // Holds the redirect payload from edge fn: { extractedSpeech, generationId }
-  // and a callback to proceed with the generation anyway.
-  const [lipsyncRedirect,  setLipsyncRedirect]  = useState(null)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -1133,20 +1040,13 @@ const persistRefImages = (imgs) => {
         // Edge fn hard-failed — generation already has status pending, let poller handle it
         console.error('video-generate invoke error', invokeErr)
 } else if (invokeData?.lipsync_redirect) {
-        // ── Lipsync redirect intercepted ──────────────────────────────────
-        // The edge fn has already:
-        //   1. Cancelled + refunded the i2v row
-        //   2. Forwarded to lipsync-generate which created a new row + charged credits
-        //   3. Returned the new lipsync generationId
-        // We just refresh credits and show the modal.
+        // ── Lipsync redirect — navigate directly to Talking Head ──────────
         setPhase(null)
         refreshProfile()
-
-        setLipsyncRedirect({
-          extractedSpeech:    invokeData.extracted_speech,
-          lipsyncGenerationId: invokeData.generationId,  // new lipsync row already queued
-          startFrameFile:     activeStartFrame?.file ?? null,
-          startFrameUrl:      startFrameUrl,
+        handleLipsyncRedirect({
+          extractedSpeech: invokeData.extracted_speech,
+          startFrameFile:  activeStartFrame?.file ?? null,
+          startFrameUrl:   startFrameUrl ?? invokeData.image_url,
         })
         return
       }
@@ -1184,33 +1084,7 @@ const persistRefImages = (imgs) => {
         {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
       </AnimatePresence>
 
-      {/* Lipsync redirect modal */}
-      <AnimatePresence>
-        {lipsyncRedirect && (
-          <LipsyncRedirectModal
-            extractedSpeech={lipsyncRedirect.extractedSpeech}
-            startFrameUrl={lipsyncRedirect.startFrameUrl}
-            startFrameFile={lipsyncRedirect.startFrameFile}
-            onRedirect={() => handleLipsyncRedirect(lipsyncRedirect)}
-         onDismiss={() => {
-              // lipsync-generate already queued the job — dismissing just closes the modal.
-              // The generation is running regardless of which button the user picks.
-              setLipsyncRedirect(null)
-              refreshProfile()
-              toast.success('Your talking head is being generated. Check your Media page.', { duration: 4000 })
-              setPrompt('')
-              setStartFrame(null); setEndFrame(null); setRefImages([])
-              setAutoRatio(false); setAspectRatio('9:16'); setWithSound(true)
-              try {
-                sessionStorage.removeItem(SS_PROMPT); sessionStorage.removeItem(SS_START_FRAME)
-                sessionStorage.removeItem(SS_END_FRAME); sessionStorage.removeItem(SS_REF_IMAGES)
-              } catch {}
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Fullscreen viewer */}
+           {/* Fullscreen viewer */}
       <AnimatePresence>
         {fullscreenImage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
