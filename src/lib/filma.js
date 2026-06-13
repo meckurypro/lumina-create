@@ -877,7 +877,22 @@ export async function filmaScaffoldScene(sceneId) {
   const { data, error } = await supabase.functions.invoke('filma-scaffold', {
     body: { sceneId },
   })
-  if (error) throw new Error(error.message || 'Scaffold failed')
+
+  if (error) {
+    // supabase-js wraps non-2xx edge function responses in a generic
+    // FunctionsHttpError. The real error message from our function body
+    // lives in error.context (a Response object) — try to extract it.
+    if (error.context && typeof error.context.json === 'function') {
+      try {
+        const body = await error.context.json()
+        throw new Error(body?.error || body?.message || error.message || 'Scaffold failed')
+      } catch {
+        // context wasn't valid JSON — fall through to generic message
+      }
+    }
+    throw new Error(error.message || 'Scaffold failed')
+  }
+
   if (!data?.success) throw new Error(data?.error || 'Scaffold returned no data')
   return data
 }
