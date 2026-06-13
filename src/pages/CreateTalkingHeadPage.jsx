@@ -1233,8 +1233,9 @@ export default function CreateTalkingHeadPage() {
   // ── Reset when model changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!selectedModel) return
-    if (!caps.faceInput  && caps.videoInput)  setSubjectMode('video')
-    if (caps.faceInput   && !caps.videoInput) setSubjectMode('face')
+    if (caps.requiresVideo)                    setSubjectMode('video')
+    else if (!caps.faceInput && caps.videoInput)  setSubjectMode('video')
+    else if (caps.faceInput  && !caps.videoInput) setSubjectMode('face')
     if (!caps.textScript) { setAudioMode1('upload'); setAudioMode2('upload') }
     if (!caps.multiChar) { setAudioSlots2([]); setScript2('') }
     if (!caps.supportedDurations.includes(duration)) setDuration(caps.supportedDurations[0] || '5')
@@ -1288,7 +1289,8 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
-    if (!canAfford) errors.push('Not enough credits')
+ if (!canAfford) errors.push('Not enough credits')
+    if (creditCost === 0 && selectedModel) errors.push('Model pricing is misconfigured — contact support')
 
     return errors
   }, [selectedModel, caps, faceImage, videoFile, videoTooShort, videoNeedsTrim,
@@ -1644,7 +1646,7 @@ export default function CreateTalkingHeadPage() {
                     <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
                   )}
                 </p>
-                {caps.faceInput && caps.videoInput && (
+               {caps.faceInput && caps.videoInput && !caps.requiresVideo && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                     {[{ value: 'face', label: 'Photo', icon: User }, { value: 'video', label: 'Video', icon: VideoIcon }].map(({ value, label, icon: Icon }) => (
                       <button key={value} onClick={() => setSubjectMode(value)}
