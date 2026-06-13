@@ -289,7 +289,7 @@ const ActorFormSheet = ({ initial, onSave, onClose, userId }) => {
                 <p className="text-xs font-semibold mb-1.5 uppercase tracking-widest"
                   style={{ color: 'var(--text-muted)' }}>Ethnic Background</p>
                 <input type="text" value={ethnic} onChange={(e) => setEthnic(e.target.value)}
-                  placeholder="e.g. Yoruba"
+                  placeholder="e.g. Igbo"
                   className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
                   style={{ background: 'var(--bg-primary)', border: `1px solid var(--border-color)`,
                     color: 'var(--text-primary)' }} />
