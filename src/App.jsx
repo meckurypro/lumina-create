@@ -47,6 +47,7 @@ import FilmaCastPage            from '@/pages/filma/FilmaCastPage'
 import FilmaStructurePage       from '@/pages/filma/FilmaStructurePage'
 import FilmaScenePage           from '@/pages/filma/FilmaScenePage'
 import FilmaShotPage            from '@/pages/filma/FilmaShotPage'
+import FilmaActorProfilePage    from '@/pages/filma/FilmaActorProfilePage'
 
 import { BottomNav }    from '@/components/layout/BottomNav'
 import PWAUpdateToast   from '@/components/PWAUpdateToast'
@@ -148,6 +149,8 @@ export default function App() {
             {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
             <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
             <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/edit"           element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/actor/:actorId" element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
             <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
             <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
             <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
