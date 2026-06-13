@@ -312,6 +312,16 @@ export const filmaScenes = {
     return { data, error }
   },
 
+  /** Create a single scene with a specific scene_number */
+  async create(filmId, partId, sceneNumber) {
+    const { data, error } = await supabase
+      .from('filma_scenes')
+      .insert({ film_id: filmId, part_id: partId, scene_number: sceneNumber, title: null })
+      .select()
+      .single()
+    return { data, error }
+  },
+
   /** Create scenes for a part (bulk, based on total_scenes) */
   async bulkCreate(filmId, partId, totalScenes) {
     const rows = Array.from({ length: totalScenes }, (_, i) => ({
