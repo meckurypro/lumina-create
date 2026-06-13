@@ -455,14 +455,6 @@ export default function FilmaCastPage() {
             </button>
           </div>
 
-          {/* Actor profile builder */}
-          <button
-            onClick={() => navigate(`/filma/${filmId}/actor/new`)}
-            className="flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-              border: `1.5px dashed ${ACCENT_BDR}` }}>
-            <User size={15} style={{ color: ACCENT }} /> Build Actor Profile
-          </button>
 
           {/* Hint */}
           <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
