@@ -20,14 +20,28 @@ export const FACE_PRESETS = [
     emoji: '🎯',
     description: 'Tight cinematic close-up from any photo',
     isMaster: false,
-    prompt: `Transform this image into an ultra-close hyperrealistic portrait crop.
-Reframe tightly on the face from forehead to chin, head and shoulders only, eliminating any body below the chest.
-Preserve every facial feature exactly as-is — skin tone, bone structure, eye colour, hair colour and texture, piercings, and all distinguishing marks must remain identical.
-Do NOT alter, lighten, or smooth the skin; enhance its natural texture so every pore, micro-detail, and luminous quality is visible at magazine resolution.
-Eyes must be razor-sharp with vivid clarity and natural catch-lights.
-Render a shallow depth-of-field with the background dissolved into smooth warm bokeh (neutral beige/amber tones).
-Apply cinematic golden-hour rim lighting that wraps the face with warm specular highlights without overexposing.
-Output as a 2K photorealistic portrait with zero AI smoothing, zero makeup addition, zero skin tone alteration.`,
+    prompt: `Edit this photo: reframe and enhance this exact person into a Hollywood-grade close-up portrait.
+
+This is a photo editing task. Do not create a new person. Do not use this image as a "reference" — edit the actual person in this image.
+
+What to change:
+- Reframe tightly from forehead to upper chest, centering on the face
+- Upscale and sharpen to 2K resolution — every pore, hair strand, and skin texture must be crystal clear
+- Enhance skin texture naturally — more detail, more depth, zero smoothing, zero airbrushing
+- Eyes must be razor-sharp with vivid natural catch-lights
+- Apply shallow depth-of-field: background softly blurred, face in tack-sharp focus
+- Enhance lighting to cinematic quality — directional key light, subtle fill, natural shadows that define facial structure
+
+What must NOT change:
+- This exact person's identity
+- Skin tone — do not lighten, darken, or shift undertones by any amount
+- Facial bone structure, nose shape, lip shape, jaw shape
+- Eye shape, colour, and spacing
+- Hair colour, texture, length, and cut
+- Any distinguishing marks, scars, blemishes, or features
+- Do NOT add makeup, do NOT alter skin colour, do NOT change any feature
+
+Output must look like a frame pulled from a Hollywood film — hyperrealistic, high-contrast detail, film-grade. The person must be unmistakably and identically the same individual as in the input photo.`,
   },
   {
     id: 'face_90p',
