@@ -43,6 +43,7 @@ import UGCBrandMediaPage        from '@/pages/UGCBrandMediaPage'
 // ── Filma ─────────────────────────────────────────────────────
 import FilmaHubPage             from '@/pages/filma/FilmaHubPage'
 import FilmaSetupPage           from '@/pages/filma/FilmaSetupPage'
+import FilmaStorySummaryPage    from '@/pages/filma/FilmaStorySummaryPage'
 import FilmaCastPage            from '@/pages/filma/FilmaCastPage'
 import FilmaStructurePage       from '@/pages/filma/FilmaStructurePage'
 import FilmaScenePage           from '@/pages/filma/FilmaScenePage'
@@ -150,6 +151,7 @@ export default function App() {
             <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
             <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/edit"           element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/story-summary"  element={<RequireAuth><FilmaStorySummaryPage /></RequireAuth>} />
             <Route path="/filma/:filmId/actor/:actorId" element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
             <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
             <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
@@ -211,7 +213,7 @@ export default function App() {
             {/* ── Profile / Settings / Admin ──────────────────── */}
             <Route path="/profile"  element={<Auth><ProfilePage /></Auth>} />
             <Route path="/settings" element={<Auth><SettingsPage /></Auth>} />
-<Route path="/settings/models" element={<Auth><ModelPreferencesPage /></Auth>} />
+            <Route path="/settings/models" element={<Auth><ModelPreferencesPage /></Auth>} />
             <Route path="/admin"    element={<Admin><AdminPage /></Admin>} />
 
             {/* ── Fallback ────────────────────────────────────── */}
