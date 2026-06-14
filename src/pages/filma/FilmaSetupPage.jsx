@@ -445,7 +445,7 @@ setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
     // Clear draft on success
     clearDraft()
     toast.success(`"${title}" created`)
-    navigate(`/filma/${data.id}/cast`)
+    navigate(`/filma/${data.id}/story-summary`)
   }
 
   return (
@@ -679,7 +679,7 @@ setting_custom:      setting.includes('other') ? settingCustom.trim() : null,
            {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? (
               <><span>Save Changes</span><ArrowRight size={16} /></>
             ) : (
-              <><span>Continue to Cast</span><ArrowRight size={16} /></>
+              <><span>Continue to Story Summary</span><ArrowRight size={16} /></>
             )}
           </button>
         </div>
