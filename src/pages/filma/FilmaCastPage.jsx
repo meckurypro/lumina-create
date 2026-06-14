@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, Plus, User, X, ImagePlus,
-  Download, ChevronDown, Trash2,
+  Download, ChevronDown, Trash2, Check, AlertCircle, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { filmaActors, filmaFilms, filmaUpload } from '@/lib/filma'
@@ -26,24 +26,47 @@ const ActorCard = ({ actor, index, onEdit, onDelete, onProfile }) => (
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: index * 0.05 }}
     className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${actor.is_complete ? 'var(--border-color)' : 'rgba(232,160,32,0.35)'}`,
+    }}
   >
     {/* Face thumbnail */}
-    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+    <div className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
       style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
-      {actor.thumbnail_url || actor.face_reference_url ? (
-        <img src={actor.thumbnail_url || actor.face_reference_url}
+      {actor.thumbnail_url || actor.face_reference_url || actor.photo_face_front ? (
+        <img src={actor.thumbnail_url || actor.face_reference_url || actor.photo_face_front}
           alt={actor.name} className="w-full h-full object-cover" />
       ) : (
         <User size={20} style={{ color: ACCENT, opacity: 0.6 }} />
+      )}
+      {actor.is_complete && (
+        <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full flex items-center justify-center"
+          style={{ background: '#34D399', border: '1.5px solid var(--bg-card)' }}>
+          <Check size={9} color="#000" />
+        </div>
       )}
     </div>
 
     {/* Info */}
     <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-        {actor.name}
-      </p>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+          {actor.name}
+        </p>
+        {actor.ai_generated && (
+          <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+            style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+            <Sparkles size={9} /> AI
+          </span>
+        )}
+        {!actor.is_complete && (
+          <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+            style={{ background: 'rgba(232,160,32,0.1)', color: '#E8A020' }}>
+            <AlertCircle size={9} /> Incomplete
+          </span>
+        )}
+      </div>
       <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
         {[actor.age_range, actor.gender?.replace('_', ' '), actor.ethnic_background]
           .filter(Boolean).join(' · ')}
@@ -59,9 +82,12 @@ const ActorCard = ({ actor, index, onEdit, onDelete, onProfile }) => (
     <div className="flex items-center gap-1.5 flex-shrink-0">
       <button onClick={() => onProfile(actor)}
         className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-        style={{ background: ACCENT_SUB, color: ACCENT,
-          border: `1px solid ${ACCENT_BDR}` }}>
-        Profile
+        style={{
+          background: actor.is_complete ? ACCENT_SUB : ACCENT,
+          color:      actor.is_complete ? ACCENT : '#000',
+          border: `1px solid ${actor.is_complete ? ACCENT_BDR : 'transparent'}`,
+        }}>
+        {actor.is_complete ? 'Profile' : 'Complete'}
       </button>
       <button onClick={() => onEdit(actor)}
         className="px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -398,8 +424,8 @@ export default function FilmaCastPage() {
         face_reference_url:payload.face_reference_url|| data.face_reference_url,
       }
       if (JSON.stringify(merged) !== JSON.stringify(data)) {
-        await filmaActors.update(data.id, merged)
-        setActors((prev) => [...prev, merged])
+        const { data: updated } = await filmaActors.update(data.id, merged)
+        setActors((prev) => [...prev, updated || merged])
       } else {
         setActors((prev) => [...prev, data])
       }
@@ -419,12 +445,14 @@ export default function FilmaCastPage() {
     toast.success(`${actor.name} removed`)
   }
 
+  const incompleteCount = actors.filter((a) => !a.is_complete).length
+
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
-        <button onClick={() => navigate(`/filma/new`)} className="p-2 -ml-2 rounded-xl"
+        <button onClick={() => navigate(`/filma/${filmId}/story-summary`)} className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
@@ -442,7 +470,7 @@ export default function FilmaCastPage() {
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-4">
 
           {/* Add buttons */}
-      <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <button onClick={() => { setEditActor(null); setUgcPending(null); setShowForm(true) }}
               className="flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
               style={{ background: ACCENT, color: '#000' }}>
@@ -455,6 +483,20 @@ export default function FilmaCastPage() {
             </button>
           </div>
 
+          {/* Incomplete actors notice */}
+          {!loading && incompleteCount > 0 && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-2xl"
+              style={{ background: 'rgba(232,160,32,0.08)', border: '1px solid rgba(232,160,32,0.2)' }}>
+              <AlertCircle size={14} style={{ color: '#E8A020', flexShrink: 0, marginTop: 1 }} />
+              <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                <span style={{ color: '#E8A020', fontWeight: 600 }}>
+                  {incompleteCount} character{incompleteCount !== 1 ? 's' : ''}
+                </span>{' '}
+                {incompleteCount !== 1 ? 'need' : 'needs'} all 3 face photos before {incompleteCount !== 1 ? 'they' : 'it'} can be used in scenes.
+                Tap <span style={{ color: ACCENT }}>Complete</span> to add them.
+              </p>
+            </div>
+          )}
 
           {/* Hint */}
           <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
