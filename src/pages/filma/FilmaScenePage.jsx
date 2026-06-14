@@ -577,6 +577,11 @@ export default function FilmaScenePage() {
       setEnvironments((prev) =>
         prev.map((e) => e.id === envRow.id ? { ...e, image_url: result.imageUrl } : e)
       )
+      // Also update filma_scenes.master_image_url for backward compat
+      if (slot.isMaster) {
+        await filmaScenes.update(sceneId, { master_image_url: result.imageUrl })
+        setScene((prev) => ({ ...prev, master_image_url: result.imageUrl }))
+      }
       toast.success(`${slot.label} generated`)
     } catch (err) {
       toast.error(err.message || 'Generation failed')
@@ -604,11 +609,14 @@ export default function FilmaScenePage() {
     setSuggestingWard(actor.id)
     try {
       const result = await filmaSuggestWardrobePrompt(sceneId, actor.id)
-      // Save prompt to DB
-      const { data } = await supabaseSetWardrobePrompt(sceneId, actor.id, result.prompt)
+      const { data } = await filmaSceneActors.setWardrobePrompt(sceneId, actor.id, result.prompt)
       setSceneActorMap((prev) => ({
         ...prev,
-        [actor.id]: { ...(prev[actor.id] || {}), wardrobe_prompt: result.prompt, wardrobe_locked: false },
+        [actor.id]: data || {
+          ...(prev[actor.id] || {}),
+          wardrobe_prompt: result.prompt,
+          wardrobe_locked: false,
+        },
       }))
       toast.success(`Wardrobe prompt suggested for ${actor.name}`)
     } catch (err) {
@@ -618,33 +626,20 @@ export default function FilmaScenePage() {
     }
   }
 
-  // Helper — call Supabase directly for wardrobe prompt (until filma.js is updated)
-  const supabaseSetWardrobePrompt = async (sceneId, actorId, promptText) => {
-    const { supabase } = await import('@/lib/supabase')
-    return supabase
-      .from('filma_scene_actors')
-      .update({ wardrobe_prompt: promptText, wardrobe_locked: false })
-      .eq('scene_id', sceneId)
-      .eq('actor_id', actorId)
-      .select()
-      .single()
-  }
-
   // ── Wardrobe: upload outfit ────────────────────────────────────────────────
   const handleOutfitUpload = async (actorId, file) => {
     if (!file) return
     setUploadingOutfit(actorId)
     try {
-      const { url } = await filmaUpload(user.id, file, 'scenes/outfits')
-      const { supabase } = await import('@/lib/supabase')
-      await supabase
-        .from('filma_scene_actors')
-        .update({ outfit_image_url: url, wardrobe_locked: false })
-        .eq('scene_id', sceneId)
-        .eq('actor_id', actorId)
+      const { data, error, url } = await filmaSceneActors.uploadOutfitAndSave(user.id, sceneId, actorId, file)
+      if (error) throw new Error(error.message)
       setSceneActorMap((prev) => ({
         ...prev,
-        [actorId]: { ...(prev[actorId] || {}), outfit_image_url: url, wardrobe_locked: false },
+        [actorId]: data || {
+          ...(prev[actorId] || {}),
+          outfit_image_url: url,
+          wardrobe_locked: false,
+        },
       }))
     } catch { toast.error('Outfit upload failed') }
     finally { setUploadingOutfit(null) }
@@ -670,30 +665,23 @@ export default function FilmaScenePage() {
     } catch (err) {
       toast.error(err.message || 'Generation failed')
     } finally {
-      setGeneratingWard(null) }
+      setGeneratingWard(null)
+    }
   }
 
   // ── Wardrobe: lock / unlock ────────────────────────────────────────────────
   const handleWardrobeLock = async (actorId) => {
-    const { supabase } = await import('@/lib/supabase')
-    await supabase
-      .from('filma_scene_actors')
-      .update({ wardrobe_locked: true })
-      .eq('scene_id', sceneId)
-      .eq('actor_id', actorId)
+    const { data } = await filmaSceneActors.lockWardrobe(sceneId, actorId)
     setSceneActorMap((prev) => ({
-      ...prev, [actorId]: { ...(prev[actorId] || {}), wardrobe_locked: true },
+      ...prev,
+      [actorId]: data || { ...(prev[actorId] || {}), wardrobe_locked: true },
     }))
   }
   const handleWardrobeUnlock = async (actorId) => {
-    const { supabase } = await import('@/lib/supabase')
-    await supabase
-      .from('filma_scene_actors')
-      .update({ wardrobe_locked: false })
-      .eq('scene_id', sceneId)
-      .eq('actor_id', actorId)
+    const { data } = await filmaSceneActors.unlockWardrobe(sceneId, actorId)
     setSceneActorMap((prev) => ({
-      ...prev, [actorId]: { ...(prev[actorId] || {}), wardrobe_locked: false },
+      ...prev,
+      [actorId]: data || { ...(prev[actorId] || {}), wardrobe_locked: false },
     }))
   }
 
