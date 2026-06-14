@@ -18,30 +18,29 @@ export const FACE_PRESETS = [
     id: 'face_shot',
     label: 'Face Shot',
     emoji: '🎯',
-    description: 'Tight cinematic close-up from any photo',
+    description: 'Extract a cinematic face reference from any photo',
     isMaster: false,
-    prompt: `Edit this photo: reframe and enhance this exact person into a Hollywood-grade close-up portrait.
+    prompt: `This image contains exactly one person. Locate their face — regardless of where they appear in the frame, how far away they are, or what they are wearing.
 
-This is a photo editing task. Do not create a new person. Do not use this image as a "reference" — edit the actual person in this image.
+Extract and output a tight cinematic face reference card of that person: forehead to chin, head and shoulders only. This is a crop-and-enhance task, not a generation task.
 
-What to change:
-- Reframe tightly from forehead to upper chest, centering on the face
-- Upscale and sharpen to 2K resolution — every pore, hair strand, and skin texture must be crystal clear
-- Enhance skin texture naturally — more detail, more depth, zero smoothing, zero airbrushing
-- Eyes must be razor-sharp with vivid natural catch-lights
-- Apply shallow depth-of-field: background softly blurred, face in tack-sharp focus
-- Enhance lighting to cinematic quality — directional key light, subtle fill, natural shadows that define facial structure
+What to do:
+- Find the face in the image, zoom in and crop tightly — forehead to upper chest
+- Upscale to 2K resolution with maximum sharpness — every pore, strand of hair, skin texture must be photographic and crystal clear
+- Apply Hollywood-grade cinematic lighting: directional key light, subtle fill, natural shadows that sculpt the face
+- Shallow depth-of-field: face in tack-sharp focus, background softly blurred
+- Eyes must be vivid, razor-sharp, with natural catch-lights
 
 What must NOT change:
-- This exact person's identity
-- Skin tone — do not lighten, darken, or shift undertones by any amount
-- Facial bone structure, nose shape, lip shape, jaw shape
+- This exact person's identity — you are extracting them, not recreating them
+- Skin tone — do not lighten, darken, or shift undertones by even a small amount
+- Facial bone structure, nose shape, lip shape, jaw line
 - Eye shape, colour, and spacing
 - Hair colour, texture, length, and cut
-- Any distinguishing marks, scars, blemishes, or features
+- Any distinguishing marks, scars, blemishes, piercings, or features
 - Do NOT add makeup, do NOT alter skin colour, do NOT change any feature
 
-Output must look like a frame pulled from a Hollywood film — hyperrealistic, high-contrast detail, film-grade. The person must be unmistakably and identically the same individual as in the input photo.`,
+Output must look like a professional character face reference card pulled from a Hollywood production — hyperrealistic, film-grade, ready for use in casting, character design, or filmmaking.`,
   },
   {
     id: 'face_90p',
@@ -468,7 +467,6 @@ export default function CreatePhotoPolishPage() {
     setResultUrl(null)
 
     try {
-      // Get the public URL — either direct from Assets or upload the local file
       let publicUrl
       if (!photo.file) {
         publicUrl = photo.url
@@ -683,7 +681,7 @@ export default function CreatePhotoPolishPage() {
                 <ImagePlus size={28} style={{ color: ACCENT, marginBottom: 10 }} />
                 <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload a photo</span>
                 <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  Any photo — portrait, product, landscape
+                  One person only — close-up or full body
                 </span>
               </label>
             )}
