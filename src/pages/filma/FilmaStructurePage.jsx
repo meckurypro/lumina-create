@@ -352,7 +352,7 @@ export default function FilmaStructurePage() {
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
         <button
-          onClick={() => navigate(`/filma/${filmId}/cast`)}
+          onClick={() => navigate('/filma')}
           className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
         >
