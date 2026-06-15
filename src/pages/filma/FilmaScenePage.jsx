@@ -1,11 +1,22 @@
 // src/pages/filma/FilmaScenePage.jsx
+//
+// SCENE ENVIRONMENT — Master-first cardinal angle system
+// ──────────────────────────────────────────────────────
+// 1. Master Shot: AI generates prompt → user uploads or generates image → user locks it
+// 2. Cardinal Angles (N, E, S, W): unlocked only after master is locked
+//    - User selects i2i model from dropdown
+//    - Per angle: edge function receives master_image_url + angle_key + tailored prompt
+//    - AI understands the cinematic assignment for each direction
+// DB: filma_scene_environments.angle_key = 'master' | 'N' | 'E' | 'S' | 'W'
+
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ImagePlus, X, User, Plus, Check,
   ChevronRight, Sparkles, Loader2, UserPlus,
-  Lock, Unlock, Copy, Wand2, ZapIcon,
+  Lock, Unlock, Copy, Wand2, ZapIcon, ChevronDown,
+  Compass,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -13,7 +24,7 @@ import {
   filmaSceneActors, filmaUpload, filmaScaffoldScene,
   filmaShots, filmaSceneEnvironments,
   filmaSuggestScenePrompts, filmaSuggestWardrobePrompt,
-  filmaGenerateAsset,
+  filmaGenerateAsset, filmaGenerateAngleAsset,
 } from '@/lib/filma'
 import toast from 'react-hot-toast'
 
@@ -23,14 +34,48 @@ const ACCENT_BDR = 'var(--tool-filma-border)'
 
 const ssScriptKey = (sceneId) => `filma_scene_script_${sceneId}`
 
-const ENV_SLOT_LABELS = [
-  { label: 'Master Shot',     isMaster: true,  sortOrder: 0 },
-  { label: 'Angle 2',         isMaster: false, sortOrder: 1 },
-  { label: 'Angle 3',         isMaster: false, sortOrder: 2 },
-  { label: 'Detail / Insert', isMaster: false, sortOrder: 3 },
+// ── Cardinal angle definitions ─────────────────────────────────────────────
+// angle_key maps directly to DB column value
+const CARDINAL_ANGLES = [
+  {
+    key:         'N',
+    label:       'North',
+    badge:       'N',
+    description: 'Camera faces south — actors back toward lens. Reverse of master POV. Used for over-shoulder coverage.',
+  },
+  {
+    key:         'E',
+    label:       'East',
+    badge:       'E',
+    description: 'Camera faces west — left profile view. Drama, reaction, side-on tension.',
+  },
+  {
+    key:         'S',
+    label:       'South',
+    badge:       'S',
+    description: 'Camera faces north — pushes into scene depth. Often mirrors master direction. Hero / protagonist angle.',
+  },
+  {
+    key:         'W',
+    label:       'West',
+    badge:       'W',
+    description: 'Camera faces east — right profile. Counter-coverage to East. Balancing shot.',
+  },
 ]
 
-// ── Actor selector chip ───────────────────────────────────────────────────────
+// ── I2I model options ──────────────────────────────────────────────────────
+// These should ideally come from your models table filtered by i2i capability.
+// Hardcoded here as sensible defaults; swap to a DB fetch if you prefer.
+const I2I_MODELS = [
+  { id: 'flux-kontext-dev-ultra-fast', label: 'FLUX Kontext (Fast)' },
+  { id: 'flux-kontext-pro',            label: 'FLUX Kontext Pro' },
+  { id: 'wavespeed-ai/flux-kontext-max', label: 'FLUX Kontext Max' },
+]
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const COMPASS_COLOR = { N: '#7C9EFF', E: '#FB7BB8', S: '#34D399', W: '#FBBF24' }
+
+// ── Actor selector chip ────────────────────────────────────────────────────
 const ActorChip = ({ actor, selected, onToggle, incomplete }) => (
   <button
     onClick={() => onToggle(actor)}
@@ -66,10 +111,62 @@ const ActorChip = ({ actor, selected, onToggle, incomplete }) => (
   </button>
 )
 
-// ── Environment slot ──────────────────────────────────────────────────────────
-const EnvSlot = ({
-  slot, envRow, onUpload, onGenerate, onCopyPrompt,
-  onLock, onUnlock, onDelete, uploading, generating,
+// ── Model selector dropdown ────────────────────────────────────────────────
+const ModelSelector = ({ value, onChange, disabled }) => {
+  const [open, setOpen] = useState(false)
+  const selected = I2I_MODELS.find((m) => m.id === value) || I2I_MODELS[0]
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => !disabled && setOpen(!open)}
+        disabled={disabled}
+        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold w-full"
+        style={{
+          background: 'var(--bg-primary)',
+          border: `1px solid var(--border-color)`,
+          color: 'var(--text-secondary)',
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <ZapIcon size={10} style={{ color: ACCENT }} />
+        <span className="flex-1 text-left truncate">{selected.label}</span>
+        <ChevronDown size={11} style={{ color: 'var(--text-muted)' }} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-20"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+          >
+            {I2I_MODELS.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => { onChange(m.id); setOpen(false) }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 text-xs font-semibold text-left transition-all"
+                style={{
+                  color: m.id === value ? ACCENT : 'var(--text-secondary)',
+                  background: m.id === value ? ACCENT_SUB : 'transparent',
+                }}
+              >
+                {m.id === value && <Check size={10} style={{ color: ACCENT }} />}
+                {m.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ── Master Shot slot ───────────────────────────────────────────────────────
+const MasterSlot = ({
+  envRow, onUpload, onGenerate, onCopyPrompt,
+  onLock, onUnlock, uploading, generating,
 }) => {
   const hasImage  = !!envRow?.image_url
   const hasPrompt = !!envRow?.prompt_text
@@ -77,66 +174,61 @@ const EnvSlot = ({
 
   return (
     <div
-      className="flex flex-col gap-2 p-3 rounded-2xl"
+      className="flex flex-col gap-3 p-4 rounded-2xl"
       style={{
         background: 'var(--bg-elevated)',
-        border:     `1px solid ${isLocked ? ACCENT_BDR : 'var(--border-color)'}`,
+        border: `2px solid ${isLocked ? '#34D399' : ACCENT_BDR}`,
       }}
     >
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-            {slot.label}
-          </span>
-          {slot.isMaster && (
+          <div
+            className="w-7 h-7 rounded-xl flex items-center justify-center"
+            style={{ background: ACCENT_SUB }}
+          >
+            <Compass size={14} style={{ color: ACCENT }} />
+          </div>
+          <div>
+            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Master Shot</span>
             <span
-              className="text-xs px-1.5 py-0.5 rounded-full font-semibold"
+              className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-semibold"
               style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
             >
               Master
             </span>
-          )}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {isLocked ? (
-            <button
-              onClick={onUnlock}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-              style={{ background: 'rgba(52,211,153,0.1)', color: '#34D399' }}
-            >
-              <Lock size={10} /> Locked
-            </button>
-          ) : hasImage ? (
-            <button
-              onClick={onLock}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-            >
-              <Unlock size={10} /> Lock
-            </button>
-          ) : null}
-          {envRow && !isLocked && (
-            <button
-              onClick={onDelete}
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
-              style={{ color: 'rgba(239,68,68,0.6)' }}
-            >
-              <X size={11} />
-            </button>
-          )}
-        </div>
+        {isLocked ? (
+          <button onClick={onUnlock}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+            style={{ background: 'rgba(52,211,153,0.1)', color: '#34D399' }}>
+            <Lock size={10} /> Locked
+          </button>
+        ) : hasImage ? (
+          <button onClick={onLock}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+            style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+            <Unlock size={10} /> Lock
+          </button>
+        ) : null}
       </div>
+
+      {/* Description */}
+      <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        Wide establishing view. Sets the spatial grammar for this scene. All cardinal angles derive from this image.
+        AI generates the prompt — you upload or generate the image — then lock it to unlock the four cardinal angles.
+      </p>
 
       {/* Image */}
       {hasImage ? (
         <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
-          <img src={envRow.image_url} alt={slot.label} className="w-full h-full object-cover" />
+          <img src={envRow.image_url} alt="Master Shot" className="w-full h-full object-cover" />
           {!isLocked && (
             <label className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer"
               style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
               <input type="file" accept="image/*" className="hidden"
-                onChange={(e) => onUpload(e, slot, envRow)} />
+                onChange={(e) => onUpload(e)} />
               <ImagePlus size={10} /> Replace
             </label>
           )}
@@ -146,14 +238,171 @@ const EnvSlot = ({
           className="flex flex-col items-center justify-center w-full rounded-xl cursor-pointer transition-all"
           style={{ aspectRatio: '16/9', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
         >
-          <input type="file" accept="image/*" className="hidden"
-            onChange={(e) => onUpload(e, slot, envRow)} />
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => onUpload(e)} />
           {uploading ? (
-            <Loader2 size={18} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
+            <Loader2 size={20} style={{ color: ACCENT, animation: 'spin 1s linear infinite' }} />
           ) : (
             <>
-              <ImagePlus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
-              <span className="text-xs font-medium" style={{ color: ACCENT }}>Upload Image</span>
+              <ImagePlus size={20} style={{ color: ACCENT, marginBottom: 6 }} />
+              <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload Master Image</span>
+              <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Use the prompt below to generate it first
+              </span>
+            </>
+          )}
+        </label>
+      )}
+
+      {/* Prompt */}
+      {hasPrompt && (
+        <div
+          className="px-3 py-2.5 rounded-xl text-xs"
+          style={{
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.6,
+          }}
+        >
+          <p className="line-clamp-4">{envRow.prompt_text}</p>
+        </div>
+      )}
+
+      {/* Actions */}
+      {!isLocked && (
+        <div className="flex gap-2">
+          {hasPrompt && (
+            <button
+              onClick={() => onCopyPrompt(envRow.prompt_text)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1"
+              style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+            >
+              <Copy size={11} /> Copy Prompt
+            </button>
+          )}
+          {hasPrompt && !hasImage && (
+            <button
+              onClick={onGenerate}
+              disabled={generating}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1"
+              style={{ background: ACCENT, color: '#000' }}
+            >
+              {generating
+                ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                : <ZapIcon size={11} fill="currentColor" />
+              }
+              {generating ? 'Generating…' : 'Generate'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Lock gate hint */}
+      {hasImage && !isLocked && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{ background: `${ACCENT}0D`, border: `1px solid ${ACCENT_BDR}`, color: ACCENT }}
+        >
+          <Lock size={10} />
+          Lock the master to activate N / E / S / W angle generation
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Cardinal angle slot ────────────────────────────────────────────────────
+const AngleSlot = ({
+  angle, envRow, masterEnv, selectedModel, onModelChange,
+  onUpload, onGenerate, onCopyPrompt,
+  onLock, onUnlock, onDelete,
+  uploading, generating, masterLocked,
+}) => {
+  const hasImage    = !!envRow?.image_url
+  const hasPrompt   = !!envRow?.prompt_text
+  const isLocked    = !!envRow?.locked
+  const masterImage = masterEnv?.image_url
+  const color       = COMPASS_COLOR[angle.key]
+  const isDisabled  = !masterLocked
+
+  return (
+    <div
+      className="flex flex-col gap-2 p-3 rounded-2xl transition-all"
+      style={{
+        background: isDisabled ? 'var(--bg-primary)' : 'var(--bg-elevated)',
+        border: `1px solid ${isLocked ? color + '60' : isDisabled ? 'var(--border-color)' : 'var(--border-color)'}`,
+        opacity: isDisabled ? 0.4 : 1,
+        pointerEvents: isDisabled ? 'none' : 'auto',
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-sm"
+            style={{ background: `${color}18`, border: `1px solid ${color}40`, color }}
+          >
+            {angle.badge}
+          </div>
+          <div>
+            <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+              {angle.label}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isLocked ? (
+            <button onClick={onUnlock}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+              style={{ background: `${color}18`, color }}>
+              <Lock size={10} /> Locked
+            </button>
+          ) : hasImage ? (
+            <button onClick={onLock}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+              <Unlock size={10} /> Lock
+            </button>
+          ) : null}
+          {envRow && !isLocked && (
+            <button onClick={onDelete}
+              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              style={{ color: 'rgba(239,68,68,0.6)' }}>
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Angle description */}
+      <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        {angle.description}
+      </p>
+
+      {/* Image */}
+      {hasImage ? (
+        <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
+          <img src={envRow.image_url} alt={angle.label} className="w-full h-full object-cover" />
+          {!isLocked && (
+            <label className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer"
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+              <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
+              <ImagePlus size={10} /> Replace
+            </label>
+          )}
+        </div>
+      ) : (
+        <label
+          className="flex flex-col items-center justify-center w-full rounded-xl cursor-pointer transition-all"
+          style={{ aspectRatio: '16/9', border: `1.5px dashed ${color}40`, background: `${color}08` }}
+        >
+          <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
+          {uploading ? (
+            <Loader2 size={16} style={{ color, animation: 'spin 1s linear infinite' }} />
+          ) : (
+            <>
+              <span className="text-2xl font-black mb-1" style={{ color: `${color}60` }}>{angle.badge}</span>
+              <span className="text-xs font-medium" style={{ color: `${color}80` }}>Upload or Generate</span>
             </>
           )}
         </label>
@@ -174,56 +423,60 @@ const EnvSlot = ({
         </div>
       )}
 
-      {/* Action row */}
-      {!isLocked && (
-        <div className="flex gap-2">
-          {hasPrompt && (
+      {/* Model selector + generate */}
+      {!isLocked && masterImage && (
+        <div className="flex flex-col gap-2">
+          <ModelSelector
+            value={selectedModel}
+            onChange={onModelChange}
+            disabled={isLocked}
+          />
+          <div className="flex gap-2">
+            {hasPrompt && (
+              <button
+                onClick={() => onCopyPrompt(envRow.prompt_text)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1"
+                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+              >
+                <Copy size={11} /> Copy Prompt
+              </button>
+            )}
             <button
-              onClick={() => onCopyPrompt(envRow.prompt_text)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1"
-              style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
-            >
-              <Copy size={11} /> Copy Prompt
-            </button>
-          )}
-          {hasPrompt && !hasImage && (
-            <button
-              onClick={() => onGenerate(slot, envRow)}
+              onClick={onGenerate}
               disabled={generating}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1"
-              style={{ background: ACCENT, color: '#000' }}
+              style={{ background: color, color: '#000' }}
             >
               {generating
                 ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
                 : <ZapIcon size={11} fill="currentColor" />
               }
-              {generating ? 'Generating…' : 'Generate'}
+              {generating ? 'Generating…' : `Generate ${angle.badge}`}
             </button>
-          )}
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-// ── Outfit slot ───────────────────────────────────────────────────────────────
+// ── Outfit slot ────────────────────────────────────────────────────────────
 const OutfitSlot = ({
   actor, sceneActor, onUpload, onGenerate, onCopyPrompt,
   onLock, onUnlock, uploading, generating,
 }) => {
-  const hasImage   = !!sceneActor?.outfit_image_url
-  const hasPrompt  = !!sceneActor?.wardrobe_prompt
-  const isLocked   = !!sceneActor?.wardrobe_locked
+  const hasImage  = !!sceneActor?.outfit_image_url
+  const hasPrompt = !!sceneActor?.wardrobe_prompt
+  const isLocked  = !!sceneActor?.wardrobe_locked
 
   return (
     <div
       className="flex flex-col gap-2 p-3 rounded-2xl"
       style={{
         background: 'var(--bg-elevated)',
-        border:     `1px solid ${isLocked ? ACCENT_BDR : 'var(--border-color)'}`,
+        border: `1px solid ${isLocked ? ACCENT_BDR : 'var(--border-color)'}`,
       }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0" style={{ background: ACCENT_SUB }}>
@@ -253,7 +506,6 @@ const OutfitSlot = ({
         ) : null}
       </div>
 
-      {/* Outfit image */}
       {hasImage ? (
         <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: '3/4' }}>
           <img src={sceneActor.outfit_image_url} alt="outfit" className="w-full h-full object-cover" />
@@ -284,7 +536,6 @@ const OutfitSlot = ({
         </label>
       )}
 
-      {/* Wardrobe prompt */}
       {hasPrompt && (
         <div
           className="px-3 py-2.5 rounded-xl text-xs"
@@ -299,7 +550,6 @@ const OutfitSlot = ({
         </div>
       )}
 
-      {/* Actions */}
       {!isLocked && (
         <div className="flex gap-2">
           {hasPrompt && (
@@ -331,7 +581,7 @@ const OutfitSlot = ({
   )
 }
 
-// ── Shot preview card ─────────────────────────────────────────────────────────
+// ── Shot preview card ──────────────────────────────────────────────────────
 const ShotPreviewCard = ({ shot, index, onClick }) => {
   const TYPE_COLOR = {
     dialogue:     ACCENT,
@@ -382,7 +632,7 @@ const ShotPreviewCard = ({ shot, index, onClick }) => {
   )
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function FilmaScenePage() {
   const navigate            = useNavigate()
   const { filmId, sceneId } = useParams()
@@ -392,38 +642,49 @@ export default function FilmaScenePage() {
   const [scene,          setScene]         = useState(null)
   const [allActors,      setAllActors]     = useState([])
   const [sceneActorIds,  setSceneActorIds] = useState([])
-  const [sceneActorMap,  setSceneActorMap] = useState({}) // actorId → sceneActor row
+  const [sceneActorMap,  setSceneActorMap] = useState({})
   const [shots,          setShots]         = useState([])
-  const [environments,   setEnvironments]  = useState([]) // filma_scene_environments rows
+  const [environments,   setEnvironments]  = useState([])
   const [loading,        setLoading]       = useState(true)
   const [scaffolding,    setScaffolding]   = useState(false)
   const [suggestingEnv,  setSuggestingEnv] = useState(false)
-  const [suggestingWard, setSuggestingWard]= useState(null) // actorId | null
+  const [suggestingWard, setSuggestingWard]= useState(null)
   const [uploadingMaster,setUploadingMaster] = useState(false)
-  const [uploadingEnv,   setUploadingEnv]  = useState(null)  // slotLabel | null
-  const [uploadingOutfit,setUploadingOutfit]= useState(null) // actorId | null
-  const [generatingEnv,  setGeneratingEnv] = useState(null)  // envId | null
-  const [generatingWard, setGeneratingWard]= useState(null)  // actorId | null
+  const [uploadingAngle, setUploadingAngle]= useState(null)   // angle_key | null
+  const [uploadingOutfit,setUploadingOutfit]= useState(null)
+  const [generatingMaster,setGeneratingMaster] = useState(false)
+  const [generatingAngle, setGeneratingAngle]  = useState(null) // angle_key | null
+  const [generatingWard, setGeneratingWard]= useState(null)
+
+  // Per-angle i2i model selection
+  const [angleModels, setAngleModels] = useState({
+    N: I2I_MODELS[0].id,
+    E: I2I_MODELS[0].id,
+    S: I2I_MODELS[0].id,
+    W: I2I_MODELS[0].id,
+  })
 
   const [script,      setScript]      = useState('')
   const [scriptSaved, setScriptSaved] = useState(false)
 
-  const masterRef = useRef(null)
-
-  // ── Derived state ──────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────
   const selectedActors = allActors.filter((a) => sceneActorIds.includes(a.id))
+  const masterEnv      = environments.find((e) => e.angle_key === 'master') || null
+  const masterLocked   = !!masterEnv?.locked
 
-  // Environment ready: has at least a master slot AND all existing slots are locked
-  const envReady = environments.length > 0 && environments.every((e) => e.locked)
+  // Get angle env by key
+  const angleEnv = (key) => environments.find((e) => e.angle_key === key) || null
 
-  // Wardrobe ready: all selected actors have wardrobe_locked = true
+  // Environment ready: master locked + all existing angle envs locked
+  const angleEnvs  = environments.filter((e) => e.angle_key !== 'master')
+  const envReady   = masterLocked && (angleEnvs.length === 0 || angleEnvs.every((e) => e.locked))
+
   const wardrobeReady = selectedActors.length > 0 &&
     selectedActors.every((a) => sceneActorMap[a.id]?.wardrobe_locked)
 
-  // Can scaffold: has script + env locked + wardrobe locked (or no actors)
   const canScaffold = script.trim() && envReady && (selectedActors.length === 0 || wardrobeReady)
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // ── Load ─────────────────────────────────────────────────────────────────
   useEffect(() => { load() }, [sceneId]) // eslint-disable-line
 
   const load = async () => {
@@ -435,14 +696,13 @@ export default function FilmaScenePage() {
       filmaSceneEnvironments.getByScene(sceneId),
     ])
 
-    if (filmRes.data)  setFilm(filmRes.data)
+    if (filmRes.data)   setFilm(filmRes.data)
     if (actorsRes.data) setAllActors(actorsRes.data)
     setEnvironments(envsRes.data || [])
 
     if (sceneRes.data) {
       const s = sceneRes.data
       setScene(s)
-
       const ssKey   = ssScriptKey(sceneId)
       const ssValue = (() => { try { return sessionStorage.getItem(ssKey) } catch { return null } })()
       if (ssValue !== null) {
@@ -450,7 +710,6 @@ export default function FilmaScenePage() {
       } else {
         setScript(s.script_text || ''); setScriptSaved(!!s.script_text)
       }
-
       const ids = (s.filma_scene_actors || []).map((sa) => sa.actor_id)
       const map = {}
       ;(s.filma_scene_actors || []).forEach((sa) => { map[sa.actor_id] = sa })
@@ -466,7 +725,6 @@ export default function FilmaScenePage() {
     setLoading(false)
   }
 
-  // Persist script draft
   useEffect(() => {
     if (loading) return
     const ssKey = ssScriptKey(sceneId)
@@ -476,7 +734,7 @@ export default function FilmaScenePage() {
     } catch { /* noop */ }
   }, [script, sceneId, loading])
 
-  // ── Toggle actor ───────────────────────────────────────────────────────────
+  // ── Toggle actor ──────────────────────────────────────────────────────────
   const handleToggleActor = async (actor) => {
     if (!actor.is_complete) {
       toast.error(`${actor.name}'s profile is incomplete — add face photos first`)
@@ -494,7 +752,7 @@ export default function FilmaScenePage() {
     }
   }
 
-  // ── Environment: AI suggest prompts ───────────────────────────────────────
+  // ── Environment: AI suggest master prompt ─────────────────────────────────
   const handleSuggestEnvPrompts = async () => {
     if (!script.trim()) {
       toast.error('Paste the scene script first so AI has context')
@@ -505,27 +763,31 @@ export default function FilmaScenePage() {
       const result = await filmaSuggestScenePrompts(sceneId)
       const prompts = result.prompts || []
 
-      // Upsert rows: match by sort_order/is_master, create if not exists
       const updatedEnvs = [...environments]
       for (const p of prompts) {
-        const existing = updatedEnvs.find((e) => e.is_master === p.is_master && e.sort_order === p.sort_order)
+        // filmaSuggestScenePrompts must now return angle_key: 'master' for the master prompt
+        const angleKey = p.angle_key || (p.is_master ? 'master' : null)
+        if (!angleKey) continue
+
+        const existing = updatedEnvs.find((e) => e.angle_key === angleKey)
         if (existing) {
           const { data } = await filmaSceneEnvironments.setPrompt(existing.id, p.prompt_text)
           const idx = updatedEnvs.findIndex((e) => e.id === existing.id)
           if (data) updatedEnvs[idx] = data
         } else {
           const { data } = await filmaSceneEnvironments.create(filmId, sceneId, {
-            label:       p.label,
+            label:       p.label || (angleKey === 'master' ? 'Master Shot' : angleKey),
             prompt_text: p.prompt_text,
-            is_master:   p.is_master,
-            sort_order:  p.sort_order,
+            angle_key:   angleKey,
+            is_master:   angleKey === 'master',
+            sort_order:  p.sort_order ?? 0,
             locked:      false,
           })
           if (data) updatedEnvs.push(data)
         }
       }
       setEnvironments(updatedEnvs)
-      toast.success(`${prompts.length} environment prompts suggested`)
+      toast.success('Master shot prompt generated')
     } catch (err) {
       toast.error(err.message || 'Suggestion failed')
     } finally {
@@ -533,78 +795,160 @@ export default function FilmaScenePage() {
     }
   }
 
-  // ── Environment: upload image ──────────────────────────────────────────────
-  const handleEnvUpload = async (e, slot, envRow) => {
+  // ── Master: upload image ──────────────────────────────────────────────────
+  const handleMasterUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploadingEnv(slot.label)
+    setUploadingMaster(true)
     try {
       const result = await filmaSceneEnvironments.uploadAndSave(user.id, filmId, sceneId, file, {
-        label:     slot.label,
-        isMaster:  slot.isMaster,
-        sortOrder: slot.sortOrder,
-        envId:     envRow?.id || null,
+        label:     'Master Shot',
+        isMaster:  true,
+        angleKey:  'master',
+        sortOrder: 0,
+        envId:     masterEnv?.id || null,
       })
       if (result.error) throw new Error(result.error.message)
       setEnvironments((prev) => {
-        if (envRow) return prev.map((e) => e.id === envRow.id ? result.data : e)
+        if (masterEnv) return prev.map((e) => e.id === masterEnv.id ? result.data : e)
         return [...prev, result.data]
       })
-      // Also update filma_scenes.master_image_url for backward compat
-      if (slot.isMaster) {
-        await filmaScenes.update(sceneId, { master_image_url: result.url })
-        setScene((prev) => ({ ...prev, master_image_url: result.url }))
-      }
-      toast.success(`${slot.label} uploaded`)
+      await filmaScenes.update(sceneId, { master_image_url: result.url })
+      setScene((prev) => ({ ...prev, master_image_url: result.url }))
+      toast.success('Master shot uploaded')
     } catch (err) {
       toast.error(err.message || 'Upload failed')
     } finally {
-      setUploadingEnv(null)
+      setUploadingMaster(false)
     }
   }
 
-  // ── Environment: generate via Filma ───────────────────────────────────────
-  const handleEnvGenerate = async (slot, envRow) => {
-    if (!envRow?.prompt_text) { toast.error('No prompt — suggest prompts first'); return }
-    setGeneratingEnv(envRow.id)
+  // ── Master: generate ──────────────────────────────────────────────────────
+  const handleMasterGenerate = async () => {
+    if (!masterEnv?.prompt_text) { toast.error('No prompt — suggest prompts first'); return }
+    setGeneratingMaster(true)
     try {
       const result = await filmaGenerateAsset({
         assetType: 'scene_environment',
         sceneId,
-        envId: envRow.id,
-        prompt: envRow.prompt_text,
+        envId: masterEnv.id,
+        prompt: masterEnv.prompt_text,
       })
       setEnvironments((prev) =>
-        prev.map((e) => e.id === envRow.id ? { ...e, image_url: result.imageUrl } : e)
+        prev.map((e) => e.id === masterEnv.id ? { ...e, image_url: result.imageUrl } : e)
       )
-      // Also update filma_scenes.master_image_url for backward compat
-      if (slot.isMaster) {
-        await filmaScenes.update(sceneId, { master_image_url: result.imageUrl })
-        setScene((prev) => ({ ...prev, master_image_url: result.imageUrl }))
-      }
-      toast.success(`${slot.label} generated`)
+      await filmaScenes.update(sceneId, { master_image_url: result.imageUrl })
+      setScene((prev) => ({ ...prev, master_image_url: result.imageUrl }))
+      toast.success('Master shot generated')
     } catch (err) {
       toast.error(err.message || 'Generation failed')
     } finally {
-      setGeneratingEnv(null)
+      setGeneratingMaster(false)
     }
   }
 
-  // ── Environment: lock / unlock ─────────────────────────────────────────────
-  const handleEnvLock   = async (envId) => {
-    const { data } = await filmaSceneEnvironments.lock(envId)
-    if (data) setEnvironments((prev) => prev.map((e) => e.id === envId ? data : e))
+  // ── Master: lock / unlock ─────────────────────────────────────────────────
+  const handleMasterLock   = async () => {
+    if (!masterEnv?.image_url) { toast.error('Upload or generate the master image first'); return }
+    const { data } = await filmaSceneEnvironments.lock(masterEnv.id)
+    if (data) setEnvironments((prev) => prev.map((e) => e.id === masterEnv.id ? data : e))
+    toast.success('Master locked — N / E / S / W angles now available')
   }
-  const handleEnvUnlock = async (envId) => {
-    const { data } = await filmaSceneEnvironments.unlock(envId)
-    if (data) setEnvironments((prev) => prev.map((e) => e.id === envId ? data : e))
-  }
-  const handleEnvDelete = async (envId) => {
-    await filmaSceneEnvironments.delete(envId)
-    setEnvironments((prev) => prev.filter((e) => e.id !== envId))
+  const handleMasterUnlock = async () => {
+    const { data } = await filmaSceneEnvironments.unlock(masterEnv.id)
+    if (data) setEnvironments((prev) => prev.map((e) => e.id === masterEnv.id ? data : e))
   }
 
-  // ── Wardrobe: AI suggest prompt ────────────────────────────────────────────
+  // ── Angle: generate i2i via edge function ─────────────────────────────────
+  const handleAngleGenerate = async (angle) => {
+    if (!masterEnv?.image_url) {
+      toast.error('Lock the master shot first')
+      return
+    }
+    setGeneratingAngle(angle.key)
+    try {
+      const existingRow = angleEnv(angle.key)
+
+      const result = await filmaGenerateAngleAsset({
+        sceneId,
+        filmId,
+        angleKey:       angle.key,        // 'N' | 'E' | 'S' | 'W'
+        angleLabel:     angle.label,
+        angleDescription: angle.description,
+        masterImageUrl: masterEnv.image_url,
+        masterPrompt:   masterEnv.prompt_text,
+        modelId:        angleModels[angle.key],
+        envId:          existingRow?.id || null,
+        existingPrompt: existingRow?.prompt_text || null,
+      })
+
+      // Upsert the angle env row
+      setEnvironments((prev) => {
+        const existing = prev.find((e) => e.angle_key === angle.key)
+        if (existing) {
+          return prev.map((e) => e.angle_key === angle.key
+            ? { ...e, image_url: result.imageUrl, prompt_text: result.prompt || e.prompt_text }
+            : e)
+        }
+        return [...prev, result.envRow]
+      })
+
+      toast.success(`${angle.label} generated`)
+    } catch (err) {
+      toast.error(err.message || `${angle.label} generation failed`)
+    } finally {
+      setGeneratingAngle(null)
+    }
+  }
+
+  // ── Angle: upload image ───────────────────────────────────────────────────
+  const handleAngleUpload = async (angle, e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingAngle(angle.key)
+    try {
+      const existingRow = angleEnv(angle.key)
+      const result = await filmaSceneEnvironments.uploadAndSave(user.id, filmId, sceneId, file, {
+        label:     angle.label,
+        isMaster:  false,
+        angleKey:  angle.key,
+        sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
+        envId:     existingRow?.id || null,
+      })
+      if (result.error) throw new Error(result.error.message)
+      setEnvironments((prev) => {
+        if (existingRow) return prev.map((e) => e.id === existingRow.id ? result.data : e)
+        return [...prev, result.data]
+      })
+      toast.success(`${angle.label} uploaded`)
+    } catch (err) {
+      toast.error(err.message || 'Upload failed')
+    } finally {
+      setUploadingAngle(null)
+    }
+  }
+
+  // ── Angle: lock / unlock / delete ─────────────────────────────────────────
+  const handleAngleLock   = async (key) => {
+    const row = angleEnv(key)
+    if (!row) return
+    const { data } = await filmaSceneEnvironments.lock(row.id)
+    if (data) setEnvironments((prev) => prev.map((e) => e.id === row.id ? data : e))
+  }
+  const handleAngleUnlock = async (key) => {
+    const row = angleEnv(key)
+    if (!row) return
+    const { data } = await filmaSceneEnvironments.unlock(row.id)
+    if (data) setEnvironments((prev) => prev.map((e) => e.id === row.id ? data : e))
+  }
+  const handleAngleDelete = async (key) => {
+    const row = angleEnv(key)
+    if (!row) return
+    await filmaSceneEnvironments.delete(row.id)
+    setEnvironments((prev) => prev.filter((e) => e.id !== row.id))
+  }
+
+  // ── Wardrobe ──────────────────────────────────────────────────────────────
   const handleSuggestWardrobe = async (actor) => {
     setSuggestingWard(actor.id)
     try {
@@ -612,11 +956,7 @@ export default function FilmaScenePage() {
       const { data } = await filmaSceneActors.setWardrobePrompt(sceneId, actor.id, result.prompt)
       setSceneActorMap((prev) => ({
         ...prev,
-        [actor.id]: data || {
-          ...(prev[actor.id] || {}),
-          wardrobe_prompt: result.prompt,
-          wardrobe_locked: false,
-        },
+        [actor.id]: data || { ...(prev[actor.id] || {}), wardrobe_prompt: result.prompt, wardrobe_locked: false },
       }))
       toast.success(`Wardrobe prompt suggested for ${actor.name}`)
     } catch (err) {
@@ -626,7 +966,6 @@ export default function FilmaScenePage() {
     }
   }
 
-  // ── Wardrobe: upload outfit ────────────────────────────────────────────────
   const handleOutfitUpload = async (actorId, file) => {
     if (!file) return
     setUploadingOutfit(actorId)
@@ -635,17 +974,12 @@ export default function FilmaScenePage() {
       if (error) throw new Error(error.message)
       setSceneActorMap((prev) => ({
         ...prev,
-        [actorId]: data || {
-          ...(prev[actorId] || {}),
-          outfit_image_url: url,
-          wardrobe_locked: false,
-        },
+        [actorId]: data || { ...(prev[actorId] || {}), outfit_image_url: url, wardrobe_locked: false },
       }))
     } catch { toast.error('Outfit upload failed') }
     finally { setUploadingOutfit(null) }
   }
 
-  // ── Wardrobe: generate outfit via Filma ───────────────────────────────────
   const handleWardrobeGenerate = async (actor) => {
     const sa = sceneActorMap[actor.id]
     if (!sa?.wardrobe_prompt) { toast.error('No prompt — suggest wardrobe first'); return }
@@ -669,7 +1003,6 @@ export default function FilmaScenePage() {
     }
   }
 
-  // ── Wardrobe: lock / unlock ────────────────────────────────────────────────
   const handleWardrobeLock = async (actorId) => {
     const { data } = await filmaSceneActors.lockWardrobe(sceneId, actorId)
     setSceneActorMap((prev) => ({
@@ -685,7 +1018,7 @@ export default function FilmaScenePage() {
     }))
   }
 
-  // ── Script ─────────────────────────────────────────────────────────────────
+  // ── Script ────────────────────────────────────────────────────────────────
   const handleSaveScript = async () => {
     if (!script.trim()) return
     await filmaScenes.saveScript(sceneId, script)
@@ -694,10 +1027,10 @@ export default function FilmaScenePage() {
     toast.success('Script saved')
   }
 
-  // ── Scaffold ───────────────────────────────────────────────────────────────
+  // ── Scaffold ──────────────────────────────────────────────────────────────
   const handleScaffold = async () => {
     if (!script.trim()) { toast.error('Paste the scene script first'); return }
-    if (!envReady)       { toast.error('Lock all environment shots before scaffolding'); return }
+    if (!envReady)       { toast.error('Lock master + angle shots before scaffolding'); return }
     if (selectedActors.length > 0 && !wardrobeReady) {
       toast.error('Lock all actor wardrobes before scaffolding'); return
     }
@@ -768,7 +1101,7 @@ export default function FilmaScenePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-8">
 
-          {/* ── 1. SCENE CAST ─────────────────────────────────────────────── */}
+          {/* ── 1. SCENE CAST ────────────────────────────────────────────── */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest mb-3"
               style={{ color: 'var(--text-muted)' }}>
@@ -801,7 +1134,7 @@ export default function FilmaScenePage() {
             )}
           </div>
 
-          {/* ── 2. SCRIPT ─────────────────────────────────────────────────── */}
+          {/* ── 2. SCRIPT ────────────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold uppercase tracking-widest"
@@ -844,14 +1177,14 @@ export default function FilmaScenePage() {
             />
           </div>
 
-          {/* ── 3. ENVIRONMENT SHOTS ─────────────────────────────────────── */}
+          {/* ── 3. SCENE ENVIRONMENT ─────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest"
                   style={{ color: 'var(--text-muted)' }}>Scene Environment</p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  Lock all slots to enable shot scaffolding
+                  Lock master → generate N / E / S / W angles → lock all to scaffold
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -880,30 +1213,68 @@ export default function FilmaScenePage() {
             </div>
 
             <div className="flex flex-col gap-3">
-              {ENV_SLOT_LABELS.map((slot) => {
-                const envRow = environments.find(
-                  (e) => e.is_master === slot.isMaster && e.sort_order === slot.sortOrder
-                ) || null
-                return (
-                  <EnvSlot
-                    key={slot.label}
-                    slot={slot}
-                    envRow={envRow}
-                    onUpload={handleEnvUpload}
-                    onGenerate={handleEnvGenerate}
+
+              {/* Master Shot — always first */}
+              <MasterSlot
+                envRow={masterEnv}
+                onUpload={handleMasterUpload}
+                onGenerate={handleMasterGenerate}
+                onCopyPrompt={(text) => { navigator.clipboard.writeText(text); toast.success('Prompt copied') }}
+                onLock={handleMasterLock}
+                onUnlock={handleMasterUnlock}
+                uploading={uploadingMaster}
+                generating={generatingMaster}
+              />
+
+              {/* Cardinal angles — gated behind master lock */}
+              <div className="flex flex-col gap-3">
+                {/* Section header */}
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="flex-1 h-px" style={{ background: 'var(--border-color)' }} />
+                  <div className="flex items-center gap-1.5">
+                    <Compass size={11} style={{ color: masterLocked ? ACCENT : 'var(--text-muted)' }} />
+                    <span className="text-xs font-semibold uppercase tracking-widest"
+                      style={{ color: masterLocked ? ACCENT : 'var(--text-muted)' }}>
+                      Cardinal Angles
+                    </span>
+                  </div>
+                  <div className="flex-1 h-px" style={{ background: 'var(--border-color)' }} />
+                </div>
+
+                {!masterLocked && (
+                  <div
+                    className="flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-medium"
+                    style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--border-color)', color: 'var(--text-muted)' }}
+                  >
+                    <Lock size={11} />
+                    Lock the master shot to generate N / E / S / W angles
+                  </div>
+                )}
+
+                {CARDINAL_ANGLES.map((angle) => (
+                  <AngleSlot
+                    key={angle.key}
+                    angle={angle}
+                    envRow={angleEnv(angle.key)}
+                    masterEnv={masterEnv}
+                    selectedModel={angleModels[angle.key]}
+                    onModelChange={(modelId) => setAngleModels((prev) => ({ ...prev, [angle.key]: modelId }))}
+                    onUpload={(e) => handleAngleUpload(angle, e)}
+                    onGenerate={() => handleAngleGenerate(angle)}
                     onCopyPrompt={(text) => { navigator.clipboard.writeText(text); toast.success('Prompt copied') }}
-                    onLock={() => handleEnvLock(envRow?.id)}
-                    onUnlock={() => handleEnvUnlock(envRow?.id)}
-                    onDelete={() => handleEnvDelete(envRow?.id)}
-                    uploading={uploadingEnv === slot.label}
-                    generating={generatingEnv === envRow?.id}
+                    onLock={() => handleAngleLock(angle.key)}
+                    onUnlock={() => handleAngleUnlock(angle.key)}
+                    onDelete={() => handleAngleDelete(angle.key)}
+                    uploading={uploadingAngle === angle.key}
+                    generating={generatingAngle === angle.key}
+                    masterLocked={masterLocked}
                   />
-                )
-              })}
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* ── 4. WARDROBE ───────────────────────────────────────────────── */}
+          {/* ── 4. WARDROBE ──────────────────────────────────────────────── */}
           {selectedActors.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -935,7 +1306,6 @@ export default function FilmaScenePage() {
                       uploading={uploadingOutfit}
                       generating={generatingWard}
                     />
-                    {/* Suggest wardrobe prompt button */}
                     {!sceneActorMap[actor.id]?.wardrobe_locked && (
                       <button
                         onClick={() => handleSuggestWardrobe(actor)}
@@ -961,14 +1331,14 @@ export default function FilmaScenePage() {
             </div>
           )}
 
-          {/* ── 5. SCAFFOLD / SHOTS ───────────────────────────────────────── */}
+          {/* ── 5. SCAFFOLD / SHOTS ──────────────────────────────────────── */}
           {!scene?.scaffolded ? (
             <div className="flex flex-col gap-2">
-              {/* Gate indicators */}
               <div className="flex flex-col gap-1.5 mb-1">
                 {[
-                  { label: 'Script saved',             ok: scriptSaved },
-                  { label: 'Environment locked',        ok: envReady },
+                  { label: 'Script saved',              ok: scriptSaved },
+                  { label: 'Master shot locked',         ok: masterLocked },
+                  { label: 'Environment fully locked',   ok: envReady },
                   { label: selectedActors.length > 0 ? 'Wardrobe locked' : 'No actors (skipped)', ok: selectedActors.length === 0 || wardrobeReady },
                 ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center gap-2">
@@ -1013,7 +1383,6 @@ export default function FilmaScenePage() {
             </button>
           )}
 
-          {/* Shot list */}
           {shots.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest mb-3"
