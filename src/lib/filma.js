@@ -767,14 +767,14 @@ export const filmaShots = {
     return filmaUpload(userId, file, 'shots/audio')
   },
 
-  async setAudio(shotId, { audioUrl, firstWord, lastWord, durationSeconds }) {
+ async setAudio(shotId, { audioUrl, firstWord, lastWord, durationSeconds }) {
     return filmaShots.update(shotId, {
       audio_mode:             'uploaded',
       audio_url:              audioUrl,
       audio_first_word:       firstWord,
       audio_last_word:        lastWord,
-      audio_duration_seconds: durationSeconds,
-      duration_seconds:       durationSeconds,
+      audio_duration_seconds: Math.round(durationSeconds),
+      duration_seconds:       Math.round(durationSeconds),
     })
   },
 
