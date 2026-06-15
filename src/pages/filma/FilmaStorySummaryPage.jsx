@@ -288,8 +288,8 @@ export default function FilmaStorySummaryPage() {
               style={{ background: 'rgba(232,160,32,0.08)', border: '1px solid rgba(232,160,32,0.2)' }}
             >
               <p className="text-xs" style={{ color: '#E8A020', lineHeight: 1.6 }}>
-                This film has already been scaffolded. Re-scaffolding will add new parts, scenes and characters
-                — it won't delete existing ones. Edit your summary then click scaffold again if you want to update.
+                This film has already been scaffolded. Re-scaffolding will replace all existing parts, scenes and characters.
+                — This cannot be undone. Edit your summary then click scaffold again if you want to update.
               </p>
             </div>
           )}
