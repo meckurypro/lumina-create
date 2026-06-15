@@ -1,4 +1,8 @@
 // src/pages/filma/FilmaStructurePage.jsx
+//
+// Patch: back button now navigates to /filma (hub) instead of /filma/:filmId/cast
+// The hub opens films directly to Structure — Cast has its own back nav to StorySummary.
+
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -188,9 +192,7 @@ export default function FilmaStructurePage() {
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
 
-  // ── Guard: prevent duplicate auto-generation ──────────────────────────────
-  // We track whether we've already kicked off structure generation for this
-  // filmId so a double-render or flaky connection can't create duplicate parts.
+  // Guard: prevent duplicate auto-generation on double-render
   const generatingRef = useRef(false)
 
   useEffect(() => { load() }, [filmId])  // eslint-disable-line
@@ -214,7 +216,7 @@ export default function FilmaStructurePage() {
     setLoading(false)
   }
 
-  // ── Auto-generate structure — only when no parts exist, only once ─────────
+  // Auto-generate structure when no parts exist
   useEffect(() => {
     if (!loading && film && parts.length === 0 && !generatingRef.current) {
       generatingRef.current = true
@@ -258,7 +260,6 @@ export default function FilmaStructurePage() {
     setParts(createdParts)
     setScenes(sceneMap)
     setWorking(false)
-    // generatingRef stays true — won't re-trigger for this session
   }
 
   // ── Add part ──────────────────────────────────────────────────────────────
@@ -302,7 +303,7 @@ export default function FilmaStructurePage() {
   }
 
   // ── Add scene ─────────────────────────────────────────────────────────────
- const handleAddScene = async (part) => {
+  const handleAddScene = async (part) => {
     const existing = scenes[part.id] || []
     const nextNum  = (existing[existing.length - 1]?.scene_number || 0) + 1
 
@@ -312,6 +313,7 @@ export default function FilmaStructurePage() {
     setScenes((prev) => ({ ...prev, [part.id]: [...(prev[part.id] || []), data] }))
     await filmaParts.update(part.id, { total_scenes: nextNum })
   }
+
   // ── Rename scene ──────────────────────────────────────────────────────────
   const handleRenameScene = async (sceneId, title) => {
     const { error } = await filmaScenes.update(sceneId, { title })
@@ -325,7 +327,7 @@ export default function FilmaStructurePage() {
     })
   }
 
-  // ── Delete scene — uses filmaScenes.delete() (no inline supabase) ─────────
+  // ── Delete scene ──────────────────────────────────────────────────────────
   const handleDeleteScene = async (scene) => {
     const partScenes = scenes[scene.part_id] || []
     if (partScenes.length <= 1) { toast.error('Part must have at least one scene'); return }
@@ -351,6 +353,7 @@ export default function FilmaStructurePage() {
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
+        {/* FIXED: back button goes to /filma hub, not /cast */}
         <button
           onClick={() => navigate('/filma')}
           className="p-2 -ml-2 rounded-xl"
