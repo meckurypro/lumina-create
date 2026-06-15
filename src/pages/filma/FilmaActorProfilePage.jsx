@@ -1,4 +1,11 @@
 // src/pages/filma/FilmaActorProfilePage.jsx
+//
+// Patches applied:
+// 1. isNew dead-end removed — page only reached with a real UUID from FilmaCastPage
+// 2. Actor loaded directly by ID (single query) instead of scanning all film actors
+// 3. Upload handler guards against missing resolvedId and redirects to Cast
+// 4. supabase client imported for direct DB query
+
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -18,15 +25,15 @@ const STEPS = [
 ]
 
 const FACE_SLOTS = [
-  { key: 'photo_face_front',         label: 'Face — Front',     hint: 'Looking directly at camera',  placeholder: '/headfront.png',        required: true  },
-  { key: 'photo_face_three_quarter', label: 'Face — ¾ Profile', hint: '45° angle, both eyes visible', placeholder: '/headthreequarter.png', required: true  },
-  { key: 'photo_face_side_90',       label: 'Face — Side 90°',  hint: 'Perfect side profile',         placeholder: '/headside.png',         required: true  },
+  { key: 'photo_face_front',         label: 'Face — Front',     hint: 'Looking directly at camera',   placeholder: '/headfront.png',        required: true  },
+  { key: 'photo_face_three_quarter', label: 'Face — ¾ Profile', hint: '45° angle, both eyes visible', placeholder: '/headthreequarter.png',  required: true  },
+  { key: 'photo_face_side_90',       label: 'Face — Side 90°',  hint: 'Perfect side profile',         placeholder: '/headside.png',          required: true  },
 ]
 
 const BODY_SLOTS = [
-  { key: 'photo_body_front', label: 'Full Body — Front', hint: 'Head to toe, facing camera',    placeholder: '/bodyfront.png', required: false },
-  { key: 'photo_body_side',  label: 'Full Body — Side',  hint: 'Head to toe, 90° side',         placeholder: '/bodyside.png',  required: false },
-  { key: 'photo_body_back',  label: 'Full Body — Back',  hint: 'Head to toe, back to camera',   placeholder: '/bodyback.png',  required: false },
+  { key: 'photo_body_front', label: 'Full Body — Front', hint: 'Head to toe, facing camera',  placeholder: '/bodyfront.png', required: false },
+  { key: 'photo_body_side',  label: 'Full Body — Side',  hint: 'Head to toe, 90° side',        placeholder: '/bodyside.png',  required: false },
+  { key: 'photo_body_back',  label: 'Full Body — Back',  hint: 'Head to toe, back to camera',  placeholder: '/bodyback.png',  required: false },
 ]
 
 // ── Photo slot ─────────────────────────────────────────────────────────────
@@ -86,25 +93,26 @@ const PhotoSlot = ({ slot, value, onChange, onRemove, uploading }) => (
 // ── Step validation ────────────────────────────────────────────────────────
 const stepIsValid = (step, photos) => {
   if (step === 1) return FACE_SLOTS.every((s) => !s.required || !!photos[s.key])
-  if (step === 2) return true // body photos optional
+  if (step === 2) return true  // body photos optional
   return false
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function FilmaActorProfilePage() {
-  const navigate      = useNavigate()
+  const navigate            = useNavigate()
   const { filmId, actorId } = useParams()
-  const { user }      = useAuth()
+  const { user }            = useAuth()
 
   // Actor profile page is only reached with a real UUID from FilmaCastPage.
-  // The 'new' actor flow lives entirely in FilmaCastPage → ActorFormSheet.
+  // The 'new' actor creation flow lives entirely in FilmaCastPage → ActorFormSheet.
+  // isNew is always false — kept as a constant for clarity.
   const isNew = false
 
-  const [step,         setStep]        = useState(1)
-  const [film,         setFilm]        = useState(null)
-  const [actor,        setActor]       = useState(null)
-  const [resolvedId,   setResolvedId]  = useState(isNew ? null : actorId)
-  const [photos,       setPhotos]      = useState({
+  const [step,          setStep]         = useState(1)
+  const [film,          setFilm]         = useState(null)
+  const [actor,         setActor]        = useState(null)
+  const [resolvedId,    setResolvedId]   = useState(actorId)
+  const [photos,        setPhotos]       = useState({
     photo_face_front:         null,
     photo_face_three_quarter: null,
     photo_face_side_90:       null,
@@ -118,10 +126,11 @@ export default function FilmaActorProfilePage() {
   // ── Load film + actor ──────────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
+      // Load film
       const filmRes = await filmaFilms.getById(filmId)
       if (!filmRes.error) setFilm(filmRes.data)
 
-      // Load the actor directly by ID — always a real UUID on this page
+      // Load actor directly by ID — always a real UUID on this page
       const { data: actorData, error: actorErr } = await supabase
         .from('filma_actors')
         .select('*')
@@ -159,7 +168,7 @@ export default function FilmaActorProfilePage() {
       return
     }
 
-    // Optimistic preview
+    // Optimistic preview while uploading
     const previewUrl = URL.createObjectURL(file)
     setPhotos((prev) => ({ ...prev, [slotKey]: previewUrl }))
     setUploadingSlot(slotKey)
@@ -167,7 +176,7 @@ export default function FilmaActorProfilePage() {
     try {
       const { url } = await filmaUpload(user.id, file, `actors/profile`)
 
-      // Persist to DB
+      // Persist to DB immediately — each photo saves as it uploads
       await filmaActors.update(resolvedId, { [slotKey]: url })
       setPhotos((prev) => ({ ...prev, [slotKey]: url }))
 
@@ -205,8 +214,8 @@ export default function FilmaActorProfilePage() {
   }
 
   const currentSlots = step === 1 ? FACE_SLOTS : BODY_SLOTS
-  const valid = stepIsValid(step, photos)
-  const actorName = actor?.name || 'New Actor'
+  const valid        = stepIsValid(step, photos)
+  const actorName    = actor?.name || 'Actor Profile'
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -235,7 +244,7 @@ export default function FilmaActorProfilePage() {
         <div style={{ width: 36 }} />
       </div>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <div className="flex-shrink-0 flex gap-1 px-4 py-3">
         {STEPS.map((s) => (
           <div key={s.id} className="flex-1 h-1 rounded-full transition-all duration-300"
@@ -259,9 +268,9 @@ export default function FilmaActorProfilePage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0  }}
-              exit={{    opacity: 0, x: -20}}
+              initial={{ opacity: 0, x: 20  }}
+              animate={{ opacity: 1, x: 0   }}
+              exit={{    opacity: 0, x: -20 }}
               transition={{ duration: 0.18 }}
             >
               {/* Hint banner */}
@@ -270,8 +279,8 @@ export default function FilmaActorProfilePage() {
                 <AlertCircle size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} />
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   {step === 1
-                    ? 'All 3 face photos are required. Use clear, unobstructed shots with neutral backgrounds. AI uses these to maintain face consistency across scenes.'
-                    : 'Body photos are optional but improve full-body scene accuracy. Upload as many as you have.'}
+                    ? 'All 3 face photos are required. Use clear, unobstructed shots with neutral backgrounds. AI uses these to maintain face consistency across every scene and shot.'
+                    : 'Body photos are optional but improve full-body scene and wardrobe generation accuracy. Upload as many as you have.'}
                 </p>
               </div>
 
