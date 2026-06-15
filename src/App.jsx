@@ -152,7 +152,9 @@ export default function App() {
             <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/edit"           element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/story-summary"  element={<RequireAuth><FilmaStorySummaryPage /></RequireAuth>} />
-            <Route path="/filma/:filmId/actor/:actorId" element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
+            {/* Actor profile — only accessible with a real UUID, never with 'new' */}
+            <Route path="/filma/:filmId/actor/:actorId"
+              element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
             <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
             <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
             <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
