@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Check, Camera, X, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { filmaActors, filmaFilms, filmaUpload } from '@/lib/filma'
 import toast from 'react-hot-toast'
 
@@ -95,7 +96,9 @@ export default function FilmaActorProfilePage() {
   const { filmId, actorId } = useParams()
   const { user }      = useAuth()
 
-  const isNew = actorId === 'new'
+  // Actor profile page is only reached with a real UUID from FilmaCastPage.
+  // The 'new' actor flow lives entirely in FilmaCastPage → ActorFormSheet.
+  const isNew = false
 
   const [step,         setStep]        = useState(1)
   const [film,         setFilm]        = useState(null)
@@ -118,27 +121,44 @@ export default function FilmaActorProfilePage() {
       const filmRes = await filmaFilms.getById(filmId)
       if (!filmRes.error) setFilm(filmRes.data)
 
-      if (!isNew) {
-        const actorsRes = await filmaActors.getByFilm(filmId)
-        const found = (actorsRes.data || []).find((a) => a.id === actorId)
-        if (found) {
-          setActor(found)
-          setPhotos({
-            photo_face_front:         found.photo_face_front         || null,
-            photo_face_three_quarter: found.photo_face_three_quarter || null,
-            photo_face_side_90:       found.photo_face_side_90       || null,
-            photo_body_front:         found.photo_body_front         || null,
-            photo_body_side:          found.photo_body_side          || null,
-            photo_body_back:          found.photo_body_back          || null,
-          })
-        }
+      // Load the actor directly by ID — always a real UUID on this page
+      const { data: actorData, error: actorErr } = await supabase
+        .from('filma_actors')
+        .select('*')
+        .eq('id', actorId)
+        .single()
+
+      if (actorErr || !actorData) {
+        toast.error('Actor not found')
+        navigate(`/filma/${filmId}/cast`)
+        return
       }
+
+      setActor(actorData)
+      setResolvedId(actorData.id)
+      setPhotos({
+        photo_face_front:         actorData.photo_face_front         || null,
+        photo_face_three_quarter: actorData.photo_face_three_quarter || null,
+        photo_face_side_90:       actorData.photo_face_side_90       || null,
+        photo_body_front:         actorData.photo_body_front         || null,
+        photo_body_side:          actorData.photo_body_side          || null,
+        photo_body_back:          actorData.photo_body_back          || null,
+      })
     }
     load()
   }, [filmId, actorId]) // eslint-disable-line
 
   // ── Upload handler ─────────────────────────────────────────────────────
   const handleUpload = async (slotKey, file) => {
+    // Guard: actor must exist in DB before we can upload photos.
+    // Actors are always created via FilmaCastPage — if resolvedId is missing,
+    // the user navigated here incorrectly. Send them back to Cast.
+    if (!resolvedId) {
+      toast.error('Create the actor first via the Cast page, then open their profile.')
+      navigate(`/filma/${filmId}/cast`)
+      return
+    }
+
     // Optimistic preview
     const previewUrl = URL.createObjectURL(file)
     setPhotos((prev) => ({ ...prev, [slotKey]: previewUrl }))
@@ -147,24 +167,13 @@ export default function FilmaActorProfilePage() {
     try {
       const { url } = await filmaUpload(user.id, file, `actors/profile`)
 
-      // If actor row doesn't exist yet (new), create a stub first
-      let aid = resolvedId
-      if (!aid) {
-        // We need at least the actor to exist — grab the first actor for this film
-        // OR navigate requires actorId. For 'new', we need the actor created first.
-        // We'll create a minimal actor row here if not yet done.
-        toast.error('Please create the actor first via New Actor, then open their profile.')
-        setPhotos((prev) => ({ ...prev, [slotKey]: null }))
-        setUploadingSlot(null)
-        return
-      }
-
       // Persist to DB
-      await filmaActors.update(aid, { [slotKey]: url })
+      await filmaActors.update(resolvedId, { [slotKey]: url })
       setPhotos((prev) => ({ ...prev, [slotKey]: url }))
 
     } catch (err) {
       toast.error(err.message || 'Upload failed')
+      // Revert optimistic preview on failure
       setPhotos((prev) => ({ ...prev, [slotKey]: null }))
     } finally {
       setUploadingSlot(null)
