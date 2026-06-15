@@ -545,7 +545,6 @@ export default function FilmaShotPage() {
 
   const handleClearAudio = async () => {
     await filmaShots.clearAudio(shotId)
-    await filmaShots.update(shotId, { audio_mode: 'native' })
     setAudioUrl(null)
     setAudioDur(null)
     setAudioMode('native')
