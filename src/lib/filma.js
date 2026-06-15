@@ -767,10 +767,10 @@ export const filmaShots = {
     })
   },
 
-  /** Clear audio — revert to AI voice */
+  /** Clear audio — revert to native AI audio (model generates its own) */
   async clearAudio(shotId) {
     return filmaShots.update(shotId, {
-      audio_mode:             'ai_voice',
+      audio_mode:             'native',
       audio_url:              null,
       audio_first_word:       null,
       audio_last_word:        null,
@@ -1156,6 +1156,75 @@ export async function filmaScaffoldFilm(filmId) {
   }
 
   if (!data?.success) throw new Error(data?.error || 'Scaffold returned no data')
+  return data
+}
+
+/**
+ * Call the filma-generate-first-frame edge function.
+ * Generates the AI start frame for shot #1 in a scene.
+ * Uses all scene assets: master environment image, actor face refs,
+ * outfit refs, and film context to build the visual anchor.
+ *
+ * Only applies to shot_number === 1. Subsequent shots get their start frame
+ * from the end frame of the previous shot (via filmaShots.pushEndFrame).
+ *
+ * Returns { success, imageUrl, creditsCharged, promptLength, refCount }
+ */
+export async function filmaGenerateFirstFrame(shotId) {
+  const { data, error } = await supabase.functions.invoke('filma-generate-first-frame', {
+    body: { shotId },
+  })
+
+  if (error) {
+    if (error.context && typeof error.context.json === 'function') {
+      try {
+        const body = await error.context.json()
+        throw new Error(body?.error || body?.message || error.message || 'First frame generation failed')
+      } catch {
+        // fall through to generic error
+      }
+    }
+    throw new Error(error.message || 'First frame generation failed')
+  }
+
+  if (!data?.success) throw new Error(data?.error || 'First frame generation failed')
+  return data
+}
+
+/**
+ * Call the filma-suggest-shot-props edge function.
+ * Analyses the shot description, scene script, and actor list,
+ * then returns props/references the user should upload before
+ * generation to prevent AI hallucination of story-critical objects.
+ *
+ * Result is also saved to filma_shots.prop_suggestions (jsonb) so the UI
+ * can display it without re-calling the function on every load.
+ *
+ * Returns {
+ *   success: true,
+ *   suggestions: [{
+ *     prop, reason, shot_type_hint, priority, category
+ *   }]
+ * }
+ */
+export async function filmaSuggestShotProps(shotId) {
+  const { data, error } = await supabase.functions.invoke('filma-suggest-shot-props', {
+    body: { shotId },
+  })
+
+  if (error) {
+    if (error.context && typeof error.context.json === 'function') {
+      try {
+        const body = await error.context.json()
+        throw new Error(body?.error || body?.message || error.message || 'Prop suggestion failed')
+      } catch {
+        // fall through
+      }
+    }
+    throw new Error(error.message || 'Prop suggestion failed')
+  }
+
+  if (!data?.success) throw new Error(data?.error || 'No prop suggestions returned')
   return data
 }
 
