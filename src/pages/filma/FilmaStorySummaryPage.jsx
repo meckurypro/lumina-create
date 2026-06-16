@@ -131,7 +131,7 @@ export default function FilmaStorySummaryPage() {
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }}
             />
             <p className="text-sm font-semibold" style={{ color: '#fff' }}>
-              AI is reading your story…
+              Filma is reading your story…
             </p>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
               Building structure, episodes and characters
@@ -317,7 +317,7 @@ export default function FilmaStorySummaryPage() {
               }}
             >
               <Sparkles size={15} />
-              {scaffolding ? 'AI is working…' : 'Scaffold with AI'}
+              {scaffolding ? 'Filma is working…' : 'Scaffold with AI'}
             </button>
           )}
 
