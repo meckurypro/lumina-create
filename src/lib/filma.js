@@ -909,6 +909,7 @@ export const filmaShots = {
       }
     }
 
+    tick()
     const interval = setInterval(tick, intervalMs)
     const timeout  = setTimeout(() => {
       if (!stopped) {
