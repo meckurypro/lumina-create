@@ -68,45 +68,90 @@ const InlineEdit = ({ value, onSave, small }) => {
 }
 
 // ── Scene row ─────────────────────────────────────────────────────────────
-const SceneRow = ({ scene, onOpen, onRename, onDelete }) => (
-  <div
-    className="flex items-center gap-3 px-4 py-3 rounded-xl"
-    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-  >
+const SceneRow = ({ scene, onOpen, onRename, onDelete }) => {
+  const [renaming, setRenaming] = useState(false)
+  const [draft,    setDraft]    = useState(scene.title || `Scene ${scene.scene_number}`)
+
+  const commit = () => {
+    if (draft.trim()) onRename(scene.id, draft.trim())
+    setRenaming(false)
+  }
+
+  return (
     <div
-      className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
-      style={{ background: ACCENT_SUB }}
+      onClick={() => !renaming && onOpen(scene)}
+      className="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all active:scale-[0.99]"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
     >
-      <span className="text-xs font-bold" style={{ color: ACCENT }}>{scene.scene_number}</span>
+      <div
+        className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ background: ACCENT_SUB }}
+      >
+        <span className="text-xs font-bold" style={{ color: ACCENT }}>{scene.scene_number}</span>
+      </div>
+
+      <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+        {renaming ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit()
+                if (e.key === 'Escape') setRenaming(false)
+              }}
+              onBlur={commit}
+              className="flex-1 min-w-0 px-2 py-1 rounded-lg text-xs outline-none"
+              style={{
+                background: 'var(--bg-primary)',
+                border: `1px solid ${ACCENT_BDR}`,
+                color: 'var(--text-primary)',
+              }}
+            />
+            <button
+              onClick={commit}
+              className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+              style={{ background: ACCENT }}
+            >
+              <Check size={9} color="#000" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+              {scene.title || `Scene ${scene.scene_number}`}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {scene.scaffolded
+                ? <span style={{ color: '#34D399' }}>Scaffolded</span>
+                : 'Not started'}
+            </p>
+          </>
+        )}
+      </div>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setDraft(scene.title || `Scene ${scene.scene_number}`)
+          setRenaming(true)
+        }}
+        className="p-1.5 rounded-lg flex-shrink-0"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <Pencil size={13} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(scene) }}
+        className="p-1.5 rounded-lg flex-shrink-0"
+        style={{ color: 'rgba(239,68,68,0.6)' }}
+      >
+        <Trash2 size={13} />
+      </button>
     </div>
-    <div className="flex-1 min-w-0">
-      <InlineEdit
-        value={scene.title || `Scene ${scene.scene_number}`}
-        onSave={(v) => onRename(scene.id, v)}
-        small
-      />
-      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-        {scene.scaffolded
-          ? <span style={{ color: '#34D399' }}>Scaffolded</span>
-          : 'Not started'}
-      </p>
-    </div>
-    <button
-      onClick={() => onOpen(scene)}
-      className="p-1.5 rounded-lg transition-all active:scale-90"
-      style={{ color: ACCENT }}
-    >
-      <ChevronRight size={16} />
-    </button>
-    <button
-      onClick={() => onDelete(scene)}
-      className="p-1.5 rounded-lg"
-      style={{ color: 'rgba(239,68,68,0.6)' }}
-    >
-      <Trash2 size={13} />
-    </button>
-  </div>
-)
+  )
+}
 
 // ── Part card ─────────────────────────────────────────────────────────────
 const PartCard = ({
