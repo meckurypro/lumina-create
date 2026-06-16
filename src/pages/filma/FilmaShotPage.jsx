@@ -416,6 +416,7 @@ const [firstFrameModels,   setFirstFrameModels]  = useState([])
   const [firstWord,  setFirstWord]  = useState('')
   const [lastWord,   setLastWord]   = useState('')
   const [duration,   setDuration]   = useState(null)
+  const [showUGCPicker, setShowUGCPicker] = useState(false)
 
  const [downloading,    setDownloading]    = useState(false)
   const [refreshingShot, setRefreshingShot] = useState(false)
