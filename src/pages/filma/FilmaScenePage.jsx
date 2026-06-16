@@ -1070,7 +1070,7 @@ toast.success('AI is directing your scene…')
 
 // Poll scaffold_status until done or error
 let attempts = 0
-const maxAttempts = 40 // 40 × 3s = 2 minutes
+const maxAttempts = 80 // 80 × 3s = 4 minutes
 const poll = setInterval(async () => {
   attempts++
   const { data: sceneData } = await filmaScenes.getById(sceneId)
