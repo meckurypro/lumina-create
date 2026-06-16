@@ -670,7 +670,8 @@ export default function FilmaScenePage() {
     W: I2I_MODELS[0].id,
   })
 
- const [wardrobeModel, setWardrobeModel] = useState(WARDROBE_MODELS[0].id)
+ const [wardrobeModel,     setWardrobeModel]     = useState(WARDROBE_MODELS[0].id)
+  const [wardrobeModelOpen, setWardrobeModelOpen] = useState(false)
 
   const [script,      setScript]      = useState('')
   const [scriptSaved, setScriptSaved] = useState(false)
@@ -1320,7 +1321,7 @@ const handleWardrobeGenerate = async (actor) => {
                 <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>Model</span>
                 <div className="relative flex-1">
                   <button
-                    onClick={() => {}}
+                   onClick={() => setWardrobeModelOpen((o) => !o)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold w-full"
                     style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
                   >
@@ -1330,15 +1331,18 @@ const handleWardrobeGenerate = async (actor) => {
                     </span>
                     <ChevronDown size={11} style={{ color: 'var(--text-muted)' }} />
                   </button>
-                  <AnimatePresence>
+                  {wardrobeModelOpen && (
                     <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
                       className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-20"
                       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
                     >
                       {WARDROBE_MODELS.map((m) => (
                         <button
                           key={m.id}
-                          onClick={() => setWardrobeModel(m.id)}
+                          onClick={() => { setWardrobeModel(m.id); setWardrobeModelOpen(false) }}
                           className="flex items-center gap-2 w-full px-3 py-2.5 text-xs font-semibold text-left"
                           style={{
                             color:      m.id === wardrobeModel ? ACCENT : 'var(--text-secondary)',
@@ -1350,7 +1354,7 @@ const handleWardrobeGenerate = async (actor) => {
                         </button>
                       ))}
                     </motion.div>
-                  </AnimatePresence>
+                  )}
                 </div>
               </div>
 
