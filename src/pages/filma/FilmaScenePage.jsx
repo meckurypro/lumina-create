@@ -890,15 +890,22 @@ const result = await filmaGenerateAngleAsset({
 })
 
       // Upsert the angle env row
-      setEnvironments((prev) => {
-        const existing = prev.find((e) => (e.direction || e.angle_key) === angle.key)
-if (existing) {
-  return prev.map((e) => (e.direction || e.angle_key) === angle.key
-            ? { ...e, image_url: result.imageUrl, prompt_text: result.prompt || e.prompt_text }
-            : e)
-        }
-        return [...prev, result.envRow]
-      })
+     setEnvironments((prev) => {
+  const existing = prev.find((e) => (e.direction || e.angle_key) === angle.key)
+  if (existing) {
+    return prev.map((e) => (e.direction || e.angle_key) === angle.key
+      ? { ...e, image_url: result.imageUrl }
+      : e)
+  }
+  return [...prev, {
+    direction:  angle.key,
+    label:      angle.label,
+    image_url:  result.imageUrl,
+    is_master:  false,
+    locked:     false,
+    sort_order: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
+  }]
+})
 
       toast.success(`${angle.label} generated`)
     } catch (err) {
