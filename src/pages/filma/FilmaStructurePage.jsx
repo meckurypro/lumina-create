@@ -171,17 +171,26 @@ const PartCard = ({
         style={{ borderBottom: expanded ? '1px solid var(--border-color)' : 'none' }}
       >
         <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 flex-1 min-w-0 text-left"
-        >
-          <motion.div animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
-            <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
-          </motion.div>
-          <InlineEdit value={part.label} onSave={(v) => onRename(part.id, v)} />
-          <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-            {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
-          </span>
-        </button>
+  onClick={() => setExpanded(!expanded)}
+  className="flex items-center gap-2 flex-1 min-w-0 text-left"
+>
+  <motion.div animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
+    <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+  </motion.div>
+  <span className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+    {part.label}
+  </span>
+  <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+    {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
+  </span>
+</button>
+<button
+  onClick={(e) => { e.stopPropagation(); onRename(part.id, part.label) }}
+  className="p-1.5 rounded-lg flex-shrink-0"
+  style={{ color: 'var(--text-muted)' }}
+>
+  <Pencil size={12} />
+</button>
         <button
           onClick={() => onDelete(part)}
           className="p-1.5 rounded-lg flex-shrink-0"
