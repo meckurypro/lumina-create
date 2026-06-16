@@ -401,7 +401,8 @@ export default function FilmaShotPage() {
   const [generatingFrame,    setGeneratingFrame]   = useState(false)
   const [extractingEnd,      setExtractingEnd]     = useState(false)
   const [suggestingProps,    setSuggestingProps]   = useState(false)
-  const [showUGCPicker,      setShowUGCPicker]     = useState(false)
+  const [firstFrameModel,    setFirstFrameModel]   = useState('')
+const [firstFrameModels,   setFirstFrameModels]  = useState([])
 
   const [uploadingStart,  setUploadingStart]  = useState(false)
   const [uploadingEnd,    setUploadingEnd]    = useState(false)
@@ -422,6 +423,20 @@ export default function FilmaShotPage() {
 
   useEffect(() => { return () => { stopPollRef.current?.() } }, [])
   useEffect(() => { load() }, [shotId]) // eslint-disable-line
+  useEffect(() => {
+  supabase
+    .from('models')
+    .select('*')
+    .eq('type', 'image')
+    .eq('is_active', true)
+    .eq('is_user_facing', true)
+    .order('sort_order')
+    .then(({ data }) => {
+      const list = (data || []).filter((m) => !m.is_locked)
+      setFirstFrameModels(list)
+      setFirstFrameModel(list[0]?.value || '')
+    })
+}, [])
 
   const load = async () => {
     setLoading(true)
