@@ -772,17 +772,28 @@ export default function FilmaScenePage() {
           const { data } = await filmaSceneEnvironments.setPrompt(existing.id, p.prompt_text)
           const idx = updatedEnvs.findIndex((e) => e.id === existing.id)
           if (data) updatedEnvs[idx] = data
-        } else {
-          const { data } = await filmaSceneEnvironments.create(filmId, sceneId, {
-            label:       p.label || (angleKey === 'master' ? 'Master Shot' : angleKey),
-            prompt_text: p.prompt_text,
-            angle_key:   angleKey,
-            is_master:   angleKey === 'master',
-            sort_order:  p.sort_order ?? 0,
-            locked:      false,
-          })
-          if (data) updatedEnvs.push(data)
-        }
+       } else {
+  // Double-check against current state too (handles stale updatedEnvs)
+  const stateExisting = environments.find((e) => e.angle_key === angleKey)
+  if (stateExisting) {
+    const { data } = await filmaSceneEnvironments.setPrompt(stateExisting.id, p.prompt_text)
+    const idx = updatedEnvs.findIndex((e) => e.id === stateExisting.id)
+    if (data) {
+      if (idx !== -1) updatedEnvs[idx] = data
+      else updatedEnvs.push(data)
+    }
+  } else {
+    const { data } = await filmaSceneEnvironments.create(filmId, sceneId, {
+      label:       p.label || (angleKey === 'master' ? 'Master Shot' : angleKey),
+      prompt_text: p.prompt_text,
+      angle_key:   angleKey,
+      is_master:   angleKey === 'master',
+      sort_order:  p.sort_order ?? 0,
+      locked:      false,
+    })
+    if (data) updatedEnvs.push(data)
+  }
+}
       }
       setEnvironments(updatedEnvs)
       toast.success('Master shot prompt generated')
