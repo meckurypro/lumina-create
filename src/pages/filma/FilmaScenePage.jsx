@@ -1087,7 +1087,7 @@ const handleWardrobeGenerate = async (actor) => {
       try { sessionStorage.removeItem(ssScriptKey(sceneId)) } catch { /* noop */ }
 
      await filmaScaffoldScene(sceneId)
-toast.success('AI is directing your scene…')
+toast.success('Filma is directing your scene…')
 
 // Poll scaffold_status until done or error
 let attempts = 0
@@ -1159,7 +1159,7 @@ return // don't hit the finally block's setScaffolding(false) yet
             <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }} />
-            <p className="text-sm font-semibold" style={{ color: '#fff' }}>AI is directing your scene…</p>
+            <p className="text-sm font-semibold" style={{ color: '#fff' }}>Filma is directing your scene…</p>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Parsing script into shots</p>
           </motion.div>
         )}
@@ -1478,7 +1478,7 @@ return // don't hit the finally block's setScaffolding(false) yet
                 }}
               >
                 <Sparkles size={16} />
-                {scaffolding ? 'AI is directing…' : 'Scaffold Scene with AI'}
+                {scaffolding ? 'Filma is directing…' : 'Scaffold Scene with AI'}
               </button>
             </div>
           ) : (
