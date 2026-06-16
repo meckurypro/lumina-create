@@ -515,13 +515,16 @@ export const filmaSceneEnvironments = {
       .single()
   },
 
-  async create(filmId, sceneId, payload) {
-    return supabase
-      .from('filma_scene_environments')
-      .insert({ film_id: filmId, scene_id: sceneId, ...payload })
-      .select()
-      .single()
-  },
+async create(filmId, sceneId, payload) {
+  return supabase
+    .from('filma_scene_environments')
+    .upsert(
+      { film_id: filmId, scene_id: sceneId, ...payload },
+      { onConflict: 'scene_id,angle_key', ignoreDuplicates: false }
+    )
+    .select()
+    .single()
+},
 
   async update(envId, payload) {
     return updateRow('filma_scene_environments', envId, {
