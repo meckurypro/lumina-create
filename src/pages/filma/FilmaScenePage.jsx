@@ -69,6 +69,7 @@ const I2I_MODELS = [
   { id: 'flux-kontext-dev-ultra-fast', label: 'FLUX Kontext (Fast)' },
   { id: 'flux-kontext-pro',            label: 'FLUX Kontext Pro' },
   { id: 'wavespeed-ai/flux-kontext-max', label: 'FLUX Kontext Max' },
+  { id: 'nano_banana_pro_edit',          label: 'Nano Banana Pro' },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
