@@ -13,8 +13,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, ImagePlus, X, User, Plus, Check,
-  ChevronRight, Sparkles, Loader2, UserPlus,
+  ArrowLeft, ImagePlus, X, User, Plus, Check, Sparkles, Loader2, UserPlus,
   Lock, Unlock, Copy, Wand2, ZapIcon, ChevronDown,
   Compass,
 } from 'lucide-react'
@@ -627,8 +626,7 @@ const ShotPreviewCard = ({ shot, index, onClick }) => {
           {shot.description}
         </p>
       </div>
-      <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-    </motion.button>
+     </motion.button>
   )
 }
 
