@@ -589,6 +589,13 @@ const OutfitSlot = ({
 }
 
 // ── Shot preview card ──────────────────────────────────────────────────────
+const SHOT_STATUS_DOT = {
+  completed:  '#34D399',
+  generating: '#E8A020',
+  processing: '#E8A020',
+  failed:     '#ef4444',
+}
+
 const ShotPreviewCard = ({ shot, index, onClick }) => {
   const TYPE_COLOR = {
     dialogue:     ACCENT,
@@ -598,7 +605,9 @@ const ShotPreviewCard = ({ shot, index, onClick }) => {
     close_up:     '#FB7BB8',
     default:      'var(--text-muted)',
   }
-  const color = TYPE_COLOR[shot.shot_type] || TYPE_COLOR.default
+  const color     = TYPE_COLOR[shot.shot_type] || TYPE_COLOR.default
+  const dotColor  = SHOT_STATUS_DOT[shot.status]
+  const isPending = shot.status === 'generating' || shot.status === 'processing'
 
   return (
     <motion.button
@@ -607,7 +616,7 @@ const ShotPreviewCard = ({ shot, index, onClick }) => {
       transition={{ delay: index * 0.04 }}
       onClick={onClick}
       className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-left transition-all active:scale-[0.98]"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+      style={{ background: 'var(--bg-elevated)', border: `1px solid ${shot.status === 'completed' ? `${color}40` : 'var(--border-color)'}` }}
     >
       <div
         className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -634,7 +643,19 @@ const ShotPreviewCard = ({ shot, index, onClick }) => {
           {shot.description}
         </p>
       </div>
-     </motion.button>
+      {dotColor && (
+        <div className="flex-shrink-0 flex items-center gap-1">
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{
+              background: dotColor,
+              boxShadow: isPending ? `0 0 6px ${dotColor}` : 'none',
+              animation: isPending ? 'pulse 1.5s ease-in-out infinite' : 'none',
+            }}
+          />
+        </div>
+      )}
+    </motion.button>
   )
 }
 
