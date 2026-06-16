@@ -630,7 +630,7 @@ export default function FilmaShotPage() {
   }
 
   // ── Generate shot ─────────────────────────────────────────────────────────
-  const handleGenerate = async () => {
+ const handleGenerate = async () => {
     stopPollRef.current?.()
     stopPollRef.current = null
 
@@ -638,26 +638,30 @@ export default function FilmaShotPage() {
     try {
       await filmaGenerateShot(shotId)
       toast.success('Generation started')
-
-      stopPollRef.current = filmaShots.poll(shotId, {
-        intervalMs: 5000,
-        timeoutMs:  600000,
-        onUpdate: (data) => { setShot((prev) => ({ ...prev, ...data })) },
-        onDone: ({ success, data, error }) => {
-          stopPollRef.current = null
-          setGenerating(false)
-          if (success) {
-            setShot((prev) => ({ ...prev, ...data }))
-            toast.success('Shot generated!')
-          } else {
-            toast.error(error || 'Generation failed. Try again.')
-          }
-        },
-      })
+      setShot((prev) => ({ ...prev, status: 'generating' }))
     } catch (err) {
       toast.error(err.message || 'Generation failed')
       setGenerating(false)
+      return
     }
+
+    setGenerating(false)
+
+    stopPollRef.current = filmaShots.poll(shotId, {
+      intervalMs: 5000,
+      timeoutMs:  600000,
+      onUpdate: (data) => { setShot((prev) => ({ ...prev, ...data })) },
+      onDone: ({ success, data, error }) => {
+        stopPollRef.current = null
+        if (success) {
+          setShot((prev) => ({ ...prev, ...data }))
+          toast.success('Shot generated!')
+        } else {
+          setShot((prev) => ({ ...prev, status: 'failed' }))
+          toast.error(error || 'Generation failed. Try again.')
+        }
+      },
+    })
   }
 
   // ── Push end frame ────────────────────────────────────────────────────────
@@ -736,7 +740,7 @@ export default function FilmaShotPage() {
 
       {/* Overlays */}
       <AnimatePresence>
-        {(generating || extractingEnd || generatingFrame) && (
+        {(extractingEnd || generatingFrame) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.6)' }}>
@@ -744,11 +748,8 @@ export default function FilmaShotPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: ACCENT_BDR, borderTopColor: ACCENT }} />
             <p className="text-sm font-semibold" style={{ color: '#fff' }}>
-              {extractingEnd ? 'Extracting end frame…' : generatingFrame ? 'Generating first frame…' : 'AI is generating your shot…'}
+              {extractingEnd ? 'Extracting end frame…' : 'Generating first frame…'}
             </p>
-            {generating && (
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>This may take a minute</p>
-            )}
           </motion.div>
         )}
         {showUGCPicker && (
@@ -1033,6 +1034,26 @@ export default function FilmaShotPage() {
               </p>
             </div>
           </div>
+
+         {/* ── Generation status ── */}
+          {(shot?.status === 'generating' || shot?.status === 'processing') && !hasOutput && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+              <Loader2 size={16} style={{ color: ACCENT, animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-semibold" style={{ color: ACCENT }}>Generating…</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>This may take a minute. You can leave and come back.</p>
+              </div>
+            </div>
+          )}
+
+          {shot?.status === 'failed' && !hasOutput && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+              <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+              <p className="text-sm font-semibold" style={{ color: '#ef4444' }}>Generation failed. Try again.</p>
+            </div>
+          )}
 
           {/* ── Output preview ── */}
           {hasOutput && (
