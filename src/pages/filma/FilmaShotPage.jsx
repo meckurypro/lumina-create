@@ -17,6 +17,7 @@ import {
   Plus, Trash2, Zap, RotateCcw, Check,
   ArrowRight, Loader2, ScanLine, Library,
   AlertCircle, ChevronDown, Volume2, Sparkles,
+  Download, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -415,6 +416,8 @@ export default function FilmaShotPage() {
   const [lastWord,   setLastWord]   = useState('')
   const [duration,   setDuration]   = useState(null)
 
+ const [downloading,    setDownloading]    = useState(false)
+  const [refreshingShot, setRefreshingShot] = useState(false)
   const stopPollRef = useRef(null)
 
   useEffect(() => { return () => { stopPollRef.current?.() } }, [])
@@ -662,6 +665,56 @@ export default function FilmaShotPage() {
         }
       },
     })
+  }
+
+  // ── Download output ───────────────────────────────────────────────────────
+  const handleDownload = async () => {
+    if (!shot?.output_url) return
+    setDownloading(true)
+    try {
+      const res  = await fetch(shot.output_url)
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `filma-shot-${shot.shot_number}-${shotId.slice(0, 8)}.mp4`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Downloaded')
+    } catch {
+      toast.error('Download failed')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  // ── Refresh from provider ─────────────────────────────────────────────────
+  const handleRefreshShot = async () => {
+    if (!shot?.generation_id) {
+      toast.error('No generation linked to this shot yet')
+      return
+    }
+    setRefreshingShot(true)
+    try {
+      await supabase.functions.invoke('video-poll-single', {
+        body: { generationId: shot.generation_id },
+      })
+      const synced = await filmaShots.syncFromGeneration(shotId)
+      if (synced) {
+        setShot((prev) => ({ ...prev, ...synced }))
+        if (synced.status === 'completed' && synced.output_url) {
+          toast.success('Shot is ready!')
+        } else if (synced.status === 'failed') {
+          toast.error('Generation failed')
+        } else {
+          toast('Still processing — check back soon', { icon: '⏳' })
+        }
+      }
+    } catch {
+      toast.error('Refresh failed')
+    } finally {
+      setRefreshingShot(false)
+    }
   }
 
   // ── Push end frame ────────────────────────────────────────────────────────
@@ -1076,6 +1129,8 @@ export default function FilmaShotPage() {
       <div className="flex-shrink-0 px-4 lg:px-8 py-4 flex flex-col gap-2"
         style={{ borderTop: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-primary)' }}>
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
+
+          {/* Generate / Regenerate */}
           <button onClick={handleGenerate} disabled={generating}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
@@ -1091,15 +1146,39 @@ export default function FilmaShotPage() {
             )}
           </button>
 
+          {/* Output actions row */}
           {hasOutput && (
-            <button onClick={handlePushEnd} disabled={extractingEnd}
+            <div className="flex gap-2">
+              <button onClick={handleDownload} disabled={downloading}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+                {downloading
+                  ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  : <Download size={14} />}
+                {downloading ? 'Downloading…' : 'Download'}
+              </button>
+              <button onClick={handlePushEnd} disabled={extractingEnd}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+                style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                <ScanLine size={14} />
+                {extractingEnd ? 'Extracting…' : 'Push End Frame'}
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          )}
+
+          {/* Refresh from provider — shown when generating or after failure */}
+          {(shot?.status === 'generating' || shot?.status === 'processing' || shot?.status === 'failed') && shot?.generation_id && (
+            <button onClick={handleRefreshShot} disabled={refreshingShot}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
-              style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
-              <ScanLine size={15} />
-              {extractingEnd ? 'Extracting…' : 'Push End Frame → Next Shot'}
-              <ArrowRight size={14} />
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>
+              {refreshingShot
+                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                : <RefreshCw size={14} />}
+              {refreshingShot ? 'Checking provider…' : 'Refresh from Provider'}
             </button>
           )}
+
         </div>
       </div>
     </div>
