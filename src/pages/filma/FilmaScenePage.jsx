@@ -1065,15 +1065,38 @@ const handleWardrobeGenerate = async (actor) => {
       setScriptSaved(true)
       try { sessionStorage.removeItem(ssScriptKey(sceneId)) } catch { /* noop */ }
 
-      const result = await filmaScaffoldScene(sceneId)
-      toast.success(`${result.shots_created} shots created`)
+     await filmaScaffoldScene(sceneId)
+toast.success('AI is directing your scene…')
 
-      const { data: shotData } = await filmaShots.getByScene(sceneId)
-      setShots(shotData || [])
-      setScene((prev) => ({ ...prev, scaffolded: true }))
-    } catch (err) {
+// Poll scaffold_status until done or error
+let attempts = 0
+const maxAttempts = 40 // 40 × 3s = 2 minutes
+const poll = setInterval(async () => {
+  attempts++
+  const { data: sceneData } = await filmaScenes.getById(sceneId)
+  const status = sceneData?.scaffold_status
+
+  if (status === 'done') {
+    clearInterval(poll)
+    const { data: shotData } = await filmaShots.getByScene(sceneId)
+    setShots(shotData || [])
+    setScene((prev) => ({ ...prev, scaffolded: true, scaffold_status: 'done' }))
+    setScaffolding(false)
+    toast.success(`${shotData?.length || 0} shots created`)
+  } else if (status === 'error') {
+    clearInterval(poll)
+    setScaffolding(false)
+    toast.error('Scaffold failed — please try again')
+  } else if (attempts >= maxAttempts) {
+    clearInterval(poll)
+    setScaffolding(false)
+    toast.error('Scaffold timed out — please try again')
+  }
+}, 3000)
+
+return // don't hit the finally block's setScaffolding(false) yet
+   } catch (err) {
       toast.error(err.message || 'Scaffold failed')
-    } finally {
       setScaffolding(false)
     }
   }
