@@ -634,10 +634,10 @@ const [firstFrameModels,   setFirstFrameModels]  = useState([])
   }
 
   // ── First frame generation (shot #1 only) ─────────────────────────────────
-  const handleGenerateFirstFrame = async () => {
+const handleGenerateFirstFrame = async () => {
     setGeneratingFrame(true)
     try {
-      const result = await filmaGenerateFirstFrame(shotId)
+      const result = await filmaGenerateFirstFrame(shotId, firstFrameModel)
       setShot((prev) => ({ ...prev, start_frame_url: result.imageUrl, first_frame_generated: true }))
       toast.success('First frame generated')
     } catch (err) {
@@ -885,7 +885,23 @@ const [firstFrameModels,   setFirstFrameModels]  = useState([])
                     Shot #1 needs a start frame — the visual anchor for the entire scene.
                     AI generates it using your scene environment, actor references, and film context.
                   </div>
-                  <button onClick={handleGenerateFirstFrame} disabled={generatingFrame}
+                  {firstFrameModels.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {firstFrameModels.map((m) => (
+                        <button key={m.value}
+                          onClick={() => setFirstFrameModel(m.value)}
+                          className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                          style={{
+                            background: firstFrameModel === m.value ? ACCENT_SUB : 'var(--bg-elevated)',
+                            color:      firstFrameModel === m.value ? ACCENT     : 'var(--text-muted)',
+                            border:     `1px solid ${firstFrameModel === m.value ? ACCENT_BDR : 'var(--border-color)'}`,
+                          }}>
+                          {m.aka || m.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={handleGenerateFirstFrame} disabled={generatingFrame || !firstFrameModel}
                     className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold"
                     style={{ background: ACCENT, color: '#000' }}>
                     <Sparkles size={15} />
