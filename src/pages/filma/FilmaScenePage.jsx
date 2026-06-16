@@ -7,7 +7,7 @@
 //    - User selects i2i model from dropdown
 //    - Per angle: edge function receives master_image_url + angle_key + tailored prompt
 //    - AI understands the cinematic assignment for each direction
-// DB: filma_scene_environments.angle_key = 'master' | 'N' | 'E' | 'S' | 'W'
+// DB: filma_scene_environments.direction = 'master' | 'N' | 'E' | 'S' | 'W'
 
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -667,14 +667,14 @@ export default function FilmaScenePage() {
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const selectedActors = allActors.filter((a) => sceneActorIds.includes(a.id))
-  const masterEnv      = environments.find((e) => e.angle_key === 'master') || null
+  const masterEnv      = environments.find((e) => e.direction === 'master' || e.angle_key === 'master') || null
   const masterLocked   = !!masterEnv?.locked
 
   // Get angle env by key
-  const angleEnv = (key) => environments.find((e) => e.angle_key === key) || null
+  const angleEnv = (key) => environments.find((e) => (e.direction || e.angle_key) === key) || null
 
   // Environment ready: master locked + all existing angle envs locked
-  const angleEnvs  = environments.filter((e) => e.angle_key !== 'master')
+  const angleEnvs  = environments.filter((e) => (e.direction || e.angle_key) !== 'master')
   const envReady   = masterLocked && (angleEnvs.length === 0 || angleEnvs.every((e) => e.locked))
 
   const wardrobeReady = selectedActors.length > 0 &&
@@ -764,17 +764,17 @@ export default function FilmaScenePage() {
       const updatedEnvs = [...environments]
       for (const p of prompts) {
         // filmaSuggestScenePrompts must now return angle_key: 'master' for the master prompt
-        const angleKey = p.angle_key || (p.is_master ? 'master' : null)
+        const angleKey = p.direction || p.angle_key || (p.is_master ? 'master' : null)
         if (!angleKey) continue
 
-        const existing = updatedEnvs.find((e) => e.angle_key === angleKey)
+        const existing = updatedEnvs.find((e) => (e.direction || e.angle_key) === angleKey)
         if (existing) {
           const { data } = await filmaSceneEnvironments.setPrompt(existing.id, p.prompt_text)
           const idx = updatedEnvs.findIndex((e) => e.id === existing.id)
           if (data) updatedEnvs[idx] = data
        } else {
   // Double-check against current state too (handles stale updatedEnvs)
-  const stateExisting = environments.find((e) => e.angle_key === angleKey)
+  const stateExisting = environments.find((e) => (e.direction || e.angle_key) === angleKey)
   if (stateExisting) {
     const { data } = await filmaSceneEnvironments.setPrompt(stateExisting.id, p.prompt_text)
     const idx = updatedEnvs.findIndex((e) => e.id === stateExisting.id)
@@ -784,13 +784,13 @@ export default function FilmaScenePage() {
     }
   } else {
     const { data } = await filmaSceneEnvironments.create(filmId, sceneId, {
-      label:       p.label || (angleKey === 'master' ? 'Master Shot' : angleKey),
-      prompt_text: p.prompt_text,
-      angle_key:   angleKey,
-      is_master:   angleKey === 'master',
-      sort_order:  p.sort_order ?? 0,
-      locked:      false,
-    })
+  label:       p.label || (angleKey === 'master' ? 'Master Shot' : angleKey),
+  prompt_text: p.prompt_text,
+  direction:   angleKey,
+  is_master:   angleKey === 'master',
+  sort_order:  p.sort_order ?? 0,
+  locked:      false,
+})
     if (data) updatedEnvs.push(data)
   }
 }
@@ -812,9 +812,9 @@ export default function FilmaScenePage() {
     try {
       const result = await filmaSceneEnvironments.uploadAndSave(user.id, filmId, sceneId, file, {
         label:     'Master Shot',
-        isMaster:  true,
-        angleKey:  'master',
-        sortOrder: 0,
+isMaster:  true,
+direction: 'master',
+sortOrder: 0,
         envId:     masterEnv?.id || null,
       })
       if (result.error) throw new Error(result.error.message)
@@ -893,9 +893,9 @@ export default function FilmaScenePage() {
 
       // Upsert the angle env row
       setEnvironments((prev) => {
-        const existing = prev.find((e) => e.angle_key === angle.key)
-        if (existing) {
-          return prev.map((e) => e.angle_key === angle.key
+        const existing = prev.find((e) => (e.direction || e.angle_key) === angle.key)
+if (existing) {
+  return prev.map((e) => (e.direction || e.angle_key) === angle.key
             ? { ...e, image_url: result.imageUrl, prompt_text: result.prompt || e.prompt_text }
             : e)
         }
@@ -919,9 +919,9 @@ export default function FilmaScenePage() {
       const existingRow = angleEnv(angle.key)
       const result = await filmaSceneEnvironments.uploadAndSave(user.id, filmId, sceneId, file, {
         label:     angle.label,
-        isMaster:  false,
-        angleKey:  angle.key,
-        sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
+isMaster:  false,
+direction: angle.key,
+sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
         envId:     existingRow?.id || null,
       })
       if (result.error) throw new Error(result.error.message)
