@@ -1002,7 +1002,7 @@ export const filmaScaffoldFilm   = (filmId)  => invoke('filma-scaffold-film', { 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const filmaGenerateShot         = (shotId)         => invoke('filma-generate',           { shotId         })
-export const filmaGenerateFirstFrame   = (shotId)         => invoke('filma-generate-first-frame',{ shotId         })
+export const filmaGenerateFirstFrame   = (shotId, modelKey) => invoke('filma-generate-first-frame',{ shotId, modelKey })
 export const filmaSuggestShotProps     = (shotId)         => invoke('filma-suggest-shot-props',  { shotId         })
 export const filmaSuggestScenePrompts  = (sceneId)        => invoke('filma-suggest-scene-prompts',{ sceneId       })
 export const filmaSuggestWardrobePrompt = (sceneId, actorId) =>
