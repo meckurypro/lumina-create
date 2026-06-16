@@ -72,6 +72,13 @@ const I2I_MODELS = [
   { id: 'nano_banana_pro_edit',          label: 'Nano Banana Pro' },
 ]
 
+const WARDROBE_MODELS = [
+  { id: 'nano_banana_pro_t2i',  label: 'Nano Banana Pro' },
+  { id: 'flux_2_dev',           label: 'FLUX 2 Dev' },
+  { id: 'seedream_v4_5',        label: 'Seedream 4.5' },
+  { id: 'flux-kontext-dev-ultra-fast', label: 'FLUX Kontext (Fast)' },
+]
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const COMPASS_COLOR = { N: '#7C9EFF', E: '#FB7BB8', S: '#34D399', W: '#FBBF24' }
 
@@ -663,9 +670,10 @@ export default function FilmaScenePage() {
     W: I2I_MODELS[0].id,
   })
 
+ const [wardrobeModel, setWardrobeModel] = useState(WARDROBE_MODELS[0].id)
+
   const [script,      setScript]      = useState('')
   const [scriptSaved, setScriptSaved] = useState(false)
-
   // ── Derived ──────────────────────────────────────────────────────────────
   const selectedActors = allActors.filter((a) => sceneActorIds.includes(a.id))
   const masterEnv      = environments.find((e) => e.direction === 'master' || e.angle_key === 'master') || null
@@ -994,7 +1002,7 @@ sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
     finally { setUploadingOutfit(null) }
   }
 
-  const handleWardrobeGenerate = async (actor) => {
+const handleWardrobeGenerate = async (actor) => {
     const sa = sceneActorMap[actor.id]
     if (!sa?.wardrobe_prompt) { toast.error('No prompt — suggest wardrobe first'); return }
     setGeneratingWard(actor.id)
@@ -1002,8 +1010,9 @@ sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
       const result = await filmaGenerateAsset({
         assetType: 'wardrobe',
         sceneId,
-        actorId: actor.id,
-        prompt: sa.wardrobe_prompt,
+        actorId:  actor.id,
+        prompt:   sa.wardrobe_prompt,
+        modelId:  wardrobeModel,
       })
       setSceneActorMap((prev) => ({
         ...prev,
@@ -1291,7 +1300,7 @@ sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
           {/* ── 4. WARDROBE ──────────────────────────────────────────────── */}
           {selectedActors.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-widest"
                     style={{ color: 'var(--text-muted)' }}>Wardrobe</p>
@@ -1304,6 +1313,45 @@ sortOrder: CARDINAL_ANGLES.findIndex((a) => a.key === angle.key) + 1,
                     <Lock size={10} /> All locked
                   </span>
                 )}
+              </div>
+
+              {/* Wardrobe model selector */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>Model</span>
+                <div className="relative flex-1">
+                  <button
+                    onClick={() => {}}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold w-full"
+                    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                  >
+                    <ZapIcon size={10} style={{ color: ACCENT }} />
+                    <span className="flex-1 text-left truncate">
+                      {WARDROBE_MODELS.find((m) => m.id === wardrobeModel)?.label}
+                    </span>
+                    <ChevronDown size={11} style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                  <AnimatePresence>
+                    <motion.div
+                      className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-20"
+                      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                    >
+                      {WARDROBE_MODELS.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setWardrobeModel(m.id)}
+                          className="flex items-center gap-2 w-full px-3 py-2.5 text-xs font-semibold text-left"
+                          style={{
+                            color:      m.id === wardrobeModel ? ACCENT : 'var(--text-secondary)',
+                            background: m.id === wardrobeModel ? ACCENT_SUB : 'transparent',
+                          }}
+                        >
+                          {m.id === wardrobeModel && <Check size={10} style={{ color: ACCENT }} />}
+                          {m.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
