@@ -879,18 +879,15 @@ sortOrder: 0,
     try {
       const existingRow = angleEnv(angle.key)
 
-      const result = await filmaGenerateAngleAsset({
-        sceneId,
-        filmId,
-        angleKey:       angle.key,        // 'N' | 'E' | 'S' | 'W'
-        angleLabel:     angle.label,
-        angleDescription: angle.description,
-        masterImageUrl: masterEnv.image_url,
-        masterPrompt:   masterEnv.prompt_text,
-        modelId:        angleModels[angle.key],
-        envId:          existingRow?.id || null,
-        existingPrompt: existingRow?.prompt_text || null,
-      })
+const result = await filmaGenerateAngleAsset({
+  sceneId,
+  filmId,
+  direction:      angle.key,
+  masterImageUrl: masterEnv.image_url,
+  masterPrompt:   masterEnv.prompt_text,
+  modelId:        angleModels[angle.key],
+  envId:          existingRow?.id || null,
+})
 
       // Upsert the angle env row
       setEnvironments((prev) => {
