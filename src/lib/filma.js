@@ -518,10 +518,7 @@ export const filmaSceneEnvironments = {
 async create(filmId, sceneId, payload) {
   return supabase
     .from('filma_scene_environments')
-    .upsert(
-      { film_id: filmId, scene_id: sceneId, ...payload },
-      { onConflict: 'scene_id,angle_key', ignoreDuplicates: false }
-    )
+    .insert({ film_id: filmId, scene_id: sceneId, ...payload })
     .select()
     .single()
 },
