@@ -37,7 +37,7 @@ const ModelRow = ({ model, isActive, isRequired, isMasterOnly, onToggle, saving 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-            {model.aka || '—'}
+           {model.label || '—'}
           </p>
           {isMasterOnly && (
             <span
@@ -109,11 +109,11 @@ export default function ModelPreferencesPage() {
       const [{ data: modelsData }, { data: prefsData }] = await Promise.all([
         supabase
           .from('models')
-          .select('id, aka, description, feature, tier_required, is_required')
+          .select('id, label, description, feature, tier_required, is_required')
           .eq('is_user_facing', true)
           .eq('is_active', true)
           .order('feature')
-          .order('aka'),
+          .order('label'),
         supabase
           .from('user_model_preferences')
           .select('model_id, is_active')
@@ -238,7 +238,7 @@ export default function ModelPreferencesPage() {
                 {featureModels.map((model) => {
                   const isMasterOnly = model.tier_required === 'master' && !isMaster
                   const isRequired   = model.is_required
-                  const isActive     = prefs[model.id] ?? true
+                 const isActive = prefs[model.id] ?? false
 
                   return (
                     <ModelRow
