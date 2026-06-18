@@ -1,5 +1,5 @@
 // src/pages/UGCWizardPage.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -335,7 +335,74 @@ const PhotoSlot = ({ slot, value, onChange, onRemove, uploading }) => {
     </div>
   )
 }
+// ── Face photo reminder modal ───────────────────────────────────
+const FacePhotoTipModal = ({ onDismiss }) => (
+  <div
+    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+    style={{ background: 'rgba(0,0,0,0.6)' }}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 40 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col"
+      style={{ background: 'var(--bg-primary)', border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div className="px-5 pt-5 pb-4">
 
+        {/* Header */}
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+          style={{ background: ACCENT_SUB, color: ACCENT }}
+        >
+          <Camera size={22} />
+        </div>
+        <p className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          Before you upload face photos
+        </p>
+        <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          Crop tightly so your face fills the frame — clear, well-lit, unobstructed.
+          Photo quality directly determines how accurate your UGC results will be.
+        </p>
+
+        {/* Example photos */}
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[
+            { src: '/Zara front.jpg',  label: 'Front'    },
+            { src: '/Zara 34.jpg',     label: '¾ Profile' },
+            { src: '/Zara90.jpg',      label: 'Side 90°'  },
+          ].map(({ src, label }) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <div
+                className="w-full overflow-hidden rounded-2xl"
+                style={{ aspectRatio: '3/4', background: 'var(--bg-elevated)' }}
+              >
+                <img
+                  src={src}
+                  alt={label}
+                  className="w-full h-full object-cover"
+                  style={{ objectPosition: 'center 15%' }}
+                />
+              </div>
+              <p className="text-center text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                {label}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={onDismiss}
+          className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+          style={{ background: ACCENT, color: '#fff' }}
+        >
+          Got it
+        </button>
+      </div>
+    </motion.div>
+  </div>
+)
 // ── Step validation ───────────────────────────────────────────
 const stepIsValid = (step, form) => {
   switch (step) {
@@ -364,6 +431,8 @@ export default function UGCWizardPage() {
   const [saving,        setSaving]        = useState(false)
   const [uploadingSlot, setUploadingSlot] = useState(null)
   const [pendingPhoto,  setPendingPhoto]  = useState(null) // { slotKey, file }
+  const [showFaceTip,   setShowFaceTip]   = useState(false)
+  const faceTipShownRef = useRef(false)
 
   // ── Photo refinement state (commented out — kept for future use) ──────────
   // const [refineEnabled,    setRefineEnabled]    = useState(false)
@@ -405,6 +474,13 @@ export default function UGCWizardPage() {
     }
     load()
   }, [loadId])
+
+  useEffect(() => {
+    if (step === 5 && !faceTipShownRef.current) {
+      setShowFaceTip(true)
+      faceTipShownRef.current = true
+    }
+  }, [step])
 
   // ── Refinement model loader (commented out) ───────────────────────────────
   // useEffect(() => {
@@ -783,7 +859,7 @@ export default function UGCWizardPage() {
         </div>
       </div>
 
-      {/* Photo validator overlay */}
+    {/* Photo validator overlay */}
       {pendingPhoto && (
         <UGCPhotoValidator
           file={pendingPhoto.file}
@@ -794,6 +870,11 @@ export default function UGCWizardPage() {
           }}
           onCancel={() => setPendingPhoto(null)}
         />
+      )}
+
+      {/* Face photo tip modal */}
+      {showFaceTip && (
+        <FacePhotoTipModal onDismiss={() => setShowFaceTip(false)} />
       )}
 
     </div>
