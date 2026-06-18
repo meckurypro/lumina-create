@@ -705,20 +705,35 @@ useEffect(() => {
   const type   = multiMode && refImages.length > 0 ? 'image_to_video' : deriveVideoType(activeStartFrame, activeEndFrame)
   const isI2V  = multiMode ? refImages.length > 0 : !!(activeStartFrame || activeEndFrame)
 
-  const creditCost = useMemo(() => {
-    if (!selectedModel) return 0
-    if (caps.isVideoEdit) {
-      const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
-      return billable * VIDEO_EDIT_CPS
-    }
-    const creditsPerSecond = (isI2V ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
-    const isFlatRate       = selectedModel?.is_flat_rate ?? false
-    if (isFlatRate) return creditsPerSecond
-    const base = creditsPerSecond * parseInt(duration || '5')
+// CreateVideoPage.jsx — replace the creditCost useMemo
+const creditCost = useMemo(() => {
+  if (!selectedModel) return 0
+  if (caps.isVideoEdit) {
+    const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
+    return billable * VIDEO_EDIT_CPS
+  }
+  const isFlatRate = selectedModel?.is_flat_rate ?? false
+  if (isFlatRate) {
+    return isI2V
+      ? (selectedModel.credit_cost_i2i || 0)
+      : (selectedModel.credit_cost_t2i || 0)
+  }
+  const dur = parseInt(duration || '5', 10)
+  if (selectedModel.credit_cost_per_second) {
+    const billable = Math.max(dur, selectedModel.min_billable_seconds ?? 1)
+    const base = Math.ceil(selectedModel.credit_cost_per_second * billable)
     return withSound && caps.supportsSound
       ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-      : Math.ceil(base)
-  }, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
+      : base
+  }
+  const cps = isI2V
+    ? (selectedModel.credit_cost_i2i || 0)
+    : (selectedModel.credit_cost_t2i || 0)
+  const base = cps * dur
+  return withSound && caps.supportsSound
+    ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
+    : Math.ceil(base)
+}, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
