@@ -214,7 +214,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
-        <span>{selected?.aka || selected?.label || 'Model'}</span>
+        <span>{selected?.label || 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path
             d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
@@ -250,7 +250,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                     style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
                   >
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.aka}</p>
+                     <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
                       {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
                     </div>
                     {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
@@ -263,7 +263,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   <div className="py-1">
                     {locked.map((m) => (
                       <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.aka}</p>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
                         <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
                       </div>
                     ))}
