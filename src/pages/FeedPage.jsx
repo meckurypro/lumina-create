@@ -364,7 +364,7 @@ const SplashScreen = () => {
 
       {/* Secondary CTA — tutorial playlist */}
       <motion.a
-        href="https://www.youtube.com/watch?v=tx8vyFMRJmE&list=PLJckEyVRxLHJ5ToB4RI64mR74MgYUme4m"
+        href="https://www.youtube.com/playlist?list=PLJckEyVRxLHJ5ToB4RI64mR74MgYUme4m"
         target="_blank"
         rel="noopener noreferrer"
         initial={{ opacity: 0 }}
