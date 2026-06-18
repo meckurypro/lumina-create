@@ -1121,7 +1121,7 @@ const EditorView = ({
                     }
                   />
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <DurationPicker
+                    <DurationDropdown
                       value={slots[idx]?.duration || durationOptions[0]}
                       options={durationOptions}
                       onChange={(d) =>
