@@ -105,7 +105,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
       >
-        <span>{selected?.aka || selected?.label || 'Model'}</span>
+       <span>{selected?.label || 'Model'}</span>
         <ChevronDown
           size={10}
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
@@ -140,7 +140,7 @@ const ModelDropdown = ({ models, value, onChange }) => {
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {m.aka || m.label}
+                        {m.label}
                       </p>
                       {m.description && (
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
