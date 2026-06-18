@@ -1099,17 +1099,13 @@ export default function CreateTalkingHeadPage() {
 
   const [pendingVideoSubject, setPendingVideoSubject] = useState(false)
 
-  // ── Lipsync prefill (from CreateVideoPage redirect) ──────────────────────
-  // Stored as { script, model, audioMode } from session storage.
-  // We keep it visible in a banner until the user dismisses it.
-  // Pending model to set once the models list is loaded
   const pendingModelRef = useRef(null)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
   const durationNum    = parseInt(duration || '5', 10)
   const isProcessing   = phase !== null
 
-// ── Cleanup on unmount ───────────────────────────────────────────────────
+  // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try {
@@ -1120,27 +1116,23 @@ export default function CreateTalkingHeadPage() {
 
   // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
-    // ── Lipsync prefill from video page redirect ──────────────────────────
     try {
       const raw = sessionStorage.getItem(SS_LIPSYNC_PREFILL)
       if (raw) {
         sessionStorage.removeItem(SS_LIPSYNC_PREFILL)
         const prefill = JSON.parse(raw)
-      if (prefill.script)    setScript1(prefill.script)
+        if (prefill.script)    setScript1(prefill.script)
         if (prefill.audioMode) setAudioMode1(prefill.audioMode)
         if (prefill.model)     pendingModelRef.current = prefill.model
-        // Fire toast — image and script are pre-loaded
         toast.success(
           prefill.script
             ? `Talking Head ready — script pre-filled. Choose a voice model and generate.`
             : `Talking Head ready — image pre-loaded. Add a script and generate.`,
           { duration: 5000 }
         )
-        // Banner suppressed — toast is sufficient
       }
     } catch {}
 
-    // ── Standard prompt / subject restore ────────────────────────────────
     try { const p = sessionStorage.getItem(SS_PROMPT); if (p) setPrompt(p) } catch {}
 
     restoreFile(SS_SUBJECT_IMG).then((f) => {
@@ -1203,7 +1195,6 @@ export default function CreateTalkingHeadPage() {
     setModelsLoading(false)
 
     setPendingVideoSubject((isPending) => {
-      // ── Apply pending model from lipsync prefill ──────────────────────
       if (pendingModelRef.current) {
         const preferredModel = list.find((m) => m.value === pendingModelRef.current && !m.is_locked)
         pendingModelRef.current = null
@@ -1233,7 +1224,7 @@ export default function CreateTalkingHeadPage() {
   // ── Reset when model changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!selectedModel) return
-    if (caps.requiresVideo)                    setSubjectMode('video')
+    if (caps.requiresVideo)                       setSubjectMode('video')
     else if (!caps.faceInput && caps.videoInput)  setSubjectMode('video')
     else if (caps.faceInput  && !caps.videoInput) setSubjectMode('face')
     if (!caps.textScript) { setAudioMode1('upload'); setAudioMode2('upload') }
@@ -1289,7 +1280,7 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
- if (!canAfford) errors.push('Not enough credits')
+    if (!canAfford) errors.push('Not enough credits')
     if (creditCost === 0 && selectedModel) errors.push('Model pricing is misconfigured — contact support')
 
     return errors
@@ -1312,7 +1303,7 @@ export default function CreateTalkingHeadPage() {
     const file = e.target.files?.[0]; if (!file) return
     const compressed = await compressImage(file)
     setFaceImage(compressed)
-     setAspectRatio(compressed.ar)
+    setAspectRatio(compressed.ar)
     setAutoRatio(true)
   }
 
@@ -1443,7 +1434,7 @@ export default function CreateTalkingHeadPage() {
     setAudioSlots1([]); setAudioSlots2([])
     setScript1(''); setScript2('')
     setAutoRatio(false); setAspectRatio('9:16'); setPrompt('')
-    setVideoTrimStart(0); setLipsyncPrefill(null)
+    setVideoTrimStart(0)
     try {
       [SS_PROMPT, SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach((k) => sessionStorage.removeItem(k))
     } catch {}
@@ -1521,57 +1512,51 @@ export default function CreateTalkingHeadPage() {
         throw new Error('Audio upload failed — please try again')
       }
 
-      const inputImageUrls = [subjectVideoUrl].filter(Boolean)
+      const inputImageUrls = [startFrameUrl].filter(Boolean)
 
-      const metadata = {
-        lipsync:           true,
-        subject_mode:      subjectMode,
-        audio_mode_1:      audioMode1,
-        audio_mode_2:      audioMode2,
-        script_1:          audioMode1 === 'text' ? script1.trim() : null,
-        script_2:          audioMode2 === 'text' && caps.multiChar ? script2.trim() : null,
-        multi_char:        caps.multiChar,
-        audio_1_url:       audio1Url,
-        audio_2_url:       audio2Url,
-        subject_video_url: subjectVideoUrl,
-        voice_id:          null,
-        voice_language:    null,
-        voice_speed:       null,
-      }
-
+      // ── Create generation row ────────────────────────────────────────────
+      // Write ALL fields that runLipsync reads from the DB row so the edge
+      // function never has to rely on meta passed in the invoke body.
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                user.id,
-        generation_type:        'lipsync',
-        status:                 'pending',
-        prompt:                 prompt || null,
+        user_id:          user.id,
+        generation_type:  'lipsync',
+        status:           'pending',
+        prompt:           prompt || null,
         model,
-        aspect_ratio:           aspectRatio,
+        aspect_ratio:     aspectRatio,
         duration,
-        credits_charged:        creditCost,
-        output_type:            'video',
-        start_frame_url:        startFrameUrl,
-        end_frame_url:          null,
-        input_image_urls:       inputImageUrls.length ? inputImageUrls : null,
-        with_sound:             true,
+        credits_charged:  creditCost,
+        output_type:      'video',
+        // Subject
+        start_frame_url:  startFrameUrl   || null,
+        video_input_url:  subjectVideoUrl || null,
+        // Audio
+        audio_url:        audio1Url       || null,
+        audio_2_url:      audio2Url       || null,
+        // Text scripts
+        text_script:      audioMode1 === 'text' ? script1.trim() || null : null,
+        text_script_2:    caps.multiChar && audioMode2 === 'text' ? script2.trim() || null : null,
+        // Image array (for multi-image models)
+        input_image_urls: inputImageUrls.length ? inputImageUrls : null,
+        with_sound:       true,
         skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
+      // ── Deduct credits ───────────────────────────────────────────────────
       const { data: deduct, error: dErr } = await generationsDb.deductCredits(user.id, creditCost, genRow.id)
       if (dErr || !deduct?.success) {
         await generationsDb.update(genRow.id, { status: 'failed', error_message: deduct?.error || 'Insufficient credits' })
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // Route to the correct edge function.
-      // lipsync models (feature === 'lipsync') are handled by lipsync-generate.
-      // Other talking-head models (e.g. ElevenLabs voice cloning) use talking-head-generate.
+      // ── Dispatch — edge function reads everything from the row ───────────
       const edgeFn = selectedModel?.feature === 'lipsync'
         ? 'lipsync-generate'
         : 'talking-head-generate'
 
       supabase.functions
-        .invoke(edgeFn, { body: { generationId: genRow.id, meta: metadata } })
+        .invoke(edgeFn, { body: { generationId: genRow.id } })
         .catch((e) => console.error(`${edgeFn} invoke error`, e))
 
       refreshProfile()
@@ -1633,8 +1618,7 @@ export default function CreateTalkingHeadPage() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
-
-         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
           {/* ── Subject ──────────────────────────────────────────────────── */}
           {(caps.faceInput || caps.videoInput) && (
@@ -1646,7 +1630,7 @@ export default function CreateTalkingHeadPage() {
                     <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
                   )}
                 </p>
-               {caps.faceInput && caps.videoInput && !caps.requiresVideo && (
+                {caps.faceInput && caps.videoInput && !caps.requiresVideo && (
                   <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                     {[{ value: 'face', label: 'Photo', icon: User }, { value: 'video', label: 'Video', icon: VideoIcon }].map(({ value, label, icon: Icon }) => (
                       <button key={value} onClick={() => setSubjectMode(value)}
