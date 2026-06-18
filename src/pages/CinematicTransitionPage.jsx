@@ -228,23 +228,63 @@ const TransitionPicker = ({ value, transitions, onChange }) => {
 }
 
 // ── DurationPicker ────────────────────────────────────────
-const DurationPicker = ({ value, options, onChange }) => (
-  <div className="flex gap-1.5 flex-wrap">
-    {options.map(d => (
+const DurationDropdown = ({ value, options, onChange }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
       <button
-        key={d}
-        onClick={() => onChange(d)}
-        className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
         style={{
-          background: value === d ? 'var(--brand)' : 'var(--bg-elevated)',
-          color:      value === d ? '#fff'          : 'var(--text-muted)',
+          background: 'var(--bg-elevated)',
+          color:      'var(--text-primary)',
+          border:     '1px solid var(--border-color)',
+          minWidth:   52,
         }}
       >
-        {d}s
+        <span>{value}s</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
-    ))}
-  </div>
-)
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0,  scale: 1    }}
+              exit={{    opacity: 0, y: -4, scale: 0.97 }}
+              transition={{ duration: 0.12 }}
+              className="absolute right-0 top-9 z-50 rounded-2xl overflow-hidden"
+              style={{
+                background:  'var(--bg-card)',
+                border:      '1px solid var(--border-color)',
+                boxShadow:   '0 8px 24px rgba(0,0,0,0.24)',
+                minWidth:    80,
+              }}
+            >
+              {options.map(d => (
+                <button
+                  key={d}
+                  onClick={() => { onChange(d); setOpen(false) }}
+                  className="w-full px-4 py-2.5 text-xs font-bold text-left transition-colors"
+                  style={{
+                    background: d === value ? 'var(--bg-elevated)' : 'transparent',
+                    color:      d === value ? 'var(--brand)'       : 'var(--text-secondary)',
+                  }}
+                >
+                  {d}s
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 // ── ModelPicker ───────────────────────────────────────────
 const ModelPicker = ({ models, value, onChange }) => {
