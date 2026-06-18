@@ -361,6 +361,26 @@ const SplashScreen = () => {
       >
         Start Here
       </motion.button>
+
+      {/* Secondary CTA — tutorial playlist */}
+      <motion.a
+        href="https://www.youtube.com/watch?v=tx8vyFMRJmE&list=PLJckEyVRxLHJ5ToB4RI64mR74MgYUme4m"
+        target="_blank"
+        rel="noopener noreferrer"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.75, duration: 0.4 }}
+        className="mt-3 flex items-center gap-1.5 text-xs font-medium"
+        style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+      >
+        <Play size={11} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} fill="currentColor" />
+        <span>
+          New here?{' '}
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+            Watch the Getting Started tutorials
+          </span>
+        </span>
+      </motion.a>
     </motion.div>
   )
 }
