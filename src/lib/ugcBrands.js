@@ -208,4 +208,4 @@ export const VISUAL_STYLE_OPTIONS = [
   { value: 'film_grain',   label: '📷 Film / Grain'   },
 ]
 
-export const BRAND_CREDIT_COST = 600
+export const BRAND_CREDIT_COST = 100
