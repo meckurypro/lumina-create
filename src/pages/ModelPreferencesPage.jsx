@@ -37,7 +37,7 @@ const ModelRow = ({ model, isActive, isRequired, isMasterOnly, onToggle, saving 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-           {model.label || '—'}
+            {model.label || '—'}
           </p>
           {isMasterOnly && (
             <span
@@ -120,10 +120,48 @@ export default function ModelPreferencesPage() {
           .eq('user_id', user.id),
       ])
 
-      setModels(modelsData || [])
+      const modelsList = modelsData || []
+      setModels(modelsList)
 
       const map = {}
       ;(prefsData || []).forEach((p) => { map[p.model_id] = p.is_active })
+
+      // ── Backfill missing preference rows ────────────────────────────────
+      // Any model the user has no row for yet needs one written explicitly,
+      // otherwise applyModelPreferences() (used by every create page) will
+      // keep falling back to "show everything" for them indefinitely.
+      //
+      // - If the user already has at least one pref row, they've engaged
+      //   with this system before — new/unseen models default OFF and
+      //   require an explicit opt-in.
+      // - If they have zero rows (first-ever visit to this page), default
+      //   ON, so existing users aren't suddenly greeted with empty
+      //   dropdowns the first time they open Model Preferences.
+      // - is_required models are skipped entirely — they're governed by
+      //   the models table flag, not user preference, and should never
+      //   get a row here.
+      const hasExistingPrefs = (prefsData || []).length > 0
+      const missing = modelsList.filter((m) => map[m.id] === undefined && !m.is_required)
+
+      if (missing.length > 0) {
+        const defaultActive = !hasExistingPrefs
+        const rows = missing.map((m) => ({
+          user_id:   user.id,
+          model_id:  m.id,
+          is_active: defaultActive,
+        }))
+        const { error: backfillErr } = await supabase
+          .from('user_model_preferences')
+          .upsert(rows, { onConflict: 'user_id,model_id' })
+
+        if (!backfillErr) {
+          missing.forEach((m) => { map[m.id] = defaultActive })
+        }
+        // If the backfill call fails, map[m.id] stays undefined for those
+        // models — isActive below treats undefined as off via `?? false`,
+        // which is the safe direction to fail in.
+      }
+
       setPrefs(map)
       setLoading(false)
     }
@@ -238,7 +276,7 @@ export default function ModelPreferencesPage() {
                 {featureModels.map((model) => {
                   const isMasterOnly = model.tier_required === 'master' && !isMaster
                   const isRequired   = model.is_required
-                 const isActive = prefs[model.id] ?? false
+                  const isActive     = prefs[model.id] ?? false
 
                   return (
                     <ModelRow
