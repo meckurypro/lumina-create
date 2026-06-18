@@ -16,7 +16,7 @@ const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
 
-const CHARACTER_CREDIT_COST = 200
+const CHARACTER_CREDIT_COST = 100
 
 const STEPS = [
   { id: 1, label: 'Identity'    },
