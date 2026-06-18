@@ -300,7 +300,7 @@ const ModelPicker = ({ models, value, onChange }) => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
         style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
       >
-        <span>{selected?.aka || selected?.label || 'Model'}</span>
+       <span>{selected?.label || 'Model'}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -328,7 +328,7 @@ const ModelPicker = ({ models, value, onChange }) => {
                   >
                     <div>
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {m.aka || m.label}
+                       {m.label}
                       </p>
                       {m.sublabel && (
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sublabel}</p>
