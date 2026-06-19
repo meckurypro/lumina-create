@@ -719,7 +719,7 @@ export default function UGCBrandGeneratePage() {
                   : `Describe what you want created for ${brand?.brand_name}…`
               }
               rows={5}
-              maxLength={600}
+              maxLength={100000}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{
                 background: 'var(--bg-elevated)',
