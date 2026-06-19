@@ -665,7 +665,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
               onChange={(e) => setScene(e.target.value)}
               placeholder={`Describe what ${profile?.name} is doing, where they are, the vibe of the moment…`}
               rows={4}
-              maxLength={600}
+              maxLength={100000}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{
                 background: 'var(--bg-elevated)',
@@ -674,10 +674,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
                 lineHeight: 1.6,
               }}
             />
-            <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
-              {scene.length}/600
-            </p>
-            {!isMaster && (
+                       {!isMaster && (
               <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
                 <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
                 <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
