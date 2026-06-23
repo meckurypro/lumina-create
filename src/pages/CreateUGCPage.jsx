@@ -6,6 +6,7 @@ import {
   ArrowLeft, Plus, User, Building2, Zap, Sparkles,
   MoreVertical, Archive, Pencil, Lock, Crown,
   Mic, Play, Pause, Loader2, Search, X, Upload, Radio,
+  Mic2, MessageSquareText,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles } from '@/lib/ugc'
@@ -728,6 +729,71 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   )
 }
 
+// ── Voice mode gate ───────────────────────────────────────────
+// Shown whenever the Voices tab is active and no mode is selected.
+// Choosing TTS reveals the existing voice library/clone flow.
+// Choosing STT navigates to /create/ugc/voices/stt.
+const VoiceModeGate = ({ onSelectTTS, onSelectSTT }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="flex flex-col gap-4 py-6"
+  >
+    <div className="text-center mb-2">
+      <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+        How do you want to work with voice?
+      </p>
+      <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+        Pick one to get started — you can switch anytime.
+      </p>
+    </div>
+
+    <button
+      onClick={onSelectTTS}
+      className="flex items-start gap-4 p-5 rounded-2xl text-left transition-all active:scale-[0.98]"
+      style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{ background: ACCENT_SUB }}
+      >
+        <Mic2 size={22} style={{ color: ACCENT }} />
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          Use TTS — Text to Speech
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Browse voices from our library, clone your own voice, and generate
+          speech from a script.
+        </p>
+      </div>
+    </button>
+
+    <button
+      onClick={onSelectSTT}
+      className="flex items-start gap-4 p-5 rounded-2xl text-left transition-all active:scale-[0.98]"
+      style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{ background: ACCENT_SUB }}
+      >
+        <MessageSquareText size={22} style={{ color: ACCENT }} />
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          Use STT — Speech to Text
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Record or upload your own voiceover and save it to your library.
+          Extract a transcript whenever you need the text back.
+        </p>
+      </div>
+    </button>
+  </motion.div>
+)
+
 // ── Main page ─────────────────────────────────────────────────
 export default function CreateUGCPage() {
   const navigate          = useNavigate()
@@ -757,12 +823,19 @@ export default function CreateUGCPage() {
 
   // Tab — support direct-link to voices via location.state or pathname
   const initTab = location.state?.tab || (location.pathname.endsWith('/voices') ? 'voices' : 'characters')
-  const [ugcTab, setUgcTab] = useState(initTab)
+  const [ugcTab,     setUgcTab]     = useState(initTab)
+  const [voiceMode,  setVoiceMode]  = useState(null) // null = gate visible
 
   // Restore tab when navigating back from sub-pages
   useEffect(() => {
     if (location.state?.tab) setUgcTab(location.state.tab)
   }, [location.state?.tab])
+
+  // Always reset the gate when the user leaves and re-enters the Voices tab
+  const handleSetTab = (tab) => {
+    if (tab !== 'voices') setVoiceMode(null)
+    setUgcTab(tab)
+  }
 
   const isMaster       = profile?.user_tier === 'master'
   const canCreateChar  = credits >= CHARACTER_CREDIT_COST
@@ -774,9 +847,8 @@ export default function CreateUGCPage() {
     loadBrandProfiles()
   }, [user])
 
-  useEffect(() => {
-    if (ugcTab === 'voices' && !voicesLoaded && user) loadVoices()
-  }, [ugcTab, user])
+  // Voice fetch is now triggered inside VoiceModeGate's onSelectTTS callback (Change 5).
+  // The useEffect trigger is removed to avoid a wasted fetch when the user picks STT.
 
   const loadCharProfiles = async () => {
     setCharLoading(true)
@@ -885,44 +957,42 @@ export default function CreateUGCPage() {
   const draftBrandProfiles  = brandProfiles.filter((b) => b.status === 'draft')
 
   const sortedActiveChars = [...activeCharProfiles].sort((a, b) => {
-  const aLocked = isProfileMuted(a) ? 1 : 0
-  const bLocked = isProfileMuted(b) ? 1 : 0
-  return aLocked - bLocked
-})
-const filteredActiveChars  = charSearch
-  ? sortedActiveChars.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
-  : sortedActiveChars
+    const aLocked = isProfileMuted(a) ? 1 : 0
+    const bLocked = isProfileMuted(b) ? 1 : 0
+    return aLocked - bLocked
+  })
+  const filteredActiveChars  = charSearch
+    ? sortedActiveChars.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
+    : sortedActiveChars
   const filteredDraftChars   = charSearch
     ? draftCharProfiles.filter((p) => q(p.name).includes(q(charSearch)) || q(p.nationality).includes(q(charSearch)))
     : draftCharProfiles
   const sortedActiveBrands = [...activeBrandProfiles].sort((a, b) => {
-  const aLocked = isBrandMuted(a) ? 1 : 0
-  const bLocked = isBrandMuted(b) ? 1 : 0
-  return aLocked - bLocked
-})
-const filteredActiveBrands = brandSearch
-  ? sortedActiveBrands.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
-  : sortedActiveBrands
+    const aLocked = isBrandMuted(a) ? 1 : 0
+    const bLocked = isBrandMuted(b) ? 1 : 0
+    return aLocked - bLocked
+  })
+  const filteredActiveBrands = brandSearch
+    ? sortedActiveBrands.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
+    : sortedActiveBrands
   const filteredDraftBrands  = brandSearch
     ? draftBrandProfiles.filter((b) => q(b.brand_name).includes(q(brandSearch)) || q(b.tagline).includes(q(brandSearch)))
     : draftBrandProfiles
   const sortedVoices = [...voices].sort((a, b) => {
-  const aLocked = isVoiceMuted(a) ? 1 : 0
-  const bLocked = isVoiceMuted(b) ? 1 : 0
-  return aLocked - bLocked
-})
-const filteredVoices = voiceSearch
-  ? sortedVoices.filter((v) => q(v.name).includes(q(voiceSearch)))
-  : sortedVoices
+    const aLocked = isVoiceMuted(a) ? 1 : 0
+    const bLocked = isVoiceMuted(b) ? 1 : 0
+    return aLocked - bLocked
+  })
+  const filteredVoices = voiceSearch
+    ? sortedVoices.filter((v) => q(v.name).includes(q(voiceSearch)))
+    : sortedVoices
 
   const currentTabLabel = { characters: 'Your Characters', voices: 'Voice Studio', brands: 'Your Brands' }[ugcTab] || ''
 
   // ── Sticky footer visibility ──────────────────────────────
-  // Show footer CTA when there are existing items (non-empty state),
-  // respecting tier limits for Characters and Brands
   const showCharFooter  = ugcTab === 'characters' && !charLoading  && charProfiles.length  > 0 && (isMaster || !noviceAtCharLimit)
   const showBrandFooter = ugcTab === 'brands'     && !brandLoading && brandProfiles.length > 0 && (isMaster || !noviceAtBrandLimit)
-  const showVoiceFooter = ugcTab === 'voices'     && voices.length > 0
+  const showVoiceFooter = ugcTab === 'voices' && voiceMode === 'tts' && voices.length > 0
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -938,7 +1008,7 @@ const filteredVoices = voiceSearch
         ].map((t) => (
           <button
             key={t.value}
-            onClick={() => setUgcTab(t.value)}
+            onClick={() => handleSetTab(t.value)}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200"
             style={{
               background: ugcTab === t.value ? 'var(--bg-card)'      : 'transparent',
@@ -1046,7 +1116,16 @@ const filteredVoices = voiceSearch
           {/* ── Voices Tab ───────────────────────────────────── */}
           {ugcTab === 'voices' && (
             <>
-              {voicesLoading ? (
+              {voiceMode === null ? (
+                <VoiceModeGate
+                  onSelectTTS={() => {
+                    setVoiceMode('tts')
+                    // Lazy-load voices only when TTS mode is first entered
+                    if (!voicesLoaded && user) loadVoices()
+                  }}
+                  onSelectSTT={() => navigate('/create/ugc/voices/stt')}
+                />
+              ) : voicesLoading ? (
                 <div className="flex flex-col gap-3">
                   {[...Array(3)].map((_, i) => <VoiceSkeletonRow key={i} />)}
                 </div>
