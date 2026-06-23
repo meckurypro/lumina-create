@@ -80,6 +80,16 @@ function RequireAdmin({ children }) {
   return children
 }
 
+function RequireMaster({ children }) {
+  const { user, loading, onboardingNeeded, profile } = useAuth()
+  const location = useLocation()
+  if (loading)          return <FullLoader />
+  if (!user)            return <Navigate to="/auth" replace state={{ from: location }} />
+  if (onboardingNeeded) return <Navigate to="/auth" replace />
+  if (profile?.user_tier !== 'master') return <Navigate to="/create/ugc" replace />
+  return children
+}
+
 // ── Layout wrapper (includes BottomNav) ───────────────────────
 
 const AppLayout = ({ children }) => (
@@ -92,8 +102,9 @@ const AppLayout = ({ children }) => (
 // ── Shorthand wrappers ────────────────────────────────────────
 // keeps route declarations concise
 
-const Auth  = ({ children }) => <RequireAuth><AppLayout>{children}</AppLayout></RequireAuth>
-const Admin = ({ children }) => <RequireAdmin>{children}</RequireAdmin>
+const Auth   = ({ children }) => <RequireAuth><AppLayout>{children}</AppLayout></RequireAuth>
+const Admin  = ({ children }) => <RequireAdmin>{children}</RequireAdmin>
+const Master = ({ children }) => <RequireMaster><AppLayout>{children}</AppLayout></RequireMaster>
 
 // ─────────────────────────────────────────────────────────────
 
@@ -187,8 +198,8 @@ export default function App() {
               element={<Auth><UGCVoiceGeneratePage /></Auth>}
             />
             <Route path="/create/ugc/voices/stt"
-              element={<Auth><UGCSpeechToTextPage /></Auth>}
-            />
+  element={<Master><UGCSpeechToTextPage /></Master>}
+/>
 
             {/* ── UGC — Brands ────────────────────────────────── */}
             <Route path="/create/ugc/brand/new"
