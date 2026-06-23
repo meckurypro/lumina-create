@@ -14,14 +14,16 @@ const GOOD_SECONDS  = 60
 const GREAT_SECONDS = 120
 const BAR_COUNT     = 40
 
-// ── Get supported MIME type ─────────────────────────────────
+// ── Get supported MIME type with priority order ─────────────
 function getSupportedMimeType() {
+  // Priority: Opus in WebM is best, then fallback options[citation:8]
   const types = [
+    'audio/webm;codecs=opus',
     'audio/webm',
-    'audio/mp4',
+    'audio/ogg;codecs=opus',
     'audio/ogg',
     'audio/wav',
-    'audio/aac',
+    'audio/mp4',
   ]
   
   for (const type of types) {
@@ -29,17 +31,18 @@ function getSupportedMimeType() {
       return type
     }
   }
-  return '' // Let browser choose default
+  return '' // Let browser choose default[citation:5]
 }
 
 // ── Get file extension from MIME type ──────────────────────
 function getFileExtension(mimeType) {
   const map = {
+    'audio/webm;codecs=opus': 'webm',
     'audio/webm': 'webm',
-    'audio/mp4': 'm4a',
+    'audio/ogg;codecs=opus': 'ogg',
     'audio/ogg': 'ogg',
     'audio/wav': 'wav',
-    'audio/aac': 'aac',
+    'audio/mp4': 'm4a',
   }
   return map[mimeType] || 'webm'
 }
@@ -82,11 +85,13 @@ export default function VoiceRecorder({
   const playbackRef = useRef(null)
   const isUnmountedRef = useRef(false)
   const mimeTypeRef = useRef('')
+  const detectedExtRef = useRef('webm')
 
   useEffect(() => {
     if (script) setShowScript(true)
-    // Detect supported MIME type once
+    // Detect supported MIME type once on mount[citation:5][citation:8]
     mimeTypeRef.current = getSupportedMimeType()
+    detectedExtRef.current = getFileExtension(mimeTypeRef.current)
   }, [script])
 
   useEffect(() => {
@@ -104,6 +109,7 @@ export default function VoiceRecorder({
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     
+    // ✅ FIX: Only close if context exists and is not already closed[citation:5]
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close()
     }
@@ -126,6 +132,7 @@ export default function VoiceRecorder({
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     
+    // ✅ FIX: Only close if context exists and is not already closed[citation:5]
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close()
     }
@@ -152,9 +159,10 @@ export default function VoiceRecorder({
 
   const startRecording = async () => {
     try {
-      // Ensure we have a supported MIME type
+      // Ensure we have a supported MIME type[citation:5][citation:8]
       if (!mimeTypeRef.current) {
         mimeTypeRef.current = getSupportedMimeType()
+        detectedExtRef.current = getFileExtension(mimeTypeRef.current)
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -171,7 +179,7 @@ export default function VoiceRecorder({
       analyserRef.current = analyser
       sourceRef.current = source
 
-      // Use detected MIME type or let browser choose
+      // Use detected MIME type or let browser choose[citation:5][citation:9]
       const options = mimeTypeRef.current ? { mimeType: mimeTypeRef.current } : {}
       const mediaRecorder = new MediaRecorder(stream, options)
       chunksRef.current = []
@@ -181,8 +189,9 @@ export default function VoiceRecorder({
       }
 
       mediaRecorder.onstop = () => {
-        const mimeType = mimeTypeRef.current || 'audio/webm'
-        const blob = new Blob(chunksRef.current, { type: mimeType })
+        // Use the recorder's actual MIME type or fallback[citation:9][citation:10]
+        const actualMimeType = mediaRecorder.mimeType || mimeTypeRef.current || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: actualMimeType })
         const url = URL.createObjectURL(blob)
         setAudioBlob(blob)
         setAudioUrl(url)
@@ -221,6 +230,7 @@ export default function VoiceRecorder({
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     
+    // ✅ FIX: Only close if context exists and is not already closed[citation:5]
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close()
     }
@@ -279,8 +289,8 @@ export default function VoiceRecorder({
   const handleConfirm = () => {
     if (!audioBlob) return
     
-    const mimeType = audioBlob.type || 'audio/webm'
-    const extension = getFileExtension(mimeType)
+    const mimeType = audioBlob.type || mimeTypeRef.current || 'audio/webm'
+    const extension = getFileExtension(mimeType) || detectedExtRef.current
     const file = new File(
       [audioBlob], 
       `voice-recording-${Date.now()}.${extension}`, 
