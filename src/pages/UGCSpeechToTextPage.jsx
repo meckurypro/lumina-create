@@ -662,7 +662,7 @@ export default function UGCSpeechToTextPage() {
 
           {!loading && items.length === 0 && (
             <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>
-              Recordings you save will appear here, ready to use on Talking Head.
+              Recordings you save will appear here, ready to use on Talking Head or Text extraction.
             </p>
           )}
         </div>
