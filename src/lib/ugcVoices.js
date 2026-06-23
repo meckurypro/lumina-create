@@ -21,12 +21,6 @@ export function calcTranscriptionCredits(durationSeconds) {
   return Math.ceil(durationSeconds * STT_CREDITS.TRANSCRIBE_PER_SECOND)
 }
 
-// Master tier gets transcription for free — billing layer should call this
-// before deciding whether to deduct credits.
-export function isTranscriptionFree(userTier) {
-  return userTier === 'master'
-}
-
 // ─── Supabase CRUD ───────────────────────────────────────────
 export const ugcVoices = {
   getAll: (userId) =>
