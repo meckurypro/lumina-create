@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Mic, Upload, Play, Pause, Download,
-  Trash2, Loader2, MoreHorizontal, FileText, Copy, Crown,
+  Trash2, Loader2, MoreHorizontal, FileText, Copy, Crown, Pencil, Check, X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -75,7 +75,7 @@ function useAudioPlayer() {
   return { playing, progress, toggle }
 }
 
-// ── Upload-or-record picker (shown when no audio is queued) ───────
+// ── Upload-or-record picker ───────────────────────────────────────
 const SourcePicker = ({ mode, onModeChange, onFileUpload, recorderProps }) => (
   <div className="flex flex-col gap-4">
     <div className="flex gap-1 p-1 rounded-xl self-start" style={{ background: 'var(--bg-elevated)' }}>
@@ -113,9 +113,46 @@ const SourcePicker = ({ mode, onModeChange, onFileUpload, recorderProps }) => (
   </div>
 )
 
+// ── Inline rename widget ──────────────────────────────────────────
+const InlineRename = ({ value, onSave, onCancel }) => {
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef(null)
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [])
+  const commit = () => { const v = draft.trim(); if (v) onSave(v); else onCancel() }
+  return (
+    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel() }}
+        className="flex-1 min-w-0 text-xs font-semibold rounded-lg px-2 py-1 outline-none"
+        style={{
+          background: 'var(--bg-elevated)',
+          color:      'var(--text-primary)',
+          border:     `1px solid ${ACCENT_BDR}`,
+        }}
+      />
+      <button onClick={commit} className="p-1 rounded-lg" style={{ color: ACCENT }}>
+        <Check size={13} />
+      </button>
+      <button onClick={onCancel} className="p-1 rounded-lg" style={{ color: 'var(--text-muted)' }}>
+        <X size={13} />
+      </button>
+    </div>
+  )
+}
+
 // ── Saved recording card ───────────────────────────────────────────
-const RecordingCard = ({ gen, index, playing, progress, onToggle, onDelete, onDownload, onTranscribe, isChunking, isTranscribing, freeTier }) => {
-  const [menuOpen, setMenuOpen] = useState(false)
+const RecordingCard = ({
+  gen, index, playing, progress,
+  onToggle, onDelete, onDownload, onTranscribe, onRename,
+  isChunking, isTranscribing, freeTier,
+}) => {
+  const [menuOpen,   setMenuOpen]   = useState(false)
+  const [renaming,   setRenaming]   = useState(false)
+
+  const displayName    = gen.display_name || `Recording ${index + 1}`
   const isPlaying      = playing === gen.id
   const hasTranscript  = gen.transcript_status === 'completed' && gen.script
   const transcriptFailed = gen.transcript_status === 'failed'
@@ -136,6 +173,33 @@ const RecordingCard = ({ gen, index, playing, progress, onToggle, onDelete, onDo
       className="p-4 rounded-2xl"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
+      {/* Name row */}
+      <div className="flex items-center gap-2 mb-3">
+        {renaming ? (
+          <InlineRename
+            value={displayName}
+            onSave={(v) => { onRename(gen, v); setRenaming(false) }}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : (
+          <>
+            <span
+              className="text-xs font-semibold flex-1 truncate"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {displayName}
+            </span>
+            <button
+              onClick={() => setRenaming(true)}
+              className="p-1 rounded-lg flex-shrink-0 transition-opacity opacity-50 hover:opacity-100"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Pencil size={11} />
+            </button>
+          </>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={() => onToggle(gen.id, gen.output_url)}
@@ -194,6 +258,14 @@ const RecordingCard = ({ gen, index, playing, progress, onToggle, onDelete, onDo
                     className="absolute right-0 bottom-9 z-50 rounded-xl overflow-hidden"
                     style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', minWidth: 140 }}
                   >
+                    <button
+                      onClick={() => { setRenaming(true); setMenuOpen(false) }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      <Pencil size={12} /> Rename
+                    </button>
+                    <div style={{ height: 1, background: 'var(--border-color)', margin: '0 8px' }} />
                     <button
                       onClick={() => { onDownload(gen); setMenuOpen(false) }}
                       className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-left"
@@ -268,9 +340,10 @@ export default function UGCSpeechToTextPage() {
   const { user, credits, profile, refreshProfile } = useAuth()
   const isMaster = profile?.user_tier === 'master'
 
-  const [sourceMode,  setSourceMode]  = useState('record') // 'record' | 'upload'
-  const [pendingFile, setPendingFile] = useState(null)     // { file, url, name, duration }
-  const [saving,      setSaving]      = useState(false)
+  const [sourceMode,   setSourceMode]  = useState('record') // 'record' | 'upload'
+  const [pendingFile,  setPendingFile] = useState(null)     // { file, url, name, duration }
+  const [pendingName,  setPendingName] = useState('')
+  const [saving,       setSaving]      = useState(false)
 
   const [items,   setItems]   = useState([])
   const [loading, setLoading] = useState(true)
@@ -287,11 +360,26 @@ export default function UGCSpeechToTextPage() {
 
   useEffect(() => { loadItems(0, true) }, [user])
 
+  // ── Build default name for next recording ──────────────────────
+  const nextDefaultName = (existingItems) => {
+    const nums = existingItems
+      .map((g) => g.display_name)
+      .filter(Boolean)
+      .map((n) => { const m = n.match(/^Recording (\d+)$/i); return m ? parseInt(m[1], 10) : null })
+      .filter((n) => n !== null)
+    const max = nums.length ? Math.max(...nums) : 0
+    return `Recording ${max + 1}`
+  }
+
   const loadItems = async (offset = 0, reset = false) => {
     if (!user) return
     if (offset === 0) setLoading(true)
     const { data, count } = await ugcAudioGenerations.getSttRecordings(user.id, { limit: PAGE_SIZE, offset })
-    setItems((prev) => reset ? (data || []) : [...prev, ...(data || [])])
+    const rows = data || []
+    setItems((prev) => {
+      const next = reset ? rows : [...prev, ...rows]
+      return next
+    })
     setHasMore((offset + PAGE_SIZE) < (count || 0))
     setLoading(false)
   }
@@ -316,19 +404,26 @@ export default function UGCSpeechToTextPage() {
 
   // ── Recording / upload handlers ──────────────────────────────────
   const handleRecordingReady = (file) => {
+    const defaultName = nextDefaultName(items)
     setPendingFile({ file, url: URL.createObjectURL(file), name: file.name })
+    setPendingName(defaultName)
   }
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    const defaultName = nextDefaultName(items)
+    // Use the file's own name (without extension) as initial suggestion
+    const baseName = file.name.replace(/\.[^.]+$/, '') || defaultName
     setPendingFile({ file, url: URL.createObjectURL(file), name: file.name })
+    setPendingName(baseName)
     e.target.value = ''
   }
 
   const handleSaveToLibrary = async () => {
     if (!pendingFile || !user) return
     setSaving(true)
+    const displayName = pendingName.trim() || nextDefaultName(items)
     try {
       let durationS = null
       try { durationS = await getAudioDuration(pendingFile.file) } catch {}
@@ -345,11 +440,13 @@ export default function UGCSpeechToTextPage() {
         character_count:  0,
         credits_charged:  0,
         transcript_status: 'none',
+        display_name:     displayName,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not save recording')
 
       setItems((prev) => [{ ...genRow, chunk_count: 0 }, ...prev])
       setPendingFile(null)
+      setPendingName('')
       toast.success('Saved to your voice library')
 
       maybeChunk(genRow)
@@ -363,6 +460,17 @@ export default function UGCSpeechToTextPage() {
   const handleDiscard = () => {
     if (pendingFile?.url) URL.revokeObjectURL(pendingFile.url)
     setPendingFile(null)
+    setPendingName('')
+  }
+
+  // ── Rename ───────────────────────────────────────────────────────
+  const handleRename = async (gen, newName) => {
+    try {
+      await ugcAudioGenerations.update(gen.id, { display_name: newName })
+      setItems((prev) => prev.map((g) => g.id === gen.id ? { ...g, display_name: newName } : g))
+    } catch {
+      toast.error('Could not rename')
+    }
   }
 
   // ── Transcription ────────────────────────────────────────────────
@@ -425,7 +533,7 @@ export default function UGCSpeechToTextPage() {
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
-      a.download = `recording-${gen.id.slice(0, 8)}.wav`
+      a.download = `${gen.display_name || 'recording'}-${gen.id.slice(0, 8)}.wav`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('Downloaded')
@@ -472,10 +580,27 @@ export default function UGCSpeechToTextPage() {
             />
           ) : (
             <div className="flex flex-col gap-3 p-4 rounded-2xl" style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Ready to save
-              </p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Ready to save</p>
+
+              {/* Filename input */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Name</label>
+                <input
+                  type="text"
+                  value={pendingName}
+                  onChange={(e) => setPendingName(e.target.value)}
+                  placeholder="Recording name…"
+                  className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    color:      'var(--text-primary)',
+                    border:     `1px solid ${ACCENT_BDR}`,
+                  }}
+                />
+              </div>
+
               <audio src={pendingFile.url} controls className="w-full" />
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveToLibrary}
@@ -516,6 +641,7 @@ export default function UGCSpeechToTextPage() {
                     onDelete={handleDelete}
                     onDownload={handleDownload}
                     onTranscribe={handleTranscribe}
+                    onRename={handleRename}
                     isChunking={chunkingIds.has(gen.id)}
                     isTranscribing={transcribingIds.has(gen.id)}
                     freeTier={isMaster}
