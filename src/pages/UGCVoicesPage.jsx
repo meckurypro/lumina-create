@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import VoiceRecorder   from '@/components/ugc/VoiceRecorder'
 import ScriptGenerator from '@/components/ugc/ScriptGenerator'
 import toast from 'react-hot-toast'
+import { Mic2, MessageSquareText } from 'lucide-react'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -692,6 +693,68 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   )
 }
 
+// ── Mode gate — shown before any voice is exposed ──────────────
+const VoiceModeGate = ({ onSelectTTS, onSelectSTT }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="flex flex-col gap-4 py-6"
+  >
+    <div className="text-center mb-2">
+      <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+        How do you want to work with voice?
+      </p>
+      <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+        Pick one to get started — you can switch anytime.
+      </p>
+    </div>
+
+    <button
+      onClick={onSelectTTS}
+      className="flex items-start gap-4 p-5 rounded-2xl text-left transition-all active:scale-[0.98]"
+      style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{ background: ACCENT_SUB }}
+      >
+        <Mic2 size={22} style={{ color: ACCENT }} />
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          Use TTS — Text to Speech
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Browse voices from our library, clone your own voice, and generate
+          speech from a script.
+        </p>
+      </div>
+    </button>
+
+    <button
+      onClick={onSelectSTT}
+      className="flex items-start gap-4 p-5 rounded-2xl text-left transition-all active:scale-[0.98]"
+      style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}
+    >
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{ background: ACCENT_SUB }}
+      >
+        <MessageSquareText size={22} style={{ color: ACCENT }} />
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          Use STT — Speech to Text
+        </p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Record or upload your own voiceover and save it to your library.
+          Extract a transcript whenever you need the text back.
+        </p>
+      </div>
+    </button>
+  </motion.div>
+)
+
 // ── Main page ─────────────────────────────────────────────────
 export default function UGCVoicesPage() {
   const navigate                   = useNavigate()
@@ -699,12 +762,13 @@ export default function UGCVoicesPage() {
   const [voices,  setVoices]       = useState([])
   const [loading, setLoading]      = useState(true)
   const [showAdd, setShowAdd]      = useState(false)
+  const [mode,    setMode]         = useState(null) // null | 'tts' | 'stt'
   const { playing, loading: previewLoading, play } = useAudioPreview()
 
   useEffect(() => {
-    if (!user) return
+    if (!user || mode !== 'tts') return
     loadVoices()
-  }, [user])
+  }, [user, mode])
 
   const loadVoices = async () => {
     setLoading(true)
@@ -749,7 +813,11 @@ export default function UGCVoicesPage() {
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
-        <button onClick={() => navigate('/create/ugc')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+        <button
+          onClick={() => mode === null ? navigate('/create/ugc') : setMode(null)}
+          className="p-2 -ml-2 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
@@ -769,7 +837,12 @@ export default function UGCVoicesPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6">
 
-          {loading ? (
+          {mode === null ? (
+            <VoiceModeGate
+              onSelectTTS={() => setMode('tts')}
+              onSelectSTT={() => navigate('/create/ugc/voices/stt')}
+            />
+          ) : loading ? (
             /* Skeleton grid — matches Characters skeleton */
             <div className="grid grid-cols-2 gap-3">
               {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
@@ -852,7 +925,7 @@ export default function UGCVoicesPage() {
       </div>
 
       {/* Sticky footer CTA — matches Brands "+ Create Brand" button */}
-      {voices.length > 0 && (
+      {mode === 'tts' && voices.length > 0 && (
         <div
           className="flex-shrink-0 px-4 lg:px-8 py-4"
           style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
@@ -871,7 +944,7 @@ export default function UGCVoicesPage() {
       )}
 
       <AnimatePresence>
-        {showAdd && (
+        {mode === 'tts' && showAdd && (
           <AddVoiceSheet
             onClose={() => setShowAdd(false)}
             onSave={handleSave}
