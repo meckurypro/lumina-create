@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Mic, Upload, Play, Pause, Download,
-  Trash2, Loader2, MoreHorizontal, FileText, Copy, Crown, Pencil, Check, X,
+  Trash2, Loader2, MoreHorizontal, FileText, Copy, Pencil, Check, X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -19,7 +19,6 @@ const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
 
-const POLL_MS   = 3000
 const PAGE_SIZE = 20
 
 // ── Get audio duration from a File/Blob ─────────────────────────
@@ -35,9 +34,6 @@ function getAudioDuration(fileOrBlob) {
 
 // ── Upload a File/Blob to storage, return public URL ─────────────
 async function uploadAudioToStorage(userId, fileOrBlob, name = 'recording.webm') {
-  // Derive a real mime type and matching extension from the blob itself.
-  // Hardcoding 'audio/webm' breaks Safari/iOS (records audio/mp4) and any
-  // bucket whose allowed_mime_types doesn't include webm.
   const blobType = (fileOrBlob && fileOrBlob.type) ? fileOrBlob.type.split(';')[0].trim() : ''
   const extFromName = (name.split('.').pop() || '').toLowerCase()
   const mimeToExt = {
@@ -170,7 +166,7 @@ const InlineRename = ({ value, onSave, onCancel }) => {
 const RecordingCard = ({
   gen, index, playing, progress,
   onToggle, onDelete, onDownload, onTranscribe, onRename,
-  isChunking, isTranscribing, freeTier,
+  isChunking, isTranscribing,
 }) => {
   const [menuOpen,   setMenuOpen]   = useState(false)
   const [renaming,   setRenaming]   = useState(false)
@@ -344,10 +340,7 @@ const RecordingCard = ({
                   <FileText size={12} />
                   {transcriptFailed ? 'Retry transcript' : 'Get transcript'}
                   {' · '}
-                  {freeTier
-                    ? <span className="flex items-center gap-1"><Crown size={10} />Free</span>
-                    : `${transcribeCost} cr`
-                  }
+                  {`${transcribeCost} cr`}
                 </>
             }
           </button>
@@ -361,10 +354,9 @@ const RecordingCard = ({
 export default function UGCSpeechToTextPage() {
   const navigate                                   = useNavigate()
   const { user, credits, profile, refreshProfile } = useAuth()
-  const isMaster = profile?.user_tier === 'master'
 
-  const [sourceMode,   setSourceMode]  = useState('record') // 'record' | 'upload'
-  const [pendingFile,  setPendingFile] = useState(null)     // { file, url, name, duration }
+  const [sourceMode,   setSourceMode]  = useState('record')
+  const [pendingFile,  setPendingFile] = useState(null)
   const [pendingName,  setPendingName] = useState('')
   const [saving,       setSaving]      = useState(false)
 
@@ -379,7 +371,6 @@ export default function UGCSpeechToTextPage() {
 
   const { playing, progress, toggle } = useAudioPlayer()
   const { chunkAndStore }             = useVoiceChunker()
-  const pollRef = useRef(null)
 
   useEffect(() => { loadItems(0, true) }, [user])
 
@@ -436,7 +427,6 @@ export default function UGCSpeechToTextPage() {
     const file = e.target.files?.[0]
     if (!file) return
     const defaultName = nextDefaultName(items)
-    // Use the file's own name (without extension) as initial suggestion
     const baseName = file.name.replace(/\.[^.]+$/, '') || defaultName
     setPendingFile({ file, url: URL.createObjectURL(file), name: file.name })
     setPendingName(baseName)
@@ -448,25 +438,25 @@ export default function UGCSpeechToTextPage() {
     setSaving(true)
     const displayName = pendingName.trim() || nextDefaultName(items)
     try {
-     let durationS = null
-try {
-  durationS = await getAudioDuration(pendingFile.file)
-} catch {
-  // Fallback: try to get duration from the audio element if available
-  const audio = new Audio(URL.createObjectURL(pendingFile.file))
-  await new Promise((resolve) => {
-    audio.onloadedmetadata = () => {
-      durationS = audio.duration
-      URL.revokeObjectURL(audio.src)
-      resolve()
-    }
-    audio.onerror = () => {
-      URL.revokeObjectURL(audio.src)
-      resolve()
-    }
-    audio.load()
-  })
-}
+      let durationS = null
+      try {
+        durationS = await getAudioDuration(pendingFile.file)
+      } catch {
+        // Fallback: try to get duration from the audio element
+        const audio = new Audio(URL.createObjectURL(pendingFile.file))
+        await new Promise((resolve) => {
+          audio.onloadedmetadata = () => {
+            durationS = audio.duration
+            URL.revokeObjectURL(audio.src)
+            resolve()
+          }
+          audio.onerror = () => {
+            URL.revokeObjectURL(audio.src)
+            resolve()
+          }
+          audio.load()
+        })
+      }
 
       const publicUrl = await uploadAudioToStorage(user.id, pendingFile.file, pendingFile.name)
 
@@ -481,6 +471,7 @@ try {
         credits_charged:  0,
         transcript_status: 'none',
         display_name:     displayName,
+        script:           null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not save recording')
 
@@ -517,9 +508,8 @@ try {
   const handleTranscribe = async (gen) => {
     if (!user) return toast.error('Please sign in')
     const cost = calcTranscriptionCredits(gen.duration_seconds)
-    const free = isTranscriptionFree(profile?.user_tier)
 
-    if (!free && credits < cost) {
+    if (credits < cost) {
       toast.error('Not enough credits for transcription')
       return
     }
@@ -534,10 +524,9 @@ try {
       })
       if (error || !data?.success) throw new Error(error?.message || data?.error || 'Transcription failed')
 
+      // Reload from database to get the actual transcript
+      await loadItems(0, true)
       refreshProfile()
-      setItems((prev) => prev.map((g) => g.id === gen.id
-        ? { ...g, transcript_status: 'completed', script: data.transcript }
-        : g))
       toast.success('Transcript ready')
     } catch (err) {
       await ugcAudioGenerations.update(gen.id, { transcript_status: 'failed' })
@@ -684,7 +673,6 @@ try {
                     onRename={handleRename}
                     isChunking={chunkingIds.has(gen.id)}
                     isTranscribing={transcribingIds.has(gen.id)}
-                    freeTier={isMaster}
                   />
                 ))}
               </div>
