@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
   ugcAudioGenerations, ugcAudioChunks,
-  calcTranscriptionCredits, isTranscriptionFree,
+  calcTranscriptionCredits,
 } from '@/lib/ugcVoices'
 import { useVoiceChunker } from '@/hooks/useVoiceChunker'
 import VoiceRecorder from '@/components/ugc/VoiceRecorder'
