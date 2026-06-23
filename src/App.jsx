@@ -39,6 +39,7 @@ import UGCVoiceGeneratePage     from '@/pages/UGCVoiceGeneratePage'
 import UGCBrandWizardPage       from '@/pages/UGCBrandWizardPage'
 import UGCBrandGeneratePage     from '@/pages/UGCBrandGeneratePage'
 import UGCBrandMediaPage        from '@/pages/UGCBrandMediaPage'
+import UGCSpeechToTextPage      from '@/pages/UGCSpeechToTextPage'
 
 // ── Filma ─────────────────────────────────────────────────────
 import FilmaHubPage             from '@/pages/filma/FilmaHubPage'
@@ -184,6 +185,9 @@ export default function App() {
             {/* ── UGC — Voices ────────────────────────────────── */}
             <Route path="/create/ugc/voice/:voiceId"
               element={<Auth><UGCVoiceGeneratePage /></Auth>}
+            />
+            <Route path="/create/ugc/voices/stt"
+              element={<Auth><UGCSpeechToTextPage /></Auth>}
             />
 
             {/* ── UGC — Brands ────────────────────────────────── */}
