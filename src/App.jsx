@@ -95,7 +95,7 @@ function MasterUpgradeWall() {
         transcription, voice cloning, and more.
       </p>
       <a
-        href="/settings"
+        href="/profile"
         className="mt-2 px-6 py-3 rounded-2xl text-sm font-bold"
         style={{ background: 'var(--brand)', color: '#fff' }}
       >
