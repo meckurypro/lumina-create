@@ -35,12 +35,35 @@ function getAudioDuration(fileOrBlob) {
 
 // ── Upload a File/Blob to storage, return public URL ─────────────
 async function uploadAudioToStorage(userId, fileOrBlob, name = 'recording.webm') {
-  const ext  = (name.split('.').pop() || 'webm').toLowerCase()
+  // Derive a real mime type and matching extension from the blob itself.
+  // Hardcoding 'audio/webm' breaks Safari/iOS (records audio/mp4) and any
+  // bucket whose allowed_mime_types doesn't include webm.
+  const blobType = (fileOrBlob && fileOrBlob.type) ? fileOrBlob.type.split(';')[0].trim() : ''
+  const extFromName = (name.split('.').pop() || '').toLowerCase()
+  const mimeToExt = {
+    'audio/webm': 'webm',
+    'audio/ogg':  'ogg',
+    'audio/mp4':  'm4a',
+    'audio/x-m4a':'m4a',
+    'audio/aac':  'aac',
+    'audio/mpeg': 'mp3',
+    'audio/mp3':  'mp3',
+    'audio/wav':  'wav',
+    'audio/wave': 'wav',
+    'audio/x-wav':'wav',
+    'audio/flac': 'flac',
+  }
+  const ext = mimeToExt[blobType] || extFromName || 'webm'
+  const contentType = blobType || ({
+    webm:'audio/webm', ogg:'audio/ogg', m4a:'audio/mp4', aac:'audio/aac',
+    mp3:'audio/mpeg', wav:'audio/wav', flac:'audio/flac',
+  }[ext]) || 'application/octet-stream'
+
   const path = `${userId}/stt/${crypto.randomUUID()}.${ext}`
   const { data, error } = await supabase.storage
     .from('ugc-profiles')
     .upload(path, fileOrBlob, {
-      contentType: 'audio/webm',
+      contentType,
       upsert:       false,
       cacheControl: '3600',
     })
