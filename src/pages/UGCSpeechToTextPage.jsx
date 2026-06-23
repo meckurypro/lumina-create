@@ -613,7 +613,7 @@ export default function UGCSpeechToTextPage() {
       // A non-success response is a real error (auth, 404, 500).
       if (error) throw new Error(error.message || 'Could not reach transcription service')
 
-      // Fast-path: edge fn returned transcript synchronously (already-completed row)
+   // Fast-path: edge fn returned transcript synchronously (already-completed row)
       if (data?.success && data?.transcript) {
         updateItem(gen.id, { transcript_status: 'completed', script: data.transcript })
         setTranscribingIds((prev) => { const next = new Set(prev); next.delete(gen.id); return next })
@@ -624,8 +624,36 @@ export default function UGCSpeechToTextPage() {
         return
       }
 
-      // Otherwise Realtime subscription handles the rest — nothing more to do here.
-      // The spinner stays until the DB row updates.
+      // Race guard — check DB once after invoke resolves.
+      // The pipeline runs via EdgeRuntime.waitUntil and can write 'failed' or 'completed'
+      // before the Realtime subscription is fully established. This catches that window.
+      const { data: currentRow } = await supabase
+        .from('ugc_audio_generations')
+        .select('transcript_status, script, transcript_error')
+        .eq('id', gen.id)
+        .single()
+
+      if (currentRow?.transcript_status === 'completed') {
+        updateItem(gen.id, { transcript_status: 'completed', script: currentRow.script })
+        setTranscribingIds((prev) => { const next = new Set(prev); next.delete(gen.id); return next })
+        realtimeSubs.current[gen.id]?.()
+        delete realtimeSubs.current[gen.id]
+        await refreshProfile()
+        toast.success('Transcript ready')
+        return
+      }
+
+      if (currentRow?.transcript_status === 'failed') {
+        updateItem(gen.id, { transcript_status: 'failed' })
+        setTranscribingIds((prev) => { const next = new Set(prev); next.delete(gen.id); return next })
+        realtimeSubs.current[gen.id]?.()
+        delete realtimeSubs.current[gen.id]
+        toast.error(currentRow.transcript_error || 'Transcription failed')
+        return
+      }
+
+      // Still pending — Realtime subscription handles the rest.
+      // Spinner stays until the DB row updates to completed or failed.
 
     } catch (err) {
       // Invoke itself failed — rollback
