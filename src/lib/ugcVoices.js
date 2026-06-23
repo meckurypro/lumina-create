@@ -4,7 +4,7 @@ const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1'
 
 // ─── Credit cost constants ───────────────────────────────────
 export const VOICE_CREDITS = {
-  CLONE:              800,
+  CLONE:              0,
   TTS_PER_100_CHARS:  1,
 }
 
