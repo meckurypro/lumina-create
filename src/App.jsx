@@ -86,10 +86,24 @@ function RequireMaster({ children }) {
   if (loading)          return <FullLoader />
   if (!user)            return <Navigate to="/auth" replace state={{ from: location }} />
   if (onboardingNeeded) return <Navigate to="/auth" replace />
-  if (profile?.user_tier !== 'master') return <Navigate to="/create/ugc" replace />
+  if (profile?.user_tier !== 'master') return (
+    <div className="min-h-dvh flex flex-col items-center justify-center gap-4 px-6 text-center" style={{ background: 'var(--bg-primary)' }}>
+      <div className="text-4xl">🔒</div>
+      <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Master Plan Required</h2>
+      <p className="text-sm max-w-xs" style={{ color: 'var(--text-muted)' }}>
+        Speech to Text is available on the Master plan only. Upgrade to unlock transcription, voice cloning, and more.
+      </p>
+      
+        href="/settings"
+        className="mt-2 px-6 py-3 rounded-2xl text-sm font-bold"
+        style={{ background: 'var(--brand)', color: '#fff' }}
+      >
+        Upgrade to Master
+      </a>
+    </div>
+  )
   return children
 }
-
 // ── Layout wrapper (includes BottomNav) ───────────────────────
 
 const AppLayout = ({ children }) => (
