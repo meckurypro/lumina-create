@@ -14,6 +14,36 @@ const GOOD_SECONDS  = 60
 const GREAT_SECONDS = 120
 const BAR_COUNT     = 40
 
+// ── Get supported MIME type ─────────────────────────────────
+function getSupportedMimeType() {
+  const types = [
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg',
+    'audio/wav',
+    'audio/aac',
+  ]
+  
+  for (const type of types) {
+    if (MediaRecorder.isTypeSupported(type)) {
+      return type
+    }
+  }
+  return '' // Let browser choose default
+}
+
+// ── Get file extension from MIME type ──────────────────────
+function getFileExtension(mimeType) {
+  const map = {
+    'audio/webm': 'webm',
+    'audio/mp4': 'm4a',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/aac': 'aac',
+  }
+  return map[mimeType] || 'webm'
+}
+
 function formatTime(secs) {
   const m = Math.floor(secs / 60)
   const s = secs % 60
@@ -51,9 +81,12 @@ export default function VoiceRecorder({
   const streamRef = useRef(null)
   const playbackRef = useRef(null)
   const isUnmountedRef = useRef(false)
+  const mimeTypeRef = useRef('')
 
   useEffect(() => {
     if (script) setShowScript(true)
+    // Detect supported MIME type once
+    mimeTypeRef.current = getSupportedMimeType()
   }, [script])
 
   useEffect(() => {
@@ -119,6 +152,11 @@ export default function VoiceRecorder({
 
   const startRecording = async () => {
     try {
+      // Ensure we have a supported MIME type
+      if (!mimeTypeRef.current) {
+        mimeTypeRef.current = getSupportedMimeType()
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -133,7 +171,9 @@ export default function VoiceRecorder({
       analyserRef.current = analyser
       sourceRef.current = source
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      // Use detected MIME type or let browser choose
+      const options = mimeTypeRef.current ? { mimeType: mimeTypeRef.current } : {}
+      const mediaRecorder = new MediaRecorder(stream, options)
       chunksRef.current = []
 
       mediaRecorder.ondataavailable = (e) => {
@@ -141,7 +181,8 @@ export default function VoiceRecorder({
       }
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const mimeType = mimeTypeRef.current || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: mimeType })
         const url = URL.createObjectURL(blob)
         setAudioBlob(blob)
         setAudioUrl(url)
@@ -237,9 +278,14 @@ export default function VoiceRecorder({
 
   const handleConfirm = () => {
     if (!audioBlob) return
-    const file = new File([audioBlob], `voice-recording-${Date.now()}.webm`, { 
-      type: 'audio/webm' 
-    })
+    
+    const mimeType = audioBlob.type || 'audio/webm'
+    const extension = getFileExtension(mimeType)
+    const file = new File(
+      [audioBlob], 
+      `voice-recording-${Date.now()}.${extension}`, 
+      { type: mimeType }
+    )
     onRecordingReady(file)
   }
 
