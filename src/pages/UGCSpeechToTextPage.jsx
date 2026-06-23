@@ -40,7 +40,7 @@ async function uploadAudioToStorage(userId, fileOrBlob, name = 'recording.webm')
   const { data, error } = await supabase.storage
     .from('ugc-profiles')
     .upload(path, fileOrBlob, {
-      contentType:  fileOrBlob.type || 'audio/webm',
+      contentType: 'audio/webm',
       upsert:       false,
       cacheControl: '3600',
     })
