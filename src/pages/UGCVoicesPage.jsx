@@ -562,7 +562,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
               >
 <Zap size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} fill="currentColor" />
 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-  1–3 minutes of clean audio produces the best result.
+  1 – 3 minutes of clean audio produces the best result.
 </p>
               </div>
 
