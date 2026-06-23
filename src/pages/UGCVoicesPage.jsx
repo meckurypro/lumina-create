@@ -560,11 +560,10 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 className="flex items-start gap-3 p-3 rounded-xl mb-4"
                 style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
               >
-                <Zap size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} fill="currentColor" />
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Cloning costs <strong style={{ color: ACCENT }}>800 credits</strong>.
-                  1–3 minutes of clean audio produces the best result.
-                </p>
+<Zap size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} fill="currentColor" />
+<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+  1–3 minutes of clean audio produces the best result.
+</p>
               </div>
 
               <div className="mb-4">
