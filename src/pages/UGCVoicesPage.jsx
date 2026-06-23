@@ -408,15 +408,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
       })
       if (error || !data?.voice_id) throw new Error(error?.message || 'Clone failed')
 
-      const { data: deduct } = await supabase.rpc('deduct_credits', {
-        p_user_id:       userId,
-        p_amount:        VOICE_CREDITS.CLONE,
-        p_generation_id: null,
-        p_description:   'Voice clone — ' + cloneName.trim(),
-      })
-      if (!deduct?.success) throw new Error('Credit deduction failed')
-
-      await onSave({
+          await onSave({
         elevenlabs_voice_id: data.voice_id,
         name:                cloneName.trim(),
         source:              'instant_clone',
@@ -667,7 +659,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
               >
                 {cloning
                   ? <><Loader2 size={15} className="animate-spin" /> Cloning…</>
-                  : <><Mic size={15} /> Clone Voice · 800 cr</>
+                  : <><Mic size={15} /> Clone Voice</>
                 }
               </button>
 
