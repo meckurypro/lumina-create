@@ -27,7 +27,7 @@ function qualityLabel(secs) {
   return                            { label: 'Keep going…', color: 'var(--text-muted)' }
 }
 
-export default function VoiceRecorder({ script, onRecordingReady, onRequestScript }) {
+export default function VoiceRecorder({ script, onRecordingReady, onRequestScript, hideTellMe = false }) {
   // ── State ─────────────────────────────────────────────────
   const [phase,       setPhase]       = useState('idle')     // idle | recording | preview
   const [elapsed,     setElapsed]     = useState(0)
@@ -263,7 +263,7 @@ export default function VoiceRecorder({ script, onRecordingReady, onRequestScrip
       )}
 
       {/* No script yet — offer to generate one */}
-      {!script && phase === 'idle' && (
+      {!script && phase === 'idle' && !hideTellMe && (
         <button
           onClick={onRequestScript}
           className="flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-semibold transition-all active:scale-[0.98]"
@@ -277,9 +277,11 @@ export default function VoiceRecorder({ script, onRecordingReady, onRequestScrip
       {/* ── IDLE phase ── */}
       {phase === 'idle' && (
         <div className="flex flex-col items-center gap-4 py-4">
-          <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-            Aim for 1–3 minutes of natural speech. Quality matters more than length.
-          </p>
+          {!hideTellMe && (
+  <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+    Aim for 1–3 minutes of natural speech. Quality matters more than length.
+  </p>
+)}
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={startRecording}
