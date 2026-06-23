@@ -8,8 +8,23 @@ export const VOICE_CREDITS = {
   TTS_PER_100_CHARS:  1,
 }
 
+export const STT_CREDITS = {
+  TRANSCRIBE_PER_SECOND: 4, // ~240 credits/min — covers ElevenLabs Scribe v2 cost at 30% margin
+}
+
 export function calcTTSCredits(text) {
   return Math.ceil(text.length / 100) * VOICE_CREDITS.TTS_PER_100_CHARS
+}
+
+export function calcTranscriptionCredits(durationSeconds) {
+  if (!durationSeconds || durationSeconds <= 0) return 0
+  return Math.ceil(durationSeconds * STT_CREDITS.TRANSCRIBE_PER_SECOND)
+}
+
+// Master tier gets transcription for free — billing layer should call this
+// before deciding whether to deduct credits.
+export function isTranscriptionFree(userTier) {
+  return userTier === 'master'
 }
 
 // ─── Supabase CRUD ───────────────────────────────────────────
@@ -47,19 +62,36 @@ export const ugcVoices = {
 }
 
 export const ugcAudioGenerations = {
-  getByVoice: (voiceId, { limit = 20, offset = 0 } = {}) =>
-    supabase
+  // source_type: optional filter — 'tts' | 'stt' | undefined (all)
+  getByVoice: (voiceId, { limit = 20, offset = 0, sourceType } = {}) => {
+    let q = supabase
       .from('ugc_audio_generations')
       .select('*, voice:ugc_voices(name, elevenlabs_voice_id)', { count: 'exact' })
       .eq('voice_id', voiceId)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1),
+      .range(offset, offset + limit - 1)
+    if (sourceType) q = q.eq('source_type', sourceType)
+    return q
+  },
 
-  getAll: (userId, { limit = 20, offset = 0 } = {}) =>
-    supabase
+  getAll: (userId, { limit = 20, offset = 0, sourceType } = {}) => {
+    let q = supabase
       .from('ugc_audio_generations')
       .select('*, voice:ugc_voices(name, elevenlabs_voice_id)', { count: 'exact' })
       .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (sourceType) q = q.eq('source_type', sourceType)
+    return q
+  },
+
+  // Convenience for the STT library list — only this user's STT recordings
+  getSttRecordings: (userId, { limit = 20, offset = 0 } = {}) =>
+    supabase
+      .from('ugc_audio_generations')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .eq('source_type', 'stt')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1),
 
@@ -84,7 +116,8 @@ export const ugcAudioGenerations = {
 }
 
 // ─── Audio chunks CRUD ───────────────────────────────────────
-// Chunks are 5-second slices of a completed ugc_audio_generation.
+// Chunks are 5-second slices of a completed ugc_audio_generation
+// (TTS output or STT recording — same pipeline, same shape).
 // Storage path pattern: {userId}/audio/{generationId}/chunk-{index}.wav
 // in the ugc-profiles bucket.
 export const ugcAudioChunks = {
@@ -136,3 +169,6 @@ export const ELEVENLABS_MODELS = [
     cost:     0.5,
   },
 ]
+
+// Reference only — actual STT call happens in the speech-to-text edge function.
+export const ELEVENLABS_STT_MODEL = 'scribe_v2'
