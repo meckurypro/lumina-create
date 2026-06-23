@@ -448,8 +448,25 @@ export default function UGCSpeechToTextPage() {
     setSaving(true)
     const displayName = pendingName.trim() || nextDefaultName(items)
     try {
-      let durationS = null
-      try { durationS = await getAudioDuration(pendingFile.file) } catch {}
+     let durationS = null
+try {
+  durationS = await getAudioDuration(pendingFile.file)
+} catch {
+  // Fallback: try to get duration from the audio element if available
+  const audio = new Audio(URL.createObjectURL(pendingFile.file))
+  await new Promise((resolve) => {
+    audio.onloadedmetadata = () => {
+      durationS = audio.duration
+      URL.revokeObjectURL(audio.src)
+      resolve()
+    }
+    audio.onerror = () => {
+      URL.revokeObjectURL(audio.src)
+      resolve()
+    }
+    audio.load()
+  })
+}
 
       const publicUrl = await uploadAudioToStorage(user.id, pendingFile.file, pendingFile.name)
 
