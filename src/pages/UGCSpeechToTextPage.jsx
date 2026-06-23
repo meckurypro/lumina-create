@@ -576,7 +576,7 @@ export default function UGCSpeechToTextPage() {
               mode={sourceMode}
               onModeChange={setSourceMode}
               onFileUpload={handleFileUpload}
-              recorderProps={{ onRecordingReady: handleRecordingReady }}
+              recorderProps={{ hideTellMe: true, onRecordingReady: handleRecordingReady }}
             />
           ) : (
             <div className="flex flex-col gap-3 p-4 rounded-2xl" style={{ background: 'var(--bg-card)', border: `1px solid ${ACCENT_BDR}` }}>
