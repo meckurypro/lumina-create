@@ -94,7 +94,7 @@ function MasterUpgradeWall() {
         Speech to Text is available on the Master plan only. Upgrade to unlock
         transcription, voice cloning, and more.
       </p>
-      
+      <a
         href="/settings"
         className="mt-2 px-6 py-3 rounded-2xl text-sm font-bold"
         style={{ background: 'var(--brand)', color: '#fff' }}
@@ -108,10 +108,10 @@ function MasterUpgradeWall() {
 function RequireMaster({ children }) {
   const { user, loading, onboardingNeeded, profile } = useAuth()
   const location = useLocation()
-  if (loading)                          return <FullLoader />
-  if (!user)                            return <Navigate to="/auth" replace state={{ from: location }} />
-  if (onboardingNeeded)                 return <Navigate to="/auth" replace />
-  if (profile?.user_tier !== 'master')  return <MasterUpgradeWall />
+  if (loading)                         return <FullLoader />
+  if (!user)                           return <Navigate to="/auth" replace state={{ from: location }} />
+  if (onboardingNeeded)                return <Navigate to="/auth" replace />
+  if (profile?.user_tier !== 'master') return <MasterUpgradeWall />
   return children
 }
 
@@ -181,7 +181,7 @@ export default function App() {
             <Route path="/create/photo-polish" element={<Auth><CreatePhotoPolishPage /></Auth>} />
 
             {/* ── Cinematic ───────────────────────────────────── */}
-            <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage />  </Auth>} />
+            <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
             <Route path="/cinematic/:projectId"        element={<Auth><CinematicResultPage /></Auth>} />
 
             {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
@@ -189,17 +189,13 @@ export default function App() {
             <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/edit"           element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
             <Route path="/filma/:filmId/story-summary"  element={<RequireAuth><FilmaStorySummaryPage /></RequireAuth>} />
-            {/* Actor profile — only accessible with a real UUID, never with 'new' */}
-            <Route path="/filma/:filmId/actor/:actorId"
-              element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/actor/:actorId" element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
             <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
             <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
             <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
             <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
 
             {/* ── UGC — hub ───────────────────────────────────── */}
-            {/* Voices tab is now inline on CreateUGCPage.         */}
-            {/* /create/ugc/voices redirects back with tab state.  */}
             <Route path="/create/ugc"
               element={<Auth><CreateUGCPage /></Auth>}
             />
@@ -223,8 +219,8 @@ export default function App() {
               element={<Auth><UGCVoiceGeneratePage /></Auth>}
             />
             <Route path="/create/ugc/voices/stt"
-  element={<Master><UGCSpeechToTextPage /></Master>}
-/>
+              element={<Master><UGCSpeechToTextPage /></Master>}
+            />
 
             {/* ── UGC — Brands ────────────────────────────────── */}
             <Route path="/create/ugc/brand/new"
@@ -253,10 +249,10 @@ export default function App() {
             <Route path="/history" element={<Navigate to="/media" replace />} />
 
             {/* ── Profile / Settings / Admin ──────────────────── */}
-            <Route path="/profile"  element={<Auth><ProfilePage /></Auth>} />
-            <Route path="/settings" element={<Auth><SettingsPage /></Auth>} />
+            <Route path="/profile"         element={<Auth><ProfilePage /></Auth>} />
+            <Route path="/settings"        element={<Auth><SettingsPage /></Auth>} />
             <Route path="/settings/models" element={<Auth><ModelPreferencesPage /></Auth>} />
-            <Route path="/admin"    element={<Admin><AdminPage /></Admin>} />
+            <Route path="/admin"           element={<Admin><AdminPage /></Admin>} />
 
             {/* ── Fallback ────────────────────────────────────── */}
             <Route
