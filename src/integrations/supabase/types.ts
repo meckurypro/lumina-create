@@ -625,15 +625,23 @@ export type Database = {
       filma_actors: {
         Row: {
           age_range: string | null
+          ai_generated: boolean
           body_reference_url: string | null
           created_at: string
           ethnic_background: string | null
           face_reference_url: string | null
           film_id: string
-          gender: Database["public"]["Enums"]["filma_actor_gender"] | null
+          gender: Database["public"]["Enums"]["filma_gender"] | null
           id: string
+          is_complete: boolean
           name: string
           nationality: string | null
+          photo_body_back: string | null
+          photo_body_front: string | null
+          photo_body_side: string | null
+          photo_face_front: string | null
+          photo_face_side_90: string | null
+          photo_face_three_quarter: string | null
           physique: Database["public"]["Enums"]["filma_physique"] | null
           role_description: string | null
           sort_order: number
@@ -644,15 +652,23 @@ export type Database = {
         }
         Insert: {
           age_range?: string | null
+          ai_generated?: boolean
           body_reference_url?: string | null
           created_at?: string
           ethnic_background?: string | null
           face_reference_url?: string | null
           film_id: string
-          gender?: Database["public"]["Enums"]["filma_actor_gender"] | null
+          gender?: Database["public"]["Enums"]["filma_gender"] | null
           id?: string
+          is_complete?: boolean
           name: string
           nationality?: string | null
+          photo_body_back?: string | null
+          photo_body_front?: string | null
+          photo_body_side?: string | null
+          photo_face_front?: string | null
+          photo_face_side_90?: string | null
+          photo_face_three_quarter?: string | null
           physique?: Database["public"]["Enums"]["filma_physique"] | null
           role_description?: string | null
           sort_order?: number
@@ -663,15 +679,23 @@ export type Database = {
         }
         Update: {
           age_range?: string | null
+          ai_generated?: boolean
           body_reference_url?: string | null
           created_at?: string
           ethnic_background?: string | null
           face_reference_url?: string | null
           film_id?: string
-          gender?: Database["public"]["Enums"]["filma_actor_gender"] | null
+          gender?: Database["public"]["Enums"]["filma_gender"] | null
           id?: string
+          is_complete?: boolean
           name?: string
           nationality?: string | null
+          photo_body_back?: string | null
+          photo_body_front?: string | null
+          photo_body_side?: string | null
+          photo_face_front?: string | null
+          photo_face_side_90?: string | null
+          photo_face_three_quarter?: string | null
           physique?: Database["public"]["Enums"]["filma_physique"] | null
           role_description?: string | null
           sort_order?: number
@@ -761,13 +785,16 @@ export type Database = {
           created_at: string
           film_type: Database["public"]["Enums"]["filma_film_type"]
           film_type_custom: string | null
-          genre: Database["public"]["Enums"]["filma_genre"]
+          genre: string[]
           genre_custom: string | null
           id: string
-          setting: Database["public"]["Enums"]["filma_setting"]
+          scaffolded: boolean
+          setting: string[]
           setting_custom: string | null
           status: Database["public"]["Enums"]["filma_film_status"]
+          story_summary: string | null
           structure_type: Database["public"]["Enums"]["filma_structure_type"]
+          thumbnail_url: string | null
           title: string
           total_parts: number | null
           total_seasons: number | null
@@ -783,13 +810,16 @@ export type Database = {
           created_at?: string
           film_type: Database["public"]["Enums"]["filma_film_type"]
           film_type_custom?: string | null
-          genre: Database["public"]["Enums"]["filma_genre"]
+          genre?: string[]
           genre_custom?: string | null
           id?: string
-          setting: Database["public"]["Enums"]["filma_setting"]
+          scaffolded?: boolean
+          setting?: string[]
           setting_custom?: string | null
           status?: Database["public"]["Enums"]["filma_film_status"]
+          story_summary?: string | null
           structure_type?: Database["public"]["Enums"]["filma_structure_type"]
+          thumbnail_url?: string | null
           title: string
           total_parts?: number | null
           total_seasons?: number | null
@@ -805,13 +835,16 @@ export type Database = {
           created_at?: string
           film_type?: Database["public"]["Enums"]["filma_film_type"]
           film_type_custom?: string | null
-          genre?: Database["public"]["Enums"]["filma_genre"]
+          genre?: string[]
           genre_custom?: string | null
           id?: string
-          setting?: Database["public"]["Enums"]["filma_setting"]
+          scaffolded?: boolean
+          setting?: string[]
           setting_custom?: string | null
           status?: Database["public"]["Enums"]["filma_film_status"]
+          story_summary?: string | null
           structure_type?: Database["public"]["Enums"]["filma_structure_type"]
+          thumbnail_url?: string | null
           title?: string
           total_parts?: number | null
           total_seasons?: number | null
@@ -878,6 +911,8 @@ export type Database = {
           id: string
           outfit_image_url: string | null
           scene_id: string
+          wardrobe_locked: boolean
+          wardrobe_prompt: string | null
         }
         Insert: {
           actor_id: string
@@ -885,6 +920,8 @@ export type Database = {
           id?: string
           outfit_image_url?: string | null
           scene_id: string
+          wardrobe_locked?: boolean
+          wardrobe_prompt?: string | null
         }
         Update: {
           actor_id?: string
@@ -892,6 +929,8 @@ export type Database = {
           id?: string
           outfit_image_url?: string | null
           scene_id?: string
+          wardrobe_locked?: boolean
+          wardrobe_prompt?: string | null
         }
         Relationships: [
           {
@@ -917,14 +956,83 @@ export type Database = {
           },
         ]
       }
+      filma_scene_environments: {
+        Row: {
+          camera_facing: string | null
+          created_at: string
+          direction: Database["public"]["Enums"]["filma_env_direction"] | null
+          film_id: string
+          id: string
+          image_url: string | null
+          is_master: boolean
+          label: string
+          locked: boolean
+          prompt_text: string | null
+          scene_id: string
+          sort_order: number
+          spatial_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          camera_facing?: string | null
+          created_at?: string
+          direction?: Database["public"]["Enums"]["filma_env_direction"] | null
+          film_id: string
+          id?: string
+          image_url?: string | null
+          is_master?: boolean
+          label: string
+          locked?: boolean
+          prompt_text?: string | null
+          scene_id: string
+          sort_order?: number
+          spatial_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          camera_facing?: string | null
+          created_at?: string
+          direction?: Database["public"]["Enums"]["filma_env_direction"] | null
+          film_id?: string
+          id?: string
+          image_url?: string | null
+          is_master?: boolean
+          label?: string
+          locked?: boolean
+          prompt_text?: string | null
+          scene_id?: string
+          sort_order?: number
+          spatial_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "filma_scene_environments_film_id_fkey"
+            columns: ["film_id"]
+            isOneToOne: false
+            referencedRelation: "filma_films"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filma_scene_environments_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "filma_scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       filma_scenes: {
         Row: {
           actor_ids: string[]
           created_at: string
+          environment_locked: boolean
           film_id: string
+          first_frame_generated: boolean
           id: string
           master_image_url: string | null
           part_id: string
+          scaffold_status: string | null
           scaffolded: boolean
           scene_number: number
           script_text: string | null
@@ -934,10 +1042,13 @@ export type Database = {
         Insert: {
           actor_ids?: string[]
           created_at?: string
+          environment_locked?: boolean
           film_id: string
+          first_frame_generated?: boolean
           id?: string
           master_image_url?: string | null
           part_id: string
+          scaffold_status?: string | null
           scaffolded?: boolean
           scene_number: number
           script_text?: string | null
@@ -947,10 +1058,13 @@ export type Database = {
         Update: {
           actor_ids?: string[]
           created_at?: string
+          environment_locked?: boolean
           film_id?: string
+          first_frame_generated?: boolean
           id?: string
           master_image_url?: string | null
           part_id?: string
+          scaffold_status?: string | null
           scaffolded?: boolean
           scene_number?: number
           script_text?: string | null
@@ -1046,11 +1160,14 @@ export type Database = {
           emotion_note: string | null
           end_frame_url: string | null
           film_id: string
+          first_frame_generated: boolean
           generation_id: string | null
           id: string
           output_thumbnail_url: string | null
           output_url: string | null
+          prop_suggestions: Json | null
           scene_id: string
+          selected_model: string | null
           shot_number: number
           shot_type: Database["public"]["Enums"]["filma_shot_type"]
           speaking_actor_id: string | null
@@ -1074,11 +1191,14 @@ export type Database = {
           emotion_note?: string | null
           end_frame_url?: string | null
           film_id: string
+          first_frame_generated?: boolean
           generation_id?: string | null
           id?: string
           output_thumbnail_url?: string | null
           output_url?: string | null
+          prop_suggestions?: Json | null
           scene_id: string
+          selected_model?: string | null
           shot_number: number
           shot_type?: Database["public"]["Enums"]["filma_shot_type"]
           speaking_actor_id?: string | null
@@ -1102,11 +1222,14 @@ export type Database = {
           emotion_note?: string | null
           end_frame_url?: string | null
           film_id?: string
+          first_frame_generated?: boolean
           generation_id?: string | null
           id?: string
           output_thumbnail_url?: string | null
           output_url?: string | null
+          prop_suggestions?: Json | null
           scene_id?: string
+          selected_model?: string | null
           shot_number?: number
           shot_type?: Database["public"]["Enums"]["filma_shot_type"]
           speaking_actor_id?: string | null
@@ -1148,6 +1271,8 @@ export type Database = {
       generations: {
         Row: {
           aspect_ratio: Database["public"]["Enums"]["aspect_ratio"] | null
+          audio_2_url: string | null
+          audio_url: string | null
           body_consent_confirmed: boolean | null
           created_at: string | null
           credits_charged: number
@@ -1180,14 +1305,19 @@ export type Database = {
           status: Database["public"]["Enums"]["generation_status"] | null
           storage_protected_at: string | null
           template_id: string | null
+          text_script: string | null
+          text_script_2: string | null
           title: string | null
           updated_at: string | null
           user_id: string
+          video_input_url: string | null
           vision_analysis_used: boolean | null
           with_sound: boolean
         }
         Insert: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
+          audio_2_url?: string | null
+          audio_url?: string | null
           body_consent_confirmed?: boolean | null
           created_at?: string | null
           credits_charged?: number
@@ -1220,14 +1350,19 @@ export type Database = {
           status?: Database["public"]["Enums"]["generation_status"] | null
           storage_protected_at?: string | null
           template_id?: string | null
+          text_script?: string | null
+          text_script_2?: string | null
           title?: string | null
           updated_at?: string | null
           user_id: string
+          video_input_url?: string | null
           vision_analysis_used?: boolean | null
           with_sound?: boolean
         }
         Update: {
           aspect_ratio?: Database["public"]["Enums"]["aspect_ratio"] | null
+          audio_2_url?: string | null
+          audio_url?: string | null
           body_consent_confirmed?: boolean | null
           created_at?: string | null
           credits_charged?: number
@@ -1260,9 +1395,12 @@ export type Database = {
           status?: Database["public"]["Enums"]["generation_status"] | null
           storage_protected_at?: string | null
           template_id?: string | null
+          text_script?: string | null
+          text_script_2?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string
+          video_input_url?: string | null
           vision_analysis_used?: boolean | null
           with_sound?: boolean
         }
@@ -1329,6 +1467,7 @@ export type Database = {
           min_billable_seconds: number | null
           provider: string
           requires_audio: boolean
+          requires_end_frame: boolean | null
           requires_image: boolean
           requires_video: boolean
           requires_voice_id: boolean
@@ -1378,6 +1517,7 @@ export type Database = {
           min_billable_seconds?: number | null
           provider?: string
           requires_audio?: boolean
+          requires_end_frame?: boolean | null
           requires_image?: boolean
           requires_video?: boolean
           requires_voice_id?: boolean
@@ -1427,6 +1567,7 @@ export type Database = {
           min_billable_seconds?: number | null
           provider?: string
           requires_audio?: boolean
+          requires_end_frame?: boolean | null
           requires_image?: boolean
           requires_video?: boolean
           requires_voice_id?: boolean
@@ -2057,20 +2198,23 @@ export type Database = {
           created_at: string | null
           credits_charged: number
           duration_seconds: number | null
-          elevenlabs_voice_id: string
+          elevenlabs_voice_id: string | null
           error_message: string | null
           id: string
-          model_id: string
+          model_id: string | null
           output_url: string | null
           refined_script: string | null
           script: string
           similarity_boost: number
+          source_type: string
           stability: number
           status: Database["public"]["Enums"]["audio_gen_status"]
           style: number
+          transcript_error: string | null
+          transcript_status: string
           updated_at: string | null
           user_id: string
-          voice_id: string
+          voice_id: string | null
         }
         Insert: {
           character_count?: number
@@ -2078,20 +2222,23 @@ export type Database = {
           created_at?: string | null
           credits_charged?: number
           duration_seconds?: number | null
-          elevenlabs_voice_id: string
+          elevenlabs_voice_id?: string | null
           error_message?: string | null
           id?: string
-          model_id?: string
+          model_id?: string | null
           output_url?: string | null
           refined_script?: string | null
           script: string
           similarity_boost?: number
+          source_type?: string
           stability?: number
           status?: Database["public"]["Enums"]["audio_gen_status"]
           style?: number
+          transcript_error?: string | null
+          transcript_status?: string
           updated_at?: string | null
           user_id: string
-          voice_id: string
+          voice_id?: string | null
         }
         Update: {
           character_count?: number
@@ -2099,20 +2246,23 @@ export type Database = {
           created_at?: string | null
           credits_charged?: number
           duration_seconds?: number | null
-          elevenlabs_voice_id?: string
+          elevenlabs_voice_id?: string | null
           error_message?: string | null
           id?: string
-          model_id?: string
+          model_id?: string | null
           output_url?: string | null
           refined_script?: string | null
           script?: string
           similarity_boost?: number
+          source_type?: string
           stability?: number
           status?: Database["public"]["Enums"]["audio_gen_status"]
           style?: number
+          transcript_error?: string | null
+          transcript_status?: string
           updated_at?: string | null
           user_id?: string
-          voice_id?: string
+          voice_id?: string | null
         }
         Relationships: [
           {
@@ -2742,6 +2892,10 @@ export type Database = {
         Returns: Json
       }
       filma_push_end_frame: { Args: { p_shot_id: string }; Returns: Json }
+      filma_scaffold_film: {
+        Args: { p_actors: Json; p_film_id: string; p_parts: Json }
+        Returns: Json
+      }
       filma_scaffold_scene: {
         Args: { p_scene_id: string; p_shots: Json }
         Returns: Json
@@ -2865,9 +3019,8 @@ export type Database = {
       aspect_ratio: "9:16" | "16:9" | "1:1" | "auto"
       audio_gen_status: "pending" | "processing" | "completed" | "failed"
       feed_status: "pending" | "approved" | "rejected" | "published"
-      filma_actor_gender: "male" | "female" | "non_binary" | "other"
       filma_aspect_ratio: "9:16" | "16:9" | "1:1" | "4:3" | "21:9"
-      filma_audio_mode: "ai_voice" | "uploaded"
+      filma_audio_mode: "ai_voice" | "uploaded" | "native" | "ugc_library"
       filma_color_grading:
         | "teal_and_orange"
         | "hollywood_blockbuster"
@@ -2885,6 +3038,7 @@ export type Database = {
         | "earthy_natural"
         | "airy_and_soft"
         | "other"
+      filma_env_direction: "master" | "N" | "S" | "E" | "W"
       filma_film_status: "draft" | "in_production" | "completed"
       filma_film_type:
         | "feature_film"
@@ -2896,6 +3050,7 @@ export type Database = {
         | "anthology"
         | "web_series"
         | "other"
+      filma_gender: "male" | "female" | "non_binary" | "other"
       filma_genre:
         | "action"
         | "adventure"
@@ -2966,7 +3121,12 @@ export type Database = {
         | "neorealism"
         | "surrealist"
         | "other"
-      generation_status: "pending" | "processing" | "completed" | "failed"
+      generation_status:
+        | "pending"
+        | "processing"
+        | "completed"
+        | "failed"
+        | "expired"
       generation_type:
         | "text_to_image"
         | "image_to_image"
@@ -3048,7 +3208,26 @@ export type Database = {
         | "professional_clone"
       ugc_voice_status: "active" | "archived"
       user_role: "user" | "staff" | "admin"
-      video_duration: "5" | "8" | "10" | "15"
+      video_duration:
+        | "5"
+        | "8"
+        | "10"
+        | "15"
+        | "6"
+        | "1"
+        | "2"
+        | "3"
+        | "4"
+        | "7"
+        | "9"
+        | "11"
+        | "12"
+        | "13"
+        | "14"
+        | "20"
+        | "30"
+        | "60"
+        | "120"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3212,9 +3391,8 @@ export const Constants = {
       aspect_ratio: ["9:16", "16:9", "1:1", "auto"],
       audio_gen_status: ["pending", "processing", "completed", "failed"],
       feed_status: ["pending", "approved", "rejected", "published"],
-      filma_actor_gender: ["male", "female", "non_binary", "other"],
       filma_aspect_ratio: ["9:16", "16:9", "1:1", "4:3", "21:9"],
-      filma_audio_mode: ["ai_voice", "uploaded"],
+      filma_audio_mode: ["ai_voice", "uploaded", "native", "ugc_library"],
       filma_color_grading: [
         "teal_and_orange",
         "hollywood_blockbuster",
@@ -3233,6 +3411,7 @@ export const Constants = {
         "airy_and_soft",
         "other",
       ],
+      filma_env_direction: ["master", "N", "S", "E", "W"],
       filma_film_status: ["draft", "in_production", "completed"],
       filma_film_type: [
         "feature_film",
@@ -3245,6 +3424,7 @@ export const Constants = {
         "web_series",
         "other",
       ],
+      filma_gender: ["male", "female", "non_binary", "other"],
       filma_genre: [
         "action",
         "adventure",
@@ -3321,7 +3501,13 @@ export const Constants = {
         "surrealist",
         "other",
       ],
-      generation_status: ["pending", "processing", "completed", "failed"],
+      generation_status: [
+        "pending",
+        "processing",
+        "completed",
+        "failed",
+        "expired",
+      ],
       generation_type: [
         "text_to_image",
         "image_to_image",
@@ -3411,7 +3597,27 @@ export const Constants = {
       ],
       ugc_voice_status: ["active", "archived"],
       user_role: ["user", "staff", "admin"],
-      video_duration: ["5", "8", "10", "15"],
+      video_duration: [
+        "5",
+        "8",
+        "10",
+        "15",
+        "6",
+        "1",
+        "2",
+        "3",
+        "4",
+        "7",
+        "9",
+        "11",
+        "12",
+        "13",
+        "14",
+        "20",
+        "30",
+        "60",
+        "120",
+      ],
     },
   },
 } as const
