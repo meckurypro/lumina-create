@@ -250,7 +250,7 @@ const RenderWindowCard = ({
             className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
             style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
           >
-            SUB ACTIVE
+            ACTIVE
           </span>
         )}
       </div>
@@ -259,7 +259,6 @@ const RenderWindowCard = ({
         <div className="h-8 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
       ) : hasActiveSub ? (
         <>
-          {/* Active subscription state */}
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-sm font-black" style={{ color: canUseRW ? '#10b981' : 'var(--text-primary)' }}>
@@ -267,8 +266,8 @@ const RenderWindowCard = ({
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {canUseRW
-                  ? `Use premium GPU models for free right now`
-                  : `Your subscription is active — window is currently closed`}
+                  ? 'Use premium models for free right now'
+                  : 'Window is currently closed'}
               </p>
             </div>
           </div>
@@ -281,7 +280,7 @@ const RenderWindowCard = ({
             }}
           >
             <div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Access expires</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Expires</p>
               <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
                 {fmtExpiry(activeSub?.expires_at)} · {hoursRemaining}h remaining
               </p>
@@ -290,23 +289,20 @@ const RenderWindowCard = ({
 
           {!windowIsOpen && (
             <p className="text-xs mt-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              A render window must be open to use premium GPU models. Check back during the next scheduled session.
+              Check back when the next window opens.
             </p>
           )}
         </>
       ) : (
         <>
-          {/* No subscription state */}
           <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Get 24-hour access to premium self-hosted GPU models — free to use during open render windows.
+            Get 24-hour access to premium models. Use them for free during open render windows.
           </p>
 
           <div className="flex flex-col gap-2 mb-4">
             {[
-              { icon: '🎬', text: 'Access to exclusive GPU-powered models' },
               { icon: '⚡', text: 'Zero credits charged during open windows' },
-              { icon: '🕐', text: '24-hour access from time of purchase' },
-              { icon: '📅', text: 'Use across any open windows within your 24hrs' },
+              { icon: '📅', text: '24hrs from purchase — use across any open session' },
             ].map(({ icon, text }) => (
               <div key={text} className="flex items-start gap-2.5">
                 <span style={{ fontSize: 13, lineHeight: '18px', flexShrink: 0 }}>{icon}</span>
@@ -327,8 +323,8 @@ const RenderWindowCard = ({
             }}
           >
             🪟 {subscribing
-              ? 'Opening…'
-              : `Get Render Window Access · ₦${rwPrice != null ? Number(rwPrice).toLocaleString() : '…'}/24hr`}
+              ? 'Activating…'
+              : `Activate · ₦${rwPrice != null ? Number(rwPrice).toLocaleString() : '…'} for 24hrs`}
           </button>
         </>
       )}
