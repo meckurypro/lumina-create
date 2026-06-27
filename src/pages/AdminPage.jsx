@@ -23,7 +23,8 @@ import CinematicTransitionsManager from '@/pages/admin/CinematicTransitionsManag
 import ModelsAnalytics             from '@/pages/admin/ModelsAnalytics'
 import ModelUsageManager           from '@/pages/admin/ModelUsageManager'
 import GenerationsManager from '@/pages/admin/GenerationsManager'
-import EmailManager from '@/pages/admin/EmailManager'
+import EmailManager          from '@/pages/admin/EmailManager'
+import RenderWindowManager   from '@/pages/admin/RenderWindowManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -43,20 +44,20 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
 // ─── Tabs ─────────────────────────────────────────────────
 
 const TABS = (pendingCount) => [
-  { id: 'dashboard', label: 'Dashboard'                                            },
-  { id: 'analytics', label: 'Analytics'                                            },
-  { id: 'usage',     label: 'Usage & Pricing'                                      },
-  { id: 'prompts',   label: 'Prompts'                                              },
-  { id: 'templates', label: 'Templates'                                            },
-  { id: 'models',    label: 'Models'                                               },
-  { id: 'cinematic', label: 'Cinematic'                                            },
-  { id: 'staff',     label: 'Staff'                                                },
-  { id: 'feed',      label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed'  },
-  { id: 'users',     label: 'Users'                                                },
-  { id: 'generations', label: 'Generations'                                        },
-  { id: 'email',       label: 'Email'                                               },
-  { id: 'settings',  label: 'Tier Settings'                                        },
-  
+  { id: 'dashboard',      label: 'Dashboard'                                           },
+  { id: 'users',          label: 'Users'                                               },
+  { id: 'staff',          label: 'Staff'                                               },
+  { id: 'models',         label: 'Models'                                              },
+  { id: 'generations',    label: 'Generations'                                         },
+  { id: 'render_windows', label: '🪟 Render Windows'                                   },
+  { id: 'prompts',        label: 'Prompts'                                             },
+  { id: 'templates',      label: 'Templates'                                           },
+  { id: 'cinematic',      label: 'Cinematic'                                           },
+  { id: 'feed',           label: pendingCount > 0 ? `Feed · ${pendingCount}` : 'Feed' },
+  { id: 'email',          label: 'Email'                                               },
+  { id: 'settings',       label: 'Tier Settings'                                       },
+  { id: 'usage',          label: 'Usage & Pricing'                                     },
+  { id: 'analytics',      label: 'Analytics'                                           },
 ]
 
 // ─── Admin Page ───────────────────────────────────────────
@@ -317,6 +318,13 @@ export default function AdminPage() {
     <EmailManager />
   </motion.div>
 )}
+        {/* ── Render Windows ── */}
+        {activeTab === 'render_windows' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RenderWindowManager />
+          </motion.div>
+        )}
+
         {/* ── Tier Settings ── */}
         {activeTab === 'settings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
