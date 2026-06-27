@@ -5,7 +5,8 @@ import { motion } from 'framer-motion'
 import { Settings, Zap, Plus, LogOut, Crown, ChevronRight, Gift, Copy, Check, Share2 } from 'lucide-react'
 import { credits as creditsDb, auth, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { useMasterUpgrade } from '@/hooks/useMasterUpgrade'
+import { useMasterUpgrade }              from '@/hooks/useMasterUpgrade'
+import { useRenderWindowSubscription }   from '@/hooks/useRenderWindowSubscription'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Modal } from '@/components/ui/Modal'
@@ -189,6 +190,17 @@ export default function ProfilePage() {
   const navigate                                                  = useNavigate()
   const { user, profile, credits, refreshProfile, isAdmin }      = useAuth()
   const { upgrade: upgradeToMaster, loading: upgrading, price: masterPrice } = useMasterUpgrade()
+  const {
+    hasActiveSub:   hasRWSub,
+    windowIsOpen:   rwWindowOpen,
+    canUseRWModels: canUseRW,
+    hoursRemaining: rwHoursLeft,
+    activeSub:      rwSub,
+    rwPrice,
+    subscribing:    rwSubscribing,
+    subscribe:      subscribeRW,
+    loading:        rwLoading,
+  } = useRenderWindowSubscription()
 
   const [packages,         setPackages]         = useState([])
   const [showCreditsModal, setShowCreditsModal] = useState(false)
@@ -350,8 +362,21 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* ── Render Window card ── */}
+        <RenderWindowCard
+          hasActiveSub={hasRWSub}
+          windowIsOpen={rwWindowOpen}
+          canUseRW={canUseRW}
+          hoursRemaining={rwHoursLeft}
+          activeSub={rwSub}
+          rwPrice={rwPrice}
+          subscribing={rwSubscribing}
+          onSubscribe={subscribeRW}
+          loading={rwLoading}
+        />
+
         {/* ── Referral card ── */}
-        <ReferralCard profile={profile} />
+        <ReferralCard profile={profile} />  
 
         {/* ── Actions list ── */}
         <div
