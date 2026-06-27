@@ -239,10 +239,11 @@ function ModelRow({ model, onUpdate, catColor }) {
     toast.success(`${model.label} cost updated`)
   }
 
-  const isActive   = model.is_active
-  const isVerified = model.is_verified
-  const isLocked   = model.is_locked
-  const isMaster   = model.tier_required === 'master' // ── NEW
+  const isActive      = model.is_active
+  const isVerified    = model.is_verified
+  const isLocked      = model.is_locked
+  const isMaster      = model.tier_required === 'master'
+  const isRWModel     = model.model_access_type === 'render_window'
 
   return (
     <div
@@ -285,7 +286,7 @@ function ModelRow({ model, onUpdate, catColor }) {
             )}
           </span>
 
-          {/* ── NEW: master badge ── */}
+          {/* ── master and RW badge ── */}
           {isMaster && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -294,6 +295,17 @@ function ModelRow({ model, onUpdate, catColor }) {
               letterSpacing: '0.06em', textTransform: 'uppercase',
             }}>
               <Crown size={8} /> MASTER
+            </span>
+          )}
+
+          {isRWModel && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 5,
+              background: 'rgba(99,102,241,0.15)', color: '#818cf8',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}>
+              🪟 WINDOW
             </span>
           )}
 
@@ -417,7 +429,7 @@ function ModelRow({ model, onUpdate, catColor }) {
           }
         </button>
 
-        {/* ── NEW: Tier toggle — Free ↔ Master ── */}
+       {/* Tier toggle — Free ↔ Master */}
         <button
           onClick={() => setTier(isMaster ? 'free' : 'master')}
           disabled={saving === 'tier_required'}
@@ -439,6 +451,38 @@ function ModelRow({ model, onUpdate, catColor }) {
           }
         </button>
 
+        {/* Access type toggle — Credits ↔ Render Window */}
+        <button
+          onClick={async () => {
+            const newType = isRWModel ? 'credits' : 'render_window'
+            setSaving('model_access_type')
+            const { error } = await supabase
+              .from('models')
+              .update({ model_access_type: newType, updated_at: new Date().toISOString() })
+              .eq('id', model.id)
+            setSaving(null)
+            if (error) { toast.error('Access type update failed'); return }
+            onUpdate(model.id, { model_access_type: newType })
+            toast.success(`${model.label} — access type set to ${newType}`)
+          }}
+          disabled={saving === 'model_access_type'}
+          title={isRWModel ? 'Switch to credit-based' : 'Make render window model'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '4px 10px', borderRadius: 10, border: 'none',
+            fontSize: 10, fontWeight: 800, cursor: 'pointer',
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
+            background: isRWModel ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.06)',
+            color: isRWModel ? '#818cf8' : 'var(--text-muted, #888)',
+            minWidth: 76, justifyContent: 'center',
+          }}
+        >
+          {saving === 'model_access_type' ? '…' : isRWModel
+            ? <>🪟 Window</>
+            : <>⚡ Credits</>
+          }
+        </button>
       </div>
     </div>
   )
@@ -609,7 +653,8 @@ function FilterBar({ filter, setFilter }) {
       {btn('unverified', 'Unverified',  '#fbbf24' )}
       {btn('locked',     'Locked',      '#ef4444' )}
       {btn('master',     'Master only', '#eab308' )} {/* ── NEW */}
-      {btn('free',       'Free',        '#aaa'    )} {/* ── NEW */}
+      {btn('free',       'Free',        '#aaa'    )}
+      {btn('rw',         '🪟 Window',   '#818cf8' )}
       {btn('image',      'Images',      '#6366f1' )}
       {btn('video',      'Videos',      '#f59e0b' )}
     </div>
@@ -650,7 +695,8 @@ export default function ModelsManager() {
     if (filter === 'unverified') return !m.is_verified
     if (filter === 'locked')     return  m.is_locked
     if (filter === 'master')     return  m.tier_required === 'master' // ── NEW
-    if (filter === 'free')       return  m.tier_required !== 'master' // ── NEW
+    if (filter === 'free')       return  m.tier_required !== 'master'
+    if (filter === 'rw')         return  m.model_access_type === 'render_window'
     if (filter === 'image')      return  m.type === 'image'
     if (filter === 'video')      return  m.type === 'video'
     return true
