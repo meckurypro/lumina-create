@@ -298,6 +298,11 @@ export default function CreatePage() {
   const { isStaff, isAdmin, profile }   = useAuth()
   const isNovice                        = profile?.user_tier !== 'master'
   const [activeTab, setActiveTab]       = useState(location.state?.tab || 'tools')
+  useEffect(() => {
+  if (location.state?.tab) {
+    setActiveTab(location.state.tab)
+  }
+}, [location.state?.tab])
   const [templates,  setTemplates]      = useState([])
   const [loading,    setLoading]        = useState(true)
   const [weeklyUsed, setWeeklyUsed]     = useState(null)
