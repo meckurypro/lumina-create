@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock, ScanSearch, Maximize } from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -260,6 +260,37 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
   )
 }
 
+// ── Utility row card — shared between Photo Polish, Image Upscaler, Video Upscaler
+function UtilityCard({ Icon, iconColor, iconBg, iconBorder, title, titleColor, subtitle, route, navigate, delay }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      whileTap={{ scale: 0.97 }}
+      onClick={() => navigate(route)}
+      className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
+      style={{
+        background: 'var(--bg-card)',
+        border:     `1px solid ${iconBorder}`,
+        padding:    '16px 20px',
+      }}
+    >
+      <div
+        className="rounded-2xl flex items-center justify-center flex-shrink-0"
+        style={{ width: 52, height: 52, background: iconBg, border: `1px solid ${iconBorder}` }}
+      >
+        <Icon style={{ width: 22, height: 22, color: iconColor }} strokeWidth={1.4} />
+      </div>
+      <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
+        <span className="text-sm font-bold" style={{ color: titleColor }}>{title}</span>
+        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
+      </div>
+      <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    </motion.button>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function CreatePage() {
   const navigate                        = useNavigate()
@@ -443,50 +474,56 @@ export default function CreatePage() {
               >
                 <div className="w-full" style={{ maxWidth: '520px' }}>
 
+                  {/* ── Photo Tools ───────────────────────────────────────── */}
                   <p className="text-xs font-semibold uppercase tracking-widest mb-4"
                     style={{ color: 'var(--text-muted)' }}>
                     Photo Tools
                   </p>
 
-                  <motion.button
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.08 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => navigate('/create/photo-polish')}
-                    className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
-                    style={{
-                      background: 'var(--bg-card)',
-                      border:     '1px solid var(--tool-polish-border, var(--border-color))',
-                      padding:    '16px 20px',
-                    }}
-                  >
-                    <div
-                      className="rounded-2xl flex items-center justify-center flex-shrink-0"
-                      style={{
-                        width:      52,
-                        height:     52,
-                        background: 'var(--tool-polish-subtle, var(--bg-elevated))',
-                        border:     '1px solid var(--tool-polish-border, var(--border-color))',
-                      }}
-                    >
-                      <Sparkles
-                        style={{ width: 22, height: 22, color: 'var(--tool-polish, #f59e0b)' }}
-                        strokeWidth={1.4}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
-                      <span className="text-sm font-bold"
-                        style={{ color: 'var(--tool-polish, #f59e0b)' }}>
-                        Photo Polish
-                      </span>
-                      <span className="text-xs leading-snug"
-                        style={{ color: 'var(--text-muted)' }}>
-                        Transform any photo into a cinematic shot
-                      </span>
-                    </div>
-                    <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                  </motion.button>
+                  <UtilityCard
+                    Icon={Sparkles}
+                    iconColor="var(--tool-polish, #f59e0b)"
+                    iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
+                    iconBorder="var(--tool-polish-border, var(--border-color))"
+                    title="Photo Polish"
+                    titleColor="var(--tool-polish, #f59e0b)"
+                    subtitle="Transform any photo into a cinematic shot"
+                    route="/create/photo-polish"
+                    navigate={navigate}
+                    delay={0.06}
+                  />
+
+                  <UtilityCard
+                    Icon={ScanSearch}
+                    iconColor="var(--tool-polish, #f59e0b)"
+                    iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
+                    iconBorder="var(--tool-polish-border, var(--border-color))"
+                    title="Image Upscaler"
+                    titleColor="var(--tool-polish, #f59e0b)"
+                    subtitle="Enlarge and sharpen any image with AI"
+                    route="/create/image-upscaler"
+                    navigate={navigate}
+                    delay={0.10}
+                  />
+
+                  {/* ── Video Tools ───────────────────────────────────────── */}
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-4 mt-2"
+                    style={{ color: 'var(--text-muted)' }}>
+                    Video Tools
+                  </p>
+
+                  <UtilityCard
+                    Icon={Maximize}
+                    iconColor="var(--tool-motion, #8b5cf6)"
+                    iconBg="var(--tool-motion-subtle, var(--bg-elevated))"
+                    iconBorder="var(--tool-motion-border, var(--border-color))"
+                    title="Video Upscaler"
+                    titleColor="var(--tool-motion, #8b5cf6)"
+                    subtitle="Upscale any video to higher resolution"
+                    route="/create/video-upscaler"
+                    navigate={navigate}
+                    delay={0.14}
+                  />
 
                 </div>
               </motion.div>
