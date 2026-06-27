@@ -253,10 +253,12 @@ export default function CreateVideoUpscalerPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+// ── Derived ────────────────────────────────────────────────────────────────
   const selectedModel  = models.find((m) => m.value === modelValue)
   const resCosts       = selectedModel?.credit_cost_resolution ?? null
   const qualityOptions = resCosts ? Object.entries(resCosts) : []
+  const perSecondRate  = selectedModel?.credit_cost_per_second ?? null
+  const minBillableSec = selectedModel?.min_billable_seconds ?? 1
 
   useEffect(() => {
     if (!resCosts) { setQuality(null); return }
@@ -264,9 +266,17 @@ export default function CreateVideoUpscalerPage() {
     if (!quality || !keys.includes(quality)) setQuality(keys[0])
   }, [modelValue]) // eslint-disable-line
 
-  const creditCost = resCosts && quality
-    ? (resCosts[quality] ?? 0)
-    : (selectedModel?.credit_cost_i2i ?? 0)
+  // Per-second models: rate comes from credit_cost_resolution[quality] when
+  // tiered, or the flat credit_cost_per_second when untiered (e.g. Runway).
+  // Cost = rate × actual uploaded duration, floored to min_billable_seconds —
+  // mirrors CreateVideoPage's billing logic.
+  const billableSeconds = video?.duration != null
+    ? Math.max(video.duration, minBillableSec)
+    : minBillableSec
+
+  const creditCost = perSecondRate != null
+    ? Math.ceil((resCosts && quality ? (resCosts[quality] ?? perSecondRate) : perSecondRate) * billableSeconds)
+    : (resCosts && quality ? (resCosts[quality] ?? 0) : (selectedModel?.credit_cost_i2i ?? 0))
 
   const canAfford  = credits >= creditCost
   const canUpscale = !!video && canAfford && !submitting && !!selectedModel && creditCost > 0
@@ -448,20 +458,25 @@ export default function CreateVideoUpscalerPage() {
               <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Output Resolution
               </p>
-              <div className="flex gap-2 flex-wrap">
-                {qualityOptions.map(([key, cost]) => (
-                  <button
-                    key={key}
-                    onClick={() => setQuality(key)}
-                    className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-                    style={{
-                      background: quality === key ? ACCENT : 'var(--bg-elevated)',
-                      color:      quality === key ? '#ffffff' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {key.toUpperCase()} · {cost} cr
-                  </button>
-                ))}
+            <div className="flex gap-2 flex-wrap">
+                {qualityOptions.map(([key, rate]) => {
+                  const tierCost = perSecondRate != null
+                    ? Math.ceil(rate * billableSeconds)
+                    : rate
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setQuality(key)}
+                      className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                      style={{
+                        background: quality === key ? ACCENT : 'var(--bg-elevated)',
+                        color:      quality === key ? '#ffffff' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {key.toUpperCase()} · {tierCost} cr
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
