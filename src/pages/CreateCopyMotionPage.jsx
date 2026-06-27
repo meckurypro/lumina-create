@@ -1143,9 +1143,15 @@ const videoRequired   = selectedModel?.requires_video ?? true
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      supabase.functions
+const { data: invokeData, error: invokeErr } = await supabase.functions
         .invoke('video-generate', { body: { generationId: genRow.id } })
-        .catch((e) => console.error('video-generate invoke error', e))
+
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
+      }
 
       refreshProfile()
       toast.success('Copy Motion is being generated. Check your Media page.', { duration: 4000 })
