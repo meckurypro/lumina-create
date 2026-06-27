@@ -262,3 +262,98 @@ export const cinematicClips = {
       .single()
   },
 }
+// ─── Render Window ────────────────────────────────────────────────────────────
+
+export const renderWindows = {
+  // Public: get all non-cancelled windows ordered by start time
+  getUpcoming: () =>
+    supabase
+      .from('render_windows')
+      .select('*')
+      .not('status', 'eq', 'cancelled')
+      .order('starts_at', { ascending: true }),
+
+  // Public: get the currently active window if any
+  getActive: () =>
+    supabase
+      .from('render_windows')
+      .select('*')
+      .eq('status', 'active')
+      .maybeSingle(),
+
+  // Admin: create a new window
+  create: (payload) =>
+    supabase
+      .from('render_windows')
+      .insert(payload)
+      .select()
+      .single(),
+
+  // Admin: update a window
+  update: (id, updates) =>
+    supabase
+      .from('render_windows')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
+
+  // Admin: delete a window (only safe for scheduled/cancelled ones)
+  delete: (id) =>
+    supabase
+      .from('render_windows')
+      .delete()
+      .eq('id', id),
+
+  // Admin: manually open a window
+  adminOpen: (adminId, windowId) =>
+    supabase.rpc('admin_open_render_window', {
+      p_admin_id:  adminId,
+      p_window_id: windowId,
+    }),
+
+  // Admin: manually close a window
+  adminClose: (adminId, windowId) =>
+    supabase.rpc('admin_close_render_window', {
+      p_admin_id:  adminId,
+      p_window_id: windowId,
+    }),
+
+  // Admin: summary stats
+  getAdminSummary: () =>
+    supabase.rpc('get_render_window_admin_summary'),
+}
+
+export const renderWindowSubscriptions = {
+  // Get the current user's active subscription if any
+  getActive: () =>
+    supabase
+      .from('render_window_subscriptions')
+      .select('*')
+      .eq('status', 'active')
+      .gt('expires_at', new Date().toISOString())
+      .order('expires_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+
+  // Get subscription history for the current user
+  getHistory: ({ limit = 20, offset = 0 } = {}) =>
+    supabase
+      .from('render_window_subscriptions')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1),
+
+  // Check if the current user has an active sub (lightweight boolean check)
+  hasActiveSub: async (userId) => {
+    const { data } = await supabase
+      .rpc('user_has_active_rw_subscription', { p_user_id: userId })
+    return !!data
+  },
+}
+
+// Visible models for the current user (respects render window gate)
+export const visibleModels = {
+  getForUser: (userId) =>
+    supabase.rpc('get_visible_models', { p_user_id: userId }),
+}  
