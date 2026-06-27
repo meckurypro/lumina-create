@@ -40,7 +40,7 @@ import {
   Plus, Search, X, MoreHorizontal,
   Download, Trash2, Film, Pencil, Check,
   ImageIcon, VideoIcon, FolderOpen,
-  Sparkles, Wand2, Mic2, Clapperboard, ScanLine, Zap,
+  Sparkles, Wand2, Mic2, Clapperboard, ScanLine, Zap, Maximize,
 } from 'lucide-react'
 import {
   uploadAsset, listAssets, renameAsset,
@@ -73,6 +73,8 @@ const SS_TH_SUBJECT_VID    = 'meckury_th_subject_vid'
 const SS_COPY_SUBJECT      = 'meckury_copymotion_subject'
 const SS_COPY_MOTION_VIDEO = 'meckury_copymotion_video_asset'
 const SS_VIDEO_OMNI_REF    = 'meckury_video_omni_ref'
+const SS_IMAGE_UPSCALE = 'meckury_upscale_image'
+const SS_VIDEO_UPSCALE = 'meckury_upscale_video'
 
 const TIME_FILTERS = [
   { label: 'Today',      value: 'today'      },
@@ -637,6 +639,9 @@ export default function AssetsPage() {
 
   const handleSetVideoForMotion = (asset) =>
     prepareAndNavigate(asset, SS_COPY_MOTION_VIDEO, '/create/copy-motion', { fallbackType: 'video/mp4' })
+  const handleUpscaleImage = (asset) => prepareAndNavigate(asset, SS_IMAGE_UPSCALE, '/create/image-upscaler', { fallbackType: 'image/jpeg' })
+const handleUpscaleVideo = (asset) => prepareAndNavigate(asset, SS_VIDEO_UPSCALE, '/create/video-upscaler', { fallbackType: 'video/mp4' })
+
 
   // ── Extract end frame ──────────────────────────────────────────────────────
 
@@ -1004,7 +1009,9 @@ export default function AssetsPage() {
             onEditVideo={isVideoAsset(activeAsset)         ? () => handleEditVideo(activeAsset)         : undefined}
             onLipsyncVideo={isVideoAsset(activeAsset)      ? () => handleLipsyncVideo(activeAsset)      : undefined}
             onSetVideoForMotion={isVideoAsset(activeAsset) ? () => handleSetVideoForMotion(activeAsset) : undefined}
-            onExtractEndFrame={isVideoAsset(activeAsset)   ? () => handleExtractEndFrame(activeAsset)   : undefined}
+            onUpscaleImage={!isVideoAsset(activeAsset) ? () => handleUpscaleImage(activeAsset) : undefined}
+onUpscaleVideo={isVideoAsset(activeAsset)  ? () => handleUpscaleVideo(activeAsset)  : undefined}
+onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -1074,6 +1081,7 @@ function AssetActionSheet({
   asset, isMaster, onClose, onRename, onDownload, onDelete,
   onPolish, onEditImage, onAnimate, onLipsyncImage, onSetToMotion,
   onEditVideo, onLipsyncVideo, onSetVideoForMotion, onExtractEndFrame,
+  onUpscaleImage, onUpscaleVideo,
 }) {
   const isVideo = isVideoAsset(asset)
 
@@ -1082,6 +1090,7 @@ function AssetActionSheet({
     { icon: Download, label: 'Download', onClick: onDownload },
     ...(!isVideo ? [
       { icon: Sparkles,     label: 'Polish',        sub: 'AI photo enhancement',    onClick: onPolish       },
+      { icon: Maximize,     label: 'Upscale',       sub: 'Enlarge and sharpen with AI', onClick: onUpscaleImage },
       { icon: Wand2,        label: 'Edit',          sub: 'Use as reference image',  onClick: onEditImage    },
       { icon: Film,         label: 'Animate',       sub: 'Send to video generator', onClick: onAnimate      },
       { icon: Mic2,         label: 'Lipsync',       sub: 'Create talking avatar',   onClick: onLipsyncImage },
@@ -1092,6 +1101,7 @@ function AssetActionSheet({
       { icon: Mic2,         label: 'Lipsync',           sub: 'Re-animate with audio',                                                                         onClick: onLipsyncVideo      },
       { icon: Clapperboard, label: 'Set for Motion',    sub: 'Use as motion reference in Copy Motion',                                                        onClick: onSetVideoForMotion },
       { icon: ScanLine,     label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`,   onClick: onExtractEndFrame   },
+      { icon: Maximize,     label: 'Upscale',           sub: 'Upscale to higher resolution',                                                                  onClick: onUpscaleVideo      },
     ] : []),
     { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
   ]
