@@ -471,7 +471,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
   const [script,        setScript]        = useState(null)
   const { playing, loading, play } = useAudioPreview()
 
-  const canClone  = credits >= VOICE_CREDITS.CLONE
+  const canClone  = credits >= 100
   const hasAudio  = cloneMode === 'record' ? !!recordedFile : cloneFiles.length > 0
   const canSubmit = canClone && cloneName.trim() && hasAudio && !cloning
 
@@ -543,7 +543,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
       })
       if (error || !data?.voice_id) throw new Error(error?.message || 'Clone failed')
       const { data: deduct } = await supabase.rpc('deduct_credits', {
-        p_user_id: userId, p_amount: VOICE_CREDITS.CLONE, p_generation_id: null,
+        p_user_id: userId, p_amount: 100, p_generation_id: null,
         p_description: 'Voice clone — ' + cloneName.trim(),
       })
       if (!deduct?.success) throw new Error('Credit deduction failed')
@@ -659,7 +659,7 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
               <div className="flex items-start gap-3 p-3 rounded-xl mb-4" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                 <Zap size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} fill="currentColor" />
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Cloning costs <strong style={{ color: ACCENT }}>800 credits</strong>. 1–3 minutes of clean audio produces the best result.
+                  Cloning costs <strong style={{ color: ACCENT }}>100 credits</strong>. 1–3 minutes of clean audio produces the best result.
                 </p>
               </div>
               <div className="mb-4">
@@ -712,9 +712,9 @@ const AddVoiceSheet = ({ onClose, onSave, userId, credits, isMaster }) => {
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
                 style={{ background: canSubmit ? ACCENT : 'var(--bg-elevated)', color: canSubmit ? '#fff' : 'var(--text-muted)' }}
               >
-                {cloning ? <><Loader2 size={15} className="animate-spin" /> Cloning…</> : <><Mic size={15} /> Clone Voice · 800 cr</>}
+                {cloning ? <><Loader2 size={15} className="animate-spin" /> Cloning…</> : <><Mic size={15} /> Clone Voice · 100 cr</>}
               </button>
-              {!canClone && <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>You need at least 800 credits to clone a voice.</p>}
+              {!canClone && <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>You need at least 100 credits to clone a voice.</p>}
             </div>
           )}
         </motion.div>
