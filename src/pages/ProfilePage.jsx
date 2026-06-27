@@ -184,6 +184,158 @@ const ReferralCard = ({ profile }) => {
   )
 }
 
+// ─── Render Window Card ───────────────────────────────────
+
+const RenderWindowCard = ({
+  hasActiveSub,
+  windowIsOpen,
+  canUseRW,
+  hoursRemaining,
+  activeSub,
+  rwPrice,
+  subscribing,
+  onSubscribe,
+  loading,
+}) => {
+  const fmtExpiry = (iso) => {
+    if (!iso) return null
+    return new Date(iso).toLocaleString('en-GB', {
+      day:    '2-digit',
+      month:  'short',
+      hour:   '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  return (
+    <div
+      className="rounded-2xl p-5 mb-3"
+      style={{
+        background: canUseRW
+          ? 'rgba(16,185,129,0.06)'
+          : hasActiveSub
+            ? 'rgba(99,102,241,0.06)'
+            : 'var(--bg-card)',
+        border: `1px solid ${
+          canUseRW
+            ? 'rgba(16,185,129,0.25)'
+            : hasActiveSub
+              ? 'rgba(99,102,241,0.2)'
+              : 'var(--border-color)'
+        }`,
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{
+            background: canUseRW ? '#10b981' : hasActiveSub ? '#6366f1' : '#888',
+            boxShadow:  canUseRW ? '0 0 6px #10b981' : 'none',
+          }}
+        />
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          Render Window
+        </p>
+        {canUseRW && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            LIVE NOW
+          </span>
+        )}
+        {hasActiveSub && !windowIsOpen && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+            style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
+          >
+            SUB ACTIVE
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="h-8 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+      ) : hasActiveSub ? (
+        <>
+          {/* Active subscription state */}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-sm font-black" style={{ color: canUseRW ? '#10b981' : 'var(--text-primary)' }}>
+                {canUseRW ? '🪟 Access Active' : '🕐 Waiting for Window'}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {canUseRW
+                  ? `Use premium GPU models for free right now`
+                  : `Your subscription is active — window is currently closed`}
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="rounded-xl px-3 py-2.5 flex items-center justify-between"
+            style={{
+              background: 'var(--bg-elevated)',
+              border:     '1px solid var(--border-color)',
+            }}
+          >
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Access expires</p>
+              <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
+                {fmtExpiry(activeSub?.expires_at)} · {hoursRemaining}h remaining
+              </p>
+            </div>
+          </div>
+
+          {!windowIsOpen && (
+            <p className="text-xs mt-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              A render window must be open to use premium GPU models. Check back during the next scheduled session.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          {/* No subscription state */}
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Get 24-hour access to premium self-hosted GPU models — free to use during open render windows.
+          </p>
+
+          <div className="flex flex-col gap-2 mb-4">
+            {[
+              { icon: '🎬', text: 'Access to exclusive GPU-powered models' },
+              { icon: '⚡', text: 'Zero credits charged during open windows' },
+              { icon: '🕐', text: '24-hour access from time of purchase' },
+              { icon: '📅', text: 'Use across any open windows within your 24hrs' },
+            ].map(({ icon, text }) => (
+              <div key={text} className="flex items-start gap-2.5">
+                <span style={{ fontSize: 13, lineHeight: '18px', flexShrink: 0 }}>{icon}</span>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={onSubscribe}
+            disabled={subscribing}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+            style={{
+              background: subscribing ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.12)',
+              color:      '#818cf8',
+              border:     '1px solid rgba(99,102,241,0.3)',
+              opacity:    subscribing ? 0.7 : 1,
+            }}
+          >
+            🪟 {subscribing
+              ? 'Opening…'
+              : `Get Render Window Access · ₦${rwPrice != null ? Number(rwPrice).toLocaleString() : '…'}/24hr`}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Profile Page ─────────────────────────────────────────
 
 export default function ProfilePage() {
@@ -308,7 +460,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-{/* ── Tier card ── */}
+        {/* ── Tier card ── */}
         <div
           className="rounded-2xl p-5 mb-3"
           style={{
@@ -376,7 +528,7 @@ export default function ProfilePage() {
         />
 
         {/* ── Referral card ── */}
-        <ReferralCard profile={profile} />  
+        <ReferralCard profile={profile} />
 
         {/* ── Actions list ── */}
         <div
