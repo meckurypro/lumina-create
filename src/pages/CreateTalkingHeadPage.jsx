@@ -1551,13 +1551,19 @@ export default function CreateTalkingHeadPage() {
       }
 
       // ── Dispatch — edge function reads everything from the row ───────────
-      const edgeFn = selectedModel?.feature === 'lipsync'
+const edgeFn = selectedModel?.feature === 'lipsync'
         ? 'lipsync-generate'
         : 'talking-head-generate'
 
-      supabase.functions
+      const { data: invokeData, error: invokeErr } = await supabase.functions
         .invoke(edgeFn, { body: { generationId: genRow.id } })
-        .catch((e) => console.error(`${edgeFn} invoke error`, e))
+
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
+      }
 
       refreshProfile()
       toast.success('Your talking head video is being generated. Check your Media page.', { duration: 4000 })
