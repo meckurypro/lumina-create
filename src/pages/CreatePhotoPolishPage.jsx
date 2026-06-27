@@ -506,8 +506,15 @@ export default function CreatePhotoPolishPage() {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      supabase.functions.invoke('image-generate', { body: { generationId: genRow.id } })
-        .catch((e) => console.error('image-generate invoke error', e))
+const { data: invokeData, error: invokeErr } = await supabase.functions
+        .invoke('image-generate', { body: { generationId: genRow.id } })
+
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
+      }
 
       refreshProfile()
       toast.success('Polishing your photo… Check your Media page.', { duration: 4000 })
