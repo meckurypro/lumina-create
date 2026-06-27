@@ -610,7 +610,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+       <button onClick={() => navigate('/create', { state: { tab: 'utilities' } })} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
