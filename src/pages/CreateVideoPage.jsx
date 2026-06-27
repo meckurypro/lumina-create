@@ -968,8 +968,15 @@ const creditCost = useMemo(() => {
           throw new Error(deduct?.error || 'Not enough credits')
         }
 
-        supabase.functions.invoke('video-generate', { body: { generationId: genRow.id } })
-          .catch((e) => console.error('video-generate invoke error', e))
+      const { data: invokeData, error: invokeErr } = await supabase.functions
+          .invoke('video-generate', { body: { generationId: genRow.id } })
+
+        if (invokeErr || invokeData?.error) {
+          const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+          toast.error(msg)
+          await refreshProfile()
+          return
+        }
 
         refreshProfile()
         toast.success('Your edited video is being generated. Check your Media page.', { duration: 4000 })
@@ -1068,14 +1075,17 @@ const creditCost = useMemo(() => {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      // ── Invoke edge function ───────────────────────────────────────────────
+// ── Invoke edge function ───────────────────────────────────────────────
       const { data: invokeData, error: invokeErr } = await supabase.functions.invoke(
         'video-generate',
         { body: { generationId: genRow.id } }
       )
 
-      if (invokeErr) {
-        console.error('video-generate invoke error', invokeErr)
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
       }
 
       // ── Normal success path ───────────────────────────────────────────────
