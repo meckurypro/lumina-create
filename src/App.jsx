@@ -28,6 +28,8 @@ import PaymentCallbackPage      from '@/pages/PaymentCallbackPage'
 import CommunityFeedPage        from '@/pages/CommunityFeedPage'
 import CreateCopyMotionPage     from '@/pages/CreateCopyMotionPage'
 import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
+import CreateImageUpscalerPage  from '@/pages/CreateImageUpscalerPage'
+import CreateVideoUpscalerPage  from '@/pages/CreateVideoUpscalerPage'
 import ModelPreferencesPage     from '@/pages/ModelPreferencesPage'
 
 // ── UGC ──────────────────────────────────────────────────────
@@ -173,12 +175,14 @@ export default function App() {
             <Route path="/feed/community" element={<Auth><CommunityFeedPage /></Auth>} />
 
             {/* ── Create — base tools ─────────────────────────── */}
-            <Route path="/create"              element={<Auth><CreatePage /></Auth>} />
-            <Route path="/create/image"        element={<Auth><CreateImagePage /></Auth>} />
-            <Route path="/create/video"        element={<Auth><CreateVideoPage /></Auth>} />
-            <Route path="/create/copy-motion"  element={<Auth><CreateCopyMotionPage /></Auth>} />
-            <Route path="/create/talking-head" element={<Auth><CreateTalkingHeadPage /></Auth>} />
-            <Route path="/create/photo-polish" element={<Auth><CreatePhotoPolishPage /></Auth>} />
+            <Route path="/create"               element={<Auth><CreatePage /></Auth>} />
+            <Route path="/create/image"         element={<Auth><CreateImagePage /></Auth>} />
+            <Route path="/create/video"         element={<Auth><CreateVideoPage /></Auth>} />
+            <Route path="/create/copy-motion"   element={<Auth><CreateCopyMotionPage /></Auth>} />
+            <Route path="/create/talking-head"  element={<Auth><CreateTalkingHeadPage /></Auth>} />
+            <Route path="/create/photo-polish"  element={<Auth><CreatePhotoPolishPage /></Auth>} />
+            <Route path="/create/image-upscaler" element={<Auth><CreateImageUpscalerPage /></Auth>} />
+            <Route path="/create/video-upscaler" element={<Auth><CreateVideoUpscalerPage /></Auth>} />
 
             {/* ── Cinematic ───────────────────────────────────── */}
             <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
