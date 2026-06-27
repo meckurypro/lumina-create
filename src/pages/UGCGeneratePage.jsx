@@ -466,8 +466,15 @@ const { data: genRow, error: genErr } = await generationsDb.create({
       })
 
       const fn = outputType === 'image' ? 'image-generate' : 'video-generate'
-      supabase.functions.invoke(fn, { body: { generationId: genRow.id } })
-        .catch((e) => console.error(`${fn} invoke error`, e))
+      const { data: invokeData, error: invokeErr } = await supabase.functions
+        .invoke(fn, { body: { generationId: genRow.id } })
+
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
+      }
 
       refreshProfile()
       toast.success(
