@@ -392,7 +392,7 @@ export default function UGCVoiceGeneratePage() {
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
       >
         <button
-          onClick={() => navigate('/create/ugc/voices')}
+          onClick={() => navigate('/create/ugc', { state: { tab: 'voices' } })}
           className="p-2 -ml-2 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
         >
