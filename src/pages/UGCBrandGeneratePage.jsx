@@ -519,8 +519,15 @@ export default function UGCBrandGeneratePage() {
         with_sound:    outputType === 'video' ? withSound : false,
       })
 
-      supabase.functions.invoke('brand-generate', { body: { generationId: genRow.id } })
-        .catch((e) => console.error('brand-generate invoke error', e))
+  const { data: invokeData, error: invokeErr } = await supabase.functions
+        .invoke('brand-generate', { body: { generationId: genRow.id } })
+
+      if (invokeErr || invokeData?.error) {
+        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        toast.error(msg)
+        await refreshProfile()
+        return
+      }
 
       refreshProfile()
       toast.success(
