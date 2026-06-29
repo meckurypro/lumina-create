@@ -1115,7 +1115,7 @@ const creditCost = useMemo(() => {
     || (caps.requiresImage && !multiMode && !activeStartFrame)
     || (caps.requiresImage &&  multiMode && refImages.length === 0)
     || (caps.requiresVideo && !caps.isVideoEdit && !editVideo)
-    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit)
+    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit && !selectedModel?.is_render_window)
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
