@@ -233,30 +233,21 @@ const TierAdjuster = ({ user, onClose, onUpdated }) => {
 // ─── RW Granter ──────────────────────────────────────────
 
 const RWGranter = ({ user, onClose }) => {
+  const { user: admin } = useAuth()
   const [saving, setSaving] = useState(false)
 
   const handleGrant = async () => {
     setSaving(true)
-    const expiresAt = new Date()
-    expiresAt.setHours(expiresAt.getHours() + 24)
 
-    const { error } = await supabase
-      .from('render_window_subscriptions')
-      .insert({
-        user_id:           user.id,
-        payment_reference: `admin_grant_${user.id}_${Date.now()}`,
-        amount_ngn:        0,
-        paid_at:           new Date().toISOString(),
-        expires_at:        expiresAt.toISOString(),
-        status:            'active',
-      })
+    const { data, error } = await supabase.rpc('admin_grant_render_window', {
+      p_admin_id: admin.id,
+      p_user_id:  user.id,
+    })
 
     setSaving(false)
 
-    if (error) {
-      toast.error(`Failed: ${error.message}`)
-      return
-    }
+    if (error) { toast.error(`Failed: ${error.message}`); return }
+    if (!data?.success) { toast.error(`Failed: ${data?.error || 'Unknown error'}`); return }
 
     toast.success(`Render Window access granted to @${user.username} for 24hrs`)
     onClose()
