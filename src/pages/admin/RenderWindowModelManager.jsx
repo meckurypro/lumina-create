@@ -575,9 +575,10 @@ export default function RenderWindowModelManager() {
     setLoading(true)
     const [modelsRes, endpointRes] = await Promise.all([
       supabase
-        .from('models')
-        .select('*')
-        .order('label'),
+  .from('models')
+  .select('*')
+  .eq('is_render_window', true)
+  .order('label'),
       supabase
         .from('app_settings')
         .select('value')
