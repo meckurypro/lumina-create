@@ -230,6 +230,94 @@ const TierAdjuster = ({ user, onClose, onUpdated }) => {
   )
 }
 
+// ─── RW Granter ──────────────────────────────────────────
+
+const RWGranter = ({ user, onClose }) => {
+  const [saving, setSaving] = useState(false)
+
+  const handleGrant = async () => {
+    setSaving(true)
+    const expiresAt = new Date()
+    expiresAt.setHours(expiresAt.getHours() + 24)
+
+    const { error } = await supabase
+      .from('render_window_subscriptions')
+      .insert({
+        user_id:           user.id,
+        payment_reference: `admin_grant_${user.id}_${Date.now()}`,
+        amount_ngn:        0,
+        paid_at:           new Date().toISOString(),
+        expires_at:        expiresAt.toISOString(),
+        status:            'active',
+      })
+
+    setSaving(false)
+
+    if (error) {
+      toast.error(`Failed: ${error.message}`)
+      return
+    }
+
+    toast.success(`Render Window access granted to @${user.username} for 24hrs`)
+    onClose()
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex flex-col justify-end"
+      style={{ background: 'rgba(0,0,0,0.7)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+        className="rounded-t-3xl p-6 flex flex-col gap-4"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Grant Render Window</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              @{user.username} · 24hr free access to RW models
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-4"
+          style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}
+        >
+          <p className="text-xs font-bold mb-1" style={{ color: '#818cf8' }}>What this does</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            Inserts an active subscription row with ₦0 and expires in 24 hours.
+            The user will be able to use render window models for free whenever a window is open — no payment required.
+          </p>
+        </div>
+
+        <button
+          onClick={handleGrant}
+          disabled={saving}
+          className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all"
+          style={{
+            background: saving ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.12)',
+            color:      '#818cf8',
+            border:     '1px solid rgba(99,102,241,0.3)',
+            opacity:    saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? 'Granting…' : '🪟 Grant 24hr Render Window Access'}
+        </button>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ─── User Detail Sheet ────────────────────────────────────
 
 const SPEND_WINDOWS = [
@@ -248,7 +336,7 @@ const StatCard = ({ icon: Icon, label, value, accent }) => (
   </div>
 )
 
-const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
+const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onGrantRW, onUpdated }) => {
   const [email,        setEmail]        = useState(null)
   const [emailLoading, setEmailLoading] = useState(true)
   const [spend,        setSpend]        = useState({})
@@ -456,12 +544,19 @@ const UserDetailSheet = ({ user, onClose, onAdjust, onSetTier, onUpdated }) => {
             <button onClick={handleAdjustFromDetail}
               className="flex-1 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
               style={{ background: 'rgba(249,115,22,0.1)', color: 'var(--brand)' }}>
-              <Zap size={14} fill="var(--brand)" /> Adjust Credits
+              <Zap size={14} fill="var(--brand)" /> Credits
             </button>
             <button onClick={handleTierFromDetail}
               className="flex-1 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
               style={{ background: isMaster ? 'rgba(245,158,11,0.1)' : 'var(--bg-elevated)', color: isMaster ? '#f59e0b' : 'var(--text-muted)' }}>
-              <Star size={14} /> {isMaster ? 'Change Tier' : 'Make Master'}
+              <Star size={14} /> {isMaster ? 'Tier' : 'Master'}
+            </button>
+            <button
+              onClick={() => { onClose(); setTimeout(() => onGrantRW(user), 200) }}
+              className="flex-1 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
+              style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}
+            >
+              🪟 RW
             </button>
           </div>
         </div>
@@ -537,6 +632,7 @@ export default function UsersManager() {
   const [selectedUser,  setSelectedUser]  = useState(null)
   const [adjustingUser, setAdjustingUser] = useState(null)
   const [tierUser,      setTierUser]      = useState(null)
+  const [rwUser,        setRwUser]        = useState(null)
   const debounceRef                       = useRef(null)
 
   useEffect(() => {
@@ -650,6 +746,7 @@ export default function UsersManager() {
             onClose={() => setSelectedUser(null)}
             onAdjust={setAdjustingUser}
             onSetTier={setTierUser}
+            onGrantRW={setRwUser}
             onUpdated={handleCreditUpdated}
           />
         )}
@@ -668,6 +765,12 @@ export default function UsersManager() {
             user={tierUser}
             onClose={() => setTierUser(null)}
             onUpdated={handleTierUpdated}
+          />
+        )}
+        {rwUser && (
+          <RWGranter
+            user={rwUser}
+            onClose={() => setRwUser(null)}
           />
         )}
       </AnimatePresence>
