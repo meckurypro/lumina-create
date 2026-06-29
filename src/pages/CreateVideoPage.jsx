@@ -4,10 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, X, ImagePlus, Plus, Maximize2,
   Film, AlertCircle, RefreshCw, CheckCircle2, Scissors, Lock,
-  } from 'lucide-react'
+  Mic, Library, Play, Pause, Loader2, ChevronDown,
+} from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
+import { ugcAudioChunks } from '@/lib/ugcVoices'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
@@ -24,7 +26,7 @@ const SS_REF_IMAGES  = 'meckury_video_ref_images'
 const SS_OMNI_REF    = 'meckury_video_omni_ref'
 
 // TH page keys — must match CreateTalkingHeadPage exactly
-const TH_SS_SUBJECT_IMG  = 'meckury_th_subject_img'
+const TH_SS_SUBJECT_IMG     = 'meckury_th_subject_img'
 const TH_SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ function getModelCaps(model) {
     supportedDurations:    ['5', '8', '10'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
     supportsSound:         false,
+    requiresAudio:         false,
   }
   return {
     supportsStartFrame:    model.supports_start_frame    ?? true,
@@ -66,6 +69,7 @@ function getModelCaps(model) {
     requiresEndFrame:      model.requires_end_frame      ?? false,
     requiresImage:         model.requires_image          ?? false,
     requiresVideo:         model.requires_video          ?? false,
+    requiresAudio:         model.requires_audio          ?? false,
   }
 }
 
@@ -205,6 +209,476 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
 
   onProgress?.(100)
   return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIO UTILITIES  (lifted verbatim from CreateTalkingHeadPage)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function audioBufferToWav(buffer) {
+  const numChannels    = buffer.numberOfChannels
+  const sampleRate     = buffer.sampleRate
+  const numSamples     = buffer.length
+  const bytesPerSample = 2
+  const dataSize       = numSamples * numChannels * bytesPerSample
+  const ab             = new ArrayBuffer(44 + dataSize)
+  const view           = new DataView(ab)
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)) }
+  ws(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); ws(8, 'WAVE')
+  ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true)
+  view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
+  view.setUint16(32, numChannels * bytesPerSample, true); view.setUint16(34, 16, true)
+  ws(36, 'data'); view.setUint32(40, dataSize, true)
+  let offset = 44
+  for (let i = 0; i < numSamples; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]))
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+      offset += 2
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' })
+}
+
+async function decodeBlob(blob) {
+  const ctx = new AudioContext()
+  const ab  = await blob.arrayBuffer()
+  return ctx.decodeAudioData(ab)
+}
+
+function getAudioDuration(fileOrBlob) {
+  return new Promise((resolve, reject) => {
+    const url   = URL.createObjectURL(fileOrBlob)
+    const audio = new Audio()
+    audio.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(audio.duration) }
+    audio.onerror          = () => { URL.revokeObjectURL(url); reject(new Error('Could not read audio duration')) }
+    audio.src = url
+  })
+}
+
+async function trimAudioToLimit(blob, maxSeconds, startTime = 0) {
+  const buffer      = await decodeBlob(blob)
+  const startSample = Math.floor(startTime * buffer.sampleRate)
+  const maxSamples  = Math.floor(maxSeconds * buffer.sampleRate)
+  const endSample   = Math.min(startSample + maxSamples, buffer.length)
+  const trimSamples = endSample - startSample
+
+  if (startSample === 0 && buffer.length <= maxSamples) return blob
+
+  const ctx = new OfflineAudioContext(buffer.numberOfChannels, trimSamples, buffer.sampleRate)
+  const src = ctx.createBufferSource()
+  src.buffer = buffer
+  src.connect(ctx.destination)
+  src.start(0, startTime, maxSeconds)
+  const trimmed = await ctx.startRendering()
+  return audioBufferToWav(trimmed)
+}
+
+async function concatenateAudioBlobs(blobs) {
+  if (blobs.length === 1) {
+    const buf = await decodeBlob(blobs[0])
+    return audioBufferToWav(buf)
+  }
+  const buffers    = await Promise.all(blobs.map(decodeBlob))
+  const sampleRate = buffers[0].sampleRate
+  const numCh      = buffers[0].numberOfChannels
+  const totalLen   = buffers.reduce((acc, b) => acc + b.length, 0)
+  const ctx        = new OfflineAudioContext(numCh, totalLen, sampleRate)
+  let   offset     = 0
+  for (const buf of buffers) {
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(ctx.destination)
+    src.start(offset / sampleRate)
+    offset += buf.length
+  }
+  const rendered = await ctx.startRendering()
+  return audioBufferToWav(rendered)
+}
+
+function totalSlotDuration(slots) {
+  return slots.filter(Boolean).reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0)
+}
+
+// ─── shared audio ref (stops playback when picker unmounts) ───────────────────
+const sharedPickerAudio = { ref: null }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIO SOURCE PICKER  (lifted verbatim from CreateTalkingHeadPage)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slotIndex }) {
+  const [mode,          setMode]          = useState(null)
+  const [generations,   setGens]          = useState([])
+  const [loadingList,   setLoadingList]   = useState(false)
+  const [playing,       setPlaying]       = useState(null)
+  const [expandedId,    setExpandedId]    = useState(null)
+  const [chunksMap,     setChunksMap]     = useState({})
+  const [loadingChunks, setLoadingChunks] = useState(null)
+
+  const fmtS = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
+
+  const openPicker = async () => {
+    setMode('pick')
+    setLoadingList(true)
+    const { data, error } = await supabase
+      .from('ugc_audio_generations')
+      .select('id, script, duration_seconds, output_url, created_at, chunk_count, voice:ugc_voices(name)')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (!error) setGens(data || [])
+    setLoadingList(false)
+  }
+
+  const stopAudio = () => {
+    if (sharedPickerAudio.ref) { sharedPickerAudio.ref.pause(); sharedPickerAudio.ref = null }
+    setPlaying(null)
+  }
+
+  const togglePlay = (id, url) => {
+    if (playing === id) { stopAudio(); return }
+    stopAudio()
+    if (!url) return
+    const audio = new Audio(url)
+    audio.onended = () => setPlaying(null)
+    audio.play()
+    sharedPickerAudio.ref = audio
+    setPlaying(id)
+  }
+
+  const handleExpand = async (gen) => {
+    if (expandedId === gen.id) { stopAudio(); setExpandedId(null); return }
+    stopAudio(); setExpandedId(gen.id)
+    if (chunksMap[gen.id]) return
+    if (!gen.chunk_count || gen.chunk_count === 0) { setChunksMap((p) => ({ ...p, [gen.id]: [] })); return }
+    setLoadingChunks(gen.id)
+    const { data, error } = await ugcAudioChunks.getByGeneration(gen.id)
+    setChunksMap((p) => ({ ...p, [gen.id]: error ? [] : (data || []) }))
+    setLoadingChunks(null)
+  }
+
+  const handleImportChunk = (gen, chunk) => {
+    const chunkDur = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+    stopAudio()
+    onImport({
+      output_url:       chunk.public_url,
+      name:             chunk.label,
+      voice:            gen.voice,
+      duration_seconds: chunkDur ?? maxDurationS,
+      fromChunk:        true,
+      chunkLabel:       chunk.label,
+    })
+  }
+
+  const handleImportFull = (gen) => { stopAudio(); onImport(gen) }
+
+  if (mode === null) {
+    return (
+      <div className="flex gap-2">
+        <label
+          className="flex-1 flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all gap-1.5 py-5"
+          style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
+          <input type="file" accept="audio/*" className="hidden" onChange={onAudioUpload} />
+          <Mic size={20} style={{ color: ACCENT }} />
+          <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload file</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Auto-trimmed to fit</span>
+        </label>
+        <button
+          onClick={openPicker}
+          className="flex-1 flex flex-col items-center justify-center rounded-2xl transition-all gap-1.5 py-5"
+          style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
+          <Library size={20} style={{ color: ACCENT }} />
+          <span className="text-xs font-semibold" style={{ color: ACCENT }}>My generations</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Browse &amp; import</span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-elevated)' }}>
+      <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>My Generated Audio</span>
+        <button onClick={() => { stopAudio(); setMode(null) }} className="p-1 rounded-lg" style={{ color: 'var(--text-muted)' }}>
+          <X size={13} />
+        </button>
+      </div>
+      <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
+        {loadingList ? (
+          <div className="flex justify-center py-8">
+            <Loader2 size={18} style={{ color: ACCENT }} className="animate-spin" />
+          </div>
+        ) : generations.length === 0 ? (
+          <p className="text-xs text-center py-8" style={{ color: 'var(--text-muted)' }}>No generated audio yet</p>
+        ) : generations.map((gen) => {
+          const dur        = gen.duration_seconds ? `${Math.round(gen.duration_seconds)}s` : '—'
+          const date       = new Date(gen.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+          const snippet    = gen.script?.length > 55 ? gen.script.slice(0, 55) + '…' : gen.script
+          const isExpanded = expandedId === gen.id
+          const chunks     = chunksMap[gen.id] || []
+          const hasChunks  = gen.chunk_count > 0
+          const willTrim   = gen.duration_seconds != null && gen.duration_seconds > maxDurationS + 0.25
+
+          return (
+            <div key={gen.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+                <button
+                  onClick={() => togglePlay(gen.id, gen.output_url)}
+                  disabled={!gen.output_url}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+                  style={{ background: playing === gen.id ? ACCENT : ACCENT_SUB, opacity: gen.output_url ? 1 : 0.3 }}>
+                  {playing === gen.id
+                    ? <Pause size={13} style={{ color: '#fff'  }} fill="currentColor" />
+                    : <Play  size={13} style={{ color: ACCENT }} fill="currentColor" />}
+                </button>
+                <button className="flex-1 min-w-0 text-left" onClick={() => hasChunks && handleExpand(gen)}>
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{snippet}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {gen.voice?.name ?? 'Voice'} · {dur}{hasChunks ? ` · ${gen.chunk_count} parts` : ''} · {date}
+                  </p>
+                  {willTrim && !hasChunks && (
+                    <p className="text-xs mt-0.5 font-semibold" style={{ color: '#f59e0b' }}>
+                      Will trim to {fmtS(maxDurationS)}
+                    </p>
+                  )}
+                </button>
+                {hasChunks ? (
+                  <button
+                    onClick={() => handleExpand(gen)}
+                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    style={{ background: isExpanded ? ACCENT : ACCENT_SUB, color: isExpanded ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                    <ChevronDown size={12} style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                    Parts
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleImportFull(gen)}
+                    className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    style={{ background: ACCENT, color: '#fff' }}>
+                    {willTrim ? 'Import & trim' : 'Use'}
+                  </button>
+                )}
+              </div>
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}>
+                    <div className="px-3 pb-2 pt-1 flex flex-col gap-1.5"
+                      style={{ borderTop: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+                      {loadingChunks === gen.id ? (
+                        <div className="flex justify-center py-3">
+                          <Loader2 size={15} style={{ color: ACCENT }} className="animate-spin" />
+                        </div>
+                      ) : chunks.length === 0 ? (
+                        <div className="flex items-center justify-between py-2">
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Parts not ready — use full audio</p>
+                          <button onClick={() => handleImportFull(gen)}
+                            className="flex-shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
+                            style={{ background: ACCENT, color: '#fff' }}>
+                            Use full
+                          </button>
+                        </div>
+                      ) : chunks.map((chunk) => {
+                        const chunkDur    = chunk.duration_ms ? chunk.duration_ms / 1000 : null
+                        const chunkDurStr = chunkDur != null ? `${chunkDur.toFixed(1)}s` : '—'
+                        const willTrimCk  = chunkDur != null && chunkDur > maxDurationS + 0.25
+                        const isPlayingCk = playing === chunk.id
+                        return (
+                          <div key={chunk.id} className="flex items-center gap-2 py-1.5 px-2 rounded-xl"
+                            style={{ background: 'var(--bg-elevated)' }}>
+                            <button onClick={() => togglePlay(chunk.id, chunk.public_url)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+                              style={{ background: isPlayingCk ? ACCENT : ACCENT_SUB }}>
+                              {isPlayingCk
+                                ? <Pause size={11} style={{ color: '#fff'  }} fill="currentColor" />
+                                : <Play  size={11} style={{ color: ACCENT }} fill="currentColor" />}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{chunk.label}</p>
+                              <p className="text-xs" style={{ color: willTrimCk ? '#f59e0b' : 'var(--text-muted)' }}>
+                                {chunkDurStr}{willTrimCk ? ` · will trim to ${fmtS(maxDurationS)}` : ''}
+                              </p>
+                            </div>
+                            <button onClick={() => handleImportChunk(gen, chunk)}
+                              className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95"
+                              style={{ background: ACCENT, color: '#fff' }}>
+                              {willTrimCk ? 'Import & trim' : 'Use'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAINED AUDIO PLAYER  (lifted verbatim from CreateTalkingHeadPage)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
+  const [playing,  setPlaying]  = useState(false)
+  const [progress, setProgress] = useState(0)
+  const audioRef   = useRef(null)
+  const blobUrlRef = useRef(null)
+  const rafRef     = useRef(null)
+
+  const filledSlots = audioSlots.filter(Boolean)
+  const totalDur    = filledSlots.reduce((a, s) => a + (s.duration_seconds ?? 0), 0)
+  const fmtTime     = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+  const fmtS        = (s) => Number.isFinite(s) ? (s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`) : '—'
+
+  const buildChain = useCallback(async () => {
+    const blobs = await Promise.all(
+      filledSlots.map(async (slot) => {
+        let blob = slot.file
+          ? slot.file
+          : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
+        if (slot._needsTrim && slot._trimToSeconds > 0) {
+          blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
+        }
+        return blob
+      })
+    )
+    if (blobs.length === 1) return URL.createObjectURL(blobs[0])
+    const combined = await concatenateAudioBlobs(blobs)
+    return URL.createObjectURL(combined)
+  }, [filledSlots.map((s) => `${s.url}|${s._trimStartTime ?? 0}|${s._trimToSeconds ?? 0}`).join('|')]) // eslint-disable-line
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current)     cancelAnimationFrame(rafRef.current)
+      if (audioRef.current)   { audioRef.current.pause(); audioRef.current = null }
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (audioRef.current)   { audioRef.current.pause(); audioRef.current = null }
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
+    if (rafRef.current)     cancelAnimationFrame(rafRef.current)
+    setPlaying(false); setProgress(0)
+  }, [filledSlots.length])
+
+  const tickProgress = () => {
+    const a = audioRef.current
+    if (!a || a.paused) return
+    setProgress(a.duration ? a.currentTime / a.duration : 0)
+    rafRef.current = requestAnimationFrame(tickProgress)
+  }
+
+  const handlePlayPause = async () => {
+    if (playing) { audioRef.current?.pause(); setPlaying(false); return }
+    try {
+      if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null }
+      blobUrlRef.current = await buildChain()
+      if (!audioRef.current) {
+        const a = new Audio(blobUrlRef.current)
+        a.onended = () => { setPlaying(false); setProgress(0) }
+        audioRef.current = a
+      } else {
+        audioRef.current.src = blobUrlRef.current
+      }
+      await audioRef.current.play()
+      setPlaying(true)
+      rafRef.current = requestAnimationFrame(tickProgress)
+    } catch (err) {
+      toast.error('Could not play audio'); console.error(err)
+    }
+  }
+
+  const handleSeek = (e) => {
+    const a = audioRef.current
+    if (!a || !a.duration) return
+    const rect  = e.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    a.currentTime = ratio * a.duration
+    setProgress(ratio)
+  }
+
+  if (filledSlots.length === 0) return null
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
+      className="flex flex-col gap-2 p-3 rounded-2xl"
+      style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+      <div className="flex items-center gap-3">
+        <button onClick={handlePlayPause}
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+          style={{ background: ACCENT }}>
+          {playing
+            ? <Pause size={14} style={{ color: '#fff' }} fill="currentColor" />
+            : <Play  size={14} style={{ color: '#fff' }} fill="currentColor" />}
+        </button>
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          <div className="relative h-1.5 rounded-full cursor-pointer" style={{ background: 'var(--bg-card)' }}
+            onClick={handleSeek}>
+            <div className="absolute inset-y-0 left-0 rounded-full transition-all"
+              style={{ width: `${progress * 100}%`, background: ACCENT }} />
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {filledSlots.length} part{filledSlots.length > 1 ? 's' : ''} chained
+            </span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTime(totalDur)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {audioSlots.map((slot, i) => slot && (
+          <div key={i} className="flex flex-col gap-1 px-2 py-1.5 rounded-xl" style={{ background: 'var(--bg-card)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold flex-shrink-0 w-5 text-center" style={{ color: ACCENT }}>{i + 1}</span>
+              <p className="text-xs flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+                {slot.fromChunk ? slot.chunkLabel : slot.name}
+              </p>
+              <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                {slot.duration_seconds != null ? `${slot.duration_seconds.toFixed(1)}s` : '—'}
+              </span>
+              <button onClick={() => onSlotClear(i)}
+                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                <X size={10} />
+              </button>
+            </div>
+            {slot._needsTrim && slot._rawDuration != null && slot._trimToSeconds != null && (
+              <div className="flex flex-col gap-1 pt-1" style={{ borderTop: '1px solid var(--border-color)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <Scissors size={9} style={{ display: 'inline', marginRight: 3 }} />
+                    Start from
+                  </span>
+                  <span className="text-xs font-bold" style={{ color: ACCENT }}>
+                    {fmtS(slot._trimStartTime ?? 0)} → {fmtS((slot._trimStartTime ?? 0) + slot._trimToSeconds)}
+                  </span>
+                </div>
+                <input type="range" min={0} max={Math.max(0, slot._rawDuration - slot._trimToSeconds)}
+                  step={0.1} value={slot._trimStartTime ?? 0}
+                  onChange={(e) => onSlotStartChange(i, Number(e.target.value))}
+                  className="w-full" style={{ accentColor: ACCENT }} />
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Source is {fmtS(slot._rawDuration)} — drag to pick which {fmtS(slot._trimToSeconds)} to keep
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  )
 }
 
 // ─── compat badge ─────────────────────────────────────────────────────────────
@@ -528,10 +1002,13 @@ export default function CreateVideoPage() {
   // ── omni ref ──────────────────────────────────────────────────────────────
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
 
+  // ── audio state ───────────────────────────────────────────────────────────
+  const [audioSlots, setAudioSlots] = useState([])
+  const [audioUrl,   setAudioUrl]   = useState(null)
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // ── session restore ───────────────────────────────────────────────────────
-  // ── cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try {
@@ -595,10 +1072,10 @@ export default function CreateVideoPage() {
     } catch {}
   }, [prompt])
 
-const persistRefImages = (imgs) => {
-  // No-op: ref images are not persisted to avoid sessionStorage quota exhaustion.
-  // The base64 approach filled the 5MB limit and caused generation failures.
-}
+  const persistRefImages = (_imgs) => {
+    // No-op: ref images are not persisted to avoid sessionStorage quota exhaustion.
+  }
+
   // ── load models ───────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -642,13 +1119,16 @@ const persistRefImages = (imgs) => {
   const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
 
-useEffect(() => {
+  useEffect(() => {
     if (!caps.supportsMultiImage || caps.requiresEndFrame) {
       setMultiMode(false); setRefImages([])
       try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
     }
     if (!caps.isVideoEdit) {
       setEditVideo(null); setTrimTarget(null); setTrimStart(0); setConvertedSettings(null)
+    }
+    if (!caps.requiresAudio) {
+      setAudioSlots([])
     }
   }, [model]) // eslint-disable-line
 
@@ -705,35 +1185,34 @@ useEffect(() => {
   const type   = multiMode && refImages.length > 0 ? 'image_to_video' : deriveVideoType(activeStartFrame, activeEndFrame)
   const isI2V  = multiMode ? refImages.length > 0 : !!(activeStartFrame || activeEndFrame)
 
-// CreateVideoPage.jsx — replace the creditCost useMemo
-const creditCost = useMemo(() => {
-  if (!selectedModel) return 0
-  if (caps.isVideoEdit) {
-    const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
-    return billable * VIDEO_EDIT_CPS
-  }
-  const isFlatRate = selectedModel?.is_flat_rate ?? false
-  if (isFlatRate) {
-    return isI2V
+  const creditCost = useMemo(() => {
+    if (!selectedModel) return 0
+    if (caps.isVideoEdit) {
+      const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
+      return billable * VIDEO_EDIT_CPS
+    }
+    const isFlatRate = selectedModel?.is_flat_rate ?? false
+    if (isFlatRate) {
+      return isI2V
+        ? (selectedModel.credit_cost_i2i || 0)
+        : (selectedModel.credit_cost_t2i || 0)
+    }
+    const dur = parseInt(duration || '5', 10)
+    if (selectedModel.credit_cost_per_second) {
+      const billable = Math.max(dur, selectedModel.min_billable_seconds ?? 1)
+      const base = Math.ceil(selectedModel.credit_cost_per_second * billable)
+      return withSound && caps.supportsSound
+        ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
+        : base
+    }
+    const cps = isI2V
       ? (selectedModel.credit_cost_i2i || 0)
       : (selectedModel.credit_cost_t2i || 0)
-  }
-  const dur = parseInt(duration || '5', 10)
-  if (selectedModel.credit_cost_per_second) {
-    const billable = Math.max(dur, selectedModel.min_billable_seconds ?? 1)
-    const base = Math.ceil(selectedModel.credit_cost_per_second * billable)
+    const base = cps * dur
     return withSound && caps.supportsSound
       ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-      : base
-  }
-  const cps = isI2V
-    ? (selectedModel.credit_cost_i2i || 0)
-    : (selectedModel.credit_cost_t2i || 0)
-  const base = cps * dur
-  return withSound && caps.supportsSound
-    ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-    : Math.ceil(base)
-}, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
+      : Math.ceil(base)
+  }, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
@@ -759,8 +1238,6 @@ const creditCost = useMemo(() => {
       img.src = url
     }
     setter({ file, url })
-    // called after upload completes in handleGenerate, not on local file select
-// remove the persistFrame call from handleFrameUpload entirely
   }
 
   const handleRemoveFrame = (setter, ssKey, isStart) => {
@@ -879,14 +1356,58 @@ const creditCost = useMemo(() => {
     })
   }
 
-  // ── lipsync redirect handlers ─────────────────────────────────────────────
+  // ── audio slot handlers ───────────────────────────────────────────────────
+  const handleAudioSlotFill = async (slotIndex, e, imported) => {
+    const usedSoFar = totalSlotDuration(audioSlots)
+    const dur       = parseInt(duration || '5', 10)
+    const remaining = Math.max(0, dur - usedSoFar)
 
-  /**
-   * Persists the image and script to session storage so CreateTalkingHeadPage
-   * picks them up on mount, then navigates.
-   */
+    if (imported) {
+      const durS      = imported.duration_seconds ?? null
+      const needsTrim = durS !== null && durS > remaining + 0.25
+      if (needsTrim) toast(`Trimming audio to ${remaining.toFixed(1)}s.`, { icon: '✂️', duration: 3500 })
+      const filled = {
+        file: null, url: imported.output_url,
+        name: imported.name ?? imported.chunkLabel ?? 'Audio',
+        fromChunk: !!imported.fromChunk, chunkLabel: imported.chunkLabel ?? null,
+        duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
+        _needsTrim: needsTrim, _trimToSeconds: remaining, _trimStartTime: 0, _rawDuration: durS,
+      }
+      setAudioSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
+      return
+    }
+
+    const file = e?.target?.files?.[0]; if (!file) return
+    let durS = null
+    try { durS = await getAudioDuration(file) } catch {}
+    const needsTrim = durS !== null && durS > remaining + 0.25
+    if (needsTrim) toast(`Audio trimmed to ${remaining.toFixed(1)}s.`, { icon: '✂️', duration: 3500 })
+    const filled = {
+      file, url: URL.createObjectURL(file), name: file.name,
+      fromChunk: false, duration_seconds: durS !== null ? Math.min(durS, remaining) : remaining,
+      _needsTrim: needsTrim, _trimToSeconds: remaining, _trimStartTime: 0, _rawDuration: durS,
+    }
+    setAudioSlots((prev) => { const next = [...prev]; next[slotIndex] = filled; return next })
+  }
+
+  const handleAudioSlotClear = (slotIndex) => {
+    setAudioSlots((prev) => {
+      const next = [...prev]; next[slotIndex] = null
+      while (next.length > 0 && !next[next.length - 1]) next.pop()
+      return next
+    })
+  }
+
+  const handleAudioSlotStartChange = (slotIndex, startTime) => {
+    setAudioSlots((prev) => {
+      const next = [...prev]; if (!next[slotIndex]) return prev
+      next[slotIndex] = { ...next[slotIndex], _trimStartTime: startTime }
+      return next
+    })
+  }
+
+  // ── lipsync redirect ──────────────────────────────────────────────────────
   const handleLipsyncRedirect = useCallback(({ extractedSpeech, startFrameFile, startFrameUrl }) => {
-    // Persist face image
     if (startFrameFile) {
       try {
         const reader = new FileReader()
@@ -908,7 +1429,6 @@ const creditCost = useMemo(() => {
       } catch {}
     }
 
-    // Persist lipsync prefill (script + model hint)
     try {
       sessionStorage.setItem(TH_SS_LIPSYNC_PREFILL, JSON.stringify({
         script:    extractedSpeech ?? '',
@@ -919,6 +1439,37 @@ const creditCost = useMemo(() => {
 
     navigate('/create/talking-head')
   }, [navigate])
+
+  // ── audio upload to storage ───────────────────────────────────────────────
+  const uploadAudioToStorage = async (fileOrBlob, name = 'audio.wav') => {
+    const ext  = name.split('.').pop()?.toLowerCase() || 'wav'
+    const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+    const { data, error } = await supabase.storage
+      .from('generation-uploads')
+      .upload(path, fileOrBlob, { upsert: false, cacheControl: '3600', contentType: fileOrBlob.type || 'audio/wav' })
+    if (error) throw new Error(`Audio upload failed: ${error.message}`)
+    const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(data.path)
+    return publicUrl
+  }
+
+  const buildAudioUrl = async (slots) => {
+    const filled = slots.filter(Boolean)
+    if (filled.length === 0) return null
+    const blobs = await Promise.all(
+      filled.map(async (slot) => {
+        let blob = slot.file
+          ? slot.file
+          : await fetch(slot.url).then((r) => { if (!r.ok) throw new Error('fetch failed'); return r.blob() })
+        if (slot._needsTrim && slot._trimToSeconds > 0)
+          blob = await trimAudioToLimit(blob, slot._trimToSeconds, slot._trimStartTime ?? 0)
+        return blob
+      })
+    )
+    if (blobs.length === 1 && filled[0].file && !filled[0]._needsTrim)
+      return uploadAudioToStorage(filled[0].file, filled[0].name)
+    const combined = blobs.length === 1 ? blobs[0] : await concatenateAudioBlobs(blobs)
+    return uploadAudioToStorage(combined, 'combined.wav')
+  }
 
   // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
@@ -968,7 +1519,7 @@ const creditCost = useMemo(() => {
           throw new Error(deduct?.error || 'Not enough credits')
         }
 
-      const { data: invokeData, error: invokeErr } = await supabase.functions
+        const { data: invokeData, error: invokeErr } = await supabase.functions
           .invoke('video-generate', { body: { generationId: genRow.id } })
 
         if (invokeErr || invokeData?.error) {
@@ -1030,10 +1581,7 @@ const creditCost = useMemo(() => {
         }
       }
 
-      // ── Lipsync pre-check before creating any row ─────────────────────────
-      // Only runs for image_to_video with an image. Sends just the prompt to
-      // a lightweight check endpoint. If lipsync is detected, navigate without
-      // ever creating a row or charging credits.
+      // ── Lipsync pre-check ─────────────────────────────────────────────────
       if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
         const { data: checkData } = await supabase.functions.invoke(
           'video-generate',
@@ -1050,7 +1598,21 @@ const creditCost = useMemo(() => {
         }
       }
 
-      // ── Create row + charge credits (lipsync check passed) ────────────────
+      // ── Resolve audio for models that require it ──────────────────────────
+      let resolvedAudioUrl = null
+      if (caps.requiresAudio) {
+        if (audioSlots.filter(Boolean).length === 0) {
+          setPhase(null)
+          return toast.error('Add an audio track before generating.')
+        }
+        resolvedAudioUrl = await buildAudioUrl(audioSlots)
+        if (!resolvedAudioUrl) {
+          setPhase(null)
+          return toast.error('Audio upload failed — please try again.')
+        }
+      }
+
+      // ── Create row + charge credits ───────────────────────────────────────
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        type,
@@ -1066,6 +1628,7 @@ const creditCost = useMemo(() => {
         input_image_urls:       uploadedRefUrls.length ? uploadedRefUrls : null,
         with_sound:             withSound,
         skip_prompt_refinement: skipRefinement,
+        audio_url:              resolvedAudioUrl || null,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -1075,7 +1638,6 @@ const creditCost = useMemo(() => {
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-// ── Invoke edge function ───────────────────────────────────────────────
       const { data: invokeData, error: invokeErr } = await supabase.functions.invoke(
         'video-generate',
         { body: { generationId: genRow.id } }
@@ -1088,12 +1650,12 @@ const creditCost = useMemo(() => {
         return
       }
 
-      // ── Normal success path ───────────────────────────────────────────────
       refreshProfile()
       toast.success('Your video is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
       setStartFrame(null); setEndFrame(null); setRefImages([])
       setAutoRatio(false); setAspectRatio('9:16'); setWithSound(true)
+      setAudioSlots([])
       try {
         sessionStorage.removeItem(SS_PROMPT); sessionStorage.removeItem(SS_START_FRAME)
         sessionStorage.removeItem(SS_END_FRAME); sessionStorage.removeItem(SS_REF_IMAGES)
@@ -1109,12 +1671,13 @@ const creditCost = useMemo(() => {
   const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
   const isProcessing    = phase !== null
 
- const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
+  const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
     || (caps.requiresEndFrame && !activeEndFrame)
     || (caps.requiresImage && !multiMode && !activeStartFrame)
     || (caps.requiresImage &&  multiMode && refImages.length === 0)
     || (caps.requiresVideo && !caps.isVideoEdit && !editVideo)
+    || (caps.requiresAudio && audioSlots.filter(Boolean).length === 0)
     || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit && !selectedModel?.is_render_window)
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -1125,7 +1688,7 @@ const creditCost = useMemo(() => {
         {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
       </AnimatePresence>
 
-           {/* Fullscreen viewer */}
+      {/* Fullscreen viewer */}
       <AnimatePresence>
         {fullscreenImage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1325,7 +1888,7 @@ const creditCost = useMemo(() => {
             /* ── STANDARD FRAMES / MULTI-REF SECTION ────────────────────── */
             <div>
               <div className="flex items-center justify-between mb-3">
-               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                   {caps.supportsMultiImage && multiMode ? 'Reference' : 'Frames'}
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
                     {caps.requiresImage ? ' — required' : ' — optional'}
@@ -1376,6 +1939,65 @@ const creditCost = useMemo(() => {
             </div>
           )}
 
+          {/* ── AUDIO (requires_audio models only) ───────────────────────── */}
+          {caps.requiresAudio && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  Audio <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— required</span>
+                </p>
+                {audioSlots.filter(Boolean).length > 0 && (() => {
+                  const used      = totalSlotDuration(audioSlots)
+                  const dur       = parseInt(duration || '5', 10)
+                  const remaining = Math.max(0, dur - used)
+                  const isFull    = remaining <= 0.1
+                  const fmtS      = (s) => s % 1 === 0 ? `${s}s` : `${s.toFixed(1)}s`
+                  return (
+                    <span className="text-xs px-2 py-0.5 rounded-lg font-semibold"
+                      style={{ background: isFull ? ACCENT : ACCENT_SUB, color: isFull ? '#fff' : ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
+                      {fmtS(used)} / {dur}s {isFull ? '· full' : `· ${fmtS(remaining)} left`}
+                    </span>
+                  )
+                })()}
+              </div>
+
+              <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Upload audio up to {duration}s. The model syncs it to the generated video natively.
+                Longer files are trimmed automatically.
+              </p>
+
+              {audioSlots.filter(Boolean).length > 0 && (
+                <ChainedAudioPlayer
+                  audioSlots={audioSlots}
+                  onSlotClear={handleAudioSlotClear}
+                  onSlotStartChange={handleAudioSlotStartChange}
+                />
+              )}
+
+              {(() => {
+                const used      = totalSlotDuration(audioSlots)
+                const dur       = parseInt(duration || '5', 10)
+                const remaining = Math.max(0, dur - used)
+                const isFull    = remaining <= 0.1
+                const filled    = audioSlots.filter(Boolean).length
+                if (isFull) return (
+                  <p className="text-xs text-center py-1 font-semibold" style={{ color: ACCENT }}>
+                    Audio budget full · {dur}s ✓
+                  </p>
+                )
+                return (
+                  <AudioSourcePicker
+                    onAudioUpload={(e) => handleAudioSlotFill(filled, e)}
+                    onImport={(gen) => handleAudioSlotFill(filled, null, gen)}
+                    userId={user?.id}
+                    maxDurationS={remaining}
+                    slotIndex={filled}
+                  />
+                )
+              })()}
+            </div>
+          )}
+
           {/* Prompt */}
           <Textarea ref={textareaRef} label="Prompt" value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -1423,7 +2045,7 @@ const creditCost = useMemo(() => {
               : `Generate · ${creditCost} cr`}
           </button>
 
-{caps.isVideoEdit && needsTrim && (
+          {caps.isVideoEdit && needsTrim && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Trim your video above to continue.
             </p>
@@ -1446,6 +2068,11 @@ const creditCost = useMemo(() => {
           {caps.requiresVideo && !caps.isVideoEdit && !editVideo && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               This model requires a source video.
+            </p>
+          )}
+          {caps.requiresAudio && audioSlots.filter(Boolean).length === 0 && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              This model requires an audio track.
             </p>
           )}
           {!canAfford && (
