@@ -285,7 +285,7 @@ export default function UGCGeneratePage() {
   useEffect(() => {
     loadProfile()
     loadModels()
-  }, [profileId])
+  }, [profileId, userProfile?.user_tier])
 
   const loadProfile = async () => {
     setProfileLoading(true)
@@ -299,7 +299,7 @@ export default function UGCGeneratePage() {
     setProfileLoading(false)
   }
 
-  const loadModels = useCallback(async () => {
+const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
       .from('models')
@@ -308,12 +308,13 @@ export default function UGCGeneratePage() {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-    const list = data || []
-    setModels(list)
-    const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
+    const isMaster     = userProfile?.user_tier === 'master'
+    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    setModels(tierFiltered)
+    const firstUnlocked = tierFiltered.find((m) => !m.is_locked && m.type === 'image')
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
-  }, [])
+  }, [userProfile?.user_tier])
 
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
