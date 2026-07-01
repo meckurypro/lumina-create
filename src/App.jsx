@@ -120,7 +120,7 @@ function RequireMaster({ children }) {
 // ── Layout wrapper (includes BottomNav) ───────────────────────
 
 const AppLayout = ({ children }) => (
-  <div className="w-full min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
+  <div className="w-full h-dvh overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
     {children}
     <BottomNav />
   </div>
