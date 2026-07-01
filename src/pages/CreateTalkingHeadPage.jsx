@@ -953,6 +953,7 @@ function MultiSlotAudio({
   onSlotFill, onSlotClear, onSlotStartChange,
   audioMode, onAudioModeChange,
   script, onScriptChange, supportsTextScript, charIndex, userId,
+  audioUploadDisabled = false,
 }) {
   const charLabel   = charIndex !== undefined ? ` · Character ${charIndex + 1}` : ''
   const filledSlots = audioSlots.filter(Boolean)
@@ -982,20 +983,25 @@ function MultiSlotAudio({
         </p>
       )}
 
-      {supportsTextScript && (
-        <div className="flex gap-1 p-1 rounded-xl self-start" style={{ background: 'var(--bg-elevated)' }}>
-          {[
-            { value: 'upload', label: 'Audio',  icon: Mic      },
-            { value: 'text',   label: 'Script',  icon: FileText },
-          ].map(({ value, label: lbl, icon: Icon }) => (
-            <button key={value} onClick={() => onAudioModeChange(value)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: audioMode === value ? ACCENT : 'transparent', color: audioMode === value ? '#ffffff' : 'var(--text-muted)' }}>
-              <Icon size={11} />{lbl}
-            </button>
-          ))}
-        </div>
-      )}
+{supportsTextScript && (() => {
+        const modeOptions = audioUploadDisabled
+          ? [{ value: 'text', label: 'Script', icon: FileText }]
+          : [
+              { value: 'upload', label: 'Audio',  icon: Mic      },
+              { value: 'text',   label: 'Script',  icon: FileText },
+            ]
+        return (
+          <div className="flex gap-1 p-1 rounded-xl self-start" style={{ background: 'var(--bg-elevated)' }}>
+            {modeOptions.map(({ value, label: lbl, icon: Icon }) => (
+              <button key={value} onClick={() => onAudioModeChange(value)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{ background: audioMode === value ? ACCENT : 'transparent', color: audioMode === value ? '#ffffff' : 'var(--text-muted)' }}>
+                <Icon size={11} />{lbl}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {audioMode === 'upload' && (
         <div className="flex flex-col gap-2">
@@ -1828,7 +1834,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
               )}
             </div>
 
-            <MultiSlotAudio
+<MultiSlotAudio
               label="Audio" audioSlots={audioSlots1} durationS={durationNum}
               onSlotFill={handleSlotFill(1)} onSlotClear={handleSlotClear(1)}
               onSlotStartChange={handleSlotStartChange(1)}
@@ -1836,9 +1842,10 @@ const edgeFn = selectedModel?.feature === 'lipsync'
               script={audioMode1 === 'text' ? script1 : ''} onScriptChange={setScript1}
               supportsTextScript={caps.textScript}
               charIndex={caps.multiChar ? 0 : undefined} userId={user?.id}
+              audioUploadDisabled={caps.requiresVoiceId && !caps.requiresAudio}
             />
 
-            {caps.multiChar && (
+        {caps.multiChar && (
               <MultiSlotAudio
                 label="Audio" audioSlots={audioSlots2} durationS={durationNum}
                 onSlotFill={handleSlotFill(2)} onSlotClear={handleSlotClear(2)}
@@ -1846,6 +1853,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
                 audioMode={audioMode2} onAudioModeChange={setAudioMode2}
                 script={audioMode2 === 'text' ? script2 : ''} onScriptChange={setScript2}
                 supportsTextScript={caps.textScript} charIndex={1} userId={user?.id}
+                audioUploadDisabled={caps.requiresVoiceId && !caps.requiresAudio}
               />
             )}
           </div>
