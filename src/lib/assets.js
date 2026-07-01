@@ -133,6 +133,26 @@ async function uploadThumbnail(userId, assetId, blob) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// uploadGenerationThumbnail
+// Same asset-thumbs bucket, different key prefix — used to backfill
+// output_thumbnail_url on completed video generations (see MediaPageCore.jsx).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function uploadGenerationThumbnail(userId, generationId, blob) {
+  const path = `${userId}/generation-${generationId}.webp`
+  const { error } = await supabase.storage
+    .from(THUMB_BUCKET)
+    .upload(path, blob, {
+      contentType:  'image/webp',
+      upsert:       true,
+      cacheControl: '31536000',
+    })
+  if (error) throw new Error(error.message || 'Thumbnail upload failed')
+  const { data } = supabase.storage.from(THUMB_BUCKET).getPublicUrl(path)
+  return data.publicUrl
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // uploadAsset
 // Upload original file + generate+upload thumbnail in parallel.
 // Returns the new asset row including thumbnail_url.
