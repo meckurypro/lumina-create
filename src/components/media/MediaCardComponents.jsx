@@ -763,6 +763,7 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
   const isVideo       = gen.output_type === 'video'
   const isComplete    = gen.status === 'completed'
   const isPending     = gen.status === 'pending' || gen.status === 'processing'
+  const [thumbErr, setThumbErr] = useState(false)
   // Only ever render an <img>: real server thumbnail for videos, or the
   // image output itself. We never set `<video src=...>` in the list — even
   // with preload="none" the browser still issues a HEAD/Range request that
@@ -787,13 +788,14 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
         style={{ width: 56, height: 56, background: 'var(--bg-elevated)', cursor: isComplete ? 'pointer' : 'default' }}
         onClick={isComplete ? onClick : undefined}
       >
-        {thumbUrl ? (
+        {thumbUrl && !thumbErr ? (
           <img
             src={thumbUrl}
             alt={cardTitle}
             className="w-full h-full object-cover"
             loading="lazy"
             decoding="async"
+            onError={() => setThumbErr(true)}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -807,7 +809,6 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
           </div>
         )}
       </div>
-
       {/* Body */}
       <div
         className="flex-1 min-w-0"
@@ -872,6 +873,7 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   const isVideo      = gen.output_type === 'video'
   const isPending    = gen.status === 'pending' || gen.status === 'processing'
   const isComplete   = gen.status === 'completed'
+  const [thumbErr, setThumbErr] = useState(false)
   const thumbUrl     = isVideo
     ? (gen.output_thumbnail_url || null)
     : (gen.output_thumbnail_url || gen.output_url || null)
@@ -886,10 +888,10 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
       className="relative rounded-2xl overflow-hidden"
       style={{ aspectRatio: arStyle, background: 'var(--bg-elevated)' }}
     >
-      <button className="w-full h-full block" onClick={isComplete ? onClick : undefined}
+    <button className="w-full h-full block" onClick={isComplete ? onClick : undefined}
         style={{ cursor: isComplete ? 'pointer' : 'default' }}>
-        {thumbUrl ? (
-          <img src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+        {thumbUrl && !thumbErr ? (
+          <img src={thumbUrl} alt={getCardTitle(gen)} className="w-full h-full object-cover" loading="lazy" decoding="async" onError={() => setThumbErr(true)} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {isVideo ? <Film size={24} style={{ color: 'var(--text-muted)' }} /> : <ImageIcon size={24} style={{ color: 'var(--text-muted)' }} />}
