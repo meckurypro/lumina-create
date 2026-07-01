@@ -292,7 +292,7 @@ export default function UGCBrandGeneratePage() {
   const [images,        setImages]        = useState([])
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
-  useEffect(() => { loadBrand(); loadModels() }, [brandId])
+ useEffect(() => { loadBrand(); loadModels() }, [brandId, userProfile?.user_tier])
 
   const loadBrand = async () => {
     setBrandLoading(true)
@@ -306,8 +306,6 @@ export default function UGCBrandGeneratePage() {
     setBrandLoading(false)
   }
 
-  // FIX: filter to supports_multi_image only (same as UGCGeneratePage)
-  // and allow all tiers to see models (no master-only filter at load time)
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -317,12 +315,12 @@ export default function UGCBrandGeneratePage() {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-    const list = data || []
-    setModels(list)
-    const first = list.find((m) => !m.is_locked && m.type === 'image')
+    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    setModels(tierFiltered)
+    const first = tierFiltered.find((m) => !m.is_locked && m.type === 'image')
     setModel(first?.value || '')
     setModelsLoading(false)
-  }, [])
+  }, [isMaster])
 
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
