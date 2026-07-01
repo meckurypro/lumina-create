@@ -25,7 +25,7 @@ import {
   Download, RefreshCw, Trash2,
   MoreHorizontal, ChevronDown,
   Copy, Check, Sparkles, Zap,
-  Pencil, Bookmark,
+  Pencil, Bookmark, ScanLine,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -608,7 +608,9 @@ export const EditSheet = ({
 export const ActionSheet = ({
   gen, onClose,
   onDelete, onRegenerate, onEdit, onRefresh, onDownload, onSaveAsset, onRetry,
+  onExtractEndFrame,
   refreshLoading = false,
+  extractLoading = false,
 }) => (
   <motion.div
     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -679,6 +681,23 @@ export const ActionSheet = ({
             <div className="flex flex-col items-start">
               <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Edit</span>
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Use output as input for I2I</span>
+            </div>
+          </button>
+        )}
+
+        {gen.status === 'completed' && gen.output_type === 'video' && gen.output_url && onExtractEndFrame && (
+          <button
+            onClick={onExtractEndFrame}
+            disabled={extractLoading}
+            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-all active:scale-[0.98]"
+            style={{ background: 'var(--bg-elevated)', opacity: extractLoading ? 0.6 : 1 }}
+          >
+            <ScanLine size={18} style={{ color: 'var(--text-primary)' }} />
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {extractLoading ? 'Extracting…' : 'Extract End Frame'}
+              </span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Save last frame as a new asset</span>
             </div>
           </button>
         )}
@@ -1021,3 +1040,69 @@ export const FallbackBanner = ({ message, onDismiss }) => (
     )}
   </motion.div>
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExtractEndFrameConfirmModal
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
+  const [skipNext, setSkipNext] = useState(false)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(91,110,247,0.12)' }}>
+            <ScanLine size={18} style={{ color: '#5B6EF7' }} />
+          </div>
+          <div>
+            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Extract End Frame</p>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              The last frame of this video will be saved to your Assets.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}>
+          <Zap size={15} style={{ color: '#5B6EF7', flexShrink: 0 }} />
+          <p className="text-sm font-semibold" style={{ color: '#5B6EF7' }}>{cost} credits will be deducted</p>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}>
+          <Sparkles size={15} style={{ color: '#eab308', flexShrink: 0 }} />
+          <p className="text-xs" style={{ color: '#eab308', lineHeight: 1.5 }}>
+            <span className="font-bold">Master plan</span> unlocks this feature for free.
+          </p>
+        </div>
+        <button onClick={() => setSkipNext((v) => !v)} className="flex items-center gap-2.5 w-fit">
+          <div
+            className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
+            style={{ background: skipNext ? '#5B6EF7' : 'transparent', border: `1.5px solid ${skipNext ? '#5B6EF7' : 'var(--border-color)'}` }}
+          >
+            {skipNext && <Check size={10} color="#fff" strokeWidth={3} />}
+          </div>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Don't ask me again</span>
+        </button>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+            Cancel
+          </button>
+          <button onClick={() => onConfirm(skipNext)} className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
+            style={{ background: '#5B6EF7', color: '#fff' }}>
+            Extract · {cost} cr
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
