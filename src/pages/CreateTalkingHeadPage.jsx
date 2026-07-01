@@ -1287,7 +1287,8 @@ export default function CreateTalkingHeadPage() {
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
     if (!canAfford) errors.push('Not enough credits')
-    if (creditCost === 0 && selectedModel) errors.push('Model pricing is misconfigured — contact support')
+    if (creditCost === 0 && selectedModel && !selectedModel?.is_render_window)
+      errors.push('Model pricing is misconfigured — contact support')
 
     return errors
   }, [selectedModel, caps, faceImage, videoFile, videoTooShort, videoNeedsTrim,
@@ -1873,8 +1874,6 @@ const edgeFn = selectedModel?.feature === 'lipsync'
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
 
-          <ValidationBanner errors={validationErrors} />
-
           <button
             onClick={handleGenerate}
             disabled={buttonDisabled}
@@ -1885,24 +1884,24 @@ const edgeFn = selectedModel?.feature === 'lipsync'
             }}>
             {isProcessing ? (
               <Loader2 size={15} className="animate-spin" />
-            ) : validationErrors.length === 0 ? (
-              <Zap size={15} fill="currentColor" />
             ) : (
-              <AlertTriangle size={15} />
+              <Zap size={15} fill="currentColor" />
             )}
             {isProcessing
               ? phase === 'trimming_video' ? 'Trimming video…' : 'Generating…'
-              : validationErrors.length > 0
-              ? 'Fix issues above to continue'
               : `Generate · ${creditCost} cr`}
           </button>
 
-          {!canAfford && (
+          {!canAfford ? (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
               Not enough credits.{' '}
               <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
                 Top up
               </button>
+            </p>
+          ) : validationErrors.length > 0 && (
+            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+              {validationErrors[0]}
             </p>
           )}
 
