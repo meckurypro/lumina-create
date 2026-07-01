@@ -46,7 +46,8 @@ import {
   uploadAsset, listAssets, renameAsset,
   deleteAsset, isVideoAsset, formatBytes,
 } from '@/lib/assets.js'
-import { FallbackBanner } from './MediaCardComponents.jsx'
+import { FallbackBanner, ExtractEndFrameConfirmModal } from './MediaCardComponents.jsx'
+import { extractLastFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -60,8 +61,6 @@ const MAX_FILE_MB = 50
 const MAX_FILE_B  = MAX_FILE_MB * 1024 * 1024
 const PAGE_SIZE   = 12
 
-const EXTRACT_END_FRAME_COST  = 3
-const LS_SKIP_EXTRACT_CONFIRM = 'meckury_extract_frame_skip_confirm'
 const LS_FALLBACK_DISMISSED   = 'meckury_assets_fallback_dismissed_date'
 
 // SessionStorage keys
@@ -118,130 +117,6 @@ function buildUrlPayload(asset, fallbackType) {
   return { url: asset.file_url, name: asset.name, type }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// extractLastFrame
-//
-// Two corrections vs. the previous version, both aimed at eliminating the
-// "flash" visible when this exported frame is later used as the start frame
-// of the next chained clip:
-//
-//  1. EXPLICIT sRGB CANVAS COLOR SPACE.
-//     drawImage() performs an implicit color-space conversion from the
-//     video's decoded color space into the canvas backing store's color
-//     space. If left unspecified, browsers may apply a conversion (or a
-//     display-referred adjustment) that introduces a small, consistent
-//     level/contrast shift in the exported PNG relative to the source video
-//     frame. Pinning the canvas to 'srgb' — the space AI providers generally
-//     assume for image inputs — minimises that shift and keeps the
-//     extraction path consistent across browsers/devices.
-//
-//  2. PRECISE LAST-FRAME SEEK.
-//     Seeking directly to (duration - 0.001) can land 1-2 frames before the
-//     true final frame on some codecs/containers, or on a black/transitional
-//     frame some encoders write right at EOF. We seek to a conservative
-//     point slightly before the end, then step forward in small increments
-//     — capturing on whichever 'seeked' event is closest to video.duration
-//     without overshooting — landing precisely on the last decodable frame.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const FRAME_STEP_SECONDS = 1 / 24 // conservative default frame duration assumption
-
-async function extractLastFrame(videoUrl) {
-  const res    = await fetch(videoUrl)
-  const blob   = await res.blob()
-  const objUrl = URL.createObjectURL(blob)
-
-  return new Promise((resolve, reject) => {
-    const video       = document.createElement('video')
-    video.muted       = true
-    video.preload     = 'auto'
-    video.crossOrigin = 'anonymous'
-    video.playsInline = true
-
-    let settled = false
-    const cleanup = () => URL.revokeObjectURL(objUrl)
-    const fail = (err) => {
-      if (settled) return
-      settled = true
-      cleanup()
-      reject(err)
-    }
-
-    video.onerror = () => fail(new Error('Could not load video for frame extraction'))
-
-    const captureCurrentFrame = () => {
-      if (settled) return
-      try {
-        const canvas = document.createElement('canvas')
-        canvas.width  = video.videoWidth
-        canvas.height = video.videoHeight
-
-        if (!canvas.width || !canvas.height) {
-          fail(new Error('Video has no decodable dimensions'))
-          return
-        }
-
-        // Pin canvas color space to sRGB so the exported pixel values match
-        // what AI providers expect for image inputs, minimising the
-        // conversion delta introduced by drawImage(). Falls back gracefully
-        // on browsers that don't support the colorSpace option.
-        let ctx
-        try {
-          ctx = canvas.getContext('2d', { colorSpace: 'srgb' })
-        } catch {
-          ctx = null
-        }
-        if (!ctx) ctx = canvas.getContext('2d')
-
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-        canvas.toBlob((pngBlob) => {
-          settled = true
-          cleanup()
-          if (pngBlob) resolve(pngBlob)
-          else reject(new Error('Canvas toBlob failed'))
-        }, 'image/png')
-      } catch (err) {
-        fail(err)
-      }
-    }
-
-    // Safety timeout — if seeking never settles (corrupt file, stalled
-    // network), fail cleanly instead of hanging the UI indefinitely.
-    const safetyTimer = setTimeout(() => {
-      fail(new Error('Frame extraction timed out'))
-    }, 30_000)
-    const clearSafety = () => clearTimeout(safetyTimer)
-
-    video.onloadedmetadata = () => {
-      const duration = video.duration
-      if (!isFinite(duration) || duration <= 0) {
-        clearSafety()
-        fail(new Error('Video has no readable duration'))
-        return
-      }
-
-      const target = Math.max(0, duration - FRAME_STEP_SECONDS)
-      let lastSeekTime = -1
-
-      video.onseeked = () => {
-        const reachedEnd     = video.currentTime >= duration - 0.0005
-        const noFurtherMove  = video.currentTime <= lastSeekTime
-        if (reachedEnd || noFurtherMove) {
-          clearSafety()
-          captureCurrentFrame()
-          return
-        }
-        lastSeekTime = video.currentTime
-        video.currentTime = Math.min(duration, video.currentTime + FRAME_STEP_SECONDS / 4)
-      }
-
-      video.currentTime = target
-    }
-
-    video.src = objUrl
-  })
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AssetThumb
@@ -1165,71 +1040,6 @@ function AssetActionSheet({
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ExtractEndFrameConfirmModal — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
-  const [skipNext, setSkipNext] = useState(false)
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
-      onClick={onCancel}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full max-w-sm rounded-2xl p-5 flex flex-col gap-4"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(91,110,247,0.12)' }}>
-            <ScanLine size={18} style={{ color: '#5B6EF7' }} />
-          </div>
-          <div>
-            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Extract End Frame</p>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              The last frame of this video will be saved to your Assets.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(91,110,247,0.08)', border: '1px solid rgba(91,110,247,0.18)' }}>
-          <Zap size={15} style={{ color: '#5B6EF7', flexShrink: 0 }} />
-          <p className="text-sm font-semibold" style={{ color: '#5B6EF7' }}>{cost} credits will be deducted</p>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.18)' }}>
-          <Sparkles size={15} style={{ color: '#eab308', flexShrink: 0 }} />
-          <p className="text-xs" style={{ color: '#eab308', lineHeight: 1.5 }}>
-            <span className="font-bold">Master plan</span> unlocks this feature for free.
-          </p>
-        </div>
-        <button onClick={() => setSkipNext((v) => !v)} className="flex items-center gap-2.5 w-fit">
-          <div
-            className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all"
-            style={{ background: skipNext ? '#5B6EF7' : 'transparent', border: `1.5px solid ${skipNext ? '#5B6EF7' : 'var(--border-color)'}` }}
-          >
-            {skipNext && <Check size={10} color="#fff" strokeWidth={3} />}
-          </div>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Don't ask me again</span>
-        </button>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-3 rounded-xl text-sm font-semibold"
-            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-            Cancel
-          </button>
-          <button onClick={() => onConfirm(skipNext)} className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
-            style={{ background: '#5B6EF7', color: '#fff' }}>
-            Extract · {cost} cr
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AssetsEmpty
