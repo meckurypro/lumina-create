@@ -31,10 +31,11 @@ import toast                                         from 'react-hot-toast'
 import {
   MediaCard, GridCard, SkeletonCard,
   ActionSheet, RegenerateSheet, EditSheet,
-  FallbackBanner,
+  FallbackBanner, ExtractEndFrameConfirmModal,
 } from './MediaCardComponents.jsx'
 import { Film, Loader2 } from 'lucide-react'
 import { uploadAsset } from '@/lib/assets'
+import { extractLastFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -130,8 +131,8 @@ export default function MediaPageCore({
 
   allowGridView = false,
 }) {
-  const navigate                          = useNavigate()
-  const { user, credits, refreshProfile } = useAuth()
+  const navigate                                    = useNavigate()
+  const { user, credits, refreshProfile, profile }  = useAuth()
 
   const [timeFilter,   setTimeFilter]   = useState('today')
   const [statusFilter, setStatusFilter] = useState('completed')
@@ -153,6 +154,10 @@ export default function MediaPageCore({
   const [refreshLoading,   setRefreshLoading]   = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
   const [savingAsset,      setSavingAsset]      = useState(false)
+  const [extractingId,     setExtractingId]     = useState(null)
+  const [extractConfirmGen,setExtractConfirmGen] = useState(null)
+
+  const isMaster = profile?.user_tier === 'master'
 
   const FALLBACK_DISMISSED_KEY = 'meckury_fallback_dismissed_date'
 
@@ -401,7 +406,7 @@ export default function MediaPageCore({
     }
   }
 
-  const handleSaveAsset = async (gen) => {
+const handleSaveAsset = async (gen) => {
     closeSheet()
     if (!gen.output_url) return toast.error('No media URL found')
     if (!user?.id) return toast.error('Not signed in')
@@ -426,6 +431,51 @@ export default function MediaPageCore({
       toast.error(e?.message || 'Failed to save asset')
     } finally {
       setSavingAsset(false)
+    }
+  }
+
+  const handleExtractEndFrame = (gen) => {
+    closeSheet()
+    if (gen.status !== 'completed' || !gen.output_url) return
+    if (!isMaster) {
+      if (credits < EXTRACT_END_FRAME_COST) {
+        toast.error(`Not enough credits — extracting end frame costs ${EXTRACT_END_FRAME_COST} credits`)
+        return
+      }
+      const skipConfirm = localStorage.getItem(LS_SKIP_EXTRACT_CONFIRM) === 'true'
+      if (!skipConfirm) { setExtractConfirmGen(gen); return }
+    }
+    runExtractEndFrame(gen)
+  }
+
+  const runExtractEndFrame = async (gen) => {
+    setExtractConfirmGen(null)
+    setExtractingId(gen.id)
+    try {
+      const frameBlob = await extractLastFrame(gen.output_url)
+      const baseName  = `meckury-${gen.id.slice(0, 8)}`
+      const frameFile = new File([frameBlob], `${baseName}_end_frame.png`, { type: 'image/png' })
+      await uploadAsset(user.id, frameFile, `${baseName} — end frame`)
+
+      if (!isMaster) {
+        const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
+          p_user_id: user.id, p_amount: EXTRACT_END_FRAME_COST,
+          p_generation_id: null, p_description: 'End frame extraction',
+        })
+        if (dErr || !deduct?.success) {
+          toast.success('End frame saved to your Assets')
+          toast.error('Credit deduction failed — contact support', { duration: 8000 })
+        } else {
+          refreshProfile()
+          toast.success(`End frame saved to Assets — ${EXTRACT_END_FRAME_COST} credits used`)
+        }
+      } else {
+        toast.success('End frame saved to your Assets')
+      }
+    } catch (err) {
+      toast.error(err.message || 'Could not extract end frame')
+    } finally {
+      setExtractingId(null)
     }
   }
 
@@ -731,7 +781,7 @@ export default function MediaPageCore({
 
       {/* Sheets */}
       <AnimatePresence>
-        {activeGen && sheetMode === 'actions' && (
+     {activeGen && sheetMode === 'actions' && (
           <ActionSheet
             key="actions"
             gen={activeGen}
@@ -743,6 +793,8 @@ export default function MediaPageCore({
             onDownload={() => handleDownload(activeGen)}
             onSaveAsset={() => handleSaveAsset(activeGen)}
             onRetry={isPreDispatchFailure(activeGen) ? () => handleRetry(activeGen) : undefined}
+            onExtractEndFrame={activeGen?.output_type === 'video' ? () => handleExtractEndFrame(activeGen) : undefined}
+            extractLoading={extractingId === activeGen?.id}
             refreshLoading={refreshLoading}
           />
         )}
@@ -776,7 +828,7 @@ export default function MediaPageCore({
         )}
       </AnimatePresence>
 
-     {/* Save-as-asset overlay */}
+    {/* Save-as-asset overlay */}
       <AnimatePresence>
         {savingAsset && (
           <motion.div
@@ -790,6 +842,24 @@ export default function MediaPageCore({
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
             <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Saving to your Assets…</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Extracting end frame overlay */}
+      <AnimatePresence>
+        {extractingId && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4"
+            style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+              className="w-10 h-10 rounded-full border-2"
+              style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
+            />
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Extracting end frame…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -828,7 +898,7 @@ export default function MediaPageCore({
         )}
       </AnimatePresence>
 
-      {/* Delete confirm */}
+     {/* Delete confirm */}
       <AnimatePresence>
         {pendingDeleteGen && (
           <motion.div
@@ -860,6 +930,20 @@ export default function MediaPageCore({
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Extract end frame confirm */}
+      <AnimatePresence>
+        {extractConfirmGen && (
+          <ExtractEndFrameConfirmModal
+            cost={EXTRACT_END_FRAME_COST}
+            onConfirm={(skipNext) => {
+              if (skipNext) localStorage.setItem(LS_SKIP_EXTRACT_CONFIRM, 'true')
+              runExtractEndFrame(extractConfirmGen)
+            }}
+            onCancel={() => setExtractConfirmGen(null)}
+          />
         )}
       </AnimatePresence>
     </div>
