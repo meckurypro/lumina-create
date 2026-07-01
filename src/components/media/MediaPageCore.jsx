@@ -34,8 +34,8 @@ import {
   FallbackBanner, ExtractEndFrameConfirmModal,
 } from './MediaCardComponents.jsx'
 import { Film, Loader2 } from 'lucide-react'
-import { uploadAsset } from '@/lib/assets'
-import { extractLastFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
+import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
+import { extractLastFrame, extractPosterFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -356,9 +356,48 @@ export default function MediaPageCore({
       if (anyResolved) refreshProfile()
     }, POLL_MS)
 
-    return () => { clearInterval(pollRef.current); pollRef.current = null }
+return () => { clearInterval(pollRef.current); pollRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey(items), user])
+
+  // ── Thumbnail backfill ─────────────────────────────────────────────────────
+  //
+  // Completed video generations may have output_thumbnail_url = null (older
+  // rows, or rows written by lipsync-generate / the poll functions, which no
+  // longer write a fake "thumbnail" pointing at the video file itself). The
+  // first browser to view such a row grabs a real frame client-side, uploads
+  // it, and patches the row — subsequent viewers (including this same user
+  // elsewhere) get the cached thumbnail from then on.
+  const thumbBackfillRef = useRef(new Set())
+
+  useEffect(() => {
+    if (!user) return
+    const candidates = items.filter(
+      (g) => g.status === 'completed' &&
+             g.output_type === 'video' &&
+             g.output_url &&
+             !g.output_thumbnail_url &&
+             !thumbBackfillRef.current.has(g.id)
+    )
+    if (!candidates.length) return
+
+    // Small batch at a time — avoid hammering bandwidth on a long list.
+    const batch = candidates.slice(0, 3)
+    batch.forEach((gen) => {
+      thumbBackfillRef.current.add(gen.id)
+      ;(async () => {
+        try {
+          const blob     = await extractPosterFrame(gen.output_url)
+          const thumbUrl = await uploadGenerationThumbnail(user.id, gen.id, blob)
+          await supabase.from('generations').update({ output_thumbnail_url: thumbUrl }).eq('id', gen.id)
+          setItems((prev) => prev.map((g) => g.id === gen.id ? { ...g, output_thumbnail_url: thumbUrl } : g))
+        } catch (err) {
+          console.warn('[thumb-backfill] failed for', gen.id, err.message)
+        }
+      })()
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, user])
 
   // ── Sheet helpers ──────────────────────────────────────────────────────────
 
