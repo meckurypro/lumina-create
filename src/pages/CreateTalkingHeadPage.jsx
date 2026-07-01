@@ -977,12 +977,11 @@ function MultiSlotAudio({
         )}
       </div>
 
-      {durationS > 0 && filledCount === 0 && (
+    {durationS > 0 && filledCount === 0 && !audioUploadDisabled && (
         <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Upload audio up to {durationS}s total. Longer files are trimmed automatically.
         </p>
       )}
-
 {supportsTextScript && (() => {
         const modeOptions = audioUploadDisabled
           ? [{ value: 'text', label: 'Script', icon: FileText }]
@@ -1820,9 +1819,11 @@ const edgeFn = selectedModel?.feature === 'lipsync'
 
           {/* ── Audio ────────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+           <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                {caps.multiChar ? 'Audio Tracks' : 'Audio'}
+                {caps.requiresVoiceId && !caps.requiresAudio
+                  ? (caps.multiChar ? 'Scripts' : 'Script')
+                  : (caps.multiChar ? 'Audio Tracks' : 'Audio')}
                 {(caps.requiresAudio || caps.requiresVoiceId) && (
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — required</span>
                 )}
@@ -1836,7 +1837,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
             </div>
 
 <MultiSlotAudio
-              label="Audio" audioSlots={audioSlots1} durationS={durationNum}
+              label={caps.requiresVoiceId && !caps.requiresAudio ? 'Script' : 'Audio'} audioSlots={audioSlots1} durationS={durationNum}
               onSlotFill={handleSlotFill(1)} onSlotClear={handleSlotClear(1)}
               onSlotStartChange={handleSlotStartChange(1)}
               audioMode={audioMode1} onAudioModeChange={setAudioMode1}
@@ -1848,7 +1849,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
 
         {caps.multiChar && (
               <MultiSlotAudio
-                label="Audio" audioSlots={audioSlots2} durationS={durationNum}
+                label={caps.requiresVoiceId && !caps.requiresAudio ? 'Script' : 'Audio'} audioSlots={audioSlots2} durationS={durationNum}
                 onSlotFill={handleSlotFill(2)} onSlotClear={handleSlotClear(2)}
                 onSlotStartChange={handleSlotStartChange(2)}
                 audioMode={audioMode2} onAudioModeChange={setAudioMode2}
