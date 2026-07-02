@@ -25,8 +25,7 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
   }
 
   const handleSave = async () => {
-    if (!name.trim()) return toast.error('Give this product a name')
-    if (!file && !isEdit) return toast.error('Add a photo')
+    if (!name.trim()) return toast.error('Give this product or service a name')
     setSaving(true)
     try {
       const productId = product?.id || crypto.randomUUID()
@@ -58,7 +57,7 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
       }
       onClose()
     } catch (err) {
-      toast.error(err.message || 'Could not save product')
+      toast.error(err.message || 'Could not save this product')
     } finally {
       setSaving(false)
     }
@@ -69,11 +68,13 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
     setDeleting(true)
     try {
       await ugcBrandProducts.remove(product.id)
-      await ugcBrandProducts.deletePhoto(userId, brandId, product.id)
+      if (product.image_url) {
+        await ugcBrandProducts.deletePhoto(userId, brandId, product.id)
+      }
       onDeleted(product.id)
       onClose()
     } catch (err) {
-      toast.error(err.message || 'Could not delete product')
+      toast.error(err.message || 'Could not delete this product')
     } finally {
       setDeleting(false)
     }
@@ -95,10 +96,10 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: 'var(--border-color)' }} />
         <p className="text-lg font-black mb-4" style={{ color: 'var(--text-primary)' }}>
-          {isEdit ? 'Edit Product' : 'Add Product'}
+          {isEdit ? 'Edit Product / Service' : 'Add Product / Service'}
         </p>
 
-        <div className="flex justify-center mb-5">
+        <div className="flex justify-center mb-2">
           {preview ? (
             <div className="relative">
               <div className="w-28 h-28 rounded-2xl overflow-hidden" style={{ border: `2px solid ${ACCENT_BDR}` }}>
@@ -119,6 +120,9 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
             </label>
           )}
         </div>
+        <p className="text-xs text-center mb-5" style={{ color: 'var(--text-muted)' }}>
+          Photo optional — you can add it later
+        </p>
 
         <input
           value={name}
@@ -152,7 +156,7 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
             style={{ color: '#ef4444' }}
           >
             {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            Delete Product
+            Delete
           </button>
         )}
       </motion.div>
@@ -161,11 +165,13 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
 }
 
 // ── Main grid ────────────────────────────────────────────────
-export default function BrandProductManager({ brandId, userId, products, onProductsChange }) {
+export default function BrandProductManager({ brandId, userId, products, onProductsChange, maxProducts = 15 }) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState(null)
 
-  const openAdd  = () => { setEditing(null); setSheetOpen(true) }
+  const atLimit = products.length >= maxProducts
+
+  const openAdd  = () => { if (atLimit) return; setEditing(null); setSheetOpen(true) }
   const openEdit = (p) => { setEditing(p); setSheetOpen(true) }
 
   const handleSaved = (product) => {
@@ -177,36 +183,57 @@ export default function BrandProductManager({ brandId, userId, products, onProdu
   return (
     <div>
       <div
-        className="flex items-start gap-3 p-3 rounded-xl mb-5"
+        className="flex items-start gap-3 p-3 rounded-xl mb-4"
         style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
       >
         <Package size={14} style={{ color: ACCENT, flexShrink: 0, marginTop: 1 }} />
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Add photos of your products or services. Type <strong>/</strong> in the Content Direction
-          box on Image or Video to pull any of these into your generation.
+          Add your products or services here. Type <strong>/</strong> in the Content Direction
+          box on Image or Video to pull any of these into a generation.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+          {products.length} / {maxProducts}
         </p>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         {products.map((p) => (
           <button key={p.id} onClick={() => openEdit(p)} className="flex flex-col gap-1.5 text-left">
-            <div className="relative aspect-square rounded-2xl overflow-hidden" style={{ border: `1px solid var(--border-color)` }}>
-              <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+            <div
+              className="relative aspect-square rounded-2xl overflow-hidden flex items-center justify-center"
+              style={{ border: '1px solid var(--border-color)', background: 'var(--bg-elevated)' }}
+            >
+              {p.image_url ? (
+                <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+              ) : (
+                <Package size={20} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+              )}
             </div>
             <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
           </button>
         ))}
 
-        <button onClick={openAdd} className="flex flex-col gap-1.5 text-left">
-          <div
-            className="aspect-square rounded-2xl flex flex-col items-center justify-center"
-            style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-          >
-            <Plus size={18} style={{ color: ACCENT }} />
-            <span className="text-xs font-medium mt-1" style={{ color: ACCENT }}>Add</span>
-          </div>
-        </button>
+        {!atLimit && (
+          <button onClick={openAdd} className="flex flex-col gap-1.5 text-left">
+            <div
+              className="aspect-square rounded-2xl flex flex-col items-center justify-center"
+              style={{ border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
+            >
+              <Plus size={18} style={{ color: ACCENT }} />
+              <span className="text-xs font-medium mt-1" style={{ color: ACCENT }}>Add</span>
+            </div>
+          </button>
+        )}
       </div>
+
+      {atLimit && (
+        <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
+          You've reached the {maxProducts}-item limit. Delete one to add another.
+        </p>
+      )}
 
       <AnimatePresence>
         {sheetOpen && (
