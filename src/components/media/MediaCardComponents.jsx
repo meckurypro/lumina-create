@@ -166,28 +166,33 @@ export const StatusPill = ({ status }) => {
 // switcher's active state).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = false }) => (
-  <button
-    onClick={onClick}
-    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95 whitespace-nowrap"
-    style={{
-      background: active ? (tone || 'var(--text-primary)') : 'var(--bg-elevated)',
-      color:      active ? '#ffffff' : 'var(--text-muted)',
-      border:     `1px solid ${active ? 'transparent' : 'var(--border-color)'}`,
-    }}
-  >
-    {Icon && (
-      <motion.span
-        className="flex items-center justify-center"
-        animate={pulse ? { scale: [1, 1.25, 1] } : {}}
-        transition={pulse ? { repeat: Infinity, duration: 1.2, ease: 'easeInOut' } : {}}
-      >
-        <Icon size={12} />
-      </motion.span>
-    )}
-    {label}
-  </button>
-)
+export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = false }) => {
+  const isNeutralTone   = !tone || tone === 'var(--text-primary)'
+  const activeTextColor = isNeutralTone ? 'var(--text-inverse)' : '#ffffff'
+
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95 whitespace-nowrap"
+      style={{
+        background: active ? (tone || 'var(--text-primary)') : 'var(--bg-elevated)',
+        color:      active ? activeTextColor : 'var(--text-muted)',
+        border:     `1px solid ${active ? 'transparent' : 'var(--border-color)'}`,
+      }}
+    >
+      {Icon && (
+        <motion.span
+          className="flex items-center justify-center"
+          animate={pulse ? { scale: [1, 1.25, 1] } : {}}
+          transition={pulse ? { repeat: Infinity, duration: 1.2, ease: 'easeInOut' } : {}}
+        >
+          <Icon size={12} />
+        </motion.span>
+      )}
+      {label}
+    </button>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProgressOverlay
