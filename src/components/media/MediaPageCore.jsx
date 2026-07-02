@@ -1,26 +1,22 @@
 // src/components/media/MediaPageCore.jsx
 //
-// PERFORMANCE OVERHAUL — key changes:
+// DESIGN REFACTOR — key changes (on top of the earlier perf overhaul, which
+// is fully preserved):
 //
-//  1. POLLING: interval is now stable. Instead of rebuilding the interval
-//     every time `items` changes (which happened on every poll result because
-//     the dep array was `items.map(...).join(',')`), we store pending IDs in a
-//     ref and only restart the interval when the *set of pending IDs* actually
-//     changes. This eliminates the repeated interval teardown/rebuild cycle.
+//  1. STATUS FILTER: the unlabeled colored-dot row is replaced with labeled
+//     FilterPill buttons (Completed / All / Failed / In Progress), each with
+//     a small icon. Unlabeled dots fail basic scanability — a first-time
+//     user has no way to know green means "completed" without hovering.
+//     Pills reuse the exact same visual language as the tab switcher already
+//     in MediaPage.jsx (segmented, labeled, active = filled).
 //
-//  2. POLLING: uses a `Map` patch instead of replacing the whole items array,
-//     so only changed rows re-render (React bails out on unchanged objects).
+//  2. EXTRA (image/video) FILTER: now rendered with the same FilterPill,
+//     including an icon (ImageIcon / Film), instead of a plain flat button.
+//     This is the same control MediaPage.jsx now wires in for the
+//     Generations tab (previously only available on UGCBrandMediaPage).
 //
-//  3. DOUBLE-FETCH: the "today has nothing → fall back to this_week" logic
-//     previously ran two sequential DB queries on every initial mount. It now
-//     only fires the fallback query when the first query actually returns zero
-//     completed items, and it's guarded so it can't run more than once per
-//     filter change.
-//
-//  4. STAGGER CAP: animation stagger is capped at 300ms total so a long list
-//     doesn't visually delay the last cards by seconds.
-//
-//  5. Everything else — props API, sheet logic, filter logic — is unchanged.
+//  3. Everything else — polling, thumbnail backfill, sheet logic, fallback
+//     banner, pagination — is UNCHANGED.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
@@ -32,8 +28,9 @@ import {
   MediaCard, GridCard, SkeletonCard,
   ActionSheet, RegenerateSheet, EditSheet,
   FallbackBanner, ExtractEndFrameConfirmModal,
+  FilterPill,
 } from './MediaCardComponents.jsx'
-import { Film, Loader2 } from 'lucide-react'
+import { Film, Loader2, CheckCircle2, XCircle, Clock, Image as ImageIcon } from 'lucide-react'
 import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
 import { extractLastFrame, extractPosterFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
@@ -56,6 +53,14 @@ export const STATUS_FILTERS = [
   { label: 'All',       value: 'all'       },
   { label: 'Failed',    value: 'failed'    },
 ]
+
+// Icon + tone lookup for each status filter value — used by FilterPill.
+const STATUS_FILTER_CONFIG = {
+  completed:   { icon: CheckCircle2, tone: '#10b981' },
+  failed:      { icon: XCircle,      tone: '#ef4444' },
+  in_progress: { icon: Clock,        tone: '#eab308' },
+  all:         { icon: null,         tone: 'var(--text-primary)' },
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -186,11 +191,6 @@ export default function MediaPageCore({
   }
 
   // ── Polling refs ───────────────────────────────────────────────────────────
-  //
-  // pollRef       — the interval handle
-  // prevPendingKey — tracks the last *set* of pending IDs so we only restart
-  //                  the interval when that set actually changes, not on every
-  //                  render that touches items
   const pollRef         = useRef(null)
   const prevPendingKey  = useRef('')
 
@@ -252,7 +252,7 @@ export default function MediaPageCore({
       limit: PAGE_SIZE, offset, afterIso, statusFilter: 'all',
     })
 
-// ── Fallback: today → this_week when nothing completed today ──────────
+    // ── Fallback: today → this_week when nothing completed today ──────────
     if (
       offset === 0 &&
       tFilter === 'today' &&
@@ -274,7 +274,6 @@ export default function MediaPageCore({
         setLoadingMore(false)
         return
       }
-      // No completed this week either — show whatever came back for today (may be empty)
       setItems(data || [])
       setTotalCount(count || 0)
       setHasMore((PAGE_SIZE) < (count || 0))
@@ -307,27 +306,19 @@ export default function MediaPageCore({
   }, [timeFilter, user])
 
   // ── Polling — stable interval ──────────────────────────────────────────────
-  //
-  // We only restart the interval when the *set* of pending IDs changes.
-  // This prevents the old pattern where every items state update (including
-  // the poll result itself) would teardown+rebuild the interval, causing a
-  // brief gap and redundant re-subscriptions.
 
   useEffect(() => {
     const key = pendingKey(items)
 
-    // Set hasn't changed — leave existing interval running
     if (key === prevPendingKey.current) return
     prevPendingKey.current = key
 
-    // Clear any existing interval
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
 
     const pendingIds = items.filter(isInProgress).map((g) => g.id)
     if (!pendingIds.length || !user) return
 
     pollRef.current = setInterval(async () => {
-      // Tight column set — polling only needs to know status + final URLs.
       const { data, error } = await supabase
         .from('generations')
         .select('id, status, output_url, output_thumbnail_url, error_message, provider_request_id')
@@ -335,18 +326,14 @@ export default function MediaPageCore({
 
       if (error || !data) return
 
-      // Patch only changed rows — avoids full list re-render
       const map = new Map(data.map((g) => [g.id, g]))
       setItems((prev) => {
         let changed = false
         const next = prev.map((g) => {
           const fresh = map.get(g.id)
           if (!fresh) return g
-          // Deep-equal check on status + output_url to avoid unnecessary updates
           if (fresh.status === g.status && fresh.output_url === g.output_url) return g
           changed = true
-          // Merge narrow poll result onto existing full row — preserves
-          // columns we deliberately did not re-select.
           return { ...g, ...fresh, ...preserveUGCKeys(g, fresh) }
         })
         return changed ? next : prev
@@ -356,23 +343,11 @@ export default function MediaPageCore({
       if (anyResolved) refreshProfile()
     }, POLL_MS)
 
-return () => { clearInterval(pollRef.current); pollRef.current = null }
+    return () => { clearInterval(pollRef.current); pollRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey(items), user])
 
-// ── Thumbnail backfill ─────────────────────────────────────────────────────
-  //
-  // Completed video generations may have output_thumbnail_url = null (older
-  // rows, or rows written by lipsync-generate / the poll functions, which no
-  // longer write a fake "thumbnail" pointing at the video file itself). The
-  // first browser to view such a row grabs a real frame client-side, uploads
-  // it, and patches the row — subsequent viewers (including this same user
-  // elsewhere) get the cached thumbnail from then on.
-  //
-  // Runs as a self-sustaining queue (not dependent on `items` reference
-  // changes to keep going) — a single failure no longer stalls the rest of
-  // the list. CONCURRENCY caps how many run at once; the queue keeps pulling
-  // the next candidate as each one finishes, success or failure.
+  // ── Thumbnail backfill ─────────────────────────────────────────────────────
   const thumbAttemptedRef = useRef(new Set())
   const thumbQueueRef     = useRef([])
   const thumbActiveRef    = useRef(0)
@@ -463,7 +438,7 @@ return () => { clearInterval(pollRef.current); pollRef.current = null }
     }
   }
 
-const handleSaveAsset = async (gen) => {
+  const handleSaveAsset = async (gen) => {
     closeSheet()
     if (!gen.output_url) return toast.error('No media URL found')
     if (!user?.id) return toast.error('Not signed in')
@@ -475,7 +450,7 @@ const handleSaveAsset = async (gen) => {
     if (name === null) return
     const displayName  = (name || defaultName).trim() || defaultName
 
-   setSavingAsset(true)
+    setSavingAsset(true)
     try {
       const res  = await fetch(gen.output_url)
       if (!res.ok) throw new Error('Could not fetch media')
@@ -636,7 +611,7 @@ const handleSaveAsset = async (gen) => {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-   <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {headerSlot && (
         <div className="flex-shrink-0">
@@ -677,70 +652,48 @@ const handleSaveAsset = async (gen) => {
             </div>
           </div>
 
-          {/* Status filter dots */}
-          <div className="flex items-center gap-3 mb-4 justify-end">
+          {/* Status filter — labeled pills (was: unlabeled colored dots) */}
+          <div className="flex items-center gap-2 mb-4 justify-end flex-wrap">
             <AnimatePresence initial={false}>
               {visibleStatusFilters.map((f) => {
                 const isActive = statusFilter === f.value
-                const dotColor = {
-                  completed:   '#10b981',
-                  failed:      '#ef4444',
-                  in_progress: '#eab308',
-                  all:         'var(--text-primary)',
-                }[f.value] ?? 'var(--text-muted)'
+                const config   = STATUS_FILTER_CONFIG[f.value] || { icon: null, tone: 'var(--text-primary)' }
 
                 return (
-                  <motion.button
+                  <motion.div
                     key={f.value}
                     layout
                     initial={f.dynamic ? { opacity: 0, scale: 0 } : false}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={f.dynamic ? { opacity: 0, scale: 0 } : undefined}
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    onClick={() => setStatusFilter(f.value)}
-                    title={f.label}
-                    className="flex items-center justify-center transition-all active:scale-90"
-                    style={{ padding: '4px' }}
                   >
-                    {f.dynamic ? (
-                      <motion.div
-                        animate={{ scale: [1, 1.3, 1] }}
-                        transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
-                        style={{
-                          width: 14, height: 14, borderRadius: 4, background: dotColor,
-                          opacity:   isActive ? 1 : 0.25,
-                          boxShadow: isActive ? `0 0 0 3px ${dotColor}33` : 'none',
-                        }}
-                      />
-                    ) : (
-                      <div style={{
-                        width: 14, height: 14, borderRadius: 4, background: dotColor,
-                        opacity:    isActive ? 1 : 0.25,
-                        boxShadow:  isActive ? `0 0 0 3px ${dotColor}33` : 'none',
-                        transition: 'opacity 0.15s, box-shadow 0.15s',
-                      }} />
-                    )}
-                  </motion.button>
+                    <FilterPill
+                      active={isActive}
+                      onClick={() => setStatusFilter(f.value)}
+                      label={f.label}
+                      icon={config.icon}
+                      tone={config.tone}
+                      pulse={!!f.dynamic}
+                    />
+                  </motion.div>
                 )
               })}
             </AnimatePresence>
           </div>
 
-          {/* Extra output-type filter (UGC only) */}
+          {/* Extra output-type filter (Image/Video) — same FilterPill */}
           {extraStatusFilters && !loading && items.length > 0 && (
-            <div className="flex gap-2 mb-5">
+            <div className="flex gap-2 mb-5 justify-end flex-wrap">
               {extraStatusFilters.map((o) => (
-                <button
+                <FilterPill
                   key={o.value}
+                  active={extraFilter === o.value}
                   onClick={() => setExtraFilter(o.value)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-                  style={{
-                    background: extraFilter === o.value ? accentColor : 'var(--bg-elevated)',
-                    color:      extraFilter === o.value ? '#ffffff'    : 'var(--text-muted)',
-                  }}
-                >
-                  {o.label}
-                </button>
+                  label={o.label}
+                  icon={o.icon}
+                  tone={accentColor}
+                />
               ))}
             </div>
           )}
@@ -783,7 +736,6 @@ const handleSaveAsset = async (gen) => {
                   key={gen.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0  }}
-                  // ✅ cap stagger — long lists no longer have cards delayed by seconds
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
                 >
                   <MediaCard
@@ -838,7 +790,7 @@ const handleSaveAsset = async (gen) => {
 
       {/* Sheets */}
       <AnimatePresence>
-     {activeGen && sheetMode === 'actions' && (
+        {activeGen && sheetMode === 'actions' && (
           <ActionSheet
             key="actions"
             gen={activeGen}
@@ -885,7 +837,7 @@ const handleSaveAsset = async (gen) => {
         )}
       </AnimatePresence>
 
-    {/* Save-as-asset overlay */}
+      {/* Save-as-asset overlay */}
       <AnimatePresence>
         {savingAsset && (
           <motion.div
@@ -955,7 +907,7 @@ const handleSaveAsset = async (gen) => {
         )}
       </AnimatePresence>
 
-     {/* Delete confirm */}
+      {/* Delete confirm */}
       <AnimatePresence>
         {pendingDeleteGen && (
           <motion.div
@@ -1008,7 +960,7 @@ const handleSaveAsset = async (gen) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DefaultEmpty
+// DefaultEmpty — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DefaultEmpty({ timeFilter, statusFilter, setTimeFilter, setStatusFilter, accentColor }) {
