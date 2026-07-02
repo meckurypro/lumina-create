@@ -1,30 +1,3 @@
-// src/components/media/MediaCardComponents.jsx
-//
-// DESIGN REFACTOR — key changes:
-//
-//  1. NEW ACTION-SHEET PRIMITIVES (ActionIconChip, ActionGridItem,
-//     ActionRowGroup, ActionRow). These replace the old flat stack of
-//     identical rows with the iOS-native pattern: a 3-column icon grid for
-//     "do something new" actions (mirrors Apple's own share sheet), plus
-//     grouped rows (single rounded container, inset hairline dividers)
-//     for utility/contextual/destructive actions. See Apple HIG — Action
-//     Sheets & Lists and Tables (grouped style).
-//
-//  2. ActionSheet is fully rebuilt on these primitives. Cancel is now an
-//     explicit, always-present row (HIG requirement — never rely solely on
-//     backdrop-tap-to-dismiss).
-//
-//  3. NEW FilterPill — a small labeled, iconable pill used to replace the
-//     old unlabeled colored-dot filters (MediaPageCore status filter,
-//     AssetsPage type filter). Unlabeled color dots fail basic scanability;
-//     labeled pills match the existing Generations/Assets tab-switcher
-//     pattern already in MediaPage.jsx, just applied one level down.
-//
-//  4. Everything else — RegenerateSheet, EditSheet, MediaCard, GridCard,
-//     SkeletonCard, MediaEmptyState, Lightbox, FallbackBanner,
-//     ExtractEndFrameConfirmModal, all perf-related preload/loading
-//     attributes — is UNCHANGED from the previous version.
-
 import { useState, useEffect, useRef }  from 'react'
 import { createPortal }                  from 'react-dom'
 import { motion, AnimatePresence }       from 'framer-motion'
@@ -36,10 +9,6 @@ import {
   Pencil, Bookmark, ScanLine,
 } from 'lucide-react'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const EST_DURATION = {
   text_to_image:   12_000,
   image_to_image:  15_000,
@@ -50,10 +19,6 @@ export const EST_DURATION = {
   template:        90_000,
   default:         60_000,
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pure helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function getFakeProgress(gen) {
   if (gen.status === 'completed') return 100
@@ -70,11 +35,22 @@ export function formatDate(iso) {
   })
 }
 
+// getCardTitle
+//
+// gen.is_system_prompt gates use of the raw prompt as a fallback title.
+// Defaults to TRUE at the DB level (fail-closed) — prompts are hidden
+// unless the originating page explicitly set is_system_prompt: false
+// (user-typed-prompt pages like CreateVideoPage / CreateImagePage /
+// CreateTalkingHeadPage). System/template pages (Photo Polish, Video
+// Upscaler, Cinematic Transition, future templates) need no per-page
+// change since true is already the default.
 export function getCardTitle(gen) {
   if (gen.ugc_scene_prompt) return gen.ugc_scene_prompt
   if (gen.templates?.name)  return gen.templates.name
   if (gen.title)            return gen.title
-  if (gen.prompt)           return gen.prompt.slice(0, 45) + (gen.prompt.length > 45 ? '…' : '')
+  if (!gen.is_system_prompt && gen.prompt) {
+    return gen.prompt.slice(0, 45) + (gen.prompt.length > 45 ? '…' : '')
+  }
   return 'Generation'
 }
 
@@ -133,10 +109,6 @@ export function getModelDisplayLabel(modelValue, modelsList) {
   return null
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StatusPill
-// ─────────────────────────────────────────────────────────────────────────────
-
 const STATUS_STYLES = {
   completed:  { bg: 'rgba(16,185,129,0.12)', color: '#10b981', label: 'Done'       },
   processing: { bg: 'rgba(234,179,8,0.12)',  color: '#eab308', label: 'Processing' },
@@ -155,16 +127,6 @@ export const StatusPill = ({ status }) => {
     </span>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FilterPill
-//
-// Labeled, optionally iconed pill used for status/type filters throughout
-// the Media section. Replaces the old unlabeled colored-dot filters.
-// `tone` is a hex/CSS-color string used as the active background; falls
-// back to --text-primary (matches the existing Generations/Assets tab
-// switcher's active state).
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = false }) => {
   const isNeutralTone   = !tone || tone === 'var(--text-primary)'
@@ -194,10 +156,6 @@ export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = f
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ProgressOverlay
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const ProgressOverlay = ({ gen, accentColor = 'var(--brand)' }) => {
   const [pct, setPct] = useState(() => getFakeProgress(gen))
 
@@ -224,10 +182,6 @@ export const ProgressOverlay = ({ gen, accentColor = 'var(--brand)' }) => {
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CopyPromptButton
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const CopyPromptButton = ({ prompt }) => {
   const [copied, setCopied] = useState(false)
@@ -269,10 +223,6 @@ export const CopyPromptButton = ({ prompt }) => {
     </button>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PortalDropup
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const PortalDropup = ({
   triggerRef, open, models, value, originalModel,
@@ -347,10 +297,6 @@ export const PortalDropup = ({
     document.body
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RegenerateSheet — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const RegenerateSheet = ({
   gen, models, credits,
@@ -495,10 +441,6 @@ export const RegenerateSheet = ({
     </motion.div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EditSheet — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const EditSheet = ({
   gen, models, credits,
@@ -645,18 +587,6 @@ export const EditSheet = ({
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Action-sheet primitives
-//
-// ActionIconChip   — tinted rounded-square icon container (tone system)
-// ActionGridItem   — icon chip + label, used in the 3-col "do something new"
-//                    grid (mirrors Apple's own share sheet layout)
-// ActionRowGroup   — single rounded container for grouped rows
-// ActionRow        — one row inside a group; inset hairline divider, not a
-//                    separate card. This is the actual iOS "grouped list"
-//                    pattern (Lists and Tables — grouped style).
-// ─────────────────────────────────────────────────────────────────────────────
-
 const CHIP_TONES = {
   neutral: { bg: 'var(--bg-elevated)',    color: 'var(--text-secondary)' },
   brand:   { bg: 'var(--brand-light)',    color: 'var(--brand)'          },
@@ -728,20 +658,18 @@ const ActionRow = ({ icon, label, sub, tone = 'neutral', onClick, danger, isLast
   </button>
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
 // ActionSheet
 //
-// Layout:
-//   1. Handle + title + preview thumbnail            (unchanged)
-//   2. Primary "do something new" actions — icon grid (Edit, Regenerate,
-//      Extract End Frame, Retry)
-//   3. Utility group — Download / Save as Asset       (grouped rows)
-//   4. Contextual group — Refresh                     (grouped rows, only
-//      while processing/pending)
-//   5. Destructive — Delete                           (isolated group)
-//   6. Cancel — explicit full-width row
-// ─────────────────────────────────────────────────────────────────────────────
-
+// is_system_prompt gating (fail-closed — DB default is TRUE, i.e. hidden):
+//   - Regenerate is only added to the primary icon grid when
+//     !gen.is_system_prompt. It's built via gridItems.push(...) below
+//     rather than being unconditionally present, so a system/template
+//     generation simply never gets a Regenerate entry point at all —
+//     RegenerateSheet is never invoked from here. Since the column
+//     defaults to true, this is the "safe" outcome for anything that
+//     forgot to opt out.
+//   - The prompt preview line under the title is also suppressed for
+//     is_system_prompt generations, matching the getCardTitle() gate.
 export const ActionSheet = ({
   gen, onClose,
   onDelete, onRegenerate, onEdit, onRefresh, onDownload, onSaveAsset, onRetry,
@@ -749,14 +677,17 @@ export const ActionSheet = ({
   refreshLoading = false,
   extractLoading = false,
 }) => {
-  const isCompleted  = gen.status === 'completed'
-  const isProcessing = gen.status === 'processing' || gen.status === 'pending'
+  const isCompleted     = gen.status === 'completed'
+  const isProcessing    = gen.status === 'processing' || gen.status === 'pending'
+  const canShowPrompt   = !gen.is_system_prompt
 
   const gridItems = []
   if (isCompleted && gen.output_url && onEdit) {
     gridItems.push({ icon: Pencil, label: 'Edit', onClick: onEdit })
   }
-  gridItems.push({ icon: RefreshCw, label: 'Regenerate', onClick: onRegenerate })
+  if (canShowPrompt) {
+    gridItems.push({ icon: RefreshCw, label: 'Regenerate', onClick: onRegenerate })
+  }
   if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEndFrame) {
     gridItems.push({
       icon: ScanLine, label: extractLoading ? 'Extracting…' : 'End Frame',
@@ -794,7 +725,7 @@ export const ActionSheet = ({
               {gen.ugc_filter_applied === 'cinematic' ? '🎬 Cinematic' : '📱 Hyper Realistic'}
               {gen.aspect_ratio ? ` · ${gen.aspect_ratio}` : ''}
             </p>
-          ) : gen.prompt ? (
+          ) : (canShowPrompt && gen.prompt) ? (
             <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{gen.prompt}</p>
           ) : null}
         </div>
@@ -886,10 +817,6 @@ export const ActionSheet = ({
     </motion.div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaCard — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentColor, accentSubtle }) => {
   const isVideo       = gen.output_type === 'video'
@@ -991,10 +918,6 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GridCard — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   const isVideo      = gen.output_type === 'video'
   const isPending    = gen.status === 'pending' || gen.status === 'processing'
@@ -1062,10 +985,6 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SkeletonCard — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const SkeletonCard = () => (
   <div
     className="flex items-center gap-3 p-3 rounded-2xl animate-pulse"
@@ -1079,10 +998,6 @@ export const SkeletonCard = () => (
     </div>
   </div>
 )
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaEmptyState — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const MediaEmptyState = ({
   icon: Icon = Sparkles,
@@ -1111,10 +1026,6 @@ export const MediaEmptyState = ({
   </motion.div>
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Lightbox — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const Lightbox = ({ gen, onClose }) => {
   if (!gen) return null
   const isVideo = gen.output_type === 'video'
@@ -1140,7 +1051,7 @@ export const Lightbox = ({ gen, onClose }) => {
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)' }}
         >
           <p className="text-white text-sm font-semibold line-clamp-2">
-            {gen.ugc_scene_prompt || gen.prompt}
+            {gen.ugc_scene_prompt || (!gen.is_system_prompt ? gen.prompt : '')}
           </p>
           <p className="mt-1 text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>{formatDate(gen.created_at)}</p>
         </div>
@@ -1148,10 +1059,6 @@ export const Lightbox = ({ gen, onClose }) => {
     </motion.div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FallbackBanner — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const FallbackBanner = ({ message, onDismiss }) => (
   <motion.div
@@ -1167,10 +1074,6 @@ export const FallbackBanner = ({ message, onDismiss }) => (
     )}
   </motion.div>
 )
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ExtractEndFrameConfirmModal — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
   const [skipNext, setSkipNext] = useState(false)
