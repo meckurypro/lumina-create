@@ -10,6 +10,9 @@ import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { detectAspectRatio, compressImage, tagForSlot } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
+import { MentionPicker } from '@/components/create/MentionPicker'
+import { usePromptTagging } from '@/hooks/usePromptTagging'
+import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
 
 const ACCENT     = 'var(--tool-image)'
@@ -186,10 +189,32 @@ export default function CreateImagePage() {
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [model,         setModel]         = useState('')
   const [resolution,    setResolution]    = useState('1k')
-  const [fullscreenIdx, setFullscreenIdx] = useState(null)
+const [fullscreenIdx, setFullscreenIdx] = useState(null)
   const [submitting,    setSubmitting]    = useState(false)
 
+  const [mentionLibrary,       setMentionLibrary]       = useState({ characters: [], brands: [] })
+  const [brandProducts,        setBrandProducts]        = useState([])
+  const [brandProductsLoading, setBrandProductsLoading] = useState(false)
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+
+  const {
+    trackSelection, insertAtCursor, handlePromptChange,
+    mention, resolveMention, drillIntoBrand: drillMentionBrand, backToRoot, closeMention,
+  } = usePromptTagging({ textareaRef, getPrompt: () => prompt, setPrompt })
+
+  useEffect(() => {
+    if (!user) return
+    fetchMentionLibrary(user.id).then(setMentionLibrary)
+  }, [user])
+
+  const handleDrillIntoBrand = async (brand) => {
+    drillMentionBrand(brand)
+    setBrandProductsLoading(true)
+    const products = await fetchBrandProducts(brand.id)
+    setBrandProducts(products)
+    setBrandProductsLoading(false)
+  }
 
   useEffect(() => {
     loadDraftJSON(DRAFT_PROMPT).then((p) => { if (p) setPrompt(p) })
@@ -334,25 +359,40 @@ export default function CreateImagePage() {
     })
   }
 
-  const handleTagInsert = (tag) => {
-    const el = textareaRef.current
-    if (!el) {
-      setPrompt((p) => p ? `${p} ${tag}` : tag)
-      return
+ const addMentionImage = (url, role, label) => {
+    if (!modelSupportsMulti) {
+      toast.error('Switch to a multi-reference model to tag characters or brands')
+      return null
     }
-    const start = el.selectionStart
-    const end   = el.selectionEnd
-    const before = prompt.slice(0, start)
-    const after  = prompt.slice(end)
-    const needsSpace = before.length > 0 && !before.endsWith(' ')
-    const inserted = `${needsSpace ? ' ' : ''}${tag} `
-    const next = before + inserted + after
-    setPrompt(next)
-    requestAnimationFrame(() => {
-      el.focus()
-      const cursor = start + inserted.length
-      el.setSelectionRange(cursor, cursor)
-    })
+    const filled = images.filter(Boolean)
+    if (filled.length >= modelMaxRefImages) {
+      toast.error(`This model supports up to ${modelMaxRefImages} reference images`)
+      return null
+    }
+    if (!multiMode) setMultiMode(true)
+    const idx = filled.length
+    const next = [...images]
+    next[idx] = { file: null, url, ar: '1:1', role, label }
+    setImages(next)
+    persistImages(next)
+    return idx
+  }
+
+  const handleSelectMentionUpload = (idx) => resolveMention(tagForSlot(idx))
+
+  const handleSelectMentionCharacter = (character) => {
+    const idx = addMentionImage(character.photo_face_front, 'character_face', character.name)
+    if (idx !== null) resolveMention(tagForSlot(idx))
+  }
+
+  const handleSelectMentionLogo = (brand) => {
+    const idx = addMentionImage(brand.logo_url, 'brand_logo', brand.brand_name)
+    if (idx !== null) resolveMention(tagForSlot(idx))
+  }
+
+  const handleSelectMentionProduct = (brand, product) => {
+    const idx = addMentionImage(product.image_url, 'product', `${brand.brand_name} — ${product.name}`)
+    if (idx !== null) resolveMention(tagForSlot(idx))
   }
 
   const handleGenerate = async () => {
@@ -363,24 +403,24 @@ export default function CreateImagePage() {
 
     setSubmitting(true)
     try {
-      const uploadedUrls = []
+      const uploadedRefs = []
       for (const img of images) {
         if (!img) continue
-        if (!img.file) {
-          uploadedUrls.push(img.url)
-          continue
+        let url = img.url
+        if (img.file) {
+          const contentType = img.file.type || 'image/jpeg'
+          const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+          const { data: uploadData, error: upErr } = await supabase.storage
+            .from('generation-uploads')
+            .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
+          if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
+          const { data: { publicUrl } } = supabase.storage
+            .from('generation-uploads')
+            .getPublicUrl(uploadData.path)
+          url = publicUrl
         }
-        const contentType = img.file.type || 'image/jpeg'
-        const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-        const { data: uploadData, error: upErr } = await supabase.storage
-          .from('generation-uploads')
-          .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
-        if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-        const { data: { publicUrl } } = supabase.storage
-          .from('generation-uploads')
-          .getPublicUrl(uploadData.path)
-        uploadedUrls.push(publicUrl)
+        uploadedRefs.push({ url, role: img.role || 'reference', label: img.label || null })
       }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
@@ -394,7 +434,7 @@ export default function CreateImagePage() {
         credits_charged: creditCost,
         output_type: 'image',
         start_frame_url: null,
-        input_image_urls: uploadedUrls.length ? uploadedUrls : null,
+       input_image_urls: uploadedRefs.length ? uploadedRefs : null,
         skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -544,7 +584,7 @@ export default function CreateImagePage() {
                 maxImages={maxImages}
                 onAdd={handleAddImage}
                 onRemove={handleRemoveImage}
-                onTagInsert={handleTagInsert}
+               onTagInsert={insertAtCursor}
                 onFullscreen={(idx) => setFullscreenIdx(idx)}
               />
             ) : (
@@ -568,15 +608,36 @@ export default function CreateImagePage() {
               </p>
             )}
 
+        <MentionPicker
+              mention={mention}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+              images={images}
+              onSelectImage={handleSelectMentionUpload}
+              characters={mentionLibrary.characters}
+              brands={mentionLibrary.brands}
+              brandProducts={brandProducts}
+              brandProductsLoading={brandProductsLoading}
+              onSelectCharacter={handleSelectMentionCharacter}
+              onSelectBrand={handleDrillIntoBrand}
+              onSelectLogo={handleSelectMentionLogo}
+              onSelectProduct={handleSelectMentionProduct}
+              onBack={backToRoot}
+            />
+
             <Textarea
               ref={textareaRef}
               label="Prompt"
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={handlePromptChange}
+              onSelect={trackSelection}
+              onKeyUp={trackSelection}
+              onClick={trackSelection}
+              onFocus={trackSelection}
+              onKeyDown={(e) => { if (e.key === 'Escape' && mention) closeMention() }}
               placeholder={
                 modelSupportsMulti && multiMode && images.length > 0
-                  ? `e.g. Person in ${tagForSlot(0)} hugs person in ${tagForSlot(1)}`
-                  : 'What are we creating today?'
+                  ? `e.g. Person in ${tagForSlot(0)} hugs person in ${tagForSlot(1)}. Type @ for uploads, / for characters & brands.`
+                  : 'What are we creating today? Type @ for uploads, / for characters & brands.'
               }
               rows={4}
             />
