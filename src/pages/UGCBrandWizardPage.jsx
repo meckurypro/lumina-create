@@ -8,11 +8,12 @@ import {
   Plus, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { ugcBrandProfiles, BRAND_CREDIT_COST,
+import { ugcBrandProfiles, ugcBrandProducts, BRAND_CREDIT_COST, MAX_BRAND_PRODUCTS,
   INDUSTRY_OPTIONS, BRAND_TONE_OPTIONS, CONTENT_STYLE_OPTIONS,
   PRICE_TIER_OPTIONS, AGE_RANGE_OPTIONS, GENDER_AUDIENCE_OPTIONS,
   PLATFORM_OPTIONS, OFFERING_TYPE_OPTIONS, VISUAL_STYLE_OPTIONS,
 } from '@/lib/ugcBrands'
+import BrandProductManager from '@/components/BrandProductManager'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -118,62 +119,6 @@ const Chips = ({ label, options, value = [], onChange, max }) => (
     </div>
   </div>
 )
-
-// ── Offering list input ───────────────────────────────────────
-const OfferingList = ({ value = [], onChange }) => {
-  const [input, setInput] = useState('')
-
-  const add = () => {
-    const clean = input.trim()
-    if (!clean || value.length >= 10 || value.includes(clean)) return
-    onChange([...value, clean])
-    setInput('')
-  }
-
-  return (
-    <div className="mb-5">
-      <Label>Products / Services (up to 10)</Label>
-      <div className="flex gap-2 mb-3">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          placeholder="e.g. Moisturising face cream"
-          className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
-          style={{
-            background: 'var(--bg-elevated)',
-            border:     '1px solid var(--border-color)',
-            color:      'var(--text-primary)',
-          }}
-        />
-        <button
-          onClick={add}
-          disabled={!input.trim() || value.length >= 10}
-          className="px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]"
-          style={{ background: ACCENT, color: '#fff', opacity: (!input.trim() || value.length >= 10) ? 0.4 : 1 }}
-        >
-          <Plus size={15} />
-        </button>
-      </div>
-      {value.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {value.map((item, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between px-3 py-2 rounded-xl text-sm"
-              style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
-            >
-              <span style={{ color: 'var(--text-primary)' }}>{item}</span>
-              <button onClick={() => onChange(value.filter((_, idx) => idx !== i))} style={{ color: 'var(--text-muted)' }}>
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Logo upload slot ──────────────────────────────────────────
 const LogoSlot = ({ value, onChange, onRemove, uploading }) => (
@@ -285,11 +230,11 @@ const ColorPalette = ({ value = [], onChange }) => {
 }
 
 // ── Step validation ───────────────────────────────────────────
-const stepIsValid = (step, form) => {
+const stepIsValid = (step, form, productCount) => {
   switch (step) {
     case 1: return form.brand_name?.trim() && form.tagline?.trim() && form.industry && form.country?.trim()
     case 2: return form.target_age_ranges?.length > 0 && form.target_genders?.length > 0 && form.target_interests?.trim()
-    case 3: return form.offering_type && form.offerings?.length > 0 && form.price_tier
+  case 3: return form.offering_type && productCount > 0 && form.price_tier
     case 4: return form.brand_tones?.length > 0 && form.content_styles?.length > 0
     case 5: return form.platforms?.length > 0
     default: return false
@@ -311,6 +256,7 @@ export default function UGCBrandWizardPage() {
   const [brandId,      setBrandId]      = useState(loadId)
   const [saving,       setSaving]       = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [products,      setProducts]     = useState([])
 
   const [form, setForm] = useState({
     brand_name:         '',
@@ -325,7 +271,6 @@ export default function UGCBrandWizardPage() {
     target_markets:     '',
     // Step 3
     offering_type:      '',
-    offerings:          [],
     price_tier:         '',
     // Step 4
     brand_tones:        [],
@@ -339,7 +284,7 @@ export default function UGCBrandWizardPage() {
     logo_url:           null,
   })
 
-  // Load if resuming or editing
+// Load if resuming or editing
   useEffect(() => {
     if (!loadId) return
     const load = async () => {
@@ -351,11 +296,19 @@ export default function UGCBrandWizardPage() {
           logo_url: data.logo_url ? { url: data.logo_url } : null,
         }))
       }
+      const { data: productRows } = await ugcBrandProducts.getAll(loadId)
+      setProducts(productRows || [])
     }
     load()
   }, [loadId])
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+
+  // Products are FK'd to the brand row, so make sure the brand
+  // exists as soon as the user reaches the products step.
+  useEffect(() => {
+    if (step === 3 && !brandId) ensureBrandId()
+  }, [step, brandId])
 
   const buildPayload = () => ({
     brand_name:        form.brand_name,
@@ -368,7 +321,6 @@ export default function UGCBrandWizardPage() {
     target_interests:  form.target_interests,
     target_markets:    form.target_markets || null,
     offering_type:     form.offering_type || null,
-    offerings:         form.offerings,
     price_tier:        form.price_tier   || null,
     brand_tones:       form.brand_tones,
     content_styles:    form.content_styles,
@@ -402,27 +354,29 @@ export default function UGCBrandWizardPage() {
     }
   }
 
+ const ensureBrandId = async () => {
+    if (brandId) return brandId
+    setSaving(true)
+    try {
+      const { data, error } = await ugcBrandProfiles.create(user.id, { ...buildPayload(), logo_url: null })
+      if (error) throw error
+      setBrandId(data.id)
+      return data.id
+    } catch (err) {
+      toast.error('Could not initialise brand')
+      return null
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleLogoUpload = async (file) => {
     if (!file) return
     const previewUrl = URL.createObjectURL(file)
     set('logo_url', { file, url: previewUrl })
 
-    let bid = brandId
-    if (!bid) {
-      setSaving(true)
-      try {
-        const { data, error } = await ugcBrandProfiles.create(user.id, { ...buildPayload(), logo_url: null })
-        if (error) throw error
-        bid = data.id
-        setBrandId(bid)
-      } catch (err) {
-        toast.error('Could not initialise brand')
-        setSaving(false)
-        return
-      } finally {
-        setSaving(false)
-      }
-    }
+    const bid = await ensureBrandId()
+    if (!bid) return
 
     setUploadingLogo(true)
     try {
@@ -494,7 +448,7 @@ export default function UGCBrandWizardPage() {
     }
   }
 
-  const valid = stepIsValid(step, form)
+ const valid = stepIsValid(step, form, products.length)
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -626,7 +580,7 @@ export default function UGCBrandWizardPage() {
                 </>
               )}
 
-              {/* Step 3: Offerings */}
+            {/* Step 3: Offerings */}
               {step === 3 && (
                 <>
                   <Chips
@@ -636,10 +590,24 @@ export default function UGCBrandWizardPage() {
                     onChange={(v) => set('offering_type', v[v.length - 1] || '')}
                     max={1}
                   />
-                  <OfferingList
-                    value={form.offerings}
-                    onChange={(v) => set('offerings', v)}
-                  />
+
+                  {brandId ? (
+                    <div className="mb-5">
+                      <Label>Products / Services</Label>
+                      <BrandProductManager
+                        brandId={brandId}
+                        userId={user.id}
+                        products={products}
+                        onProductsChange={setProducts}
+                        maxProducts={MAX_BRAND_PRODUCTS}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 size={18} className="animate-spin" style={{ color: ACCENT }} />
+                    </div>
+                  )}
+
                   <Chips
                     label="Price Tier"
                     options={PRICE_TIER_OPTIONS}
