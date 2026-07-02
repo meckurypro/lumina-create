@@ -995,7 +995,7 @@ export default function CreateUGCPage() {
   const showVoiceFooter = ugcTab === 'voices' && voiceMode === 'tts' && voices.length > 0
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       <TopBar showLogo showCredits showBack onBack={() => navigate('/create')} />
 
