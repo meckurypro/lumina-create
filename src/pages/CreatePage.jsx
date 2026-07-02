@@ -181,7 +181,7 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
       transition={{ delay: index * 0.08 }}
       whileTap={{ scale: locked || comingSoon ? 1 : 0.97 }}
       onClick={handleClick}
-      className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
+      className="flex items-center gap-4 w-full rounded-2xl transition-all"
       style={{
         background: 'var(--bg-card)',
         border:     `1px solid var(${accentVar}-border, var(--border-color))`,
@@ -260,8 +260,14 @@ function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index
   )
 }
 
-// ── Utility row card — shared between Photo Polish, Image Upscaler, Video Upscaler
-function UtilityCard({ Icon, iconColor, iconBg, iconBorder, title, titleColor, subtitle, route, navigate, delay }) {
+// ── Utility tile — grid card shared between Photo Polish, Image Upscaler, Video Upscaler
+//
+// Icon-on-top layout instead of a horizontal row: scales cleanly from a
+// single mobile column into a 2–3 column grid on desktop (see Utilities
+// tab below), where the old full-width row just left the rest of the
+// screen empty. "Open ↦" appears on hover instead of a static arrow, so
+// the resting state stays quiet and the affordance shows up on intent.
+function UtilityTile({ Icon, iconColor, iconBg, iconBorder, title, titleColor, subtitle, route, navigate, delay }) {
   return (
     <motion.button
       initial={{ opacity: 0, y: 16 }}
@@ -269,24 +275,29 @@ function UtilityCard({ Icon, iconColor, iconBg, iconBorder, title, titleColor, s
       transition={{ delay }}
       whileTap={{ scale: 0.97 }}
       onClick={() => navigate(route)}
-      className="flex items-center gap-4 w-full rounded-2xl transition-all mb-4"
+      className="group flex flex-col items-start text-left rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--tile-accent-border)] hover:shadow-[var(--shadow)]"
       style={{
-        background: 'var(--bg-card)',
-        border:     `1px solid ${iconBorder}`,
-        padding:    '16px 20px',
+        background:              'var(--bg-card)',
+        border:                  '1px solid var(--border-color)',
+        padding:                 '22px',
+        '--tile-accent-border':  iconBorder,
       }}
     >
       <div
-        className="rounded-2xl flex items-center justify-center flex-shrink-0"
-        style={{ width: 52, height: 52, background: iconBg, border: `1px solid ${iconBorder}` }}
+        className="rounded-2xl flex items-center justify-center flex-shrink-0 mb-4"
+        style={{ width: 46, height: 46, background: iconBg, border: `1px solid ${iconBorder}` }}
       >
-        <Icon style={{ width: 22, height: 22, color: iconColor }} strokeWidth={1.4} />
+        <Icon style={{ width: 20, height: 20, color: iconColor }} strokeWidth={1.4} />
       </div>
-      <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
-        <span className="text-sm font-bold" style={{ color: titleColor }}>{title}</span>
-        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
+      <span className="text-sm font-bold mb-1" style={{ color: titleColor }}>{title}</span>
+      <span className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
+      <div
+        className="flex items-center gap-1 mt-4 text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ color: titleColor }}
+      >
+        Open
+        <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
       </div>
-      <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
     </motion.button>
   )
 }
@@ -377,14 +388,14 @@ export default function CreatePage() {
           {/* Tab content */}
           <div className="flex flex-col flex-1 min-h-0">
 
-            {/* ── Tools Tab ── */}
+          {/* ── Tools Tab ── */}
             {activeTab === 'tools' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-1 items-center justify-center"
               >
-                <div className="w-full" style={{ maxWidth: '520px' }}>
+                <div className="w-full max-w-2xl">
 
                   {/* First row — 2 square cards */}
                   <div className="grid grid-cols-2 gap-4 mb-4">
@@ -403,33 +414,36 @@ export default function CreatePage() {
                     ))}
                   </div>
 
-                  {/* Remaining tools — full-width wide cards */}
-                  {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar, comingSoonForPublic }, i) => {
-                    const isCopyMotion = id === 'copy_motion'
-                    const comingSoon   = !!comingSoonForPublic && !isPrivileged
-                    const locked       = false
-                    // Only show weekly badge when Copy Motion is live (privileged) and user is novice
-                    const weeklyBadge  = isCopyMotion && isNovice && isPrivileged && weeklyUsed !== null
-                      ? `${weeklyUsed}/${weeklyLimit} this week`
-                      : null
+                  {/* Remaining tools — 2-column grid on desktop, single
+                      column on mobile, instead of one long stacked list. */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar, comingSoonForPublic }, i) => {
+                      const isCopyMotion = id === 'copy_motion'
+                      const comingSoon   = !!comingSoonForPublic && !isPrivileged
+                      const locked       = false
+                      // Only show weekly badge when Copy Motion is live (privileged) and user is novice
+                      const weeklyBadge  = isCopyMotion && isNovice && isPrivileged && weeklyUsed !== null
+                        ? `${weeklyUsed}/${weeklyLimit} this week`
+                        : null
 
-                    return (
-                      <ToolCardWide
-                        key={id}
-                        id={id}
-                        label={label}
-                        subtitle={subtitle}
-                        icon={Icon}
-                        route={route}
-                        accentVar={accentVar}
-                        index={i + 2}
-                        navigate={navigate}
-                        locked={locked}
-                        comingSoon={comingSoon}
-                        weeklyBadge={weeklyBadge}
-                      />
-                    )
-                  })}
+                      return (
+                        <ToolCardWide
+                          key={id}
+                          id={id}
+                          label={label}
+                          subtitle={subtitle}
+                          icon={Icon}
+                          route={route}
+                          accentVar={accentVar}
+                          index={i + 2}
+                          navigate={navigate}
+                          locked={locked}
+                          comingSoon={comingSoon}
+                          weeklyBadge={weeklyBadge}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -441,8 +455,8 @@ export default function CreatePage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="overflow-y-auto"
               >
-                {loading ? (
-                  <div className="grid grid-cols-2 gap-3">
+       {loading ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {[...Array(4)].map((_, i) => (
                       <div
                         key={i}
@@ -456,7 +470,7 @@ export default function CreatePage() {
                     No templates yet
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {templates.map((template, i) => (
                       <TemplateCard
                         key={template.id}
@@ -470,14 +484,16 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-            {/* ── Utilities Tab ── */}
+           {/* ── Utilities Tab ── */}
             {activeTab === 'utilities' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="overflow-y-auto"
               >
-                <div className="w-full" style={{ maxWidth: '520px' }}>
+                {/* Wider on desktop so the grid has room to breathe into
+                    2–3 columns instead of one narrow centered row. */}
+                <div className="w-full max-w-2xl lg:max-w-5xl">
 
                   {/* ── Photo Tools ───────────────────────────────────────── */}
                   <p className="text-xs font-semibold uppercase tracking-widest mb-4"
@@ -485,50 +501,56 @@ export default function CreatePage() {
                     Photo Tools
                   </p>
 
-                  <UtilityCard
-                    Icon={Sparkles}
-                    iconColor="var(--tool-polish, #f59e0b)"
-                    iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
-                    iconBorder="var(--tool-polish-border, var(--border-color))"
-                    title="Photo Polish"
-                    titleColor="var(--tool-polish, #f59e0b)"
-                    subtitle="Transform any photo into a cinematic shot"
-                    route="/create/photo-polish"
-                    navigate={navigate}
-                    delay={0.06}
-                  />
+                  {/* auto-fill keeps tiles at a natural card width instead of
+                      stretching to fill the row when there are only 1–2 items. */}
+                  <div className="grid gap-4 mb-8 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+                    <UtilityTile
+                      Icon={Sparkles}
+                      iconColor="var(--tool-polish, #f59e0b)"
+                      iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
+                      iconBorder="var(--tool-polish-border, var(--border-color))"
+                      title="Photo Polish"
+                      titleColor="var(--tool-polish, #f59e0b)"
+                      subtitle="Transform any photo into a cinematic shot"
+                      route="/create/photo-polish"
+                      navigate={navigate}
+                      delay={0.06}
+                    />
 
-                  <UtilityCard
-                    Icon={ScanSearch}
-                    iconColor="var(--tool-polish, #f59e0b)"
-                    iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
-                    iconBorder="var(--tool-polish-border, var(--border-color))"
-                    title="Image Upscaler"
-                    titleColor="var(--tool-polish, #f59e0b)"
-                    subtitle="Enlarge and sharpen any image with AI"
-                    route="/create/image-upscaler"
-                    navigate={navigate}
-                    delay={0.10}
-                  />
+                    <UtilityTile
+                      Icon={ScanSearch}
+                      iconColor="var(--tool-polish, #f59e0b)"
+                      iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
+                      iconBorder="var(--tool-polish-border, var(--border-color))"
+                      title="Image Upscaler"
+                      titleColor="var(--tool-polish, #f59e0b)"
+                      subtitle="Enlarge and sharpen any image with AI"
+                      route="/create/image-upscaler"
+                      navigate={navigate}
+                      delay={0.10}
+                    />
+                  </div>
 
                   {/* ── Video Tools ───────────────────────────────────────── */}
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-4 mt-2"
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
                     style={{ color: 'var(--text-muted)' }}>
                     Video Tools
                   </p>
 
-                  <UtilityCard
-                    Icon={Maximize}
-                    iconColor="var(--tool-motion, #8b5cf6)"
-                    iconBg="var(--tool-motion-subtle, var(--bg-elevated))"
-                    iconBorder="var(--tool-motion-border, var(--border-color))"
-                    title="Video Upscaler"
-                    titleColor="var(--tool-motion, #8b5cf6)"
-                    subtitle="Upscale any video to higher resolution"
-                    route="/create/video-upscaler"
-                    navigate={navigate}
-                    delay={0.14}
-                  />
+                  <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+                    <UtilityTile
+                      Icon={Maximize}
+                      iconColor="var(--tool-motion, #8b5cf6)"
+                      iconBg="var(--tool-motion-subtle, var(--bg-elevated))"
+                      iconBorder="var(--tool-motion-border, var(--border-color))"
+                      title="Video Upscaler"
+                      titleColor="var(--tool-motion, #8b5cf6)"
+                      subtitle="Upscale any video to higher resolution"
+                      route="/create/video-upscaler"
+                      navigate={navigate}
+                      delay={0.14}
+                    />
+                  </div>
 
                 </div>
               </motion.div>
