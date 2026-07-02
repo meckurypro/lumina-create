@@ -125,8 +125,7 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-primary)' }}>
       {/* Header */}
       <div
         className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
