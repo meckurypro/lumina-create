@@ -434,8 +434,9 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
         credits_charged: creditCost,
         output_type: 'image',
         start_frame_url: null,
-       input_image_urls: uploadedRefs.length ? uploadedRefs : null,
+      input_image_urls: uploadedRefs.length ? uploadedRefs : null,
         skip_prompt_refinement: skipRefinement,
+        is_system_prompt: false,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
