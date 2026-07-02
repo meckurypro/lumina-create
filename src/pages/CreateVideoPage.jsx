@@ -12,20 +12,26 @@ import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
+import { detectAspectRatio, compressImage, readVideoMetadata, tagForSlot, formatDuration, formatBytes } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
+import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
 
-// ─── session storage keys ─────────────────────────────────────────────────────
-const SS_PROMPT      = 'meckury_video_prompt'
-const SS_START_FRAME = 'meckury_video_start_frame'
-const SS_END_FRAME   = 'meckury_video_end_frame'
-const SS_REF_IMAGES  = 'meckury_video_ref_images'
-const SS_OMNI_REF    = 'meckury_video_omni_ref'
+// ─── draft keys (this page's own drafts) ──────────────────────────────────────
+const DRAFT_PROMPT     = 'create_video:prompt'
+const DRAFT_START_FRAME = 'create_video:start_frame'
+const DRAFT_END_FRAME   = 'create_video:end_frame'
+const DRAFT_REF_IMAGES  = 'create_video:ref_images'
 
-// TH page keys — must match CreateTalkingHeadPage exactly
+// ─── cross-page handoff keys — stay on sessionStorage, NOT draftCache ─────────
+// These are written by other pages (Assets picker, this page's own lipsync
+// redirect into Talking Head) as one-time payloads, not per-page drafts.
+const SS_OMNI_REF = 'meckury_video_omni_ref'
 const TH_SS_SUBJECT_IMG     = 'meckury_th_subject_img'
 const TH_SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
 
@@ -40,7 +46,7 @@ const VIDEO_EDIT_CPS          = 49
 const VIDEO_EDIT_CONVERT_COST = 2
 const MAX_VIDEO_BYTES         = 40 * 1024 * 1024
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── model capability helper (page-specific — not duplicated elsewhere) ───────
 function getModelCaps(model) {
   if (!model) return {
     supportsStartFrame:    true,
@@ -68,16 +74,9 @@ function getModelCaps(model) {
     supportsSound:         model.supports_sound          ?? false,
     requiresEndFrame:      model.requires_end_frame      ?? false,
     requiresImage:         model.requires_image          ?? false,
-    requiresVideo:         model.requires_video          ?? false,
+    requiresVideo:         model.requires_video           ?? false,
     requiresAudio:         model.requires_audio          ?? false,
   }
-}
-
-function detectAspectRatio(width, height) {
-  const r = width / height
-  if (r > 1.6)  return '16:9'
-  if (r < 0.75) return '9:16'
-  return '1:1'
 }
 
 function deriveVideoType(startFrame, endFrame) {
@@ -86,86 +85,6 @@ function deriveVideoType(startFrame, endFrame) {
   if (endFrame)               return 'end_frame_text'
   return 'text_to_video'
 }
-
-function tagForSlot(idx) { return `[img${idx + 1}]` }
-
-function formatDuration(secs) {
-  if (!secs && secs !== 0) return '—'
-  const s = Math.round(Number(secs))
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60 ? `${s % 60}s` : ''}`.trim()
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-async function compressImage(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      const MAX_PX = 1568
-      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((blob) => {
-        resolve({
-          file: new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }),
-          url:  URL.createObjectURL(blob),
-          ar:   detectAspectRatio(canvas.width, canvas.height),
-          w:    canvas.width,
-          h:    canvas.height,
-        })
-      }, 'image/jpeg', 0.92)
-    }
-    img.src = url
-  })
-}
-
-const readVideoMetadata = (file) => new Promise((resolve) => {
-  const url = URL.createObjectURL(file)
-  const vid = document.createElement('video')
-  vid.preload = 'metadata'
-  vid.onloadedmetadata = () => {
-    const meta = {
-      duration:    vid.duration ? Math.round(vid.duration) : null,
-      width:       vid.videoWidth  || null,
-      height:      vid.videoHeight || null,
-      aspectRatio: vid.videoWidth && vid.videoHeight
-        ? detectAspectRatio(vid.videoWidth, vid.videoHeight) : null,
-    }
-    URL.revokeObjectURL(url)
-    resolve(meta)
-  }
-  vid.onerror = () => { URL.revokeObjectURL(url); resolve({ duration: null, width: null, height: null, aspectRatio: null }) }
-  vid.src = url
-})
-
-const persistFrame = (key, url, name) => {
-  if (!url) { try { sessionStorage.removeItem(key) } catch {} ; return }
-  try {
-    sessionStorage.setItem(key, JSON.stringify({ url, name }))
-  } catch {}
-}
-
-const restoreFrame = (key) => new Promise((resolve) => {
-  try {
-    const saved = sessionStorage.getItem(key)
-    if (!saved) return resolve(null)
-    const item = JSON.parse(saved)
-    if (item.url && !item.base64) return resolve({ file: null, url: item.url, name: item.name })
-    const { base64, name, type } = item
-    const byteString = atob(base64.split(',')[1])
-    const ab = new ArrayBuffer(byteString.length)
-    const ia = new Uint8Array(ab)
-    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-    const blob = new Blob([ab], { type })
-    resolve({ file: new File([blob], name, { type }), url: URL.createObjectURL(blob) })
-  } catch { resolve(null) }
-})
 
 function checkVideoEditCompat({ videoMeta, maxBillable }) {
   if (!videoMeta?.duration) return { ok: false, tooShort: false, needsTrim: false, reason: null }
@@ -212,7 +131,8 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIO UTILITIES  (lifted verbatim from CreateTalkingHeadPage)
+// AUDIO UTILITIES  (duplicated verbatim in CreateTalkingHeadPage — candidate
+// for a future src/lib/audioUtils.js extraction, out of scope for this pass)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function audioBufferToWav(buffer) {
@@ -305,7 +225,7 @@ function totalSlotDuration(slots) {
 const sharedPickerAudio = { ref: null }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIO SOURCE PICKER  (lifted verbatim from CreateTalkingHeadPage)
+// AUDIO SOURCE PICKER
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slotIndex }) {
@@ -525,7 +445,7 @@ function AudioSourcePicker({ onAudioUpload, onImport, userId, maxDurationS, slot
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CHAINED AUDIO PLAYER  (lifted verbatim from CreateTalkingHeadPage)
+// CHAINED AUDIO PLAYER
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChainedAudioPlayer({ audioSlots, onSlotClear, onSlotStartChange }) {
@@ -733,87 +653,6 @@ const VideoUploadZone = ({ value, onUpload, onRemove, compatStatus, tooShort }) 
   )
 }
 
-// ─── sub-components ───────────────────────────────────────────────────────────
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button key={opt.value} onClick={() => !opt.disabled && onChange(opt.value)} disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT    : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}>
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
-
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
-        <span>{selected?.label || 'Model'}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }} transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}>
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button key={m.value} onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
-                      {m.supports_multi_image && <p className="text-xs mt-0.5" style={{ color: ACCENT, opacity: 0.8 }}>Multi-ref</p>}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
 const FrameUpload = ({ label, value, onChange, onRemove, disabled = false, inactive = false }) => (
   <div className="flex flex-col gap-2">
     <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{label}</p>
@@ -976,7 +815,6 @@ export default function CreateVideoPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const textareaRef = useRef(null)
 
-  // ── standard video state ──────────────────────────────────────────────────
   const [prompt,        setPrompt]        = useState('')
   const [startFrame,    setStartFrame]    = useState(null)
   const [endFrame,      setEndFrame]      = useState(null)
@@ -991,7 +829,6 @@ export default function CreateVideoPage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
-  // ── video_to_video state ──────────────────────────────────────────────────
   const [editVideo,         setEditVideo]         = useState(null)
   const [trimTarget,        setTrimTarget]        = useState(null)
   const [trimStart,         setTrimStart]         = useState(0)
@@ -999,29 +836,26 @@ export default function CreateVideoPage() {
   const [convertProgress,   setConvertProgress]   = useState(0)
   const [convertedSettings, setConvertedSettings] = useState(null)
 
-  // ── omni ref ──────────────────────────────────────────────────────────────
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
 
-  // ── audio state ───────────────────────────────────────────────────────────
   const [audioSlots, setAudioSlots] = useState([])
-  const [audioUrl,   setAudioUrl]   = useState(null)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // ── session restore ───────────────────────────────────────────────────────
+  // ── cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try {
-        [SS_START_FRAME, SS_END_FRAME, SS_REF_IMAGES].forEach(k => sessionStorage.removeItem(k))
+        draftDelete(DRAFT_START_FRAME)
+        draftDelete(DRAFT_END_FRAME)
+        draftDelete(DRAFT_REF_IMAGES)
       } catch {}
     }
   }, [])
 
+  // ── restore drafts ────────────────────────────────────────────────────────
   useEffect(() => {
-    try {
-      const savedPrompt = sessionStorage.getItem(SS_PROMPT)
-      if (savedPrompt) setPrompt(savedPrompt)
-    } catch {}
+    loadDraftJSON(DRAFT_PROMPT).then((p) => { if (p) setPrompt(p) })
 
     try {
       const omniRaw = sessionStorage.getItem(SS_OMNI_REF)
@@ -1033,48 +867,22 @@ export default function CreateVideoPage() {
       }
     } catch {}
 
-    restoreFrame(SS_START_FRAME).then((frame) => {
+    loadDraftFile(DRAFT_START_FRAME).then((frame) => {
       if (!frame) return
       setStartFrame(frame)
       const img = new Image()
       img.onload = () => { setAspectRatio(detectAspectRatio(img.width, img.height)); setAutoRatio(true) }
       img.src = frame.url
     })
-    restoreFrame(SS_END_FRAME).then((frame) => { if (frame) setEndFrame(frame) })
-
-    try {
-      const savedRefs = sessionStorage.getItem(SS_REF_IMAGES)
-      if (savedRefs) {
-        const arr = JSON.parse(savedRefs)
-        Promise.all(arr.map(async ({ base64, name, type }) => {
-          const byteString = atob(base64.split(',')[1])
-          const ab = new ArrayBuffer(byteString.length)
-          const ia = new Uint8Array(ab)
-          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-          const blob = new Blob([ab], { type })
-          const file = new File([blob], name, { type })
-          const url  = URL.createObjectURL(blob)
-          const ar   = await new Promise((res) => {
-            const img = new Image()
-            img.onload = () => res(detectAspectRatio(img.width, img.height))
-            img.src = url
-          })
-          return { file, url, ar }
-        })).then(setRefImages)
-      }
-    } catch {}
+    loadDraftFile(DRAFT_END_FRAME).then((frame) => { if (frame) setEndFrame(frame) })
+    loadDraftImages(DRAFT_REF_IMAGES).then((restored) => { if (restored.length) setRefImages(restored) })
   }, [])
 
   useEffect(() => {
-    try {
-      if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
-      else        sessionStorage.removeItem(SS_PROMPT)
-    } catch {}
+    saveDraftJSON(DRAFT_PROMPT, prompt)
   }, [prompt])
 
-  const persistRefImages = (_imgs) => {
-    // No-op: ref images are not persisted to avoid sessionStorage quota exhaustion.
-  }
+  const persistRefImages = (imgs) => { saveDraftImages(DRAFT_REF_IMAGES, imgs) }
 
   // ── load models ───────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
@@ -1122,7 +930,7 @@ export default function CreateVideoPage() {
   useEffect(() => {
     if (!caps.supportsMultiImage || caps.requiresEndFrame) {
       setMultiMode(false); setRefImages([])
-      try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {}
+      draftDelete(DRAFT_REF_IMAGES)
     }
     if (!caps.isVideoEdit) {
       setEditVideo(null); setTrimTarget(null); setTrimStart(0); setConvertedSettings(null)
@@ -1229,7 +1037,7 @@ export default function CreateVideoPage() {
         }[type]
 
   // ── frame upload handlers ─────────────────────────────────────────────────
-  const handleFrameUpload = (setter, ssKey) => (e) => {
+  const handleFrameUpload = (setter, draftKey) => (e) => {
     const file = e.target.files?.[0]; if (!file) return
     const url  = URL.createObjectURL(file)
     if (!startFrame && !endFrame) {
@@ -1238,11 +1046,12 @@ export default function CreateVideoPage() {
       img.src = url
     }
     setter({ file, url })
+    saveDraftFile(draftKey, { file, name: file.name })
   }
 
-  const handleRemoveFrame = (setter, ssKey, isStart) => {
+  const handleRemoveFrame = (setter, draftKey, isStart) => {
     setter(null)
-    try { sessionStorage.removeItem(ssKey) } catch {}
+    draftDelete(draftKey)
     const otherFrame = isStart ? endFrame : startFrame
     if (!otherFrame) { setAutoRatio(false); setAspectRatio('9:16') }
   }
@@ -1486,7 +1295,6 @@ export default function CreateVideoPage() {
 
     setPhase('submitting')
     try {
-      // ── video_to_video path ───────────────────────────────────────────────
       if (caps.isVideoEdit) {
         let videoUrl
         if (!editVideo.file) {
@@ -1535,7 +1343,6 @@ export default function CreateVideoPage() {
         return
       }
 
-      // ── standard path ─────────────────────────────────────────────────────
       let startFrameUrl = null
       if (!multiMode && activeStartFrame) {
         if (activeStartFrame.file) {
@@ -1581,7 +1388,6 @@ export default function CreateVideoPage() {
         }
       }
 
-      // ── Lipsync pre-check ─────────────────────────────────────────────────
       if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
         const { data: checkData } = await supabase.functions.invoke(
           'video-generate',
@@ -1598,7 +1404,6 @@ export default function CreateVideoPage() {
         }
       }
 
-      // ── Resolve audio for models that require it ──────────────────────────
       let resolvedAudioUrl = null
       if (caps.requiresAudio) {
         if (audioSlots.filter(Boolean).length === 0) {
@@ -1612,7 +1417,6 @@ export default function CreateVideoPage() {
         }
       }
 
-      // ── Create row + charge credits ───────────────────────────────────────
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        type,
@@ -1656,10 +1460,10 @@ export default function CreateVideoPage() {
       setStartFrame(null); setEndFrame(null); setRefImages([])
       setAutoRatio(false); setAspectRatio('9:16'); setWithSound(true)
       setAudioSlots([])
-      try {
-        sessionStorage.removeItem(SS_PROMPT); sessionStorage.removeItem(SS_START_FRAME)
-        sessionStorage.removeItem(SS_END_FRAME); sessionStorage.removeItem(SS_REF_IMAGES)
-      } catch {}
+      draftDelete(DRAFT_PROMPT)
+      draftDelete(DRAFT_START_FRAME)
+      draftDelete(DRAFT_END_FRAME)
+      draftDelete(DRAFT_REF_IMAGES)
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -1688,7 +1492,6 @@ export default function CreateVideoPage() {
         {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
       </AnimatePresence>
 
-      {/* Fullscreen viewer */}
       <AnimatePresence>
         {fullscreenImage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1715,7 +1518,6 @@ export default function CreateVideoPage() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
@@ -1726,7 +1528,12 @@ export default function CreateVideoPage() {
           <span className="text-xs font-medium" style={{ color: ACCENT }}>{modeLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          {!modelsLoading && <ModelDropdown models={models} value={model} onChange={setModel} />}
+          {!modelsLoading && (
+            <ModelDropdown
+              models={models} value={model} onChange={setModel}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+            />
+          )}
           <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
             <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
@@ -1735,11 +1542,9 @@ export default function CreateVideoPage() {
         </div>
       </div>
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
 
-          {/* ── VIDEO_TO_VIDEO SECTION ────────────────────────────────────── */}
           {caps.isVideoEdit ? (
             <>
               <div className="rounded-2xl px-4 py-3 flex gap-3 items-start"
@@ -1885,7 +1690,6 @@ export default function CreateVideoPage() {
               </AnimatePresence>
             </>
           ) : (
-            /* ── STANDARD FRAMES / MULTI-REF SECTION ────────────────────── */
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -1900,7 +1704,7 @@ export default function CreateVideoPage() {
                       <button key={String(opt.value)}
                         onClick={() => {
                           setMultiMode(opt.value)
-                          if (!opt.value) { setRefImages([]); try { sessionStorage.removeItem(SS_REF_IMAGES) } catch {} }
+                          if (!opt.value) { setRefImages([]); draftDelete(DRAFT_REF_IMAGES) }
                         }}
                         className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                         style={{ background: multiMode === opt.value ? ACCENT : 'transparent', color: multiMode === opt.value ? '#ffffff' : 'var(--text-muted)' }}>
@@ -1919,13 +1723,13 @@ export default function CreateVideoPage() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <FrameUpload label="Start Frame" value={startFrame}
-                      onChange={handleFrameUpload(setStartFrame, SS_START_FRAME)}
-                      onRemove={() => handleRemoveFrame(setStartFrame, SS_START_FRAME, true)}
+                      onChange={handleFrameUpload(setStartFrame, DRAFT_START_FRAME)}
+                      onRemove={() => handleRemoveFrame(setStartFrame, DRAFT_START_FRAME, true)}
                       disabled={!caps.supportsStartFrame && !startFrame}
                       inactive={!!startFrame && !caps.supportsStartFrame} />
                     <FrameUpload label={caps.requiresEndFrame ? 'End Frame (required)' : 'End Frame'} value={endFrame}
-                      onChange={handleFrameUpload(setEndFrame, SS_END_FRAME)}
-                      onRemove={() => handleRemoveFrame(setEndFrame, SS_END_FRAME, false)}
+                      onChange={handleFrameUpload(setEndFrame, DRAFT_END_FRAME)}
+                      onRemove={() => handleRemoveFrame(setEndFrame, DRAFT_END_FRAME, false)}
                       disabled={!(caps.supportsEndFrame || caps.supportsFrameToFrame) && !endFrame}
                       inactive={!!endFrame && !(caps.supportsEndFrame || caps.supportsFrameToFrame)} />
                   </div>
@@ -1939,7 +1743,6 @@ export default function CreateVideoPage() {
             </div>
           )}
 
-          {/* ── AUDIO (requires_audio models only) ───────────────────────── */}
           {caps.requiresAudio && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -1998,7 +1801,6 @@ export default function CreateVideoPage() {
             </div>
           )}
 
-          {/* Prompt */}
           <Textarea ref={textareaRef} label="Prompt" value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={
@@ -2010,15 +1812,14 @@ export default function CreateVideoPage() {
             }
             rows={3} maxLength={500} />
 
-          {/* Settings */}
           <div>
             <SettingChips label="Aspect Ratio"
               options={ALL_ASPECT_RATIOS.map((o) => ({ ...o, disabled: !caps.supportedAspectRatios.includes(o.value) }))}
-              value={aspectRatio} onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }} />
+              value={aspectRatio} onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }} accent={ACCENT} />
             {caps.supportedDurations.length > 0 && (
               <SettingChips label="Duration"
                 options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d, disabled: false }))}
-                value={duration} onChange={setDuration} />
+                value={duration} onChange={setDuration} accent={ACCENT} />
             )}
             {caps.supportsSound && (
               <SettingChips label="Sound"
@@ -2026,14 +1827,13 @@ export default function CreateVideoPage() {
                   { label: '🔇 Silent',     value: 'false' },
                   { label: '🔊 With Sound', value: 'true'  },
                 ]}
-                value={String(withSound)} onChange={(v) => setWithSound(v === 'true')} />
+                value={String(withSound)} onChange={(v) => setWithSound(v === 'true')} accent={ACCENT} />
             )}
           </div>
 
         </div>
       </div>
 
-      {/* Generate button */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl">
           <button onClick={handleGenerate} disabled={generateDisabled}
