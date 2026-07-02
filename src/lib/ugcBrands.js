@@ -111,6 +111,65 @@ export const ugcBrandGenerations = {
   },
 }
 
+// ── Brand products / services (photo library for "/" picker) ──
+
+export const ugcBrandProducts = {
+  getAll: async (brandId) => {
+    return supabase
+      .from('ugc_brand_products')
+      .select('*')
+      .eq('brand_id', brandId)
+      .order('sort_order', { ascending: true })
+  },
+
+  getById: async (productId) => {
+    return supabase
+      .from('ugc_brand_products')
+      .select('*')
+      .eq('id', productId)
+      .single()
+  },
+
+  create: async (payload) => {
+    return supabase
+      .from('ugc_brand_products')
+      .insert(payload)
+      .select()
+      .single()
+  },
+
+  update: async (productId, payload) => {
+    return supabase
+      .from('ugc_brand_products')
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', productId)
+      .select()
+      .single()
+  },
+
+  remove: async (productId) => {
+    return supabase
+      .from('ugc_brand_products')
+      .delete()
+      .eq('id', productId)
+  },
+
+  reorder: async (productId, sortOrder) => {
+    return supabase
+      .from('ugc_brand_products')
+      .update({ sort_order: sortOrder, updated_at: new Date().toISOString() })
+      .eq('id', productId)
+      .select()
+      .single()
+  },
+
+  uploadPhoto: (userId, brandId, productId, file) =>
+    uploadBrandAsset(userId, brandId, `products/${productId}`, file),
+
+  deletePhoto: (userId, brandId, productId) =>
+    deleteBrandAsset(userId, brandId, `products/${productId}`),
+}
+
 // ── Wizard field options ──────────────────────────────────────
 
 export const INDUSTRY_OPTIONS = [
