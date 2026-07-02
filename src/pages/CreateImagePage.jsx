@@ -7,13 +7,17 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
+import { detectAspectRatio, compressImage } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
+import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON } from '@/lib/draftCache'
 
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
 const ACCENT_BDR = 'var(--tool-image-border)'
 
-const SS_PROMPT = 'meckury_create_prompt'
-const SS_IMAGES = 'meckury_create_images'   // replaces SS_IMAGE (now an array)
+const DRAFT_PROMPT = 'create_image:prompt'
+const DRAFT_IMAGES = 'create_image:images'
 
 const MAX_MULTI_IMAGES  = 4
 const MAX_SINGLE_IMAGES = 1
@@ -338,62 +342,27 @@ const [submitting,    setSubmitting]    = useState(false)
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   // ── restore session storage ──────────────────────────────────────────────
-  useEffect(() => {
-    try {
-      const savedPrompt = sessionStorage.getItem(SS_PROMPT)
-      if (savedPrompt) setPrompt(savedPrompt)
-
-      const savedImages = sessionStorage.getItem(SS_IMAGES)
-      if (savedImages) {
-        const arr = JSON.parse(savedImages)
-        Promise.all(arr.map(async (item) => {
-          // New: URL payload from Assets { url, name, type }
-          if (item.url && !item.base64) {
-            const ar = await new Promise((res) => {
-              const img = new Image()
-              img.onload = () => res(detectAspectRatio(img.width, img.height))
-              img.onerror = () => res('1:1')
-              img.src = item.url
-            })
-            return { file: null, url: item.url, ar, w: null, h: null }
-          }
-          // Legacy: base64 payload
-          const byteString = atob(item.base64.split(',')[1])
-          const ab = new ArrayBuffer(byteString.length)
-          const ia = new Uint8Array(ab)
-          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-          const blob = new Blob([ab], { type: item.type })
-          const url  = URL.createObjectURL(blob)
-          const file = new File([blob], item.name, { type: item.type })
-          const ar   = await new Promise((res) => {
-            const img = new Image()
-            img.onload = () => res(detectAspectRatio(img.width, img.height))
-            img.src = url
-          })
-          return { file, url, ar }
-        })).then((restored) => {
-          setImages(restored)
-          if (restored.length === 1) { setAspectRatio(restored[0].ar); setAutoRatio(true) }
-        })
-      }
-    } catch { /* corrupt storage — ignore */ }
+ useEffect(() => {
+    loadDraftJSON(DRAFT_PROMPT).then((p) => { if (p) setPrompt(p) })
+    loadDraftImages(DRAFT_IMAGES).then((restored) => {
+      if (!restored.length) return
+      setImages(restored)
+      if (restored.length === 1) { setAspectRatio(restored[0].ar); setAutoRatio(true) }
+    })
   }, [])
 
  // ── cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try {
-        [SS_PROMPT, SS_IMAGES].forEach(k => sessionStorage.removeItem(k))
+       [DRAFT_PROMPT, DRAFT_IMAGES].forEach(k => draftDelete(k))
       } catch {}
     }
   }, [])
 
   // ── persist prompt ───────────────────────────────────────────────────────
   useEffect(() => {
-    try {
-      if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
-      else        sessionStorage.removeItem(SS_PROMPT)
-    } catch { /* noop */ }
+    saveDraftJSON(DRAFT_PROMPT, prompt)
   }, [prompt])
 
   // ── load models ──────────────────────────────────────────────────────────
@@ -488,15 +457,13 @@ const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel
   }
 
   // ── image persistence helpers ─────────────────────────────────────────────
-const persistImages = (_imgs) => {
-  // No-op: base64 image persistence removed to prevent sessionStorage quota exhaustion.
-}
+const persistImages = (imgs) => { saveDraftImages(DRAFT_IMAGES, imgs) }
 
   const clearAllImages = () => {
     setImages([])
     setAutoRatio(false)
     setAspectRatio('9:16')
-    try { sessionStorage.removeItem(SS_IMAGES) } catch { /* noop */ }
+    draftDelete(DRAFT_IMAGES)
   }
 
   // ── add image (single or multi slot) ─────────────────────────────────────
@@ -673,7 +640,12 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
           <span className="text-xs font-medium" style={{ color: ACCENT }}>Image Generation</span>
         </div>
         <div className="flex items-center gap-2">
-          {!modelsLoading && <ModelDropdown models={models} value={model} onChange={handleModelChange} />}
+          +{!modelsLoading && (
+  <ModelDropdown
+    models={models} value={model} onChange={handleModelChange}
+    accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+  />
+)}
           <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
             <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
