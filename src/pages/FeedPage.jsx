@@ -325,7 +325,7 @@ const SplashScreen = () => {
       </div>
 
       {/* Tagline */}
-      <motion.p
+     <motion.p
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.4 }}
@@ -337,10 +337,7 @@ const SplashScreen = () => {
           lineHeight: 1.2,
         }}
       >
-        Imagine it?{' '}
-        <span style={{ color: '#ffffff' }}>
-          Create it!
-        </span>
+        Imagine it? Create it!
       </motion.p>
 
       {/* CTA Button */}
