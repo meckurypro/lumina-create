@@ -268,3 +268,4 @@ export const VISUAL_STYLE_OPTIONS = [
 ]
 
 export const BRAND_CREDIT_COST = 100
+export const MAX_BRAND_PRODUCTS = 10
