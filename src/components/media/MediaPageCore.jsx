@@ -360,7 +360,7 @@ return () => { clearInterval(pollRef.current); pollRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey(items), user])
 
-  // ── Thumbnail backfill ─────────────────────────────────────────────────────
+// ── Thumbnail backfill ─────────────────────────────────────────────────────
   //
   // Completed video generations may have output_thumbnail_url = null (older
   // rows, or rows written by lipsync-generate / the poll functions, which no
@@ -368,23 +368,21 @@ return () => { clearInterval(pollRef.current); pollRef.current = null }
   // first browser to view such a row grabs a real frame client-side, uploads
   // it, and patches the row — subsequent viewers (including this same user
   // elsewhere) get the cached thumbnail from then on.
-  const thumbBackfillRef = useRef(new Set())
+  //
+  // Runs as a self-sustaining queue (not dependent on `items` reference
+  // changes to keep going) — a single failure no longer stalls the rest of
+  // the list. CONCURRENCY caps how many run at once; the queue keeps pulling
+  // the next candidate as each one finishes, success or failure.
+  const thumbAttemptedRef = useRef(new Set())
+  const thumbQueueRef     = useRef([])
+  const thumbActiveRef    = useRef(0)
+  const THUMB_CONCURRENCY = 2
 
-  useEffect(() => {
+  const runThumbQueue = useCallback(() => {
     if (!user) return
-    const candidates = items.filter(
-      (g) => g.status === 'completed' &&
-             g.output_type === 'video' &&
-             g.output_url &&
-             !g.output_thumbnail_url &&
-             !thumbBackfillRef.current.has(g.id)
-    )
-    if (!candidates.length) return
-
-    // Small batch at a time — avoid hammering bandwidth on a long list.
-    const batch = candidates.slice(0, 3)
-    batch.forEach((gen) => {
-      thumbBackfillRef.current.add(gen.id)
+    while (thumbActiveRef.current < THUMB_CONCURRENCY && thumbQueueRef.current.length > 0) {
+      const gen = thumbQueueRef.current.shift()
+      thumbActiveRef.current += 1
       ;(async () => {
         try {
           const blob     = await extractPosterFrame(gen.output_url)
@@ -393,11 +391,31 @@ return () => { clearInterval(pollRef.current); pollRef.current = null }
           setItems((prev) => prev.map((g) => g.id === gen.id ? { ...g, output_thumbnail_url: thumbUrl } : g))
         } catch (err) {
           console.warn('[thumb-backfill] failed for', gen.id, err.message)
+        } finally {
+          thumbActiveRef.current -= 1
+          runThumbQueue()
         }
       })()
-    })
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, user])
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    const newCandidates = items.filter(
+      (g) => g.status === 'completed' &&
+             g.output_type === 'video' &&
+             g.output_url &&
+             !g.output_thumbnail_url &&
+             !thumbAttemptedRef.current.has(g.id)
+    )
+    if (!newCandidates.length) return
+
+    newCandidates.forEach((g) => thumbAttemptedRef.current.add(g.id))
+    thumbQueueRef.current.push(...newCandidates)
+    runThumbQueue()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, user, runThumbQueue])
 
   // ── Sheet helpers ──────────────────────────────────────────────────────────
 
