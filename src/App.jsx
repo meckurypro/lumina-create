@@ -121,7 +121,9 @@ function RequireMaster({ children }) {
 
 const AppLayout = ({ children }) => (
   <div className="w-full h-dvh overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-    {children}
+    <div className="h-full" style={{ paddingBottom: 'var(--bottom-nav-height)' }}>
+      {children}
+    </div>
     <BottomNav />
   </div>
 )
