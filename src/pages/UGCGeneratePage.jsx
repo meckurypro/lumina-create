@@ -517,7 +517,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
   }
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Generating overlay */}
       <AnimatePresence>
