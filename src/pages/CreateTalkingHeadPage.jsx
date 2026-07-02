@@ -1546,6 +1546,7 @@ export default function CreateTalkingHeadPage() {
         input_image_urls: inputImageUrls.length ? inputImageUrls : null,
         with_sound:       true,
         skip_prompt_refinement: skipRefinement,
+        is_system_prompt: false,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
