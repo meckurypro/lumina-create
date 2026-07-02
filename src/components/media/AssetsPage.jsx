@@ -1,34 +1,24 @@
 // src/components/media/AssetsPage.jsx
 //
-// PERFORMANCE OVERHAUL — key changes:
+// DESIGN REFACTOR — key changes (on top of the earlier perf overhaul, which
+// is fully preserved):
 //
-//  1. DEFAULT TIME FILTER IS NOW 'today' (was 'all').
-//     Loading all assets on mount was the primary cause of slowness.
-//     Same pattern as MediaPageCore.
+//  1. AssetActionSheet REBUILT on the same primitives as the Generations
+//     ActionSheet: a 3-column icon grid for the "do something new" actions
+//     (Polish/Upscale/Edit/Animate/Lipsync/Set to Motion for images;
+//     Edit/Lipsync/Motion/Extract End Frame/Upscale for videos), a grouped
+//     rows container for utility actions (Rename, Download), an isolated
+//     Delete group, and an explicit Cancel row. This matches Apple's own
+//     share-sheet layout and the grouped-list pattern from HIG, and gives
+//     visual/behavioral consistency with the Generations ActionSheet.
 //
-//  2. TODAY → THIS_WEEK FALLBACK.
-//     If today returns zero assets, we silently retry with this_week and
-//     show a dismissible banner — identical pattern to MediaPageCore.
-//     The fallback only fires once per load cycle (not on every render).
+//  2. TYPE FILTER (All/Images/Videos): the unlabeled colored-dot row is
+//     replaced with labeled FilterPill buttons (imported from
+//     MediaCardComponents, same component MediaPageCore now uses for its
+//     status filter) — icons: ImageIcon / VideoIcon.
 //
-//  3. COPY_MOTION_PREP ROWS EXCLUDED.
-//     listAssets now excludes source='copy_motion_prep' by default.
-//     These were large temp videos written by the old conversion flow
-//     and should never appear in the user-facing assets list.
-//
-//  4. select() now fetches only LIST_COLUMNS (defined in assets.js).
-//     Previously used SELECT * which pulled every column unnecessarily.
-//
-//  5. All existing lazy thumbnail, IntersectionObserver, and pagination
-//     behaviour is preserved unchanged.
-//
-//  6. END-FRAME EXTRACTION — COLOR ACCURACY FIX.
-//     extractLastFrame() now (a) pins the canvas to the 'srgb' color space
-//     before drawImage(), and (b) precisely seeks to the true final
-//     decodable frame instead of an approximate (duration - 0.001) offset.
-//     This minimises the level/contrast shift that was visible as a brief
-//     "flash" when the extracted end frame is later used as the start frame
-//     of the next chained clip. See extractLastFrame for details.
+//  3. Everything else — fallback banner, lazy thumbnails, upload flow,
+//     rename, extract-end-frame flow, pagination — is UNCHANGED.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                              from 'react-router-dom'
@@ -46,7 +36,7 @@ import {
   uploadAsset, listAssets, renameAsset,
   deleteAsset, isVideoAsset, formatBytes,
 } from '@/lib/assets.js'
-import { FallbackBanner, ExtractEndFrameConfirmModal } from './MediaCardComponents.jsx'
+import { FallbackBanner, ExtractEndFrameConfirmModal, FilterPill } from './MediaCardComponents.jsx'
 import { extractLastFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,10 +72,12 @@ const TIME_FILTERS = [
   { label: 'All',        value: 'all'        },
 ]
 
+// Type filter — now rendered with FilterPill (icon + label) instead of an
+// unlabeled colored dot.
 const TYPE_FILTERS = [
-  { label: 'All',    value: 'all'   },
-  { label: 'Images', value: 'image' },
-  { label: 'Videos', value: 'video' },
+  { label: 'All',    value: 'all',   icon: null      },
+  { label: 'Images', value: 'image', icon: ImageIcon },
+  { label: 'Videos', value: 'video', icon: VideoIcon },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,15 +109,8 @@ function buildUrlPayload(asset, fallbackType) {
   return { url: asset.file_url, name: asset.name, type }
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AssetThumb
-//
-// Uses the server-generated tiny WebP thumbnail (asset-thumbs bucket) when
-// available. For legacy rows without a thumbnail_url we never download the
-// full file — we just show a typed icon. The previous fallback that fetched
-// the full video and decoded a canvas frame was the dominant data cost on
-// this page on mobile.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetThumb({ asset, onError }) {
@@ -144,7 +129,6 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
-  // Images: lazy-load the actual file (browser-native lazy + async decode).
   if (!isVideo) {
     return (
       <img
@@ -158,7 +142,6 @@ function AssetThumb({ asset, onError }) {
     )
   }
 
-  // Legacy videos with no server thumbnail — show an icon, no network cost.
   return <VideoIcon size={20} style={{ color: 'var(--text-muted)' }} />
 }
 
@@ -284,8 +267,6 @@ export default function AssetsPage() {
   const { user, profile, credits, refreshProfile } = useAuth()
   const fileInputRef                               = useRef(null)
   const debounceRef                                = useRef(null)
-  // Tracks the last tFilter used for the today→this_week fallback so it only
-  // fires once per filter-change cycle (not on every call to load).
   const fallbackFiredFor                           = useRef(null)
 
   const isMaster = profile?.user_tier === 'master'
@@ -297,7 +278,6 @@ export default function AssetsPage() {
   const [totalCount,   setTotalCount]   = useState(0)
   const [page,         setPage]         = useState(0)
 
-  // ── Default to 'today' — same starting point as MediaPageCore ─────────────
   const [timeFilter,   setTimeFilter]   = useState('today')
   const [typeFilter,   setTypeFilter]   = useState('all')
   const [search,       setSearch]       = useState('')
@@ -345,9 +325,6 @@ export default function AssetsPage() {
         typeFilter: tyFilter,
       })
 
-      // ── Today → this_week fallback ────────────────────────────────────────
-      // Only fires when: first page, 'today' filter, zero results, and we
-      // haven't already done the fallback for this particular tFilter cycle.
       if (
         offset === 0 &&
         tFilter === 'today' &&
@@ -378,7 +355,6 @@ export default function AssetsPage() {
         }
       }
 
-      // Clear banner if no longer applicable
       if (!wasFallbackDismissedToday()) setFallbackMsg(null)
 
       setTotalCount(count || 0)
@@ -392,9 +368,8 @@ export default function AssetsPage() {
     }
   }, [user, timeFilter, typeFilter, searchQuery])
 
-  // Reset + reload whenever time/type filter or user changes
   useEffect(() => {
-    fallbackFiredFor.current = null  // allow fallback to re-run for new filter
+    fallbackFiredFor.current = null
     setPage(0)
     setAssets([])
     load({ offset: 0, reset: true, tFilter: timeFilter, tyFilter: typeFilter, q: searchQuery })
@@ -515,8 +490,7 @@ export default function AssetsPage() {
   const handleSetVideoForMotion = (asset) =>
     prepareAndNavigate(asset, SS_COPY_MOTION_VIDEO, '/create/copy-motion', { fallbackType: 'video/mp4' })
   const handleUpscaleImage = (asset) => prepareAndNavigate(asset, SS_IMAGE_UPSCALE, '/create/image-upscaler', { fallbackType: 'image/jpeg' })
-const handleUpscaleVideo = (asset) => prepareAndNavigate(asset, SS_VIDEO_UPSCALE, '/create/video-upscaler', { fallbackType: 'video/mp4' })
-
+  const handleUpscaleVideo = (asset) => prepareAndNavigate(asset, SS_VIDEO_UPSCALE, '/create/video-upscaler', { fallbackType: 'video/mp4' })
 
   // ── Extract end frame ──────────────────────────────────────────────────────
 
@@ -714,31 +688,18 @@ const handleUpscaleVideo = (asset) => prepareAndNavigate(asset, SS_VIDEO_UPSCALE
           </div>
         </div>
 
-        {/* Type filter dots */}
-        <div className="flex items-center gap-3 mb-4 justify-end">
-          {TYPE_FILTERS.map((f) => {
-            const isActive = typeFilter === f.value
-            const dotColor = { all: 'var(--text-primary)', image: '#3b82f6', video: '#a855f7' }[f.value]
-            return (
-              <button
-                key={f.value}
-                onClick={() => setTypeFilter(f.value)}
-                title={f.label}
-                className="flex items-center justify-center transition-all active:scale-90"
-                style={{ padding: '4px' }}
-              >
-                <div style={{
-                  width:        14,
-                  height:       14,
-                  borderRadius: 4,
-                  background:   dotColor,
-                  opacity:      isActive ? 1 : 0.25,
-                  boxShadow:    isActive ? `0 0 0 3px ${dotColor}33` : 'none',
-                  transition:   'opacity 0.15s, box-shadow 0.15s',
-                }} />
-              </button>
-            )
-          })}
+        {/* Type filter — labeled pills (was: unlabeled colored dots) */}
+        <div className="flex items-center gap-2 mb-4 justify-end flex-wrap">
+          {TYPE_FILTERS.map((f) => (
+            <FilterPill
+              key={f.value}
+              active={typeFilter === f.value}
+              onClick={() => setTypeFilter(f.value)}
+              label={f.label}
+              icon={f.icon}
+              tone="#5B6EF7"
+            />
+          ))}
         </div>
 
         {/* Content */}
@@ -885,8 +846,8 @@ const handleUpscaleVideo = (asset) => prepareAndNavigate(asset, SS_VIDEO_UPSCALE
             onLipsyncVideo={isVideoAsset(activeAsset)      ? () => handleLipsyncVideo(activeAsset)      : undefined}
             onSetVideoForMotion={isVideoAsset(activeAsset) ? () => handleSetVideoForMotion(activeAsset) : undefined}
             onUpscaleImage={!isVideoAsset(activeAsset) ? () => handleUpscaleImage(activeAsset) : undefined}
-onUpscaleVideo={isVideoAsset(activeAsset)  ? () => handleUpscaleVideo(activeAsset)  : undefined}
-onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
+            onUpscaleVideo={isVideoAsset(activeAsset)  ? () => handleUpscaleVideo(activeAsset)  : undefined}
+            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -949,7 +910,7 @@ onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activ
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetActionSheet — unchanged
+// AssetActionSheet — rebuilt on the icon-grid + grouped-rows pattern
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetActionSheet({
@@ -960,33 +921,28 @@ function AssetActionSheet({
 }) {
   const isVideo = isVideoAsset(asset)
 
-  const actions = [
-    { icon: Pencil,   label: 'Rename',   onClick: onRename   },
-    { icon: Download, label: 'Download', onClick: onDownload },
-    ...(!isVideo ? [
-      { icon: Sparkles,     label: 'Polish',        sub: 'AI photo enhancement',    onClick: onPolish       },
-      { icon: Maximize,     label: 'Upscale',       sub: 'Enlarge and sharpen with AI', onClick: onUpscaleImage },
-      { icon: Wand2,        label: 'Edit',          sub: 'Use as reference image',  onClick: onEditImage    },
-      { icon: Film,         label: 'Animate',       sub: 'Send to video generator', onClick: onAnimate      },
-      { icon: Mic2,         label: 'Lipsync',       sub: 'Create talking avatar',   onClick: onLipsyncImage },
-      { icon: Clapperboard, label: 'Set to Motion', sub: 'Use in Copy Motion',      onClick: onSetToMotion  },
-    ] : []),
-    ...(isVideo ? [
-      { icon: Wand2,        label: 'Edit',              sub: 'Use as video reference',                                                                        onClick: onEditVideo         },
-      { icon: Mic2,         label: 'Lipsync',           sub: 'Re-animate with audio',                                                                         onClick: onLipsyncVideo      },
-      { icon: Clapperboard, label: 'Set for Motion',    sub: 'Use as motion reference in Copy Motion',                                                        onClick: onSetVideoForMotion },
-      { icon: ScanLine,     label: 'Extract End Frame', sub: isMaster ? 'Save last frame as image' : `Save last frame — ${EXTRACT_END_FRAME_COST} credits`,   onClick: onExtractEndFrame   },
-      { icon: Maximize,     label: 'Upscale',           sub: 'Upscale to higher resolution',                                                                  onClick: onUpscaleVideo      },
-    ] : []),
-    { icon: Trash2, label: 'Delete', danger: true, onClick: onDelete },
+  // Primary "do something new" actions — rendered as a 3-col icon grid,
+  // mirroring Apple's own share sheet layout.
+  const gridItems = !isVideo ? [
+    { icon: Sparkles,     label: 'Polish',  onClick: onPolish       },
+    { icon: Maximize,     label: 'Upscale', onClick: onUpscaleImage },
+    { icon: Wand2,        label: 'Edit',    onClick: onEditImage    },
+    { icon: Film,         label: 'Animate', onClick: onAnimate      },
+    { icon: Mic2,         label: 'Lipsync', onClick: onLipsyncImage },
+    { icon: Clapperboard, label: 'Motion',  onClick: onSetToMotion  },
+  ] : [
+    { icon: Wand2,        label: 'Edit',      onClick: onEditVideo         },
+    { icon: Mic2,         label: 'Lipsync',   onClick: onLipsyncVideo      },
+    { icon: Clapperboard, label: 'Motion',    onClick: onSetVideoForMotion },
+    { icon: ScanLine,     label: 'End Frame', onClick: onExtractEndFrame   },
+    { icon: Maximize,     label: 'Upscale',   onClick: onUpscaleVideo      },
   ]
 
   return (
     <>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-40"
-        style={{ background: 'rgba(0,0,0,0.5)' }}
+        className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)' }}
         onClick={onClose}
       />
       <motion.div
@@ -998,38 +954,52 @@ function AssetActionSheet({
           className="w-full max-w-xl rounded-t-3xl px-4 pt-4 pb-10"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
         >
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center mb-3">
             <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
           </div>
           <p className="text-xs font-semibold mb-3 truncate px-1" style={{ color: 'var(--text-muted)' }}>
             {asset.name}
           </p>
-          <div className="flex flex-col gap-2">
-            {actions.map((action) => (
-              <button
-                key={action.label}
-                onClick={action.onClick}
-                className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-left transition-all active:scale-[0.98]"
-                style={{
-                  background: action.danger ? 'rgba(239,68,68,0.08)' : 'var(--bg-primary)',
-                  border:     `1px solid ${action.danger ? 'rgba(239,68,68,0.2)' : 'var(--border-color)'}`,
-                }}
-              >
-                <action.icon size={18} style={{ color: action.danger ? '#ef4444' : 'var(--text-secondary)', flexShrink: 0 }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: action.danger ? '#ef4444' : 'var(--text-primary)' }}>
-                    {action.label}
-                  </p>
-                  {action.sub && (
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{action.sub}</p>
-                  )}
-                </div>
-              </button>
+
+          {/* Primary actions — icon grid */}
+          <div
+            className="grid grid-cols-3 gap-0.5 mb-3 rounded-2xl p-1"
+            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+          >
+            {gridItems.map((it) => (
+              <AssetActionGridItem key={it.label} icon={it.icon} label={it.label} onClick={it.onClick} />
             ))}
           </div>
+
+          {/* Utility group — Rename / Download */}
+          <div
+            className="rounded-2xl overflow-hidden mb-2.5"
+            style={{ border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}
+          >
+            <AssetActionRow icon={Pencil} label="Rename" onClick={onRename} />
+            <AssetActionRow icon={Download} label="Download" onClick={onDownload} isLast />
+          </div>
+
+          {/* Extra context for Extract End Frame cost — shown as a note
+              under the grid rather than a subtitle (grid cells stay
+              single-word), only for non-master users on video assets. */}
+          {isVideo && !isMaster && (
+            <p className="text-xs px-1 mb-2.5" style={{ color: 'var(--text-muted)' }}>
+              Extract End Frame costs {EXTRACT_END_FRAME_COST} credits · Master plan unlocks it for free.
+            </p>
+          )}
+
+          {/* Destructive */}
+          <div
+            className="rounded-2xl overflow-hidden mb-2.5"
+            style={{ border: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            <AssetActionRow icon={Trash2} label="Delete" onClick={onDelete} danger isLast />
+          </div>
+
           <button
             onClick={onClose}
-            className="w-full mt-3 py-3.5 rounded-2xl text-sm font-semibold"
+            className="w-full py-3.5 rounded-2xl text-sm font-semibold"
             style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
           >
             Cancel
@@ -1040,9 +1010,49 @@ function AssetActionSheet({
   )
 }
 
+// Local primitives scoped to this file — same visual language as the
+// ActionGridItem/ActionRow primitives in MediaCardComponents.jsx.
+
+function AssetActionGridItem({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-2 py-3 rounded-xl transition-all active:scale-95"
+    >
+      <div
+        className="flex items-center justify-center rounded-xl"
+        style={{ width: 46, height: 46, background: 'var(--brand-light)' }}
+      >
+        <Icon size={20} style={{ color: 'var(--brand)' }} />
+      </div>
+      <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{label}</span>
+    </button>
+  )
+}
+
+function AssetActionRow({ icon: Icon, label, onClick, danger, isLast }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all active:scale-[0.98]"
+      style={{
+        background:   danger ? 'rgba(239,68,68,0.06)' : 'transparent',
+        borderBottom: isLast ? 'none' : '1px solid var(--border-color)',
+      }}
+    >
+      <div
+        className="flex items-center justify-center rounded-lg flex-shrink-0"
+        style={{ width: 32, height: 32, background: danger ? 'rgba(239,68,68,0.12)' : 'var(--bg-elevated)' }}
+      >
+        <Icon size={15} style={{ color: danger ? '#ef4444' : 'var(--text-secondary)' }} />
+      </div>
+      <span className="text-sm font-semibold" style={{ color: danger ? '#ef4444' : 'var(--text-primary)' }}>{label}</span>
+    </button>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AssetsEmpty
+// AssetsEmpty — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetsEmpty({ search, timeFilter, typeFilter, onUpload, onClearFilters }) {
