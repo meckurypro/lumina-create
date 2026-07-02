@@ -50,7 +50,7 @@ const GEN_LIST_COLUMNS = [
   'template_id', 'with_sound', 'skip_prompt_refinement',
   'provider_request_id', 'original_prompt', 'is_smart_edit',
   'prompt_engineering_used', 'generation_metadata',
-  'title', 'resolution',
+  'title', 'resolution', 'is_system_prompt',
 ].join(', ')
 
 async function fetchGenerations(user, { limit, offset, afterIso, statusFilter }) {
