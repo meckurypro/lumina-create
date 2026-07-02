@@ -3,14 +3,17 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Zap, User, Sparkles,
-  ImageIcon, VideoIcon, ChevronDown, Info,
-  X, ImagePlus, Maximize2, Plus, Crown,
+  ArrowLeft, Zap, User,
+  ImageIcon, VideoIcon, Info,
+  X, Maximize2, Plus, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { compressImage, tagForSlot } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -24,150 +27,7 @@ const ALL_ASPECT_RATIOS = [
 
 const MAX_REF_IMAGES = 4
 
-// ─── image utilities ──────────────────────────────────────────────────────────
-
-function tagForSlot(idx) {
-  return `[img${idx + 1}]`
-}
-
-async function compressImage(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      const MAX_PX = 1568
-      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((blob) => {
-        const compressed = new File(
-          [blob],
-          file.name.replace(/\.\w+$/, '.jpg'),
-          { type: 'image/jpeg' }
-        )
-        resolve({
-          file: compressed,
-          url:  URL.createObjectURL(blob),
-          w:    canvas.width,
-          h:    canvas.height,
-        })
-      }, 'image/jpeg', 0.92)
-    }
-    img.src = url
-  })
-}
-
-// ── Setting chips ──────────────────────────────────────────────
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => !opt.disabled && onChange(opt.value)}
-          disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT            : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff'         : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
-
-// ── Model dropdown ─────────────────────────────────────────────
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-       <span>{selected?.label || 'Model'}</span>
-        <ChevronDown
-          size={10}
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
-        />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                   <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {m.label}
-                      </p>
-                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
-                          {m.label}
-                        </p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
 // ── Multi-image grid (Master only) ─────────────────────────────
-// FIX: dynamic visibleSlots — show one empty slot at a time, not all at once
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
   const filledCount  = images.filter(Boolean).length
   const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
@@ -276,7 +136,6 @@ export default function UGCGeneratePage() {
   const [withSound,     setWithSound]     = useState(true)
   const [submitting,    setSubmitting]    = useState(false)
 
-  // Master-only ref images state
   const [refImages,     setRefImages]     = useState([])
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
@@ -299,7 +158,7 @@ export default function UGCGeneratePage() {
     setProfileLoading(false)
   }
 
-const loadModels = useCallback(async () => {
+  const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
       .from('models')
@@ -324,7 +183,6 @@ const loadModels = useCallback(async () => {
     if (first) setModel(first.value)
   }, [outputType])
 
-  // Clear ref images when switching output type
   useEffect(() => {
     setRefImages([])
   }, [outputType])
@@ -352,8 +210,6 @@ const loadModels = useCallback(async () => {
   const canAfford   = credits >= creditCost
   const sceneEmpty  = !scene.trim()
   const btnDisabled = sceneEmpty || !canAfford || submitting || !selectedModel || profileLoading
-
-  // ── ref image handlers (Master only) ─────────────────────────────────────
 
   const handleAddRefImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
@@ -391,8 +247,6 @@ const loadModels = useCallback(async () => {
     })
   }
 
-  // ── generate ──────────────────────────────────────────────────────────────
-
   const handleGenerate = async () => {
     if (sceneEmpty)     return toast.error('Describe the scene')
     if (!selectedModel) return toast.error('Pick a model')
@@ -401,7 +255,6 @@ const loadModels = useCallback(async () => {
 
     setSubmitting(true)
     try {
-      // Character reference photos (always included)
       const characterPhotos = [
         profile.photo_face_front,
         profile.photo_face_three_quarter,
@@ -411,7 +264,6 @@ const loadModels = useCallback(async () => {
         profile.photo_body_back,
       ].filter(Boolean)
 
-      // Master: upload any extra ref images, then append after character photos
       let extraUrls = []
       if (isMaster && refImages.length > 0) {
         for (const img of refImages) {
@@ -432,7 +284,7 @@ const loadModels = useCallback(async () => {
 
       const allInputImages = [...extraUrls, ...characterPhotos]
 
-const { data: genRow, error: genErr } = await generationsDb.create({
+      const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        outputType === 'image' ? 'text_to_image' : 'text_to_video',
         status:                 'pending',
@@ -522,7 +374,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
       <AnimatePresence>
         {submitting && (
           <motion.div
@@ -547,7 +398,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
         )}
       </AnimatePresence>
 
-      {/* Fullscreen ref image viewer */}
       <AnimatePresence>
         {fullscreenImage && (
           <motion.div
@@ -574,7 +424,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}
@@ -616,16 +465,15 @@ const { data: genRow, error: genErr } = await generationsDb.create({
               models={filteredModels}
               value={selectedModel?.value || ''}
               onChange={setModel}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
             />
           )}
         </div>
       </div>
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
 
-          {/* Output type toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
             {[
               { value: 'image', label: 'Image', Icon: ImageIcon },
@@ -647,7 +495,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             ))}
           </div>
 
-          {/* Master-only: extra reference images */}
           {isMaster && selectedModel?.supports_multi_image && (
             <div className="mb-5">
               <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -665,7 +512,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             </div>
           )}
 
-          {/* Scene description */}
           <div className="mb-5">
             <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Scene Description
@@ -685,7 +531,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
                 lineHeight: 1.6,
               }}
             />
-                       {!isMaster && (
+            {!isMaster && (
               <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
                 <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
                 <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
@@ -694,7 +540,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             )}
           </div>
 
-          {/* Style filter */}
           <SettingChips
             label="Style Filter"
             options={[
@@ -703,9 +548,9 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             ]}
             value={filter}
             onChange={setFilter}
+            accent={ACCENT}
           />
 
-          {/* Aspect ratio */}
           <SettingChips
             label="Aspect Ratio"
             options={ALL_ASPECT_RATIOS.map((o) => ({
@@ -714,9 +559,9 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             }))}
             value={aspectRatio}
             onChange={setAspectRatio}
+            accent={ACCENT}
           />
 
-     {/* Duration + Sound (video only) */}
           {outputType === 'video' && (
             <>
               <SettingChips
@@ -724,6 +569,7 @@ const { data: genRow, error: genErr } = await generationsDb.create({
                 options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
                 value={duration}
                 onChange={setDuration}
+                accent={ACCENT}
               />
               <div className="mb-5">
                 <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
@@ -751,7 +597,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
             </>
           )}
 
-          {/* Refinement off notice */}
           {skipRefinement && (
             <div
               className="flex items-center gap-2 p-3 rounded-xl mt-1"
@@ -767,7 +612,6 @@ const { data: genRow, error: genErr } = await generationsDb.create({
         </div>
       </div>
 
-      {/* Generate button */}
       <div
         className="flex-shrink-0 px-4 lg:px-8 py-4"
         style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
