@@ -6,6 +6,7 @@ import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
 
 const ACCENT     = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
@@ -25,82 +26,6 @@ async function readImageMeta(file) {
     img.onerror = () => resolve({ w: null, h: null, url })
     img.src = url
   })
-}
-
-// ── Model Dropdown ────────────────────────────────────────────────────────────
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-        <span>{selected?.label || 'Model'}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      {m.description && (
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
-                      )}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
@@ -338,7 +263,11 @@ export default function CreateImageUpscalerPage() {
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
-            <ModelDropdown models={models} value={modelValue} onChange={handleModelChange} />
+            <ModelDropdown
+              models={models} value={modelValue} onChange={handleModelChange}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+              width={224}
+            />
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
