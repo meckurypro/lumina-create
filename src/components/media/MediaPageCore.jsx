@@ -636,7 +636,7 @@ const handleSaveAsset = async (gen) => {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+   <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       {headerSlot && (
         <div className="flex-shrink-0">
