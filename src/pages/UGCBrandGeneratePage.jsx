@@ -8,7 +8,7 @@ import {
   X, ImagePlus, Plus, Maximize2, Crown, Package,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts } from '@/lib/ugcBrands'
+import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts, MAX_BRAND_PRODUCTS } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import BrandProductManager from '@/components/BrandProductManager'
 import toast from 'react-hot-toast'
@@ -513,9 +513,9 @@ export default function UGCBrandGeneratePage() {
       brand.content_styles?.length ? `Content style: ${brand.content_styles.join(', ')}` : null,
       brand.visual_styles?.length  ? `Visual aesthetic: ${brand.visual_styles.join(', ')}` : null,
       brand.brand_colors?.length   ? `Brand colors: ${brand.brand_colors.join(', ')}` : null,
-      brand.price_tier         ? `Price tier: ${brand.price_tier}` : null,
+     brand.price_tier         ? `Price tier: ${brand.price_tier}` : null,
       brand.target_interests   ? `Target audience interests: ${brand.target_interests}` : null,
-      brand.offerings?.length  ? `Products/services: ${brand.offerings.slice(0, 5).join(', ')}` : null,
+      products.length           ? `Products/services: ${products.slice(0, 10).map((p) => p.name).join(', ')}` : null,
       brand.competitor_brands  ? `Brand inspirations: ${brand.competitor_brands}` : null,
     ].filter(Boolean).join(' | ')
   }
@@ -779,11 +779,12 @@ export default function UGCBrandGeneratePage() {
           </div>
 
           {outputType === 'products' ? (
-            <BrandProductManager
+         <BrandProductManager
               brandId={brandId}
               userId={user.id}
               products={products}
               onProductsChange={setProducts}
+              maxProducts={MAX_BRAND_PRODUCTS}
             />
           ) : (
             <>
