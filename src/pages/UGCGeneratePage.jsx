@@ -444,7 +444,10 @@ const { data: genRow, error: genErr } = await generationsDb.create({
         output_type:            outputType,
         skip_prompt_refinement: skipRefinement,
         input_image_urls:       allInputImages.length ? allInputImages : null,
-        generation_metadata:    outputType === 'video' ? { with_sound: withSound } : undefined,
+        generation_metadata:    {
+          ...(outputType === 'video' ? { with_sound: withSound } : {}),
+          extra_ref_count: extraUrls.length,
+        },
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
