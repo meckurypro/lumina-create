@@ -1,4 +1,4 @@
-// src/pages/CreatePage.jsx
+// src/pagess/CreatePage.jsx
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
