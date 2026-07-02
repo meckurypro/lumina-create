@@ -1,5 +1,5 @@
 // src/components/ui/Input.jsx
-import { useState } from 'react'
+import { useState, forwardRef } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
 export const Input = ({
@@ -148,7 +148,7 @@ export const OTPInput = ({ value, onChange, length = 8 }) => {
 }
 
 // Textarea component
-export const Textarea = ({
+export const Textarea = forwardRef(function Textarea({
   label,
   value,
   onChange,
@@ -158,7 +158,8 @@ export const Textarea = ({
   rows = 4,
   disabled = false,
   className = '',
-}) => {
+  ...rest
+}, ref) {
   return (
     <div className={`w-full ${className}`}>
       {label && (
@@ -171,6 +172,7 @@ export const Textarea = ({
       )}
 
       <textarea
+        ref={ref}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
@@ -178,6 +180,7 @@ export const Textarea = ({
         disabled={disabled}
         className={`input-base resize-none ${error ? 'border-red-500' : ''}`}
         style={{ minHeight: `${rows * 24 + 28}px` }}
+        {...rest}
       />
 
       {(error || hint) && (
@@ -190,4 +193,4 @@ export const Textarea = ({
       )}
     </div>
   )
-}
+})
