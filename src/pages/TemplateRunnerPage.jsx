@@ -26,7 +26,7 @@ export default function TemplateRunnerPage() {
 
   if (loading) return (
     <div
-      className="min-h-dvh flex items-center justify-center"
+      className="h-full flex items-center justify-center"
       style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)', fontSize: 14 }}
     >
       Loading template…
@@ -35,7 +35,7 @@ export default function TemplateRunnerPage() {
 
   if (error || !template) return (
     <div
-      className="min-h-dvh flex flex-col items-center justify-center gap-3 px-6"
+     className="h-full flex flex-col items-center justify-center gap-3 px-6"
       style={{ background: 'var(--bg-primary)' }}
     >
       <p className="font-bold" style={{ color: 'var(--text-primary)' }}>Template not available</p>
