@@ -577,6 +577,7 @@ export default function UGCBrandGeneratePage() {
         output_type:            outputType,
         input_image_urls:       inputImageUrls.length ? inputImageUrls : null,
         skip_prompt_refinement: skipRefinement,
+        is_system_prompt:       false,
         generation_metadata: {
           brand_id:      brandId,
           brand_context: brandContext,
