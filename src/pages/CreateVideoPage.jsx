@@ -1682,7 +1682,7 @@ export default function CreateVideoPage() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
       <AnimatePresence>
         {isProcessing && <ProcessingOverlay phase={phase} convertProgress={convertProgress} />}
