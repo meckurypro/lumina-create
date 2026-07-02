@@ -1,23 +1,3 @@
-// src/components/media/MediaPageCore.jsx
-//
-// DESIGN REFACTOR — key changes (on top of the earlier perf overhaul, which
-// is fully preserved):
-//
-//  1. STATUS FILTER: the unlabeled colored-dot row is replaced with labeled
-//     FilterPill buttons (Completed / All / Failed / In Progress), each with
-//     a small icon. Unlabeled dots fail basic scanability — a first-time
-//     user has no way to know green means "completed" without hovering.
-//     Pills reuse the exact same visual language as the tab switcher already
-//     in MediaPage.jsx (segmented, labeled, active = filled).
-//
-//  2. EXTRA (image/video) FILTER: now rendered with the same FilterPill,
-//     including an icon (ImageIcon / Film), instead of a plain flat button.
-//     This is the same control MediaPage.jsx now wires in for the
-//     Generations tab (previously only available on UGCBrandMediaPage).
-//
-//  3. Everything else — polling, thumbnail backfill, sheet logic, fallback
-//     banner, pagination — is UNCHANGED.
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
 import { motion, AnimatePresence }                   from 'framer-motion'
@@ -34,11 +14,6 @@ import { Film, Loader2, CheckCircle2, XCircle, Clock, Image as ImageIcon } from 
 import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
 import { extractLastFrame, extractPosterFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Client-side image thumbnail — used only as a backfill for pre-existing
-// generations that were stored with output_thumbnail_url === output_url
-// before Supabase Storage transforms were wired into image-generate.
-// ─────────────────────────────────────────────────────────────────────────────
 async function extractImageThumbnail(imageUrl, maxSize = 400, quality = 0.6) {
   const res  = await fetch(imageUrl)
   const blob = await res.blob()
@@ -62,10 +37,6 @@ async function extractImageThumbnail(imageUrl, maxSize = 400, quality = 0.6) {
   })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
 const PAGE_SIZE = 12
 const POLL_MS   = 4_000
 
@@ -82,17 +53,12 @@ export const STATUS_FILTERS = [
   { label: 'Failed',    value: 'failed'    },
 ]
 
-// Icon + tone lookup for each status filter value — used by FilterPill.
 const STATUS_FILTER_CONFIG = {
   completed:   { icon: CheckCircle2, tone: '#10b981' },
   failed:      { icon: XCircle,      tone: '#ef4444' },
   in_progress: { icon: Clock,        tone: '#eab308' },
   all:         { icon: null,         tone: 'var(--text-primary)' },
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 function getTimeRangeStart(range) {
   if (range === 'all') return null
@@ -126,7 +92,6 @@ export function isPreDispatchFailure(g) {
   return g.status === 'failed' && g.error_message === 'pre_dispatch_failure'
 }
 
-// Stable sorted key for a set of IDs — used to detect when pending set changes
 function pendingKey(items) {
   return items
     .filter(isInProgress)
@@ -134,10 +99,6 @@ function pendingKey(items) {
     .sort()
     .join(',')
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaPageCore
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function MediaPageCore({
   fetcher,
@@ -218,7 +179,6 @@ export default function MediaPageCore({
     setNoviceModalOpen(false)
   }
 
-  // ── Polling refs ───────────────────────────────────────────────────────────
   const pollRef         = useRef(null)
   const prevPendingKey  = useRef('')
 
@@ -247,8 +207,6 @@ export default function MediaPageCore({
     ? [{ label: 'In Progress', value: 'in_progress', dynamic: true }, ...STATUS_FILTERS]
     : STATUS_FILTERS
 
-  // ── Models ─────────────────────────────────────────────────────────────────
-
   useEffect(() => {
     supabase
       .from('models')
@@ -258,8 +216,6 @@ export default function MediaPageCore({
       .order('sort_order')
       .then(({ data }) => setModels(data || []))
   }, [])
-
-  // ── Load ───────────────────────────────────────────────────────────────────
 
   const load = useCallback(async ({
     offset  = 0,
@@ -280,7 +236,6 @@ export default function MediaPageCore({
       limit: PAGE_SIZE, offset, afterIso, statusFilter: 'all',
     })
 
-    // ── Fallback: today → this_week when nothing completed today ──────────
     if (
       offset === 0 &&
       tFilter === 'today' &&
@@ -333,8 +288,6 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFilter, user])
 
-  // ── Polling — stable interval ──────────────────────────────────────────────
-
   useEffect(() => {
     const key = pendingKey(items)
 
@@ -375,7 +328,6 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey(items), user])
 
-  // ── Thumbnail backfill ─────────────────────────────────────────────────────
   const thumbAttemptedRef = useRef(new Set())
   const thumbQueueRef     = useRef([])
   const thumbActiveRef    = useRef(0)
@@ -422,14 +374,10 @@ const runThumbQueue = useCallback(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, user, runThumbQueue])
 
-  // ── Sheet helpers ──────────────────────────────────────────────────────────
-
   const openActions    = (gen) => { setActiveGen(gen); setSheetMode('actions')    }
   const openRegenerate = ()    => setSheetMode('regenerate')
   const openEdit       = ()    => setSheetMode('edit')
   const closeSheet     = ()    => { setActiveGen(null); setSheetMode(null) }
-
-  // ── Action handlers ────────────────────────────────────────────────────────
 
   const handleDelete = (gen) => {
     closeSheet()
@@ -577,6 +525,7 @@ const runThumbQueue = useCallback(() => {
   const handleRetry = async (gen) => {
     closeSheet()
     if (!onRegenerate) return
+    if (gen.is_system_prompt) return
     setRegenLoading(true)
     try {
       await onRegenerate(gen, gen.model, Number(gen.credits_charged), null, gen.prompt, {
@@ -593,6 +542,7 @@ const runThumbQueue = useCallback(() => {
 
   const handleRegenerateConfirm = async (chosenModel, creditCost, selectedModelObj, editedPrompt) => {
     if (!activeGen || !user) return
+    if (activeGen.is_system_prompt) return
     const gen = activeGen
     closeSheet()
     setRegenLoading(true)
@@ -627,8 +577,6 @@ const runThumbQueue = useCallback(() => {
     }
   }
 
-  // ── Derived: client-side filter ────────────────────────────────────────────
-
   const visibleItems = (() => {
     let list = items
     if (statusFilter === 'in_progress')  list = list.filter(isInProgress)
@@ -637,8 +585,6 @@ const runThumbQueue = useCallback(() => {
     if (extraFilter !== 'all') list = list.filter((g) => g.output_type === extraFilter)
     return list
   })()
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -775,7 +721,7 @@ const runThumbQueue = useCallback(() => {
                     accentSubtle={accentSubtle}
                     onClick={() => onCardClick(gen, navigate)}
                     onMore={() => openActions(gen)}
-                    onRetry={isPreDispatchFailure(gen) ? () => handleRetry(gen) : undefined}
+                    onRetry={isPreDispatchFailure(gen) && !gen.is_system_prompt ? () => handleRetry(gen) : undefined}
                   />
                 </motion.div>
               ))}
@@ -831,13 +777,13 @@ const runThumbQueue = useCallback(() => {
             onRefresh={() => handleRefresh(activeGen)}
             onDownload={() => handleDownload(activeGen)}
             onSaveAsset={() => handleSaveAsset(activeGen)}
-            onRetry={isPreDispatchFailure(activeGen) ? () => handleRetry(activeGen) : undefined}
+            onRetry={isPreDispatchFailure(activeGen) && !activeGen.is_system_prompt ? () => handleRetry(activeGen) : undefined}
             onExtractEndFrame={activeGen?.output_type === 'video' ? () => handleExtractEndFrame(activeGen) : undefined}
             extractLoading={extractingId === activeGen?.id}
             refreshLoading={refreshLoading}
           />
         )}
-        {activeGen && sheetMode === 'regenerate' && (
+        {activeGen && sheetMode === 'regenerate' && !activeGen.is_system_prompt && (
           <RegenerateSheet
             key="regenerate"
             gen={activeGen}
@@ -988,10 +934,6 @@ const runThumbQueue = useCallback(() => {
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DefaultEmpty — unchanged
-// ─────────────────────────────────────────────────────────────────────────────
 
 function DefaultEmpty({ timeFilter, statusFilter, setTimeFilter, setStatusFilter, accentColor }) {
   const isTimeConstrained = timeFilter   !== 'all'
