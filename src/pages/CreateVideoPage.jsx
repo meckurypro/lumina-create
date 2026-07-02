@@ -1363,7 +1363,8 @@ export default function CreateVideoPage() {
           user_id: user.id, generation_type: 'video_to_video', status: 'pending',
           prompt, model, aspect_ratio: aspectRatio, duration: String(finalDuration),
           credits_charged: finalCost, output_type: 'video',
-          input_image_urls: [videoUrl], with_sound: false, skip_prompt_refinement: true,
+         input_image_urls: [videoUrl], with_sound: false, skip_prompt_refinement: true,
+          is_system_prompt: false,
         })
         if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
@@ -1480,8 +1481,9 @@ export default function CreateVideoPage() {
         end_frame_url:          endFrameUrl,
         input_image_urls:       uploadedRefUrls.length ? uploadedRefUrls : null,
         with_sound:             withSound,
-        skip_prompt_refinement: skipRefinement,
+       skip_prompt_refinement: skipRefinement,
         audio_url:              resolvedAudioUrl || null,
+        is_system_prompt:       false,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
 
