@@ -35,6 +35,34 @@ import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
 import { extractLastFrame, extractPosterFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Client-side image thumbnail — used only as a backfill for pre-existing
+// generations that were stored with output_thumbnail_url === output_url
+// before Supabase Storage transforms were wired into image-generate.
+// ─────────────────────────────────────────────────────────────────────────────
+async function extractImageThumbnail(imageUrl, maxSize = 400, quality = 0.6) {
+  const res  = await fetch(imageUrl)
+  const blob = await res.blob()
+  const bitmap = await createImageBitmap(blob)
+
+  const scale  = Math.min(maxSize / bitmap.width, maxSize / bitmap.height, 1)
+  const w      = Math.round(bitmap.width  * scale)
+  const h      = Math.round(bitmap.height * scale)
+
+  const canvas = document.createElement('canvas')
+  canvas.width  = w
+  canvas.height = h
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h)
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (thumbBlob) => thumbBlob ? resolve(thumbBlob) : reject(new Error('Canvas toBlob failed')),
+      'image/jpeg',
+      quality,
+    )
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -353,14 +381,16 @@ export default function MediaPageCore({
   const thumbActiveRef    = useRef(0)
   const THUMB_CONCURRENCY = 2
 
-  const runThumbQueue = useCallback(() => {
+const runThumbQueue = useCallback(() => {
     if (!user) return
     while (thumbActiveRef.current < THUMB_CONCURRENCY && thumbQueueRef.current.length > 0) {
       const gen = thumbQueueRef.current.shift()
       thumbActiveRef.current += 1
       ;(async () => {
         try {
-          const blob     = await extractPosterFrame(gen.output_url)
+          const blob = gen.output_type === 'image'
+            ? await extractImageThumbnail(gen.output_url)
+            : await extractPosterFrame(gen.output_url)
           const thumbUrl = await uploadGenerationThumbnail(user.id, gen.id, blob)
           await supabase.from('generations').update({ output_thumbnail_url: thumbUrl }).eq('id', gen.id)
           setItems((prev) => prev.map((g) => g.id === gen.id ? { ...g, output_thumbnail_url: thumbUrl } : g))
@@ -375,13 +405,13 @@ export default function MediaPageCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  useEffect(() => {
+ useEffect(() => {
     if (!user) return
     const newCandidates = items.filter(
       (g) => g.status === 'completed' &&
-             g.output_type === 'video' &&
+             (g.output_type === 'video' || g.output_type === 'image') &&
              g.output_url &&
-             !g.output_thumbnail_url &&
+             (!g.output_thumbnail_url || g.output_thumbnail_url === g.output_url) &&
              !thumbAttemptedRef.current.has(g.id)
     )
     if (!newCandidates.length) return
