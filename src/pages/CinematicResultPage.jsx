@@ -316,8 +316,8 @@ export default function CinematicResultPage() {
   }
 
   // ── Render ───────────────────────────────────────────────
-  if (loading) return (
-    <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
+ if (loading) return (
+    <div className="h-full flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
