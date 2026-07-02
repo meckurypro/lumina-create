@@ -14,7 +14,9 @@ import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { detectAspectRatio, compressImage, readVideoMetadata, tagForSlot, formatDuration, formatBytes } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
-import { SettingChips } from '@/components/create/SettingChips'
+import { SettingChips } from '@/components/create/SettingChips'import { MentionPicker } from '@/components/create/MentionPicker'
+import { usePromptTagging } from '@/hooks/usePromptTagging'
+import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
@@ -838,9 +840,31 @@ export default function CreateVideoPage() {
 
   const [omniRefLoaded, setOmniRefLoaded] = useState(false)
 
-  const [audioSlots, setAudioSlots] = useState([])
+ const [audioSlots, setAudioSlots] = useState([])
+
+  const [mentionLibrary,       setMentionLibrary]       = useState({ characters: [], brands: [] })
+  const [brandProducts,        setBrandProducts]        = useState([])
+  const [brandProductsLoading, setBrandProductsLoading] = useState(false)
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
+
+  const {
+    trackSelection, insertAtCursor, handlePromptChange,
+    mention, resolveMention, drillIntoBrand: drillMentionBrand, backToRoot, closeMention,
+  } = usePromptTagging({ textareaRef, getPrompt: () => prompt, setPrompt })
+
+  useEffect(() => {
+    if (!user) return
+    fetchMentionLibrary(user.id).then(setMentionLibrary)
+  }, [user])
+
+  const handleDrillIntoBrand = async (brand) => {
+    drillMentionBrand(brand)
+    setBrandProductsLoading(true)
+    const products = await fetchBrandProducts(brand.id)
+    setBrandProducts(products)
+    setBrandProductsLoading(false)
+  }
 
   // ── cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1147,24 +1171,45 @@ export default function CreateVideoPage() {
     toast.success('Video trimmed — ready to generate!', { duration: 3000 })
   }
 
-  // ── tag insertion ─────────────────────────────────────────────────────────
-  const handleTagInsert = (tag) => {
-    const el = textareaRef.current
-    if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
-    const start    = el.selectionStart
-    const end      = el.selectionEnd
-    const before   = prompt.slice(0, start)
-    const after    = prompt.slice(end)
-    const needsSpc = before.length > 0 && !before.endsWith(' ')
-    const inserted = `${needsSpc ? ' ' : ''}${tag} `
-    setPrompt(before + inserted + after)
-    requestAnimationFrame(() => {
-      el.focus()
-      const cursor = start + inserted.length
-      el.setSelectionRange(cursor, cursor)
-    })
+// ── tag insertion ─────────────────────────────────────────────────────────
+  // insertAtCursor (manual [imgN] buttons) and resolveMention ("@"/"/"
+  // pickers) come from usePromptTagging above.
+
+  const addMentionRefImage = (url, role, label) => {
+    if (!caps.supportsMultiImage) {
+      toast.error('Switch to a multi-reference model to tag characters or brands')
+      return null
+    }
+    const filled = refImages.filter(Boolean)
+    if (filled.length >= caps.maxRefImages) {
+      toast.error(`This model supports up to ${caps.maxRefImages} reference images`)
+      return null
+    }
+    if (!multiMode) setMultiMode(true)
+    const idx = filled.length
+    const next = [...refImages]
+    next[idx] = { file: null, url, ar: '1:1', isVideo: false, role, label }
+    setRefImages(next)
+    persistRefImages(next)
+    return idx
   }
 
+  const handleSelectMentionUpload = (idx) => resolveMention(tagForSlot(idx))
+
+  const handleSelectMentionCharacter = (character) => {
+    const idx = addMentionRefImage(character.photo_face_front, 'character_face', character.name)
+    if (idx !== null) resolveMention(tagForSlot(idx))
+  }
+
+  const handleSelectMentionLogo = (brand) => {
+    const idx = addMentionRefImage(brand.logo_url, 'brand_logo', brand.brand_name)
+    if (idx !== null) resolveMention(tagForSlot(idx))
+  }
+
+  const handleSelectMentionProduct = (brand, product) => {
+    const idx = addMentionRefImage(product.image_url, 'product', `${brand.brand_name} — ${product.name}`)
+    if (idx !== null) resolveMention(tagForSlot(idx))
+  }
   // ── audio slot handlers ───────────────────────────────────────────────────
   const handleAudioSlotFill = async (slotIndex, e, imported) => {
     const usedSoFar = totalSlotDuration(audioSlots)
@@ -1371,27 +1416,30 @@ export default function CreateVideoPage() {
         endFrameUrl = publicUrl
       }
 
-      const uploadedRefUrls = []
+ const uploadedRefUrls = []
       if (multiMode && refImages.length > 0) {
         for (const img of refImages) {
           if (!img) continue
-          if (!img.file) { uploadedRefUrls.push(img.url); continue }
-          const contentType = img.file.type || 'image/jpeg'
-          const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-          const { data: uploadData, error: upErr } = await supabase.storage
-            .from('generation-uploads')
-            .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
-          if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-          const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(uploadData.path)
-          uploadedRefUrls.push(publicUrl)
+          let url = img.url
+          if (img.file) {
+            const contentType = img.file.type || 'image/jpeg'
+            const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+            const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+            const { data: uploadData, error: upErr } = await supabase.storage
+              .from('generation-uploads')
+              .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
+            if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
+            const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(uploadData.path)
+            url = publicUrl
+          }
+          uploadedRefUrls.push({ url, role: img.role || 'reference', label: img.label || null })
         }
       }
 
       if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
         const { data: checkData } = await supabase.functions.invoke(
           'video-generate',
-          { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0], aspect_ratio: aspectRatio } }
+          { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0]?.url, aspect_ratio: aspectRatio } }
         )
         if (checkData?.lipsync_redirect) {
           setPhase(null)
@@ -1717,7 +1765,7 @@ export default function CreateVideoPage() {
 
               {caps.supportsMultiImage && multiMode ? (
                 <MultiRefGrid images={refImages} maxImages={caps.maxRefImages} onAdd={handleAddRefImage}
-                  onRemove={handleRemoveRefImage} onTagInsert={handleTagInsert}
+                  onRemove={handleRemoveRefImage} onTagInsert={insertAtCursor}
                   onFullscreen={(idx) => setFullscreenIdx(idx)} />
               ) : (
                 <>
@@ -1801,14 +1849,35 @@ export default function CreateVideoPage() {
             </div>
           )}
 
+         <MentionPicker
+            mention={mention}
+            accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+            images={refImages}
+            onSelectImage={handleSelectMentionUpload}
+            characters={mentionLibrary.characters}
+            brands={mentionLibrary.brands}
+            brandProducts={brandProducts}
+            brandProductsLoading={brandProductsLoading}
+            onSelectCharacter={handleSelectMentionCharacter}
+            onSelectBrand={handleDrillIntoBrand}
+            onSelectLogo={handleSelectMentionLogo}
+            onSelectProduct={handleSelectMentionProduct}
+            onBack={backToRoot}
+          />
+
           <Textarea ref={textareaRef} label="Prompt" value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={handlePromptChange}
+            onSelect={trackSelection}
+            onKeyUp={trackSelection}
+            onClick={trackSelection}
+            onFocus={trackSelection}
+            onKeyDown={(e) => { if (e.key === 'Escape' && mention) closeMention() }}
             placeholder={
               caps.isVideoEdit
                 ? 'Describe the style transformation e.g. "animate style with vibrant colors"'
                 : caps.supportsMultiImage && multiMode && refImages.length > 0
-                  ? `e.g. ${tagForSlot(0)} walks through a neon-lit street, medium tracking shot`
-                  : 'Describe the motion, scene, or action…'
+                  ? `e.g. ${tagForSlot(0)} walks through a neon-lit street. Type @ for uploads, / for characters & brands.`
+                  : 'Describe the motion, scene, or action… Type @ for uploads, / for characters & brands.'
             }
             rows={3} maxLength={500} />
 
