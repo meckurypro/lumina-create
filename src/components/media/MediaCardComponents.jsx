@@ -1,21 +1,29 @@
 // src/components/media/MediaCardComponents.jsx
 //
-// PERFORMANCE OVERHAUL — key changes:
-//  1. ALL <video> tags now use preload="none" — the browser will not fetch
-//     any video data (not even metadata) until the user explicitly interacts.
-//     Previously `preload="metadata"` on list cards was silently pulling
-//     the first few hundred KB of every video in the list.
-//  2. ALL <img> tags in list cards use loading="lazy" — browser-native
-//     off-screen deferral, zero JS overhead.
-//  3. ActionSheet preview video uses preload="none" — user opened the sheet
-//     so they can tap play deliberately; no need to pre-buffer.
-//  4. EditSheet preview video: same — preload="none".
-//  5. Lightbox <video> keeps autoPlay (user explicitly opened it) but drops
-//     preload since autoPlay already triggers loading.
-//  6. RegenerateSheet input image: loading="lazy" added.
-//  7. GridCard video thumbnail: preload="none" (was "metadata").
-//  8. MediaCard video thumbnail: preload="none" (was "metadata").
-//  9. No logic changes — all existing props/callbacks are identical.
+// DESIGN REFACTOR — key changes:
+//
+//  1. NEW ACTION-SHEET PRIMITIVES (ActionIconChip, ActionGridItem,
+//     ActionRowGroup, ActionRow). These replace the old flat stack of
+//     identical rows with the iOS-native pattern: a 3-column icon grid for
+//     "do something new" actions (mirrors Apple's own share sheet), plus
+//     grouped rows (single rounded container, inset hairline dividers)
+//     for utility/contextual/destructive actions. See Apple HIG — Action
+//     Sheets & Lists and Tables (grouped style).
+//
+//  2. ActionSheet is fully rebuilt on these primitives. Cancel is now an
+//     explicit, always-present row (HIG requirement — never rely solely on
+//     backdrop-tap-to-dismiss).
+//
+//  3. NEW FilterPill — a small labeled, iconable pill used to replace the
+//     old unlabeled colored-dot filters (MediaPageCore status filter,
+//     AssetsPage type filter). Unlabeled color dots fail basic scanability;
+//     labeled pills match the existing Generations/Assets tab-switcher
+//     pattern already in MediaPage.jsx, just applied one level down.
+//
+//  4. Everything else — RegenerateSheet, EditSheet, MediaCard, GridCard,
+//     SkeletonCard, MediaEmptyState, Lightbox, FallbackBanner,
+//     ExtractEndFrameConfirmModal, all perf-related preload/loading
+//     attributes — is UNCHANGED from the previous version.
 
 import { useState, useEffect, useRef }  from 'react'
 import { createPortal }                  from 'react-dom'
@@ -147,6 +155,39 @@ export const StatusPill = ({ status }) => {
     </span>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FilterPill
+//
+// Labeled, optionally iconed pill used for status/type filters throughout
+// the Media section. Replaces the old unlabeled colored-dot filters.
+// `tone` is a hex/CSS-color string used as the active background; falls
+// back to --text-primary (matches the existing Generations/Assets tab
+// switcher's active state).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = false }) => (
+  <button
+    onClick={onClick}
+    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95 whitespace-nowrap"
+    style={{
+      background: active ? (tone || 'var(--text-primary)') : 'var(--bg-elevated)',
+      color:      active ? '#ffffff' : 'var(--text-muted)',
+      border:     `1px solid ${active ? 'transparent' : 'var(--border-color)'}`,
+    }}
+  >
+    {Icon && (
+      <motion.span
+        className="flex items-center justify-center"
+        animate={pulse ? { scale: [1, 1.25, 1] } : {}}
+        transition={pulse ? { repeat: Infinity, duration: 1.2, ease: 'easeInOut' } : {}}
+      >
+        <Icon size={12} />
+      </motion.span>
+    )}
+    {label}
+  </button>
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProgressOverlay
@@ -303,7 +344,7 @@ export const PortalDropup = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RegenerateSheet
+// RegenerateSheet — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const RegenerateSheet = ({
@@ -359,7 +400,6 @@ export const RegenerateSheet = ({
               Input image (will be reused)
             </p>
             <div className="rounded-2xl overflow-hidden" style={{ height: 140 }}>
-              {/* ✅ lazy — only loads when sheet is open (it is), not upfront */}
               <img
                 src={inputImageUrl}
                 alt="Original input"
@@ -452,7 +492,7 @@ export const RegenerateSheet = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EditSheet
+// EditSheet — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const EditSheet = ({
@@ -509,7 +549,6 @@ export const EditSheet = ({
             </p>
             <div className="rounded-2xl overflow-hidden relative" style={{ height: 140 }}>
               {isVideo ? (
-                // ✅ preload="none" — user taps play when ready
                 <video
                   src={outputUrl}
                   className="w-full h-full object-cover"
@@ -602,7 +641,100 @@ export const EditSheet = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Action-sheet primitives
+//
+// ActionIconChip   — tinted rounded-square icon container (tone system)
+// ActionGridItem   — icon chip + label, used in the 3-col "do something new"
+//                    grid (mirrors Apple's own share sheet layout)
+// ActionRowGroup   — single rounded container for grouped rows
+// ActionRow        — one row inside a group; inset hairline divider, not a
+//                    separate card. This is the actual iOS "grouped list"
+//                    pattern (Lists and Tables — grouped style).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CHIP_TONES = {
+  neutral: { bg: 'var(--bg-elevated)',    color: 'var(--text-secondary)' },
+  brand:   { bg: 'var(--brand-light)',    color: 'var(--brand)'          },
+  danger:  { bg: 'rgba(239,68,68,0.12)',  color: '#ef4444'               },
+  info:    { bg: 'rgba(59,130,246,0.12)', color: '#3b82f6'               },
+  warn:    { bg: 'rgba(234,179,8,0.12)',  color: '#eab308'               },
+}
+
+const ActionIconChip = ({ icon: Icon, tone = 'neutral', size = 36 }) => {
+  const t = CHIP_TONES[tone] || CHIP_TONES.neutral
+  return (
+    <div
+      className="flex items-center justify-center rounded-xl flex-shrink-0"
+      style={{ width: size, height: size, background: t.bg }}
+    >
+      <Icon size={Math.round(size * 0.46)} style={{ color: t.color }} />
+    </div>
+  )
+}
+
+const ActionGridItem = ({ icon, label, tone = 'brand', onClick, disabled }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className="flex flex-col items-center gap-2 py-3 rounded-2xl transition-all active:scale-95"
+    style={{ opacity: disabled ? 0.5 : 1 }}
+  >
+    <ActionIconChip icon={icon} tone={tone} size={46} />
+    <span
+      className="text-xs font-semibold text-center leading-tight px-1"
+      style={{ color: 'var(--text-primary)' }}
+    >
+      {label}
+    </span>
+  </button>
+)
+
+const ActionRowGroup = ({ children }) => (
+  <div
+    className="rounded-2xl overflow-hidden"
+    style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}
+  >
+    {children}
+  </div>
+)
+
+const ActionRow = ({ icon, label, sub, tone = 'neutral', onClick, danger, isLast, loading }) => (
+  <button
+    onClick={onClick}
+    disabled={loading}
+    className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all active:scale-[0.98]"
+    style={{
+      background:   danger ? 'rgba(239,68,68,0.05)' : 'transparent',
+      borderBottom: isLast ? 'none' : '1px solid var(--border-color)',
+      opacity:      loading ? 0.6 : 1,
+    }}
+  >
+    <ActionIconChip icon={icon} tone={danger ? 'danger' : tone} size={32} />
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-semibold" style={{ color: danger ? '#ef4444' : 'var(--text-primary)' }}>
+        {label}
+      </p>
+      {sub && (
+        <p className="text-xs" style={{ color: danger ? 'rgba(239,68,68,0.65)' : 'var(--text-muted)' }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  </button>
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ActionSheet
+//
+// Layout:
+//   1. Handle + title + preview thumbnail            (unchanged)
+//   2. Primary "do something new" actions — icon grid (Edit, Regenerate,
+//      Extract End Frame, Retry)
+//   3. Utility group — Download / Save as Asset       (grouped rows)
+//   4. Contextual group — Refresh                     (grouped rows, only
+//      while processing/pending)
+//   5. Destructive — Delete                           (isolated group)
+//   6. Cancel — explicit full-width row
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ActionSheet = ({
@@ -611,152 +743,147 @@ export const ActionSheet = ({
   onExtractEndFrame,
   refreshLoading = false,
   extractLoading = false,
-}) => (
-  <motion.div
-    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-    className="fixed inset-0 z-50 flex items-end justify-center"
-    style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-    onClick={onClose}
-  >
+}) => {
+  const isCompleted  = gen.status === 'completed'
+  const isProcessing = gen.status === 'processing' || gen.status === 'pending'
+
+  const gridItems = []
+  if (isCompleted && gen.output_url && onEdit) {
+    gridItems.push({ icon: Pencil, label: 'Edit', onClick: onEdit })
+  }
+  gridItems.push({ icon: RefreshCw, label: 'Regenerate', onClick: onRegenerate })
+  if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEndFrame) {
+    gridItems.push({
+      icon: ScanLine, label: extractLoading ? 'Extracting…' : 'End Frame',
+      onClick: onExtractEndFrame, disabled: extractLoading,
+    })
+  }
+  if (onRetry) {
+    gridItems.push({ icon: RefreshCw, label: 'Retry', onClick: onRetry, tone: 'warn' })
+  }
+
+  return (
     <motion.div
-      initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
-      transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-      className="w-full rounded-t-3xl overflow-hidden pb-8"
-      style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
-      onClick={(e) => e.stopPropagation()}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
     >
-      <div className="flex justify-center pt-3 pb-2">
-        <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
-      </div>
-
-      <div className="px-4 pb-3">
-        <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-          {getCardTitle(gen)}
-        </p>
-        {gen.ugc_filter_applied && (
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {gen.ugc_filter_applied === 'cinematic' ? '🎬 Cinematic' : '📱 Hyper Realistic'}
-            {gen.aspect_ratio ? ` · ${gen.aspect_ratio}` : ''}
-          </p>
-        )}
-        {!gen.ugc_filter_applied && gen.prompt && (
-          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{gen.prompt}</p>
-        )}
-      </div>
-
-      {/* Preview thumbnail — ✅ preload="none" on video, lazy on image */}
-      {gen.output_url && (
-        <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
-          {gen.output_type === 'video'
-            ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline preload="none" />
-            : <img   src={gen.output_url} alt="preview" className="w-full h-full object-cover" loading="lazy" />
-          }
+      <motion.div
+        initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+        className="w-full rounded-t-3xl overflow-hidden pb-8"
+        style={{ background: 'var(--bg-card)', maxWidth: 480, border: '1px solid var(--border-color)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
         </div>
-      )}
 
-      <div className="px-4 flex flex-col gap-2">
-        {gen.status === 'completed' && (
-          <button onClick={onDownload} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-            style={{ background: 'var(--bg-elevated)' }}>
-            <Download size={18} style={{ color: 'var(--text-primary)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Download</span>
-          </button>
-        )}
+        <div className="px-4 pb-3">
+          <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+            {getCardTitle(gen)}
+          </p>
+          {gen.ugc_filter_applied ? (
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {gen.ugc_filter_applied === 'cinematic' ? '🎬 Cinematic' : '📱 Hyper Realistic'}
+              {gen.aspect_ratio ? ` · ${gen.aspect_ratio}` : ''}
+            </p>
+          ) : gen.prompt ? (
+            <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{gen.prompt}</p>
+          ) : null}
+        </div>
 
-        {gen.status === 'completed' && gen.output_url && onSaveAsset && (
-          <button onClick={onSaveAsset} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-            style={{ background: 'var(--bg-elevated)' }}>
-            <Bookmark size={18} style={{ color: 'var(--text-primary)' }} />
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Save as Asset</span>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Add to your Assets library</span>
-            </div>
-          </button>
-        )}
-
-        {gen.status === 'completed' && gen.output_url && onEdit && (
-          <button onClick={onEdit} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-            style={{ background: 'var(--bg-elevated)' }}>
-            <Pencil size={18} style={{ color: 'var(--text-primary)' }} />
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Edit</span>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Use output as input for I2I</span>
-            </div>
-          </button>
-        )}
-
-        {gen.status === 'completed' && gen.output_type === 'video' && gen.output_url && onExtractEndFrame && (
-          <button
-            onClick={onExtractEndFrame}
-            disabled={extractLoading}
-            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-all active:scale-[0.98]"
-            style={{ background: 'var(--bg-elevated)', opacity: extractLoading ? 0.6 : 1 }}
-          >
-            <ScanLine size={18} style={{ color: 'var(--text-primary)' }} />
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {extractLoading ? 'Extracting…' : 'Extract End Frame'}
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Save last frame as a new asset</span>
-            </div>
-          </button>
-        )}
-
-        <button onClick={onRegenerate} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-          style={{ background: 'var(--bg-elevated)' }}>
-          <RefreshCw size={18} style={{ color: 'var(--text-primary)' }} />
-          <div className="flex flex-col items-start">
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Regenerate</span>
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Re-run with original input</span>
+        {/* Preview thumbnail */}
+        {gen.output_url && (
+          <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
+            {gen.output_type === 'video'
+              ? <video src={gen.output_url} className="w-full h-full object-cover" muted autoPlay loop playsInline preload="none" />
+              : <img   src={gen.output_url} alt="preview" className="w-full h-full object-cover" loading="lazy" />
+            }
           </div>
-        </button>
-
-        {onRetry && (
-          <button onClick={onRetry} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-            style={{ background: 'rgba(234,179,8,0.08)' }}>
-            <RefreshCw size={18} style={{ color: '#eab308' }} />
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-semibold" style={{ color: '#eab308' }}>Retry</span>
-              <span className="text-xs" style={{ color: 'rgba(234,179,8,0.65)' }}>Re-submit this generation</span>
-            </div>
-          </button>
         )}
 
-        {(gen.status === 'processing' || gen.status === 'pending') && gen.provider_request_id && (
-          <button onClick={onRefresh} disabled={refreshLoading}
-            className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left transition-all active:scale-[0.98]"
-            style={{ background: 'rgba(59,130,246,0.08)', opacity: refreshLoading ? 0.6 : 1 }}>
-            <motion.div
-              animate={refreshLoading ? { rotate: 360 } : { rotate: 0 }}
-              transition={refreshLoading ? { repeat: Infinity, duration: 0.9, ease: 'linear' } : {}}
-            >
-              <RefreshCw size={18} style={{ color: '#3b82f6' }} />
-            </motion.div>
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-semibold" style={{ color: '#3b82f6' }}>
-                {refreshLoading ? 'Checking…' : 'Refresh'}
-              </span>
-              <span className="text-xs" style={{ color: 'rgba(59,130,246,0.65)' }}>Check if complete on provider</span>
-            </div>
-          </button>
+        {/* Primary actions — icon grid */}
+        {gridItems.length > 0 && (
+          <div className="px-3 mb-3 grid grid-cols-3 gap-0.5">
+            {gridItems.map((it) => (
+              <ActionGridItem
+                key={it.label}
+                icon={it.icon}
+                label={it.label}
+                tone={it.tone || 'brand'}
+                onClick={it.onClick}
+                disabled={it.disabled}
+              />
+            ))}
+          </div>
         )}
 
-        <button onClick={onDelete} className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-left"
-          style={{ background: 'rgba(239,68,68,0.08)' }}>
-          <Trash2 size={18} style={{ color: '#ef4444' }} />
-          <span className="text-sm font-semibold" style={{ color: '#ef4444' }}>Delete</span>
-        </button>
-      </div>
+        {/* Utility group — Download / Save as Asset */}
+        {isCompleted && (
+          <div className="px-4 mb-2.5">
+            <ActionRowGroup>
+              <ActionRow
+                icon={Download}
+                label="Download"
+                onClick={onDownload}
+                isLast={!(gen.output_url && onSaveAsset)}
+              />
+              {gen.output_url && onSaveAsset && (
+                <ActionRow
+                  icon={Bookmark}
+                  label="Save as Asset"
+                  sub="Add to your Assets library"
+                  onClick={onSaveAsset}
+                  isLast
+                />
+              )}
+            </ActionRowGroup>
+          </div>
+        )}
+
+        {/* Contextual group — Refresh (only while processing) */}
+        {isProcessing && gen.provider_request_id && (
+          <div className="px-4 mb-2.5">
+            <ActionRowGroup>
+              <ActionRow
+                icon={RefreshCw}
+                tone="info"
+                isLast
+                label={refreshLoading ? 'Checking…' : 'Refresh'}
+                sub="Check if complete on provider"
+                onClick={onRefresh}
+                loading={refreshLoading}
+              />
+            </ActionRowGroup>
+          </div>
+        )}
+
+        {/* Destructive */}
+        <div className="px-4 mb-2.5">
+          <ActionRowGroup>
+            <ActionRow icon={Trash2} label="Delete" danger onClick={onDelete} isLast />
+          </ActionRowGroup>
+        </div>
+
+        {/* Cancel — explicit, always present */}
+        <div className="px-4">
+          <button
+            onClick={onClose}
+            className="w-full py-3.5 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98]"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </motion.div>
     </motion.div>
-  </motion.div>
-)
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MediaCard
-//
-// CHANGES:
-//   • <video preload="none"> instead of preload="metadata"
-//   • <img loading="lazy"> on thumbnail
+// MediaCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentColor, accentSubtle }) => {
@@ -764,10 +891,6 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
   const isComplete    = gen.status === 'completed'
   const isPending     = gen.status === 'pending' || gen.status === 'processing'
   const [thumbErr, setThumbErr] = useState(false)
-  // Only ever render an <img>: real server thumbnail for videos, or the
-  // image output itself. We never set `<video src=...>` in the list — even
-  // with preload="none" the browser still issues a HEAD/Range request that
-  // is the dominant cost on mobile data.
   const thumbUrl      = isVideo
     ? (gen.output_thumbnail_url || null)
     : (gen.output_thumbnail_url || gen.output_url || null)
@@ -864,9 +987,7 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GridCard
-//
-// CHANGE: preload="none" on video thumbnail
+// GridCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
@@ -937,7 +1058,7 @@ export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SkeletonCard
+// SkeletonCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const SkeletonCard = () => (
@@ -955,7 +1076,7 @@ export const SkeletonCard = () => (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MediaEmptyState
+// MediaEmptyState — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const MediaEmptyState = ({
@@ -986,7 +1107,7 @@ export const MediaEmptyState = ({
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lightbox
+// Lightbox — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const Lightbox = ({ gen, onClose }) => {
@@ -1006,7 +1127,6 @@ export const Lightbox = ({ gen, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {isVideo
-          // autoPlay is fine here — user deliberately opened the lightbox
           ? <video src={gen.output_url} className="w-full" controls autoPlay loop playsInline />
           : <img   src={gen.output_url} alt="" className="w-full" />
         }
@@ -1025,7 +1145,7 @@ export const Lightbox = ({ gen, onClose }) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FallbackBanner
+// FallbackBanner — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const FallbackBanner = ({ message, onDismiss }) => (
@@ -1044,7 +1164,7 @@ export const FallbackBanner = ({ message, onDismiss }) => (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ExtractEndFrameConfirmModal
+// ExtractEndFrameConfirmModal — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ExtractEndFrameConfirmModal({ cost, onConfirm, onCancel }) {
