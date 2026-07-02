@@ -332,7 +332,7 @@ export default function CinematicResultPage() {
   const anyPending = clips.some(c => c.status === 'pending' || c.status === 'processing')
 
   return (
-    <div className="min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full overflow-y-auto" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
       <div
@@ -376,7 +376,7 @@ export default function CinematicResultPage() {
       {/* Clips */}
       <div
         className="mx-auto max-w-xl px-4 py-6 flex flex-col gap-5"
-        style={{ paddingBottom: 'calc(56px + 32px)' }}
+        style={{ paddingBottom: 'calc(var(--bottom-nav-height) + 32px)' }}
       >
         {clips.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
