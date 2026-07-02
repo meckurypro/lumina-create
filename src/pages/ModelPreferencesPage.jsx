@@ -201,7 +201,7 @@ export default function ModelPreferencesPage() {
   // ── Skeleton ─────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
+      <div className="h-full flex flex-col" style={{ background: 'var(--bg-primary)' }}>
         <div
           className="flex-shrink-0 flex items-center gap-2 px-4 h-14"
           style={{ borderBottom: '1px solid var(--border-color)' }}
@@ -225,7 +225,7 @@ export default function ModelPreferencesPage() {
   }
 
   return (
-    <div className="h-dvh flex flex-col" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-primary)' }}>
 
       {/* Header */}
       <div
