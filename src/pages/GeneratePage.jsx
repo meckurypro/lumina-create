@@ -141,8 +141,8 @@ export default function GeneratePage() {
   }
 
   return (
-    <div
-      className="h-dvh flex flex-col overflow-hidden"
+ <div
+      className="h-full flex flex-col overflow-hidden"
       style={{ background: 'var(--bg-primary)' }}
     >
 
