@@ -380,8 +380,7 @@ export default function MediaPage() {
   )
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-
+   <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       {/* Header renders with live totalCount from state */}
       <div className="flex-shrink-0">
         {headerSlot({ totalCount })}
