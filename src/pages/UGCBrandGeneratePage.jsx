@@ -5,11 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Building2,
   ImageIcon, VideoIcon, ChevronDown, Info,
-  X, ImagePlus, Plus, Maximize2, Crown,
+  X, ImagePlus, Plus, Maximize2, Crown, Package,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { ugcBrandProfiles, ugcBrandGenerations } from '@/lib/ugcBrands'
+import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
+import BrandProductManager from '@/components/BrandProductManager'
 import toast from 'react-hot-toast'
 
 const ACCENT     = 'var(--tool-ugc)'
@@ -32,6 +33,18 @@ function detectAspectRatio(width, height) {
 
 function tagForSlot(idx) {
   return `[img${idx + 1}]`
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Detects a live "/query" being typed right before the cursor
+function getSlashMatch(text, cursorPos) {
+  const upto = text.slice(0, cursorPos)
+  const m = /(^|\s)\/([a-zA-Z0-9 _-]{0,40})$/.exec(upto)
+  if (!m) return null
+  return { query: m[2].trim().toLowerCase(), start: m.index + m[1].length }
 }
 
 async function compressImage(file) {
@@ -280,7 +293,9 @@ export default function UGCBrandGeneratePage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [model,         setModel]         = useState('')
 
-  const [outputType,    setOutputType]    = useState('image')
+  const [products,      setProducts]      = useState([])
+
+  const [outputType,    setOutputType]    = useState('image') // 'image' | 'video' | 'products'
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [duration,      setDuration]      = useState('5')
@@ -292,7 +307,13 @@ export default function UGCBrandGeneratePage() {
   const [images,        setImages]        = useState([])
   const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
- useEffect(() => { loadBrand(); loadModels() }, [brandId, userProfile?.user_tier])
+  // Slash-command picker state
+  const [slashOpen,      setSlashOpen]      = useState(false)
+  const [slashQuery,     setSlashQuery]     = useState('')
+  const [slashStart,     setSlashStart]     = useState(null)
+  const [slashActiveIdx, setSlashActiveIdx] = useState(0)
+
+  useEffect(() => { loadBrand(); loadModels(); loadProducts() }, [brandId, userProfile?.user_tier])
 
   const loadBrand = async () => {
     setBrandLoading(true)
@@ -304,6 +325,11 @@ export default function UGCBrandGeneratePage() {
     }
     setBrand(data)
     setBrandLoading(false)
+  }
+
+  const loadProducts = async () => {
+    const { data } = await ugcBrandProducts.getAll(brandId)
+    setProducts(data || [])
   }
 
   const loadModels = useCallback(async () => {
@@ -394,7 +420,7 @@ export default function UGCBrandGeneratePage() {
     setAspectRatio('9:16')
   }
 
-  // ── Tag insertion ──────────────────────────────────────────────
+  // ── Tag insertion (manual ref [img1] buttons) ───────────────────
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) { setPrompt((p) => p ? `${p} ${tag}` : tag); return }
@@ -411,6 +437,68 @@ export default function UGCBrandGeneratePage() {
       const cursor = start + inserted.length
       el.setSelectionRange(cursor, cursor)
     })
+  }
+
+  // ── Slash-command product picker ────────────────────────────────
+  const slashResults = products
+    .filter((p) => p.name.toLowerCase().includes(slashQuery))
+    .slice(0, 6)
+
+  const handlePromptChange = (e) => {
+    const val    = e.target.value
+    const cursor = e.target.selectionStart
+    setPrompt(val)
+
+    const match = getSlashMatch(val, cursor)
+    if (match && products.length > 0) {
+      setSlashOpen(true)
+      setSlashQuery(match.query)
+      setSlashStart(match.start)
+      setSlashActiveIdx(0)
+    } else {
+      setSlashOpen(false)
+    }
+  }
+
+  const selectSlashProduct = (product) => {
+    const el     = textareaRef.current
+    const cursor = el ? el.selectionStart : prompt.length
+    const before = prompt.slice(0, slashStart)
+    const after  = prompt.slice(cursor)
+    const inserted = `/${product.name} `
+    const next = before + inserted + after
+    setPrompt(next)
+    setSlashOpen(false)
+    requestAnimationFrame(() => {
+      el?.focus()
+      const pos = before.length + inserted.length
+      el?.setSelectionRange(pos, pos)
+    })
+  }
+
+  const handlePromptKeyDown = (e) => {
+    if (!slashOpen || slashResults.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSlashActiveIdx((i) => (i + 1) % slashResults.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSlashActiveIdx((i) => (i - 1 + slashResults.length) % slashResults.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      selectSlashProduct(slashResults[slashActiveIdx])
+    } else if (e.key === 'Escape') {
+      setSlashOpen(false)
+    }
+  }
+
+  const resolveMentionedProducts = (text) => {
+    const mentioned = []
+    for (const p of products) {
+      const re = new RegExp(`/${escapeRegex(p.name)}(?=\\s|$)`)
+      if (re.test(text)) mentioned.push(p)
+    }
+    return mentioned
   }
 
   // ── Brand context ──────────────────────────────────────────────
@@ -443,41 +531,39 @@ export default function UGCBrandGeneratePage() {
     try {
       const brandContext = buildBrandContext()
 
-      // FIX: prepend brand logo_url (always first), then upload any master ref images
-      const uploadedUrls = []
+      // Build the reference image list in priority order:
+      // brand logo → Master-tier manual refs → "/product" mentions
+      const inputImageUrls = []
 
-      // Brand logo always included first (no upload needed — already a public URL)
       if (brand?.logo_url) {
-        uploadedUrls.push(brand.logo_url)
+        inputImageUrls.push({ url: brand.logo_url, role: 'brand logo' })
       }
 
-      // Master ref images uploaded after logo
       if (isMaster) {
         for (const img of images) {
           if (!img) continue
-          if (!img.file) {
-            uploadedUrls.push(img.url)
-            continue
+          let url = img.url
+          if (img.file) {
+            const contentType = img.file.type || 'image/jpeg'
+            const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+            const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+            const { data: uploadData, error: upErr } = await supabase.storage
+              .from('generation-uploads')
+              .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
+            if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
+            url = supabase.storage
+              .from('generation-uploads')
+              .getPublicUrl(uploadData.path).data.publicUrl
           }
-          const contentType = img.file.type || 'image/jpeg'
-          const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-          const path = `${user.id}/${crypto.randomUUID()}.${ext}`
-          const { data: uploadData, error: upErr } = await supabase.storage
-            .from('generation-uploads')
-            .upload(path, img.file, { upsert: false, cacheControl: '3600', contentType })
-          if (upErr) throw new Error(`Reference upload failed: ${upErr.message}`)
-          const { data: { publicUrl } } = supabase.storage
-            .from('generation-uploads')
-            .getPublicUrl(uploadData.path)
-          uploadedUrls.push(publicUrl)
+          inputImageUrls.push({ url, role: 'reference' })
         }
       }
 
-      const roles = ['brand logo', 'subject', 'setting', 'additional reference']
-      const inputImageUrls = uploadedUrls.map((url, i) => ({
-        url,
-        role: roles[i] || `reference ${i + 1}`,
-      }))
+      const mentionedProducts = resolveMentionedProducts(prompt)
+      const remainingSlots    = Math.max(0, modelMaxRefImages - inputImageUrls.length)
+      for (const p of mentionedProducts.slice(0, remainingSlots)) {
+        inputImageUrls.push({ url: p.image_url, role: `product: ${p.name}` })
+      }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
@@ -632,7 +718,7 @@ export default function UGCBrandGeneratePage() {
           <ArrowLeft size={20} />
         </button>
 
-        <button onClick={() => navigate('/create/ugc', { state: { tab: 'brands' } })} className="flex items/center gap-2.5">
+        <button onClick={() => navigate('/create/ugc', { state: { tab: 'brands' } })} className="flex items-center gap-2.5">
           {brand?.logo_url ? (
             <img
               src={brand.logo_url} alt={brand.brand_name}
@@ -655,7 +741,7 @@ export default function UGCBrandGeneratePage() {
         </button>
 
         <div className="flex items-center gap-2">
-          {!modelsLoading && (
+          {outputType !== 'products' && !modelsLoading && (
             <ModelDropdown
               models={filteredModels}
               value={selectedModel?.value || ''}
@@ -672,8 +758,9 @@ export default function UGCBrandGeneratePage() {
           {/* Output type toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
             {[
-              { value: 'image', label: 'Image', Icon: ImageIcon },
-              { value: 'video', label: 'Video', Icon: VideoIcon },
+              { value: 'image',    label: 'Image',    Icon: ImageIcon },
+              { value: 'video',    label: 'Video',    Icon: VideoIcon },
+              { value: 'products', label: 'Products', Icon: Package   },
             ].map(({ value, label, Icon }) => (
               <button
                 key={value}
@@ -691,170 +778,210 @@ export default function UGCBrandGeneratePage() {
             ))}
           </div>
 
-{/* Reference images — Master only */}
-          {isMaster && selectedModel?.supports_multi_image && (
-            <div className="mb-5">
-              <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Reference Images
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
-              </p>
-              <MultiImageGrid
-                images={images}
-                maxImages={modelMaxRefImages}
-                onAdd={handleAddImage}
-                onRemove={handleRemoveImage}
-                onTagInsert={handleTagInsert}
-                onFullscreen={(idx) => setFullscreenIdx(idx)}
-              />
-            </div>
-          )}
-
-          {/* Prompt */}
-          <div className="mb-5">
-            <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Content Direction
-            </p>
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={
-                isMaster && hasImages
-                  ? `Describe how to use the references — e.g. person in ${tagForSlot(0)} inside the space in ${tagForSlot(1)}, brand logo on the wall`
-                  : `Describe what you want created for ${brand?.brand_name}…`
-              }
-              rows={5}
-              maxLength={100000}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
-              style={{
-                background: 'var(--bg-elevated)',
-                border:     '1px solid var(--border-color)',
-                color:      'var(--text-primary)',
-                lineHeight: 1.6,
-              }}
+          {outputType === 'products' ? (
+            <BrandProductManager
+              brandId={brandId}
+              userId={user.id}
+              products={products}
+              onProductsChange={setProducts}
             />
-            <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
-              {prompt.length}/600
-            </p>
-            {!isMaster && (
-              <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
-                <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
-                <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
-                {' '}to attach reference images to your generations.
-              </p>
-            )}
-          </div>
-
-          {/* Style filter */}
-          <SettingChips
-            label="Style Filter"
-            options={[
-              { value: 'hyper_realistic', label: '📱 Hyper Realistic' },
-              { value: 'cinematic',       label: '🎬 Cinematic'       },
-            ]}
-            value={filter}
-            onChange={setFilter}
-          />
-
-          {/* Aspect ratio */}
-          <SettingChips
-            label="Aspect Ratio"
-            options={ALL_ASPECT_RATIOS.map((o) => ({
-              ...o,
-              disabled: !caps.supportedAspectRatios.includes(o.value),
-            }))}
-            value={aspectRatio}
-            onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
-          />
-
-          {autoRatio && (
-            <p className="text-xs -mt-3 mb-4" style={{ color: 'var(--text-muted)' }}>
-              Aspect ratio auto-set to <strong>{aspectRatio}</strong> from uploaded image
-            </p>
-          )}
-
-          {/* Duration + Sound (video only) */}
-          {outputType === 'video' && (
+          ) : (
             <>
-              <SettingChips
-                label="Duration"
-                options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
-                value={duration}
-                onChange={setDuration}
-              />
+              {/* Reference images — Master only */}
+              {isMaster && selectedModel?.supports_multi_image && (
+                <div className="mb-5">
+                  <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                    Reference Images
+                    <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> — optional</span>
+                  </p>
+                  <MultiImageGrid
+                    images={images}
+                    maxImages={modelMaxRefImages}
+                    onAdd={handleAddImage}
+                    onRemove={handleRemoveImage}
+                    onTagInsert={handleTagInsert}
+                    onFullscreen={(idx) => setFullscreenIdx(idx)}
+                  />
+                </div>
+              )}
+
+              {/* Prompt */}
               <div className="mb-5">
                 <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Sound
+                  Content Direction
                 </p>
-                <div className="flex gap-2">
-                  {[
-                    { value: false, label: '🔇 No Sound'   },
-                    { value: true,  label: '🔊 With Sound' },
-                  ].map((opt) => (
-                    <button
-                      key={String(opt.value)}
-                      onClick={() => setWithSound(opt.value)}
-                      className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                      style={{
-                        background: withSound === opt.value ? ACCENT : 'var(--bg-elevated)',
-                        color:      withSound === opt.value ? '#fff' : 'var(--text-secondary)',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
 
-          {/* Refinement off notice */}
-          {skipRefinement && (
-            <div
-              className="flex items-center gap-2 p-3 rounded-xl mt-1"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-            >
-              <Info size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                AI prompt refinement is off. Your direction will be sent to the model as-is.
-              </p>
-            </div>
+                {slashOpen && slashResults.length > 0 && (
+                  <div
+                    className="mb-2 rounded-xl overflow-hidden"
+                    style={{ border: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-card)' }}
+                  >
+                    {slashResults.map((p, i) => (
+                      <button
+                        key={p.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectSlashProduct(p)}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
+                        style={{ background: i === slashActiveIdx ? ACCENT_SUB : 'transparent' }}
+                      >
+                        <img src={p.image_url} alt={p.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                        <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          {p.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <textarea
+                  ref={textareaRef}
+                  value={prompt}
+                  onChange={handlePromptChange}
+                  onKeyDown={handlePromptKeyDown}
+                  onBlur={() => setTimeout(() => setSlashOpen(false), 150)}
+                  placeholder={
+                    isMaster && hasImages
+                      ? `Describe how to use the references — e.g. person in ${tagForSlot(0)} inside the space in ${tagForSlot(1)}, brand logo on the wall`
+                      : products.length > 0
+                        ? `Describe what you want created for ${brand?.brand_name}… Type / to pull in a product`
+                        : `Describe what you want created for ${brand?.brand_name}…`
+                  }
+                  rows={5}
+                  maxLength={100000}
+                  className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border:     '1px solid var(--border-color)',
+                    color:      'var(--text-primary)',
+                    lineHeight: 1.6,
+                  }}
+                />
+                <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
+                  {prompt.length}/600
+                </p>
+                {!isMaster && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
+                    <button onClick={() => navigate('/profile')} className="font-semibold underline" style={{ color: ACCENT }}>Upgrade to Master</button>
+                    {' '}to attach reference images to your generations.
+                  </p>
+                )}
+              </div>
+
+              {/* Style filter */}
+              <SettingChips
+                label="Style Filter"
+                options={[
+                  { value: 'hyper_realistic', label: '📱 Hyper Realistic' },
+                  { value: 'cinematic',       label: '🎬 Cinematic'       },
+                ]}
+                value={filter}
+                onChange={setFilter}
+              />
+
+              {/* Aspect ratio */}
+              <SettingChips
+                label="Aspect Ratio"
+                options={ALL_ASPECT_RATIOS.map((o) => ({
+                  ...o,
+                  disabled: !caps.supportedAspectRatios.includes(o.value),
+                }))}
+                value={aspectRatio}
+                onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
+              />
+
+              {autoRatio && (
+                <p className="text-xs -mt-3 mb-4" style={{ color: 'var(--text-muted)' }}>
+                  Aspect ratio auto-set to <strong>{aspectRatio}</strong> from uploaded image
+                </p>
+              )}
+
+              {/* Duration + Sound (video only) */}
+              {outputType === 'video' && (
+                <>
+                  <SettingChips
+                    label="Duration"
+                    options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
+                    value={duration}
+                    onChange={setDuration}
+                  />
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                      Sound
+                    </p>
+                    <div className="flex gap-2">
+                      {[
+                        { value: false, label: '🔇 No Sound'   },
+                        { value: true,  label: '🔊 With Sound' },
+                      ].map((opt) => (
+                        <button
+                          key={String(opt.value)}
+                          onClick={() => setWithSound(opt.value)}
+                          className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                          style={{
+                            background: withSound === opt.value ? ACCENT : 'var(--bg-elevated)',
+                            color:      withSound === opt.value ? '#fff' : 'var(--text-secondary)',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Refinement off notice */}
+              {skipRefinement && (
+                <div
+                  className="flex items-center gap-2 p-3 rounded-xl mt-1"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+                >
+                  <Info size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    AI prompt refinement is off. Your direction will be sent to the model as-is.
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
         </div>
       </div>
 
       {/* Generate button */}
-      <div
-        className="flex-shrink-0 px-4 lg:px-8 py-4"
-        style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
-      >
-        <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
-          <button
-            onClick={handleGenerate}
-            disabled={btnDisabled}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
-            style={{
-              background: btnDisabled ? 'var(--bg-elevated)' : ACCENT,
-              color:      btnDisabled ? 'var(--text-muted)'  : '#ffffff',
-            }}
-          >
-            <Zap size={15} fill="currentColor" />
-            {!canAfford && !promptEmpty
-              ? 'Not enough credits'
-              : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
-          </button>
+      {outputType !== 'products' && (
+        <div
+          className="flex-shrink-0 px-4 lg:px-8 py-4"
+          style={{ borderTop: `1px solid ${ACCENT_BDR}` }}
+        >
+          <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
+            <button
+              onClick={handleGenerate}
+              disabled={btnDisabled}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
+              style={{
+                background: btnDisabled ? 'var(--bg-elevated)' : ACCENT,
+                color:      btnDisabled ? 'var(--text-muted)'  : '#ffffff',
+              }}
+            >
+              <Zap size={15} fill="currentColor" />
+              {!canAfford && !promptEmpty
+                ? 'Not enough credits'
+                : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
+            </button>
 
-          {!canAfford && (
-            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-              Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
-                Top up
-              </button>
-            </p>
-          )}
+            {!canAfford && (
+              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+                Not enough credits.{' '}
+                <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>
+                  Top up
+                </button>
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
     </div>
   )
