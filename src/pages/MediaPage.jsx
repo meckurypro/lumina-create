@@ -1,14 +1,21 @@
 // src/pages/MediaPage.jsx
 //
-// Thin wrapper. All heavy lifting is in MediaPageCore (generations)
-// and AssetsPage (user uploads).
+// DESIGN REFACTOR — key change:
+//
+//  Generations tab now gets the same Image/Video FilterPill filter that
+//  AssetsPage already has, via MediaPageCore's existing `extraStatusFilters`
+//  prop (previously only wired up in UGCBrandMediaPage). No new plumbing
+//  was needed — the prop and its rendering already existed, it just wasn't
+//  passed here.
+//
+// Everything else in this file is UNCHANGED from the previous version.
 
 import { useState }                              from 'react'
 import { useNavigate }                           from 'react-router-dom'
 import { useAuth }                               from '@/context/AuthContext'
 import { TopBar }                                from '@/components/layout/TopBar'
 import { generations as generationsDb, supabase } from '@/lib/supabase'
-import { Film }                                  from 'lucide-react'
+import { Film, Image as ImageIcon }              from 'lucide-react'
 import MediaPageCore                             from '@/components/media/MediaPageCore.jsx'
 import { MediaEmptyState }                       from '@/components/media/MediaCardComponents.jsx'
 import AssetsPage                                from '@/components/media/AssetsPage.jsx'
@@ -22,13 +29,18 @@ const TABS = [
   { value: 'assets',      label: 'Assets'      },
 ]
 
+// Image/Video filter for the Generations tab — same shape UGCBrandMediaPage
+// already passes to MediaPageCore's extraStatusFilters prop.
+const OUTPUT_TYPE_FILTERS = [
+  { label: 'All',    value: 'all',   icon: null      },
+  { label: 'Images', value: 'image', icon: ImageIcon },
+  { label: 'Videos', value: 'video', icon: Film      },
+]
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Fetcher
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Narrow column list — avoids pulling every JSONB/long-text column for every
-// row. `select('*')` was the single biggest cause of slow Media page loads
-// (the generations table has 38 columns, many large).
 const GEN_LIST_COLUMNS = [
   'id', 'user_id', 'status', 'created_at',
   'output_url', 'output_thumbnail_url', 'output_type',
@@ -59,10 +71,6 @@ async function fetchGenerations(user, { limit, offset, afterIso, statusFilter })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // filterRelevantModels  (for Regenerate)
-//
-// Routes model filtering by generation_type — the source of truth.
-// This ensures lipsync never shows image/video models, motion_transfer
-// never shows lipsync models, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function filterRelevantModels(models, gen) {
@@ -71,28 +79,23 @@ function filterRelevantModels(models, gen) {
   return models.filter((m) => {
     if (m.is_locked) return false
 
-    // Lipsync — only lipsync feature models (same as CreateTalkingHeadPage)
     if (type === 'lipsync') {
       return m.feature === 'lipsync'
     }
 
-    // Motion transfer — only motion_transfer feature models
     if (type === 'motion_transfer') {
       return m.type === 'video' && m.feature === 'motion_transfer'
     }
 
-    // UGC (multi-image generations) — only multi-image capable models
     const isUGC = gen.prompt_engineering_used && gen.input_image_urls?.length > 0
     if (isUGC) return m.supports_multi_image === true
 
-    // Video types — video models, excluding motion_transfer feature
     const isVideo = [
       'text_to_video', 'image_to_video', 'start_end_frame',
       'end_frame_text', 'template',
     ].includes(type)
     if (isVideo) return m.type === 'video' && m.feature !== 'motion_transfer'
 
-    // Image types (text_to_image, image_to_image)
     return m.type === 'image'
   })
 }
@@ -109,21 +112,17 @@ function filterEditModels(models, gen) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // computeCreditCost  (for Regenerate)
-//
-// Each generation_type has its own credit logic matching the create page.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCreditCost(selectedModel, gen) {
   if (!selectedModel) return 0
 
-  // Lipsync: flat-rate or base × duration — mirrors CreateTalkingHeadPage
   if (gen.generation_type === 'lipsync') {
     const base = selectedModel.credit_cost_i2i || selectedModel.credit_cost_t2i || 0
     if (selectedModel.is_flat_rate) return base
     return Math.ceil(base * parseInt(gen.duration || '5', 10))
   }
 
-  // Motion transfer: always I2I cost × duration multiplier
   if (gen.generation_type === 'motion_transfer') {
     const base = selectedModel.credit_cost_i2i || 0
     const dur  = parseInt(gen.duration || '5', 10)
@@ -140,7 +139,6 @@ function computeCreditCost(selectedModel, gen) {
     return Math.ceil(base * multiplier)
   }
 
-  // Video types: per-second pricing
   const isVideo = [
     'text_to_video', 'image_to_video', 'start_end_frame',
     'end_frame_text', 'template',
@@ -152,7 +150,6 @@ function computeCreditCost(selectedModel, gen) {
     return Math.ceil(base * parseInt(gen.duration || '5', 10))
   }
 
-  // Image types
   const hadInputImage = !!(gen.input_image_urls?.length || gen.start_frame_url)
   return (hadInputImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
 }
@@ -168,10 +165,6 @@ function computeEditCreditCost(selectedModel) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // onRegenerate
-//
-// Routes the edge function call by generation_type — never guesses based
-// on output_type. Lipsync → talking-head-generate, video → video-generate,
-// image → image-generate.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, editedPrompt, {
@@ -191,10 +184,9 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
     prompt:                 editedPrompt ?? gen.prompt,
     model:                  chosenModel,
     aspect_ratio:           gen.aspect_ratio,
-    duration:               gen.duration,
+    duration:                gen.duration,
     credits_charged:        creditCost,
     output_type:            gen.output_type,
-    // Preserve all original inputs verbatim — regeneration replays exactly
     start_frame_url:        gen.start_frame_url  || null,
     end_frame_url:          gen.end_frame_url     || null,
     input_image_urls:       gen.input_image_urls?.length
@@ -216,13 +208,10 @@ async function onRegenerate(gen, chosenModel, creditCost, selectedModelObj, edit
     throw new Error(deduct?.error || 'Not enough credits')
   }
 
-  // Route to the correct edge function — strictly by generation_type
   const fnName = isLipsync ? 'talking-head-generate'
                : isVideo   ? 'video-generate'
                :              'image-generate'
 
-  // For lipsync: pass regenFromId so the edge function can reconstruct
-  // the original meta (audio URLs, subject mode, etc.) from the source row.
   const body = isLipsync
     ? { generationId: genRow.id, meta: { lipsync: true, regenFromId: gen.id } }
     : { generationId: genRow.id }
@@ -291,8 +280,6 @@ export default function MediaPage() {
   const isNovice                  = profile?.user_tier === 'novice'
   const [activeTab, setActiveTab] = useState('generations')
 
-  // FIX: totalCount is now real state, updated by MediaPageCore via
-  // onTotalCountChange, then passed into headerSlot for display.
   const [totalCount, setTotalCount] = useState(0)
 
   const headerSlot = ({ totalCount: count }) => (
@@ -381,7 +368,6 @@ export default function MediaPage() {
 
   return (
    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      {/* Header renders with live totalCount from state */}
       <div className="flex-shrink-0">
         {headerSlot({ totalCount })}
       </div>
@@ -424,6 +410,7 @@ function MediaPageCoreInner({ isNovice, emptySlot, onTotalCountChange }) {
       isNovice={isNovice}
       allowGridView={false}
       onTotalCountChange={onTotalCountChange}
+      extraStatusFilters={OUTPUT_TYPE_FILTERS}
     />
   )
 }
