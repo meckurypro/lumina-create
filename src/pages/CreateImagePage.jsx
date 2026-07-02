@@ -7,10 +7,10 @@ import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
-import { detectAspectRatio, compressImage } from '@/lib/mediaUtils'
+import { detectAspectRatio, compressImage, tagForSlot } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
-import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON } from '@/lib/draftCache'
+import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
 
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
@@ -19,7 +19,6 @@ const ACCENT_BDR = 'var(--tool-image-border)'
 const DRAFT_PROMPT = 'create_image:prompt'
 const DRAFT_IMAGES = 'create_image:images'
 
-const MAX_MULTI_IMAGES  = 4
 const MAX_SINGLE_IMAGES = 1
 
 const ALL_ASPECT_RATIOS = [
@@ -28,22 +27,12 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-function tagForSlot(idx) {
-  return `[img${idx + 1}]`
-}
-
-// ─── single image slot (original behaviour, unchanged) ───────────────────────
+// ─── single image slot ────────────────────────────────────────────────────────
 
 const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupportsImage }) => {
   if (image) {
-    const ar = image.w && image.h
-      ? `${image.w} / ${image.h}`
-      : '1 / 1'
-    const maxW = image.w && image.h
-      ? image.w > image.h ? '100%' : '200px'
-      : '140px'
+    const ar = image.w && image.h ? `${image.w} / ${image.h}` : '1 / 1'
+    const maxW = image.w && image.h ? (image.w > image.h ? '100%' : '200px') : '140px'
     return (
       <div className="flex justify-center">
         <div className="relative" style={{ width: '100%', maxWidth: maxW }}>
@@ -98,14 +87,12 @@ const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupport
 // ─── multi-image grid ────────────────────────────────────────────────────────
 
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
-  // images = array of { file, url, ar, w, h } | null for empty slots
   const filledCount = images.filter(Boolean).length
   const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
   const slots = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Tag hint */}
       <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
         Reference up to {maxImages} images. Insert{' '}
         {Array.from({ length: Math.min(maxImages, 4) }, (_, i) => (
@@ -123,11 +110,9 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
         tags into your prompt to describe how each image is used.
       </p>
 
-      {/* Grid */}
       <div className="flex flex-wrap gap-3">
         {slots.map((img, idx) => {
           const isNextSlot = idx === filledCount
-
           return (
             <div key={idx} style={{ width: 'calc(25% - 9px)', minWidth: 64 }} className="flex flex-col gap-1.5">
               {img ? (
@@ -165,11 +150,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                   <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
                   <div
                     className="flex flex-col items-center justify-center rounded-xl transition-all"
-                    style={{
-                      aspectRatio: '1/1',
-                      border: `1.5px dashed ${ACCENT_BDR}`,
-                      background: ACCENT_SUB,
-                    }}
+                    style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
                   >
                     <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
                     <span className="text-xs font-medium" style={{ color: ACCENT }}>img{idx + 1}</span>
@@ -193,14 +174,14 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 // ─── main page ───────────────────────────────────────────────────────────────
 
 export default function CreateImagePage() {
-  const navigate                                   = useNavigate()
+  const navigate = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
   const textareaRef = useRef(null)
 
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
   const [prompt,        setPrompt]        = useState('')
-  const [images,        setImages]        = useState([])   // array of { file, url, ar, w, h }
+  const [images,        setImages]        = useState([])
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [model,         setModel]         = useState('')
@@ -210,7 +191,6 @@ export default function CreateImagePage() {
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
-  // ── restore session storage ──────────────────────────────────────────────
   useEffect(() => {
     loadDraftJSON(DRAFT_PROMPT).then((p) => { if (p) setPrompt(p) })
     loadDraftImages(DRAFT_IMAGES).then((restored) => {
@@ -220,22 +200,19 @@ export default function CreateImagePage() {
     })
   }, [])
 
-  // ── cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       try {
-        saveDraftJSON(DRAFT_PROMPT, '')
-        saveDraftImages(DRAFT_IMAGES, [])
+        draftDelete(DRAFT_PROMPT)
+        draftDelete(DRAFT_IMAGES)
       } catch {}
     }
   }, [])
 
-  // ── persist prompt ───────────────────────────────────────────────────────
   useEffect(() => {
     saveDraftJSON(DRAFT_PROMPT, prompt)
   }, [prompt])
 
-  // ── load models ──────────────────────────────────────────────────────────
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
@@ -247,26 +224,24 @@ export default function CreateImagePage() {
       .order('sort_order')
     const isMaster = profile?.user_tier === 'master'
     const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
-    const list     = await applyModelPreferences(tierFiltered, user?.id)
+    const list = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const unlocked = list.filter((m) => !m.is_locked)
     const preferred = profile?.preferred_model
-    const match     = preferred && unlocked.find((m) => m.value === preferred)
+    const match = preferred && unlocked.find((m) => m.value === preferred)
     setModel((match || unlocked[0])?.value || '')
     setModelsLoading(false)
   }, []) // eslint-disable-line
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  // ── derived model caps ───────────────────────────────────────────────────
-  const selectedModel       = models.find((m) => m.value === model)
-  const modelSupportsImage  = selectedModel?.supports_image !== false
-  const modelRequiresImage  = selectedModel?.requires_image === true
-  const modelSupportsMulti  = selectedModel?.supports_multi_image === true
-  const modelMaxRefImages   = selectedModel?.max_ref_images ?? 1
+  const selectedModel      = models.find((m) => m.value === model)
+  const modelSupportsImage = selectedModel?.supports_image !== false
+  const modelRequiresImage = selectedModel?.requires_image === true
+  const modelSupportsMulti = selectedModel?.supports_multi_image === true
+  const modelMaxRefImages  = selectedModel?.max_ref_images ?? 1
   const [multiMode, setMultiMode] = useState(false)
 
-  // Reset multiMode when model changes
   useEffect(() => {
     setMultiMode(false)
     setResolution('1k')
@@ -277,21 +252,16 @@ export default function CreateImagePage() {
     }
   }, [model]) // eslint-disable-line
 
-  const maxImages = (modelSupportsMulti && multiMode)
-    ? modelMaxRefImages
-    : MAX_SINGLE_IMAGES
-  const supportedRatios     = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
+  const maxImages = (modelSupportsMulti && multiMode) ? modelMaxRefImages : MAX_SINGLE_IMAGES
+  const supportedRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
 
-  // generation type: multi always sends as image_to_image when images present
-  const hasImages  = images.length > 0
-  const type       = hasImages && modelSupportsImage ? 'image_to_image' : 'text_to_image'
+  const hasImages = images.length > 0
+  const type = hasImages && modelSupportsImage ? 'image_to_image' : 'text_to_image'
   const resolutionCosts = selectedModel?.credit_cost_resolution ?? null
   const creditCost = selectedModel
     ? resolutionCosts
       ? (resolutionCosts[resolution] ?? resolutionCosts['1k'] ?? 0)
-      : (hasImages && modelSupportsImage
-          ? selectedModel.credit_cost_i2i
-          : selectedModel.credit_cost_t2i) || 0
+      : (hasImages && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
   const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
@@ -299,7 +269,6 @@ export default function CreateImagePage() {
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired
     || (creditCost === 0 && !!selectedModel)
 
-  // ── enforce aspect ratio when model changes ──────────────────────────────
   useEffect(() => {
     if (!selectedModel) return
     if (!autoRatio && !supportedRatios.includes(aspectRatio)) {
@@ -307,18 +276,15 @@ export default function CreateImagePage() {
     }
   }, [model]) // eslint-disable-line
 
-  // ── drop extra images when switching to single-image model ───────────────
   useEffect(() => {
     if (!modelSupportsImage) {
       clearAllImages()
     } else if (!modelSupportsMulti && images.length > 1) {
-      // keep only first image
       setImages((prev) => [prev[0]])
       persistImages([images[0]])
     }
   }, [model]) // eslint-disable-line
 
-  // ── model preference save ─────────────────────────────────────────────────
   const handleModelChange = async (value) => {
     setModel(value)
     if (user && value && value !== profile?.preferred_model) {
@@ -326,35 +292,29 @@ export default function CreateImagePage() {
     }
   }
 
-  // ── image persistence helpers ─────────────────────────────────────────────
   const persistImages = (imgs) => { saveDraftImages(DRAFT_IMAGES, imgs) }
 
   const clearAllImages = () => {
     setImages([])
     setAutoRatio(false)
     setAspectRatio('9:16')
-    saveDraftImages(DRAFT_IMAGES, [])
+    draftDelete(DRAFT_IMAGES)
   }
 
-  // ── add image (single or multi slot) ─────────────────────────────────────
   const handleAddImage = async (e, slotIdx) => {
     const file = e.target.files?.[0]
     if (!file) return
     const compressed = await compressImage(file)
-
     setImages((prev) => {
       const next = [...prev]
       next[slotIdx] = compressed
-      // trim trailing nulls
       const trimmed = next.filter((_, i) => i <= slotIdx || next[i] != null)
       persistImages(trimmed)
-      // auto aspect-ratio from first image only
       if (slotIdx === 0) { setAspectRatio(compressed.ar); setAutoRatio(true) }
       return trimmed
     })
   }
 
-  // ── single image handler (backwards-compat) ───────────────────────────────
   const handleSingleImageUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -374,7 +334,6 @@ export default function CreateImagePage() {
     })
   }
 
-  // ── tag insertion into textarea ───────────────────────────────────────────
   const handleTagInsert = (tag) => {
     const el = textareaRef.current
     if (!el) {
@@ -389,7 +348,6 @@ export default function CreateImagePage() {
     const inserted = `${needsSpace ? ' ' : ''}${tag} `
     const next = before + inserted + after
     setPrompt(next)
-    // restore cursor after React re-render
     requestAnimationFrame(() => {
       el.focus()
       const cursor = start + inserted.length
@@ -397,7 +355,6 @@ export default function CreateImagePage() {
     })
   }
 
-  // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
@@ -406,17 +363,15 @@ export default function CreateImagePage() {
 
     setSubmitting(true)
     try {
-      // Upload all reference images to storage
       const uploadedUrls = []
       for (const img of images) {
         if (!img) continue
         if (!img.file) {
-          // URL-only ref from Assets — use directly
           uploadedUrls.push(img.url)
           continue
         }
         const contentType = img.file.type || 'image/jpeg'
-        const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+        const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
         const path = `${user.id}/${crypto.randomUUID()}.${ext}`
         const { data: uploadData, error: upErr } = await supabase.storage
           .from('generation-uploads')
@@ -429,17 +384,17 @@ export default function CreateImagePage() {
       }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
-        user_id:                user.id,
-        generation_type:        type,
-        status:                 'pending',
+        user_id: user.id,
+        generation_type: type,
+        status: 'pending',
         prompt,
         model,
-        aspect_ratio:           aspectRatio,
-        resolution:             resolutionCosts ? resolution : null,
-        credits_charged:        creditCost,
-        output_type:            'image',
-        start_frame_url:        null,
-        input_image_urls:       uploadedUrls.length ? uploadedUrls : null,
+        aspect_ratio: aspectRatio,
+        resolution: resolutionCosts ? resolution : null,
+        credits_charged: creditCost,
+        output_type: 'image',
+        start_frame_url: null,
+        input_image_urls: uploadedUrls.length ? uploadedUrls : null,
         skip_prompt_refinement: skipRefinement,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -473,13 +428,11 @@ export default function CreateImagePage() {
     }
   }
 
-  // ── fullscreen viewer image ───────────────────────────────────────────────
   const fullscreenImage = fullscreenIdx !== null ? images[fullscreenIdx] : null
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
 
-      {/* Generating overlay */}
       <AnimatePresence>
         {submitting && (
           <motion.div
@@ -496,7 +449,6 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: `1px solid var(--border-color)`, borderLeft: `3px solid ${ACCENT}` }}
@@ -523,7 +475,6 @@ export default function CreateImagePage() {
         </div>
       </div>
 
-      {/* Fullscreen viewer */}
       <AnimatePresence>
         {fullscreenImage && (
           <motion.div
@@ -548,13 +499,10 @@ export default function CreateImagePage() {
         )}
       </AnimatePresence>
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-5">
 
-          {/* Reference image section */}
           <div>
-            {/* Header row */}
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Reference Image
@@ -562,7 +510,6 @@ export default function CreateImagePage() {
                   {modelRequiresImage ? ' — required' : ' — optional'}
                 </span>
               </p>
-              {/* Multi-ref toggle — only shown for multi-image capable models */}
               {modelSupportsMulti && modelSupportsImage && (
                 <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                   {[
@@ -573,7 +520,6 @@ export default function CreateImagePage() {
                       key={String(opt.value)}
                       onClick={() => {
                         setMultiMode(opt.value)
-                        // switching back to simple: keep only first image
                         if (!opt.value && images.length > 1) {
                           setImages([images[0]])
                           persistImages([images[0]])
@@ -592,7 +538,6 @@ export default function CreateImagePage() {
               )}
             </div>
 
-            {/* Image UI */}
             {(modelSupportsMulti && multiMode) ? (
               <MultiImageGrid
                 images={images}
@@ -623,7 +568,6 @@ export default function CreateImagePage() {
               </p>
             )}
 
-            {/* Prompt */}
             <Textarea
               ref={textareaRef}
               label="Prompt"
@@ -637,7 +581,6 @@ export default function CreateImagePage() {
               rows={4}
             />
 
-            {/* Aspect ratio */}
             <div className="pt-1">
               <SettingChips
                 label="Aspect Ratio"
@@ -647,10 +590,10 @@ export default function CreateImagePage() {
                 }))}
                 value={aspectRatio}
                 onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
+                accent={ACCENT}
               />
             </div>
 
-            {/* Resolution — only shown for models with per-resolution pricing */}
             {resolutionCosts && (
               <div className="pt-1">
                 <SettingChips
@@ -661,15 +604,15 @@ export default function CreateImagePage() {
                   }))}
                   value={resolution}
                   onChange={setResolution}
+                  accent={ACCENT}
                 />
               </div>
             )}
 
-          </div>{/* closes reference image section div */}
-        </div>{/* closes flex flex-col gap-5 */}
-      </div>{/* closes flex-1 overflow-y-auto */}
+          </div>
+        </div>
+      </div>
 
-      {/* Generate button */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl">
           <button
