@@ -952,7 +952,7 @@ function AssetActionSheet({
       >
         <div
           className="w-full max-w-xl rounded-t-3xl px-4 pt-4 pb-10"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
         >
           <div className="flex justify-center mb-3">
             <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border-color)' }} />
@@ -962,10 +962,7 @@ function AssetActionSheet({
           </p>
 
           {/* Primary actions — icon grid */}
-          <div
-            className="grid grid-cols-3 gap-0.5 mb-3 rounded-2xl p-1"
-            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
-          >
+          <div className="grid grid-cols-3 gap-0.5 mb-3">
             {gridItems.map((it) => (
               <AssetActionGridItem key={it.label} icon={it.icon} label={it.label} onClick={it.onClick} />
             ))}
@@ -974,9 +971,8 @@ function AssetActionSheet({
           {/* Utility group — Rename / Download */}
           <div
             className="rounded-2xl overflow-hidden mb-2.5"
-            style={{ border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}
-          >
-            <AssetActionRow icon={Pencil} label="Rename" onClick={onRename} />
+            style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}
+          >            <AssetActionRow icon={Pencil} label="Rename" onClick={onRename} />
             <AssetActionRow icon={Download} label="Download" onClick={onDownload} isLast />
           </div>
 
