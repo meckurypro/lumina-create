@@ -296,6 +296,7 @@ export default function UGCGeneratePage() {
         output_type:            outputType,
         skip_prompt_refinement: skipRefinement,
         input_image_urls:       allInputImages.length ? allInputImages : null,
+        is_system_prompt:       false,
         generation_metadata:    {
           ...(outputType === 'video' ? { with_sound: withSound } : {}),
           extra_ref_count: extraUrls.length,
