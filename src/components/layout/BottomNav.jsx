@@ -105,8 +105,6 @@ export const BottomNav = () => {
         </div>
       </nav>
 
-      <div className="lg:hidden" style={{ height: 'calc(60px + env(safe-area-inset-bottom, 8px))' }} />
-
       <AnimatePresence>
         {showPIQ && (
           <motion.div
