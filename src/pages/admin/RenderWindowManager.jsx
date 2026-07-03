@@ -56,42 +56,77 @@ const timeLeft = (iso) => {
   return `${Math.floor(mins / 60)}h ${mins % 60}m left`
 }
 
-// ─── Price Editor ─────────────────────────────────────────────────────────────
+// ─── Tier Pricing Editor ──────────────────────────────────────────────────
 
-const PriceEditor = ({ currentPrice, onSaved }) => {
+const TierRow = ({ tier, onSaved }) => {
+  const { user } = useAuth()
   const [editing, setEditing] = useState(false)
   const [draft,   setDraft]   = useState('')
   const [saving,  setSaving]  = useState(false)
 
-  const open  = () => { setDraft(String(currentPrice ?? '')); setEditing(true) }
+  const open  = () => { setDraft(String(tier.price_ngn ?? '')); setEditing(true) }
   const close = () => setEditing(false)
 
-  const save = async () => {
+  const savePrice = async () => {
     const price = parseInt(draft, 10)
     if (isNaN(price) || price < 100) {
       toast.error('Price must be at least ₦100')
       return
     }
     setSaving(true)
-    const { error } = await supabase
-      .from('app_settings')
-      .update({ value: String(price), updated_at: new Date().toISOString() })
-      .eq('key', 'render_window_price_ngn')
+    const { data, error } = await supabase.rpc('admin_update_render_window_tier', {
+      p_admin_id:  user.id,
+      p_tier_id:   tier.id,
+      p_price_ngn: price,
+      p_is_active: null,
+    })
     setSaving(false)
-    if (error) { toast.error('Failed to save price'); return }
-    toast.success(`Price updated to ₦${price.toLocaleString()}`)
-    onSaved(price)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to save price'); return }
+    toast.success(`${tier.display_name} price updated to ₦${price.toLocaleString()}`)
+    onSaved({ ...tier, price_ngn: price })
     setEditing(false)
+  }
+
+  const toggleActive = async () => {
+    setSaving(true)
+    const { data, error } = await supabase.rpc('admin_update_render_window_tier', {
+      p_admin_id:  user.id,
+      p_tier_id:   tier.id,
+      p_price_ngn: null,
+      p_is_active: !tier.is_active,
+    })
+    setSaving(false)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to update status'); return }
+    toast.success(`${tier.display_name} ${!tier.is_active ? 'enabled' : 'disabled'}`)
+    onSaved({ ...tier, is_active: !tier.is_active })
   }
 
   return (
     <div
-      className="rounded-2xl p-4"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+      className="rounded-xl p-3.5"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
     >
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
-        Subscription Price
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+            {tier.display_name}
+          </p>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {tier.duration_days}d
+          </span>
+        </div>
+        <button
+          onClick={toggleActive}
+          disabled={saving}
+          className="text-xs font-bold px-2.5 py-1 rounded-full"
+          style={{
+            background: tier.is_active ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)',
+            color:      tier.is_active ? '#10b981' : '#ef4444',
+          }}
+        >
+          {tier.is_active ? 'Enabled' : 'Disabled'}
+        </button>
+      </div>
 
       {editing ? (
         <div className="flex items-center gap-2">
@@ -102,12 +137,12 @@ const PriceEditor = ({ currentPrice, onSaved }) => {
             min={100}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') close() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') close() }}
             className="input-base flex-1 text-lg font-black"
             style={{ color: 'var(--brand)' }}
           />
           <button
-            onClick={save}
+            onClick={savePrice}
             disabled={saving}
             className="w-9 h-9 rounded-xl flex items-center justify-center"
             style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
@@ -124,23 +159,47 @@ const PriceEditor = ({ currentPrice, onSaved }) => {
         </div>
       ) : (
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-              {currentPrice != null ? `₦${Number(currentPrice).toLocaleString()}` : '—'}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              per 24-hour access
-            </p>
-          </div>
+          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
+            ₦{Number(tier.price_ngn).toLocaleString()}
+          </p>
           <button
             onClick={open}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
           >
             <Pencil size={11} /> Edit
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+const TierPricingEditor = ({ tiers, onTiersChange }) => {
+  const handleSaved = (updated) => {
+    onTiersChange((prev) => prev.map((t) => t.id === updated.id ? updated : t))
+  }
+
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
+      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
+        Subscription Tiers
+      </p>
+      <div className="flex flex-col gap-2">
+        {tiers.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No tiers configured.</p>
+        ) : (
+          tiers
+            .slice()
+            .sort((a, b) => a.display_order - b.display_order)
+            .map((tier) => (
+              <TierRow key={tier.id} tier={tier} onSaved={handleSaved} />
+            ))
+        )}
+      </div>
     </div>
   )
 }
@@ -515,7 +574,7 @@ export default function RenderWindowManager() {
   const { user }                              = useAuth()
   const [windows,       setWindows]           = useState([])
   const [summary,       setSummary]           = useState(null)
-  const [rwPrice,       setRwPrice]           = useState(null)
+  const [tiers,         setTiers]             = useState([])
   const [loading,       setLoading]           = useState(true)
   const [summaryLoad,   setSummaryLoad]       = useState(true)
   const [actionLoading, setActionLoading]     = useState(null)
@@ -528,15 +587,15 @@ export default function RenderWindowManager() {
     setLoading(true)
     setSummaryLoad(true)
 
-    const [windowsRes, summaryRes, priceRes] = await Promise.all([
+    const [windowsRes, summaryRes, tiersRes] = await Promise.all([
       renderWindows.getUpcoming(),
       renderWindows.getAdminSummary(),
-      supabase.from('app_settings').select('value').eq('key', 'render_window_price_ngn').single(),
+      supabase.from('render_window_tiers').select('*').order('display_order'),
     ])
 
-    setWindows(windowsRes.data  || [])
-    setSummary(summaryRes.data  ?? null)
-    setRwPrice(priceRes.data?.value ? Number(priceRes.data.value) : null)
+    setWindows(windowsRes.data || [])
+    setSummary(summaryRes.data ?? null)
+    setTiers(tiersRes.data     || [])
     setLoading(false)
     setSummaryLoad(false)
   }, [])
@@ -665,8 +724,8 @@ export default function RenderWindowManager() {
       {/* Summary bar */}
       <SummaryBar summary={summary} loading={summaryLoad} />
 
-      {/* Price editor */}
-      <PriceEditor currentPrice={rwPrice} onSaved={setRwPrice} />
+     {/* Tier pricing editor */}
+      <TierPricingEditor tiers={tiers} onTiersChange={setTiers} />
 
       {/* Create form */}
       <AnimatePresence>
