@@ -351,7 +351,45 @@ export const renderWindowSubscriptions = {
     return !!data
   },
 }
+export const renderWindowTiers = {
+  // Public: all tiers (including inactive, so UI can show "unavailable")
+  getAll: () =>
+    supabase
+      .from('render_window_tiers')
+      .select('*')
+      .order('display_order', { ascending: true }),
 
+  // Admin: update price / active status for a tier
+  adminUpdate: (adminId, tierId, updates) =>
+    supabase.rpc('admin_update_render_window_tier', {
+      p_admin_id:  adminId,
+      p_tier_id:   tierId,
+      p_price_ngn: updates.price_ngn ?? null,
+      p_is_active: updates.is_active ?? null,
+    }),
+}
+
+export const renderWindowAnalytics = {
+  // Admin: active users now + 30-day eligibility projection
+  getSummary: (adminId) =>
+    supabase.rpc('get_render_window_analytics', { p_admin_id: adminId }),
+
+  // Admin: drill-down — who is eligible on a given day offset (0 = today)
+  getEligibleUsersForDay: (adminId, dayOffset) =>
+    supabase.rpc('get_render_window_eligible_users_for_date', {
+      p_admin_id:    adminId,
+      p_days_offset: dayOffset,
+    }),
+
+  // Admin: currently active members, searchable + paginated
+  getActiveMembers: (adminId, { search = '', limit = 20, offset = 0 } = {}) =>
+    supabase.rpc('get_render_window_active_members', {
+      p_admin_id: adminId,
+      p_search:   search || null,
+      p_limit:    limit,
+      p_offset:   offset,
+    }),
+}
 // Visible models for the current user (respects render window gate)
 export const visibleModels = {
   getForUser: (userId) =>
