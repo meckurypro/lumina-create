@@ -403,7 +403,8 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
 
     setSubmitting(true)
     try {
-      const uploadedRefs = []
+    const uploadedUrls  = []
+      const imageRefsMeta = []
       for (const img of images) {
         if (!img) continue
         let url = img.url
@@ -420,7 +421,8 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
             .getPublicUrl(uploadData.path)
           url = publicUrl
         }
-        uploadedRefs.push({ url, role: img.role || 'reference', label: img.label || null })
+        uploadedUrls.push(url)
+        if (img.role) imageRefsMeta.push({ url, role: img.role, label: img.label || null })
       }
 
       const { data: genRow, error: genErr } = await generationsDb.create({
@@ -434,7 +436,8 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
         credits_charged: creditCost,
         output_type: 'image',
         start_frame_url: null,
-      input_image_urls: uploadedRefs.length ? uploadedRefs : null,
+     input_image_urls: uploadedUrls.length ? uploadedUrls : null,
+        generation_metadata: imageRefsMeta.length ? { image_refs: imageRefsMeta } : null,
         skip_prompt_refinement: skipRefinement,
         is_system_prompt: false,
       })
