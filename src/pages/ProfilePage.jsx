@@ -192,7 +192,8 @@ const RenderWindowCard = ({
   canUseRW,
   hoursRemaining,
   activeSub,
-  rwPrice,
+  activeTier,
+  tiers,
   subscribing,
   onSubscribe,
   loading,
@@ -205,6 +206,13 @@ const RenderWindowCard = ({
       hour:   '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const [pendingTier, setPendingTier] = useState(null)
+
+  const handleSubscribe = (tierName) => {
+    setPendingTier(tierName)
+    onSubscribe(tierName)
   }
 
   return (
@@ -265,6 +273,7 @@ const RenderWindowCard = ({
                 {canUseRW ? '🪟 Access Active' : '🕐 Waiting for Window'}
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {activeTier?.display_name ? `${activeTier.display_name} plan · ` : ''}
                 {canUseRW
                   ? 'Use premium models for free right now'
                   : 'Window is currently closed'}
@@ -296,13 +305,13 @@ const RenderWindowCard = ({
       ) : (
         <>
           <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Get 24-hour access to premium models. Use them for free during open render windows.
+            Get access to premium models. Use them for free during open render windows.
           </p>
 
           <div className="flex flex-col gap-2 mb-4">
             {[
               { icon: '⚡', text: 'Zero credits charged during open windows' },
-              { icon: '📅', text: '24hrs from purchase — use across any open session' },
+              { icon: '📅', text: 'Pick the plan length that fits how often you create' },
             ].map(({ icon, text }) => (
               <div key={text} className="flex items-start gap-2.5">
                 <span style={{ fontSize: 13, lineHeight: '18px', flexShrink: 0 }}>{icon}</span>
@@ -311,21 +320,44 @@ const RenderWindowCard = ({
             ))}
           </div>
 
-          <button
-            onClick={onSubscribe}
-            disabled={subscribing}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
-            style={{
-              background: subscribing ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.12)',
-              color:      '#818cf8',
-              border:     '1px solid rgba(99,102,241,0.3)',
-              opacity:    subscribing ? 0.7 : 1,
-            }}
-          >
-            🪟 {subscribing
-              ? 'Activating…'
-              : `Activate · ₦${rwPrice != null ? Number(rwPrice).toLocaleString() : '…'} for 24hrs`}
-          </button>
+          {tiers.length === 0 ? (
+            <div className="h-12 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {tiers.map((t) => {
+                const isPending = subscribing && pendingTier === t.tier_name
+                const disabled  = !t.is_active || subscribing
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => t.is_active && handleSubscribe(t.tier_name)}
+                    disabled={disabled}
+                    className="w-full flex items-center justify-between gap-2 py-3 px-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                    style={{
+                      background: !t.is_active
+                        ? 'var(--bg-elevated)'
+                        : isPending
+                          ? 'rgba(99,102,241,0.08)'
+                          : 'rgba(99,102,241,0.12)',
+                      color:      !t.is_active ? 'var(--text-muted)' : '#818cf8',
+                      border:     `1px solid ${!t.is_active ? 'var(--border-color)' : 'rgba(99,102,241,0.3)'}`,
+                      opacity:    disabled && t.is_active ? 0.7 : 1,
+                      cursor:     !t.is_active ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <span>🪟 {t.display_name}</span>
+                    <span className="text-xs font-semibold">
+                      {!t.is_active
+                        ? 'Currently unavailable'
+                        : isPending
+                          ? 'Activating…'
+                          : `₦${Number(t.price_ngn).toLocaleString()} · ${t.duration_days}d`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -344,7 +376,8 @@ export default function ProfilePage() {
     canUseRWModels: canUseRW,
     hoursRemaining: rwHoursLeft,
     activeSub:      rwSub,
-    rwPrice,
+    activeTier:     rwActiveTier,
+    tiers:          rwTiers,
     subscribing:    rwSubscribing,
     subscribe:      subscribeRW,
     loading:        rwLoading,
@@ -511,13 +544,14 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Render Window card ── */}
-        <RenderWindowCard
+     <RenderWindowCard
           hasActiveSub={hasRWSub}
           windowIsOpen={rwWindowOpen}
           canUseRW={canUseRW}
           hoursRemaining={rwHoursLeft}
           activeSub={rwSub}
-          rwPrice={rwPrice}
+          activeTier={rwActiveTier}
+          tiers={rwTiers}
           subscribing={rwSubscribing}
           onSubscribe={subscribeRW}
           loading={rwLoading}
