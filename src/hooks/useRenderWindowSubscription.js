@@ -1,13 +1,13 @@
 // src/hooks/useRenderWindowSubscription.js
 //
-// Provides render window subscription state and the subscribe action.
-// Polls the active window every 60s so the UI stays in sync without
-// requiring a page reload when a window opens or closes.
+// Provides render window subscription state (across all tiers) and the
+// subscribe action. Polls the active window every 60s so the UI stays in
+// sync without requiring a page reload when a window opens or closes.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
-import { renderWindows, renderWindowSubscriptions } from '@/lib/supabase'
+import { renderWindows, renderWindowSubscriptions, renderWindowTiers } from '@/lib/supabase'
 import { subscribeToRenderWindow } from '@/lib/subscription'
 
 const POLL_INTERVAL_MS = 60_000  // 60 seconds
@@ -17,26 +17,19 @@ export const useRenderWindowSubscription = () => {
 
   const [activeSub,      setActiveSub]      = useState(null)   // rw_subscription row | null
   const [activeWindow,   setActiveWindow]   = useState(null)   // render_windows row | null
-  const [rwPrice,        setRwPrice]        = useState(null)   // number | null
+  const [tiers,          setTiers]          = useState([])     // render_window_tiers rows
   const [loading,        setLoading]        = useState(true)
   const [subscribing,    setSubscribing]    = useState(false)
 
   const pollRef = useRef(null)
 
-  // ── Fetch price from app_settings via a simple select ──────────────────
-  // We read it client-side only for display purposes.
-  // The actual amount charged is always validated server-side.
-  const fetchPrice = useCallback(async () => {
+  // ── Fetch all tiers (active + inactive) for display ─────────────────────
+  const fetchTiers = useCallback(async () => {
     try {
-      const { supabase } = await import('@/lib/supabase')
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'render_window_price_ngn')
-        .single()
-      if (data?.value) setRwPrice(Number(data.value))
+      const { data } = await renderWindowTiers.getAll()
+      setTiers(data || [])
     } catch {
-      // Non-fatal — price display falls back to null
+      // Non-fatal — tier list falls back to empty
     }
   }, [])
 
@@ -62,9 +55,9 @@ export const useRenderWindowSubscription = () => {
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
     setLoading(true)
-    fetchPrice()
+    fetchTiers()
     refresh()
-  }, [user?.id, fetchPrice, refresh])
+  }, [user?.id, fetchTiers, refresh])
 
   // ── Poll every 60s to catch window open/close without reload ───────────
   useEffect(() => {
@@ -73,12 +66,13 @@ export const useRenderWindowSubscription = () => {
     return () => clearInterval(pollRef.current)
   }, [user?.id, refresh])
 
-  // ── Subscribe action ────────────────────────────────────────────────────
-  const subscribe = useCallback(async () => {
+  // ── Subscribe action — tierName is 'daily' | 'weekly' | 'monthly' ───────
+  const subscribe = useCallback(async (tierName) => {
     if (!user?.email) { toast.error('Sign in to subscribe.'); return }
+    if (!tierName)    { toast.error('Select a plan first.'); return }
     setSubscribing(true)
     try {
-      await subscribeToRenderWindow({ user })
+      await subscribeToRenderWindow({ user, tier: tierName })
       // Browser navigates away to Paystack — no further state to set.
     } catch (e) {
       toast.error(e.message || 'Could not start payment')
@@ -91,6 +85,14 @@ export const useRenderWindowSubscription = () => {
   const windowIsOpen   = !!activeWindow
   const canUseRWModels = hasActiveSub && windowIsOpen
 
+  const activeTier = hasActiveSub
+    ? tiers.find((t) => t.id === activeSub.tier_id) ?? null
+    : null
+
+  const visibleTiers = tiers
+    .slice()
+    .sort((a, b) => a.display_order - b.display_order)
+
   const minutesRemaining = activeSub
     ? Math.max(0, Math.floor((new Date(activeSub.expires_at) - new Date()) / 60000))
     : null
@@ -102,7 +104,8 @@ export const useRenderWindowSubscription = () => {
   return {
     activeSub,
     activeWindow,
-    rwPrice,
+    activeTier,
+    tiers:          visibleTiers,
     loading,
     subscribing,
     hasActiveSub,
