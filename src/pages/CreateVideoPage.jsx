@@ -1418,7 +1418,8 @@ export default function CreateVideoPage() {
         endFrameUrl = publicUrl
       }
 
- const uploadedRefUrls = []
+const uploadedRefUrls = []
+      const imageRefsMeta   = []
       if (multiMode && refImages.length > 0) {
         for (const img of refImages) {
           if (!img) continue
@@ -1434,14 +1435,15 @@ export default function CreateVideoPage() {
             const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(uploadData.path)
             url = publicUrl
           }
-          uploadedRefUrls.push({ url, role: img.role || 'reference', label: img.label || null })
+          uploadedRefUrls.push(url)
+          if (img.role) imageRefsMeta.push({ url, role: img.role, label: img.label || null })
         }
       }
 
       if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
         const { data: checkData } = await supabase.functions.invoke(
           'video-generate',
-          { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0]?.url, aspect_ratio: aspectRatio } }
+          { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0], aspect_ratio: aspectRatio } }
         )
         if (checkData?.lipsync_redirect) {
           setPhase(null)
@@ -1483,6 +1485,7 @@ export default function CreateVideoPage() {
         with_sound:             withSound,
        skip_prompt_refinement: skipRefinement,
         audio_url:              resolvedAudioUrl || null,
+        generation_metadata:    imageRefsMeta.length ? { image_refs: imageRefsMeta } : null,
         is_system_prompt:       false,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
