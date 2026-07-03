@@ -6,126 +6,14 @@ import { ArrowLeft, Zap, X, Film } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { formatBytes, formatDuration, readVideoMetadata } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
 
 const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
 const ACCENT_BDR = 'var(--tool-motion-border)'
 
 const SS_UPSCALE_VIDEO = 'meckury_upscale_video'
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function formatBytes(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDuration(secs) {
-  if (!secs && secs !== 0) return ''
-  const s = Math.round(Number(secs))
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return r ? `${m}m ${r}s` : `${m}m`
-}
-
-async function readVideoMeta(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const vid = document.createElement('video')
-    vid.preload = 'metadata'
-    vid.onloadedmetadata = () => {
-      resolve({
-        url,
-        duration:    vid.duration ? Math.round(vid.duration) : null,
-        width:       vid.videoWidth  || null,
-        height:      vid.videoHeight || null,
-      })
-      URL.revokeObjectURL(url)
-    }
-    vid.onerror = () => {
-      resolve({ url, duration: null, width: null, height: null })
-    }
-    vid.src = url
-  })
-}
-
-// ── Model Dropdown ────────────────────────────────────────────────────────────
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-        <span>{selected?.label || 'Model'}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      {m.description && (
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
-                      )}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
 
 // ── Video Upload Zone ─────────────────────────────────────────────────────────
 const VideoUploadZone = ({ value, onUpload, onRemove }) => {
@@ -253,7 +141,7 @@ export default function CreateVideoUpscalerPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-// ── Derived ────────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
   const selectedModel  = models.find((m) => m.value === modelValue)
   const resCosts       = selectedModel?.credit_cost_resolution ?? null
   const qualityOptions = resCosts ? Object.entries(resCosts) : []
@@ -292,8 +180,9 @@ export default function CreateVideoUpscalerPage() {
       return
     }
 
-    const meta = await readVideoMeta(file)
-    setVideo({ file, url: meta.url, duration: meta.duration, width: meta.width, height: meta.height, size: file.size })
+    const url  = URL.createObjectURL(file)
+    const meta = await readVideoMetadata(file)
+    setVideo({ file, url, duration: meta.duration, width: meta.width, height: meta.height, size: file.size })
   }
 
   const handleRemove = () => {
@@ -413,7 +302,11 @@ export default function CreateVideoUpscalerPage() {
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
-            <ModelDropdown models={models} value={modelValue} onChange={setModelValue} />
+            <ModelDropdown
+              models={models} value={modelValue} onChange={setModelValue}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+              width={224}
+            />
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -458,7 +351,7 @@ export default function CreateVideoUpscalerPage() {
               <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Output Resolution
               </p>
-            <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
                 {qualityOptions.map(([key, rate]) => {
                   const tierCost = perSecondRate != null
                     ? Math.ceil(rate * billableSeconds)
