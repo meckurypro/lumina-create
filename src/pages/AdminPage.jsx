@@ -26,6 +26,7 @@ import GenerationsManager from '@/pages/admin/GenerationsManager'
 import EmailManager          from '@/pages/admin/EmailManager'
 import RenderWindowManager   from '@/pages/admin/RenderWindowManager'
 import RenderWindowModelManager from '@/pages/admin/RenderWindowModelManager'
+import RenderWindowAnalytics from '@/pages/admin/RenderWindowAnalytics'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ const TABS = (pendingCount) => [
   { id: 'generations',    label: 'Generations'                                         },
   { id: 'render_windows', label: '🪟 Render Windows'                                   },
   { id: 'rw_models', label: '🖥️ RW Models' },
+  { id: 'rw_analytics', label: '📊 RW Analytics' },
   { id: 'prompts',        label: 'Prompts'                                             },
   { id: 'templates',      label: 'Templates'                                           },
   { id: 'cinematic',      label: 'Cinematic'                                           },
@@ -326,10 +328,17 @@ export default function AdminPage() {
             <RenderWindowManager />
           </motion.div>
         )}
-        {/* ── RW Model Manager ── */}
+       {/* ── RW Model Manager ── */}
         {activeTab === 'rw_models' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <RenderWindowModelManager />
+          </motion.div>
+        )}
+
+        {/* ── RW Analytics ── */}
+        {activeTab === 'rw_analytics' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RenderWindowAnalytics />
           </motion.div>
         )}
 
