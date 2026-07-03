@@ -4,14 +4,17 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Building2,
-  ImageIcon, VideoIcon, ChevronDown, Info,
-  X, ImagePlus, Plus, Maximize2, Crown, Package,
+  ImageIcon, VideoIcon, Info,
+  X, Plus, Maximize2, Crown, Package,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts, MAX_BRAND_PRODUCTS } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import BrandProductManager from '@/components/BrandProductManager'
 import toast from 'react-hot-toast'
+import { compressImage, tagForSlot } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -23,18 +26,7 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 
-// ── Helpers ────────────────────────────────────────────────────
-function detectAspectRatio(width, height) {
-  const ratio = width / height
-  if (ratio > 1.6)  return '16:9'
-  if (ratio < 0.75) return '9:16'
-  return '1:1'
-}
-
-function tagForSlot(idx) {
-  return `[img${idx + 1}]`
-}
-
+// ── Helpers (page-specific — not duplicated elsewhere) ──────────────────────
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -45,145 +37,6 @@ function getSlashMatch(text, cursorPos) {
   const m = /(^|\s)\/([a-zA-Z0-9 _-]{0,40})$/.exec(upto)
   if (!m) return null
   return { query: m[2].trim().toLowerCase(), start: m.index + m[1].length }
-}
-
-async function compressImage(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      const MAX_PX = 1568
-      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((blob) => {
-        const compressed = new File(
-          [blob],
-          file.name.replace(/\.\w+$/, '.jpg'),
-          { type: 'image/jpeg' }
-        )
-        resolve({
-          file: compressed,
-          url:  URL.createObjectURL(blob),
-          ar:   detectAspectRatio(canvas.width, canvas.height),
-          w:    canvas.width,
-          h:    canvas.height,
-        })
-      }, 'image/jpeg', 0.92)
-    }
-    img.src = url
-  })
-}
-
-// ── Setting chips ──────────────────────────────────────────────
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => !opt.disabled && onChange(opt.value)}
-          disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT            : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff'         : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
-
-// ── Model dropdown ─────────────────────────────────────────────
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-       <span>{selected?.label || 'Model'}</span>
-        <ChevronDown
-          size={10}
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
-        />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-56 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {m.label}
-                      </p>
-                      {m.description && (
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
-                      )}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
-                          {m.label}
-                        </p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
 }
 
 // ── Multi-image grid ───────────────────────────────────────────
@@ -513,7 +366,7 @@ export default function UGCBrandGeneratePage() {
       brand.content_styles?.length ? `Content style: ${brand.content_styles.join(', ')}` : null,
       brand.visual_styles?.length  ? `Visual aesthetic: ${brand.visual_styles.join(', ')}` : null,
       brand.brand_colors?.length   ? `Brand colors: ${brand.brand_colors.join(', ')}` : null,
-     brand.price_tier         ? `Price tier: ${brand.price_tier}` : null,
+      brand.price_tier         ? `Price tier: ${brand.price_tier}` : null,
       brand.target_interests   ? `Target audience interests: ${brand.target_interests}` : null,
       products.length           ? `Products/services: ${products.slice(0, 10).map((p) => p.name).join(', ')}` : null,
       brand.competitor_brands  ? `Brand inspirations: ${brand.competitor_brands}` : null,
@@ -604,7 +457,7 @@ export default function UGCBrandGeneratePage() {
         with_sound:    outputType === 'video' ? withSound : false,
       })
 
-  const { data: invokeData, error: invokeErr } = await supabase.functions
+      const { data: invokeData, error: invokeErr } = await supabase.functions
         .invoke('brand-generate', { body: { generationId: genRow.id } })
 
       if (invokeErr || invokeData?.error) {
@@ -747,6 +600,7 @@ export default function UGCBrandGeneratePage() {
               models={filteredModels}
               value={selectedModel?.value || ''}
               onChange={setModel}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
             />
           )}
         </div>
@@ -780,7 +634,7 @@ export default function UGCBrandGeneratePage() {
           </div>
 
           {outputType === 'products' ? (
-         <BrandProductManager
+            <BrandProductManager
               brandId={brandId}
               userId={user.id}
               products={products}
@@ -879,6 +733,7 @@ export default function UGCBrandGeneratePage() {
                 ]}
                 value={filter}
                 onChange={setFilter}
+                accent={ACCENT}
               />
 
               {/* Aspect ratio */}
@@ -890,6 +745,7 @@ export default function UGCBrandGeneratePage() {
                 }))}
                 value={aspectRatio}
                 onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
+                accent={ACCENT}
               />
 
               {autoRatio && (
@@ -906,6 +762,7 @@ export default function UGCBrandGeneratePage() {
                     options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
                     value={duration}
                     onChange={setDuration}
+                    accent={ACCENT}
                   />
                   <div className="mb-5">
                     <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
