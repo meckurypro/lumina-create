@@ -12,14 +12,23 @@ import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
+import { detectAspectRatio, compressImage, readVideoMetadata, formatDuration, formatBytes } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
+import { saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
 
 const ACCENT     = 'var(--tool-talking-head)'
 const ACCENT_SUB = 'var(--tool-talking-head-subtle)'
 const ACCENT_BDR = 'var(--tool-talking-head-border)'
 
-const SS_PROMPT         = 'meckury_th_prompt'
-const SS_SUBJECT_IMG    = 'meckury_th_subject_img'
-const SS_SUBJECT_VID    = 'meckury_th_subject_vid'
+// ─── this page's own draft (moved to draftCache) ──────────────────────────────
+const DRAFT_PROMPT = 'create_talking_head:prompt'
+
+// ─── cross-page handoff keys — stay on sessionStorage, NOT draftCache ─────────
+// These are one-time payloads written by other pages (Assets picker,
+// CreateVideoPage's lipsync redirect), not per-page drafts.
+const SS_SUBJECT_IMG     = 'meckury_th_subject_img'
+const SS_SUBJECT_VID     = 'meckury_th_subject_vid'
 const SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
 
 const ALL_ASPECT_RATIOS = [
@@ -91,7 +100,8 @@ function trimSlotsToLimit(slots, limitS) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIO UTILITIES
+// AUDIO UTILITIES  (duplicated verbatim in CreateVideoPage — candidate for a
+// future src/lib/audioUtils.js extraction, out of scope for this pass)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function audioBufferToWav(buffer) {
@@ -177,48 +187,8 @@ async function concatenateAudioBlobs(blobs) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIDEO HELPERS
+// VIDEO HELPERS  (page-specific — the trim edge-function caller, not duplicated)
 // ─────────────────────────────────────────────────────────────────────────────
-
-function detectAspectRatio(w, h) {
-  const r = w / h
-  if (r > 1.6) return '16:9'
-  if (r < 0.75) return '9:16'
-  return '1:1'
-}
-
-function formatDuration(secs) {
-  if (!secs && secs !== 0) return '—'
-  const s = Math.round(Number(secs))
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60 ? `${s % 60}s` : ''}`.trim()
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-const readVideoMetadata = (file) => new Promise((resolve) => {
-  const url = URL.createObjectURL(file)
-  const vid = document.createElement('video')
-  vid.preload = 'metadata'
-  vid.onloadedmetadata = () => {
-    const meta = {
-      duration:    vid.duration ? Math.round(vid.duration) : null,
-      width:       vid.videoWidth  || null,
-      height:      vid.videoHeight || null,
-      aspectRatio: vid.videoWidth && vid.videoHeight
-        ? detectAspectRatio(vid.videoWidth, vid.videoHeight) : null,
-    }
-    URL.revokeObjectURL(url)
-    resolve(meta)
-  }
-  vid.onerror = () => {
-    URL.revokeObjectURL(url)
-    resolve({ duration: null, width: null, height: null, aspectRatio: null })
-  }
-  vid.src = url
-})
 
 async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTime, onProgress }) {
   onProgress?.(5)
@@ -261,34 +231,7 @@ async function callTrimEdgeFunction({ file, url, userId, targetDuration, startTi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IMAGE HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function compressImage(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      const MAX_PX = 1568
-      const scale  = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1.0)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((blob) => {
-        resolve({
-          file: new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }),
-          url:  URL.createObjectURL(blob),
-          ar:   detectAspectRatio(canvas.width, canvas.height),
-        })
-      }, 'image/jpeg', 0.92)
-    }
-    img.src = url
-  })
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SESSION PERSISTENCE
+// CROSS-PAGE SESSION PERSISTENCE (subject image/video handoff payloads)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const persistFile = (key, url, name) => {
@@ -314,127 +257,6 @@ const restoreFile = (key) => new Promise((resolve) => {
     resolve({ file: new File([blob], name, { type }), url: URL.createObjectURL(blob) })
   } catch { resolve(null) }
 })
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SETTING CHIPS
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => !opt.disabled && onChange(opt.value)}
-          disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}>
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODEL DROPDOWN
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}>
-       <span>{selected?.label || 'Model'}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-64 rounded-2xl overflow-hidden max-h-[60vh] overflow-y-auto"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}>
-              <div className="py-1">
-                {unlocked.map((m) => {
-                  const caps = getModelCaps(m)
-                  const tags = [
-                    caps.requiresImage   && 'Photo',
-                    caps.requiresVideo   && 'Video',
-                    caps.requiresAudio   && 'Audio',
-                    caps.requiresVoiceId && 'Script→Voice',
-                    caps.multiChar       && '2-char',
-                  ].filter(Boolean)
-                  return (
-                    <button
-                      key={m.value}
-                      onClick={() => { onChange(m.value); setOpen(false) }}
-                      className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                      style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}>
-                      <div className="min-w-0">
-                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                        {m.description && (
-                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{m.description}</p>
-                        )}
-                        {tags.length > 0 && (
-                          <div className="flex gap-1 flex-wrap mt-1">
-                            {tags.map((t) => (
-                              <span key={t} className="px-1.5 py-0.5 rounded-md font-semibold"
-                                style={{ background: ACCENT_SUB, color: ACCENT, fontSize: 10 }}>
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {m.value === value && (
-                        <span style={{ color: ACCENT, fontSize: 14, flexShrink: 0, marginLeft: 8 }}>✓</span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBJECT SLOT
@@ -977,12 +799,12 @@ function MultiSlotAudio({
         )}
       </div>
 
-    {durationS > 0 && filledCount === 0 && !audioUploadDisabled && (
+      {durationS > 0 && filledCount === 0 && !audioUploadDisabled && (
         <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Upload audio up to {durationS}s total. Longer files are trimmed automatically.
         </p>
       )}
-{supportsTextScript && (() => {
+      {supportsTextScript && (() => {
         const modeOptions = audioUploadDisabled
           ? [{ value: 'text', label: 'Script', icon: FileText }]
           : [
@@ -1115,6 +937,7 @@ export default function CreateTalkingHeadPage() {
     return () => {
       try {
         [SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach(k => sessionStorage.removeItem(k))
+        draftDelete(DRAFT_PROMPT)
       } catch {}
     }
   }, [])
@@ -1138,7 +961,7 @@ export default function CreateTalkingHeadPage() {
       }
     } catch {}
 
-    try { const p = sessionStorage.getItem(SS_PROMPT); if (p) setPrompt(p) } catch {}
+    loadDraftJSON(DRAFT_PROMPT).then((p) => { if (p) setPrompt(p) })
 
     restoreFile(SS_SUBJECT_IMG).then((f) => {
       if (!f) return
@@ -1155,10 +978,7 @@ export default function CreateTalkingHeadPage() {
   }, [])
 
   useEffect(() => {
-    try {
-      if (prompt) sessionStorage.setItem(SS_PROMPT, prompt)
-      else        sessionStorage.removeItem(SS_PROMPT)
-    } catch {}
+    saveDraftJSON(DRAFT_PROMPT, prompt)
   }, [prompt])
 
   // ── Trim audio slots when duration chip changes ──────────────────────────
@@ -1441,8 +1261,9 @@ export default function CreateTalkingHeadPage() {
     setScript1(''); setScript2('')
     setAutoRatio(false); setAspectRatio('9:16'); setPrompt('')
     setVideoTrimStart(0)
+    draftDelete(DRAFT_PROMPT)
     try {
-      [SS_PROMPT, SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach((k) => sessionStorage.removeItem(k))
+      [SS_SUBJECT_IMG, SS_SUBJECT_VID].forEach((k) => sessionStorage.removeItem(k))
     } catch {}
   }
 
@@ -1558,7 +1379,7 @@ export default function CreateTalkingHeadPage() {
       }
 
       // ── Dispatch — edge function reads everything from the row ───────────
-const edgeFn = selectedModel?.feature === 'lipsync'
+      const edgeFn = selectedModel?.feature === 'lipsync'
         ? 'lipsync-generate'
         : 'talking-head-generate'
 
@@ -1613,7 +1434,21 @@ const edgeFn = selectedModel?.feature === 'lipsync'
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
-            <ModelDropdown models={models} value={model} onChange={setModel} />
+            <ModelDropdown
+              models={models} value={model} onChange={setModel}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+              width={256}
+              getBadges={(m) => {
+                const c = getModelCaps(m)
+                return [
+                  c.requiresImage   && 'Photo',
+                  c.requiresVideo   && 'Video',
+                  c.requiresAudio   && 'Audio',
+                  c.requiresVoiceId && 'Script→Voice',
+                  c.multiChar       && '2-char',
+                ].filter(Boolean)
+              }}
+            />
           )}
           {!modelsLoading && models.length === 0 && (
             <span className="text-xs px-3 py-1.5 rounded-xl"
@@ -1807,6 +1642,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
               options={ALL_ASPECT_RATIOS.map((o) => ({ ...o, disabled: !caps.supportedAspectRatios.includes(o.value) }))}
               value={aspectRatio}
               onChange={(v) => { setAspectRatio(v); setAutoRatio(false) }}
+              accent={ACCENT}
             />
             {caps.supportedDurations?.length > 1 && (
               <SettingChips
@@ -1814,13 +1650,14 @@ const edgeFn = selectedModel?.feature === 'lipsync'
                 options={caps.supportedDurations.map((d) => ({ label: `${d}s`, value: d }))}
                 value={duration}
                 onChange={setDuration}
+                accent={ACCENT}
               />
             )}
           </div>
 
           {/* ── Audio ────────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
-           <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 {caps.requiresVoiceId && !caps.requiresAudio
                   ? (caps.multiChar ? 'Scripts' : 'Script')
@@ -1837,7 +1674,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
               )}
             </div>
 
-<MultiSlotAudio
+            <MultiSlotAudio
               label={caps.requiresVoiceId && !caps.requiresAudio ? 'Script' : 'Audio'} audioSlots={audioSlots1} durationS={durationNum}
               onSlotFill={handleSlotFill(1)} onSlotClear={handleSlotClear(1)}
               onSlotStartChange={handleSlotStartChange(1)}
@@ -1848,7 +1685,7 @@ const edgeFn = selectedModel?.feature === 'lipsync'
               audioUploadDisabled={caps.requiresVoiceId && !caps.requiresAudio}
             />
 
-        {caps.multiChar && (
+            {caps.multiChar && (
               <MultiSlotAudio
                 label={caps.requiresVoiceId && !caps.requiresAudio ? 'Script' : 'Audio'} audioSlots={audioSlots2} durationS={durationNum}
                 onSlotFill={handleSlotFill(2)} onSlotClear={handleSlotClear(2)}
