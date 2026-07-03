@@ -100,7 +100,7 @@ export const getPendingPayment = () => {
 // Server-side creates the transaction, then we navigate to the hosted page.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const initializePayment = async ({ email, userId, packageSlug }) => {
+export const initializePayment = async ({ email, userId, packageSlug, tier }) => {
   if (!email || !userId || !packageSlug) throw new Error('email, userId, packageSlug required')
 
   const callbackUrl = `${window.location.origin}/payment/callback`
@@ -111,7 +111,7 @@ export const initializePayment = async ({ email, userId, packageSlug }) => {
       'Content-Type': 'application/json',
       Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({ email, userId, packageSlug, callbackUrl }),
+    body: JSON.stringify({ email, userId, packageSlug, callbackUrl, tier }),
   })
 
   let data
@@ -121,7 +121,7 @@ export const initializePayment = async ({ email, userId, packageSlug }) => {
   }
 
   // Persist intent before navigating away — safety net for AuthContext retry.
-  storePendingPayment({ reference: data.reference, userId, packageSlug })
+  storePendingPayment({ reference: data.reference, userId, packageSlug, tier })
 
   window.location.href = data.authorization_url
   // No return; the browser is leaving.
