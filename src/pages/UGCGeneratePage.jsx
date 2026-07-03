@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 import { compressImage, tagForSlot } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
+import { applyModelPreferences } from '@/hooks/useModelPreferences'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -158,7 +159,7 @@ export default function UGCGeneratePage() {
     setProfileLoading(false)
   }
 
-  const loadModels = useCallback(async () => {
+const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
       .from('models')
@@ -167,14 +168,14 @@ export default function UGCGeneratePage() {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-    const isMaster     = userProfile?.user_tier === 'master'
-    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
-    setModels(tierFiltered)
-    const firstUnlocked = tierFiltered.find((m) => !m.is_locked && m.type === 'image')
+    const isMaster      = userProfile?.user_tier === 'master'
+    const tierFiltered  = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const list          = await applyModelPreferences(tierFiltered, user?.id)
+    setModels(list)
+    const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
-  }, [userProfile?.user_tier])
-
+  }, [userProfile?.user_tier, user?.id])
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
 
