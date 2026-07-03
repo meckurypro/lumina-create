@@ -1,3 +1,4 @@
+// src/pages/CreateCopyMotionPage.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -9,6 +10,9 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
+import { detectAspectRatio, formatDuration, readVideoMetadata } from '@/lib/mediaUtils'
+import { ModelDropdown } from '@/components/create/ModelDropdown'
+import { SettingChips } from '@/components/create/SettingChips'
 
 // ── Theme constants ────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-motion)'
@@ -26,28 +30,6 @@ const SS_VIDEO_META        = 'meckury_copymotion_video_meta'
 const SS_COPY_MOTION_VIDEO = 'meckury_copymotion_video_asset'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function formatDuration(secs) {
-  if (!secs && secs !== 0) return '—'
-  const s = Math.round(Number(secs))
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return r ? `${m}m ${r}s` : `${m}m`
-}
-
-function detectAspectRatio(width, height) {
-  const r = width / height
-  if (r > 1.6)  return '16:9'
-  if (r < 0.75) return '9:16'
-  return '1:1'
-}
-
-const persistImage = (key, url, name) => {
-  if (!url) { try { sessionStorage.removeItem(key) } catch {} ; return }
-  try {
-    sessionStorage.setItem(key, JSON.stringify({ url, name }))
-  } catch {}
-}
 const restoreImage = (key) => new Promise((resolve) => {
   try {
     const saved = sessionStorage.getItem(key)
@@ -79,29 +61,6 @@ const restoreVideoMeta = () => {
     return saved ? JSON.parse(saved) : null
   } catch { return null }
 }
-
-const readVideoMetadata = (file) => new Promise((resolve) => {
-  const url = URL.createObjectURL(file)
-  const vid = document.createElement('video')
-  vid.preload = 'metadata'
-  vid.onloadedmetadata = () => {
-    const meta = {
-      duration:    vid.duration ? Math.round(vid.duration) : null,
-      width:       vid.videoWidth  || null,
-      height:      vid.videoHeight || null,
-      aspectRatio: vid.videoWidth && vid.videoHeight
-        ? detectAspectRatio(vid.videoWidth, vid.videoHeight)
-        : null,
-    }
-    URL.revokeObjectURL(url)
-    resolve(meta)
-  }
-  vid.onerror = () => {
-    URL.revokeObjectURL(url)
-    resolve({ duration: null, width: null, height: null, aspectRatio: null })
-  }
-  vid.src = url
-})
 
 // ── Compatibility check ────────────────────────────────────────────────────
 function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDuration }) {
@@ -200,109 +159,6 @@ async function callTranscodeEdgeFunction({
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
-
-const ModelDropdown = ({ models, value, onChange }) => {
-  const [open, setOpen] = useState(false)
-  const unlocked = models.filter((m) => !m.is_locked)
-  const locked   = models.filter((m) =>  m.is_locked)
-  const selected = models.find((m) => m.value === value) || unlocked[0]
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-        style={{ background: ACCENT_SUB, color: ACCENT, border: `1px solid ${ACCENT_BDR}` }}
-      >
-        <span>{selected?.label || 'Model'}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path
-            d={open ? 'M2 7l3-4 3 4' : 'M2 3l3 4 3-4'}
-            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1    }}
-              exit={{    opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.13 }}
-              className="absolute right-0 top-9 z-50 w-60 rounded-2xl overflow-hidden"
-              style={{
-                background: 'var(--bg-card)',
-                border:     '1px solid var(--border-color)',
-                boxShadow:  '0 8px 32px rgba(0,0,0,0.28)',
-                maxHeight:  '60vh',
-                overflowY:  'auto',
-              }}
-            >
-              <div className="py-1">
-                {unlocked.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => { onChange(m.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left"
-                    style={{ background: m.value === value ? ACCENT_SUB : 'transparent' }}
-                  >
-                    <div>
-                     <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                      {m.description && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.description}</p>}
-                    </div>
-                    {m.value === value && <span style={{ color: ACCENT, fontSize: 14 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {locked.length > 0 && (
-                <>
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '0 12px' }} />
-                  <div className="py-1">
-                    {locked.map((m) => (
-                      <div key={m.value} className="flex items-center justify-between px-4 py-2">
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>{m.label}</p>
-                        <span style={{ fontSize: 11, opacity: 0.4 }}>🔒</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-const SettingChips = ({ label, options, value, onChange }) => (
-  <div className="mb-5">
-    <p className="text-xs font-semibold mb-2.5 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-      {label}
-    </p>
-    <div className="flex gap-2 flex-wrap">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => !opt.disabled && onChange(opt.value)}
-          disabled={opt.disabled}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: value === opt.value ? ACCENT    : 'var(--bg-elevated)',
-            color:      value === opt.value ? '#ffffff' : 'var(--text-secondary)',
-            opacity:    opt.disabled ? 0.3 : 1,
-            cursor:     opt.disabled ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)
 
 const CompatBadge = ({ status }) => {
   if (!status) return null
@@ -1194,7 +1050,11 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
         </div>
         <div className="flex items-center gap-2">
           {!modelsLoading && models.length > 0 && (
-            <ModelDropdown models={models} value={model} onChange={setModel} />
+            <ModelDropdown
+              models={models} value={model} onChange={setModel}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+              width={240}
+            />
           )}
           <div
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -1386,6 +1246,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                   }))}
                   value={aspectRatio}
                   onChange={setAspectRatio}
+                  accent={ACCENT}
                 />
                 {supportsSound && (
                   <SettingChips
@@ -1396,6 +1257,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                     ]}
                     value={String(withSound)}
                     onChange={(v) => setWithSound(v === 'true')}
+                    accent={ACCENT}
                   />
                 )}
               </div>
