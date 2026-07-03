@@ -20,15 +20,16 @@ export const subscribeToMaster = ({ user }) => {
 }
 
 // ── Render Window ─────────────────────────────────────────────────────────
-// Price is admin-configurable in app_settings — we read it from the DB
-// before redirecting so the UI can show the correct price.
+// Price is admin-configurable per tier in render_window_tiers — we read it
+// from the DB before redirecting so the UI can show the correct price.
 export const RW_SLUG = 'render_window_subscription'
-
-export const subscribeToRenderWindow = ({ user }) => {
+export const subscribeToRenderWindow = ({ user, tier }) => {
   if (!user?.email || !user?.id) throw new Error('You must be signed in to subscribe.')
+  if (!tier) throw new Error('Select a Render Window plan first.')
   return initializePayment({
     email:       user.email,
     userId:      user.id,
     packageSlug: RW_SLUG,
+    tier,
   })
 }
