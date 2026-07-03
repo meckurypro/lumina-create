@@ -178,7 +178,7 @@ const ReferralCard = ({ profile }) => {
       </div>
 
       <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-        You earn 500 credits + 4% of every purchase they make.
+        You earn 500 credits + 4% of every credit purchase they make.
       </p>
     </div>
   )
