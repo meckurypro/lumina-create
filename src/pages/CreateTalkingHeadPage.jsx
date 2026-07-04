@@ -1112,8 +1112,8 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
-    if (!canAfford) errors.push('Not enough credits')
-    if (creditCost === 0 && selectedModel && !selectedModel?.is_render_window)
+   if (!canAfford) errors.push('Not enough credits')
+    if (creditCost === 0 && selectedModel && selectedModel?.model_access_type !== 'render_window')
       errors.push('Model pricing is misconfigured — contact support')
 
     return errors
