@@ -100,8 +100,8 @@ export const useRenderWindowSubscription = () => {
   // Subscription expiry (activeSub.expires_at) is shown as a plain date
   // elsewhere — it's a separate, much longer horizon and should never be
   // blended with these.
-  const windowClosesAt = activeWindow?.closes_at ?? null
-  const windowOpensAt  = !activeWindow ? (nextWindow?.opens_at ?? null) : null
+  const windowClosesAt = activeWindow?.ends_at ?? null
+  const windowOpensAt  = !activeWindow ? (nextWindow?.starts_at ?? null) : null
 
   return {
     activeSub,
