@@ -281,6 +281,17 @@ export const renderWindows = {
       .eq('status', 'active')
       .maybeSingle(),
 
+  // Public: get the next scheduled window (for "opens at" messaging while closed)
+  getNext: () =>
+    supabase
+      .from('render_windows')
+      .select('*')
+      .eq('status', 'scheduled')
+      .gt('starts_at', new Date().toISOString())
+      .order('starts_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+
   // Admin: create a new window
   create: (payload) =>
     supabase
