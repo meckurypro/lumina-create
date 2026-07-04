@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, Maximize2, Plus } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -179,6 +180,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 export default function CreateImagePage() {
   const navigate = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
+  const { canUseRWModels } = useRenderWindowSubscription()
   const textareaRef = useRef(null)
 
   const [models,        setModels]        = useState([])
@@ -248,7 +250,11 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
       .eq('is_user_facing', true)
       .order('sort_order')
     const isMaster = profile?.user_tier === 'master'
-    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = (data || [])
+      .filter((m) => isMaster || m.tier_required !== 'master')
+      // Render-window (ComfyUI) models only show with an active subscription
+      // AND a currently-open window.
+      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
     const list = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const unlocked = list.filter((m) => !m.is_locked)
@@ -256,7 +262,7 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
     const match = preferred && unlocked.find((m) => m.value === preferred)
     setModel((match || unlocked[0])?.value || '')
     setModelsLoading(false)
-  }, []) // eslint-disable-line
+  }, [canUseRWModels]) // eslint-disable-line
 
   useEffect(() => { loadModels() }, [loadModels])
 
