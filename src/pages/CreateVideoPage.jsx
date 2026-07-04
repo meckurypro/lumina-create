@@ -49,6 +49,23 @@ const VIDEO_EDIT_CPS          = 49
 const VIDEO_EDIT_CONVERT_COST = 2
 const MAX_VIDEO_BYTES         = 40 * 1024 * 1024
 
+// Features that belong on this page (i2v / t2v / start-end / video-edit).
+// Lipsync and motion_transfer models are deliberately excluded — they have
+// their own pages (CreateTalkingHeadPage, CreateCopyMotionPage).
+const VIDEO_PAGE_FEATURES = [
+  'image_to_video',
+  'image_text_to_video',
+  'text_to_video',
+  'frame_to_frame',
+  'video_to_video',
+]
+
+// Dual-purpose models: intentionally shown here even though their `feature`
+// column points to another page's category (e.g. meckury_i2v_max is tagged
+// feature="lipsync" but is also a legitimate i2v model). Add a model's
+// `value` here only when you explicitly want it to cross categories.
+const CROSSOVER_ALLOWLIST = ['meckury_i2v_max']
+
 // ─── model capability helper (page-specific — not duplicated elsewhere) ───────
 function getModelCaps(model) {
   if (!model) return {
@@ -910,17 +927,35 @@ export default function CreateVideoPage() {
   const persistRefImages = (imgs) => { saveDraftImages(DRAFT_REF_IMAGES, imgs) }
 
   // ── load models ───────────────────────────────────────────────────────────
-  const loadModels = useCallback(async () => {
+const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const { data } = await supabase
-      .from('models')
-      .select('*')
-      .eq('type', 'video')
-      .eq('is_active', true)
-      .eq('is_user_facing', true)
-      .order('sort_order')
+
+    const [{ data: byFeature }, { data: crossover }] = await Promise.all([
+      supabase
+        .from('models')
+        .select('*')
+        .eq('type', 'video')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .in('feature', VIDEO_PAGE_FEATURES)
+        .order('sort_order'),
+      supabase
+        .from('models')
+        .select('*')
+        .eq('type', 'video')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .in('value', CROSSOVER_ALLOWLIST)
+        .order('sort_order'),
+    ])
+
+    const merged = [...(byFeature || [])]
+    for (const m of crossover || []) {
+      if (!merged.some((x) => x.value === m.value)) merged.push(m)
+    }
+
     const isMaster     = profile?.user_tier === 'master'
-    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = merged.filter((m) => isMaster || m.tier_required !== 'master')
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
