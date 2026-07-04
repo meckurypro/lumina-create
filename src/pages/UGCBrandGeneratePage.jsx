@@ -8,6 +8,7 @@ import {
   X, Plus, Maximize2, Crown, Package,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts, MAX_BRAND_PRODUCTS } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import BrandProductManager from '@/components/BrandProductManager'
@@ -135,7 +136,8 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 export default function UGCBrandGeneratePage() {
   const { brandId }                                              = useParams()
   const navigate                                                 = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+ const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const { canUseRWModels } = useRenderWindowSubscription()
   const isMaster     = userProfile?.user_tier === 'master'
   const textareaRef  = useRef(null)
 
@@ -195,13 +197,17 @@ const loadModels = useCallback(async () => {
       .eq('is_user_facing', true)
       .eq('supports_multi_image', true)
       .order('sort_order')
-    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = (data || [])
+      .filter((m) => isMaster || m.tier_required !== 'master')
+      // Render-window (ComfyUI) models only show with an active subscription
+      // AND a currently-open window.
+      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
     const list = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const first = list.find((m) => !m.is_locked && m.type === 'image')
     setModel(first?.value || '')
     setModelsLoading(false)
-  }, [isMaster, user?.id])
+  }, [isMaster, user?.id, canUseRWModels])
 
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
