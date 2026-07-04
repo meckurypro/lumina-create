@@ -33,14 +33,15 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Detects a live "/query" being typed right before the cursor
+// Detects a live "/query" being typed right before the cursor.
+// Triggers after whitespace, string-start, OR any non-word character
+// (so "(/shoes", "\"/shoes", etc. all work — not just "/shoes" after a space).
 function getSlashMatch(text, cursorPos) {
   const upto = text.slice(0, cursorPos)
-  const m = /(^|\s)\/([a-zA-Z0-9 _-]{0,40})$/.exec(upto)
+  const m = /(^|[^\w])\/([a-zA-Z0-9 _-]{0,40})$/.exec(upto)
   if (!m) return null
   return { query: m[2].trim().toLowerCase(), start: m.index + m[1].length }
 }
-
 // ── Multi-image grid ───────────────────────────────────────────
 const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
   const filledCount  = images.filter(Boolean).length
@@ -169,6 +170,11 @@ export default function UGCBrandGeneratePage() {
   const [slashStart,     setSlashStart]     = useState(null)
   const [slashActiveIdx, setSlashActiveIdx] = useState(0)
 
+  // Explicitly tagged products/services — tracked by id (not re-derived
+  // from prompt text) so renames, retyping, or overlapping names never
+  // break the link between a visible chip and its underlying item.
+  const [taggedItems, setTaggedItems] = useState([])
+
   useEffect(() => { loadBrand(); loadModels(); loadProducts() }, [brandId, userProfile?.user_tier])
 
   const loadBrand = async () => {
@@ -219,9 +225,10 @@ const loadModels = useCallback(async () => {
     if (first) setModel(first.value)
   }, [outputType])
 
-  // Clear images when output type switches
+// Clear images and tags when output type switches
   useEffect(() => {
     setImages([])
+    setTaggedItems([])
     setAutoRatio(false)
     setAspectRatio('9:16')
   }, [outputType])
@@ -275,8 +282,9 @@ const loadModels = useCallback(async () => {
     })
   }
 
-  const clearAllImages = () => {
+const clearAllImages = () => {
     setImages([])
+    setTaggedItems([])
     setAutoRatio(false)
     setAspectRatio('9:16')
   }
@@ -321,7 +329,7 @@ const loadModels = useCallback(async () => {
     }
   }
 
-  const selectSlashProduct = (product) => {
+const selectSlashProduct = (product) => {
     const el     = textareaRef.current
     const cursor = el ? el.selectionStart : prompt.length
     const before = prompt.slice(0, slashStart)
@@ -330,11 +338,24 @@ const loadModels = useCallback(async () => {
     const next = before + inserted + after
     setPrompt(next)
     setSlashOpen(false)
+    setTaggedItems((prev) => (prev.some((t) => t.id === product.id) ? prev : [...prev, product]))
     requestAnimationFrame(() => {
       el?.focus()
       const pos = before.length + inserted.length
       el?.setSelectionRange(pos, pos)
     })
+  }
+
+  // Removing a chip untags the item and strips its first "/Name" occurrence
+  // from the prompt text (best-effort — if the user already edited that
+  // text manually, only the tag link is removed, not any leftover text).
+  const handleRemoveTag = (itemId) => {
+    const item = taggedItems.find((t) => t.id === itemId)
+    setTaggedItems((prev) => prev.filter((t) => t.id !== itemId))
+    if (item) {
+      const re = new RegExp(`/${escapeRegex(item.name)}\\s?`)
+      setPrompt((prev) => prev.replace(re, ''))
+    }
   }
 
   const handlePromptKeyDown = (e) => {
@@ -353,10 +374,14 @@ const loadModels = useCallback(async () => {
     }
   }
 
+// Fallback for items the user typed manually (e.g. "/Shoes)") without
+  // going through the picker. Explicit picker selections are tracked
+  // separately in `taggedItems` and take priority — this only catches
+  // typed-but-unpicked mentions.
   const resolveMentionedProducts = (text) => {
     const mentioned = []
     for (const p of products) {
-      const re = new RegExp(`/${escapeRegex(p.name)}(?=\\s|$)`)
+      const re = new RegExp(`/${escapeRegex(p.name)}(?=[^\\w]|$)`)
       if (re.test(text)) mentioned.push(p)
     }
     return mentioned
@@ -420,13 +445,19 @@ const loadModels = useCallback(async () => {
         }
       }
 
-      const mentionedProducts = resolveMentionedProducts(prompt)
-      const remainingSlots    = Math.max(0, modelMaxRefImages - inputImageUrls.length)
-      for (const p of mentionedProducts.slice(0, remainingSlots)) {
-        inputImageUrls.push({ url: p.image_url, role: `product: ${p.name}` })
+ // Explicit picker tags take priority (highest confidence), then
+      // fill remaining slots with any names typed but not picked.
+      const fallbackMentions = resolveMentionedProducts(prompt)
+        .filter((p) => !taggedItems.some((t) => t.id === p.id))
+      const priorityItems = [...taggedItems, ...fallbackMentions]
+
+      const remainingSlots = Math.max(0, modelMaxRefImages - inputImageUrls.length)
+      for (const item of priorityItems.slice(0, remainingSlots)) {
+        if (!item.image_url) continue // no photo — AI still sees it by name via the prompt text
+        inputImageUrls.push({ url: item.image_url, role: `${item.item_type || 'product'}: ${item.name}` })
       }
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
+     const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
         generation_type:        outputType === 'image' ? 'text_to_image' : 'text_to_video',
         status:                 'pending',
@@ -440,11 +471,14 @@ const loadModels = useCallback(async () => {
         skip_prompt_refinement: skipRefinement,
         is_system_prompt:       false,
         generation_metadata: {
-          brand_id:      brandId,
-          brand_context: brandContext,
-          with_sound:    outputType === 'video' ? withSound : false,
-          filter_applied: filter,
-          mode:          'brand_adviser',
+          brand_id:         brandId,
+          brand_context:    brandContext,
+          with_sound:       outputType === 'video' ? withSound : false,
+          filter_applied:   filter,
+          mode:             'brand_adviser',
+          // Explicitly-picked items — the edge function trusts these as
+          // already-resolved and only runs AI detection for anything else.
+          tagged_item_ids:  taggedItems.map((t) => t.id),
         },
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -723,6 +757,36 @@ const loadModels = useCallback(async () => {
                 <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-muted)' }}>
                   {prompt.length}/600
                 </p>
+
+                {taggedItems.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {taggedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full"
+                        style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}
+                      >
+                        <div
+                          className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'var(--bg-elevated)' }}
+                        >
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package size={10} style={{ color: 'var(--text-muted)' }} />
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold" style={{ color: ACCENT }}>
+                          {item.item_type === 'service' ? '🛠' : '📦'} {item.name}
+                        </span>
+                        <button onClick={() => handleRemoveTag(item.id)} style={{ color: ACCENT }}>
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {!isMaster && (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
                     <Crown size={10} style={{ display: 'inline', marginRight: 3, color: ACCENT }} />
