@@ -298,7 +298,7 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
   const promptEmpty    = !prompt.trim()
   const imageRequired  = modelRequiresImage && !hasImages
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired
-    || (creditCost === 0 && !!selectedModel)
+    || (creditCost === 0 && !!selectedModel && selectedModel?.model_access_type !== 'render_window')
 
   useEffect(() => {
     if (!selectedModel) return
