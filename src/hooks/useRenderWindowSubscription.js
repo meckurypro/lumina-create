@@ -42,7 +42,7 @@ export const useRenderWindowSubscription = () => {
       const [subRes, windowRes, nextWindowRes] = await Promise.all([
         renderWindowSubscriptions.getActive(),
         renderWindows.getActive(),
-        renderWindows.getNext(),   // next status='scheduled' row, ordered by opens_at asc, limit 1
+       renderWindows.getNext(),   // next status='scheduled' row, ordered by starts_at asc, limit 1
       ])
       setActiveSub(subRes.data       ?? null)
       setActiveWindow(windowRes.data ?? null)
