@@ -16,7 +16,8 @@ export const useRenderWindowSubscription = () => {
   const { user } = useAuth()
 
   const [activeSub,      setActiveSub]      = useState(null)   // rw_subscription row | null
-  const [activeWindow,   setActiveWindow]   = useState(null)   // render_windows row | null
+  const [activeWindow,   setActiveWindow]   = useState(null)   // render_windows row | null (currently open)
+  const [nextWindow,     setNextWindow]     = useState(null)   // render_windows row | null (next scheduled)
   const [tiers,          setTiers]          = useState([])     // render_window_tiers rows
   const [loading,        setLoading]        = useState(true)
   const [subscribing,    setSubscribing]    = useState(false)
@@ -33,17 +34,19 @@ export const useRenderWindowSubscription = () => {
     }
   }, [])
 
-  // ── Fetch subscription + active window ─────────────────────────────────
+ // ── Fetch subscription + active window + next scheduled window ─────────
   const refresh = useCallback(async () => {
     if (!user?.id) return
 
     try {
-      const [subRes, windowRes] = await Promise.all([
+      const [subRes, windowRes, nextWindowRes] = await Promise.all([
         renderWindowSubscriptions.getActive(),
         renderWindows.getActive(),
+        renderWindows.getNext(),   // next status='scheduled' row, ordered by opens_at asc, limit 1
       ])
-      setActiveSub(subRes.data    ?? null)
+      setActiveSub(subRes.data       ?? null)
       setActiveWindow(windowRes.data ?? null)
+      setNextWindow(nextWindowRes.data ?? null)
     } catch (err) {
       console.error('[useRenderWindowSubscription] refresh error:', err)
     } finally {
@@ -93,13 +96,12 @@ export const useRenderWindowSubscription = () => {
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
 
-  const minutesRemaining = activeSub
-    ? Math.max(0, Math.floor((new Date(activeSub.expires_at) - new Date()) / 60000))
-    : null
-
-  const hoursRemaining = minutesRemaining !== null
-    ? (minutesRemaining / 60).toFixed(1)
-    : null
+  // Window-specific timing (drives the countdown on the profile card).
+  // Subscription expiry (activeSub.expires_at) is shown as a plain date
+  // elsewhere — it's a separate, much longer horizon and should never be
+  // blended with these.
+  const windowClosesAt = activeWindow?.closes_at ?? null
+  const windowOpensAt  = !activeWindow ? (nextWindow?.opens_at ?? null) : null
 
   return {
     activeSub,
@@ -111,8 +113,8 @@ export const useRenderWindowSubscription = () => {
     hasActiveSub,
     windowIsOpen,
     canUseRWModels,
-    minutesRemaining,
-    hoursRemaining,
+    windowClosesAt,
+    windowOpensAt,
     subscribe,
     refresh,
   }
