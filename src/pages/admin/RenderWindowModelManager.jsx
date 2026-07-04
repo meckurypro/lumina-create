@@ -3,155 +3,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, X, Check, Pencil, Trash2, RefreshCw,
-  Server, Workflow, ChevronDown, ChevronUp,
-  AlertTriangle, Copy, Eye, EyeOff
+  Workflow, ChevronDown, ChevronUp,
+  AlertTriangle, Eye, EyeOff
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import toast from 'react-hot-toast'
-
-// ─── Endpoint Manager ─────────────────────────────────────────────────────────
-
-const EndpointManager = ({ endpoint, onSaved }) => {
-  const { user } = useAuth()
-  const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState('')
-  const [saving,  setSaving]  = useState(false)
-  const [visible, setVisible] = useState(false)
-
-  const open  = () => { setDraft(endpoint ?? ''); setEditing(true) }
-  const close = () => setEditing(false)
-
-  const save = async () => {
-    if (!draft.trim()) {
-      toast.error('Endpoint URL cannot be empty')
-      return
-    }
-    if (!draft.startsWith('http')) {
-      toast.error('Endpoint must be a valid URL')
-      return
-    }
-    setSaving(true)
-    const { error } = await supabase
-      .from('app_settings')
-      .update({
-        value:      draft.trim(),
-        updated_by: user.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('key', 'comfyui_endpoint')
-    setSaving(false)
-    if (error) { toast.error('Failed to save endpoint'); return }
-    toast.success('ComfyUI endpoint updated')
-    onSaved(draft.trim())
-    setEditing(false)
-  }
-
-  const copy = () => {
-    if (!endpoint) return
-    navigator.clipboard.writeText(endpoint)
-    toast.success('Copied to clipboard')
-  }
-
-  const masked = endpoint
-    ? endpoint.slice(0, 28) + '••••••••' + endpoint.slice(-6)
-    : null
-
-  return (
-    <div
-      className="rounded-2xl p-4"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <Server size={13} style={{ color: 'var(--text-muted)' }} />
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          ComfyUI Endpoint
-        </p>
-        {endpoint && (
-          <span
-            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
-            style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
-          >
-            Active
-          </span>
-        )}
-        {!endpoint && (
-          <span
-            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
-            style={{ background: 'rgba(239,68,68,0.10)', color: '#ef4444' }}
-          >
-            Not Set
-          </span>
-        )}
-      </div>
-
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          <input
-            autoFocus
-            type="url"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') close() }}
-            placeholder="https://abc123-8188.proxy.runpod.net"
-            className="input-base w-full text-sm font-mono"
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold flex-1 justify-center"
-              style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
-            >
-              {saving ? '…' : <><Check size={12} /> Save Endpoint</>}
-            </button>
-            <button
-              onClick={close}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {endpoint ? (
-            <div
-              className="rounded-xl px-3 py-2.5 font-mono text-xs flex items-center gap-2"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-            >
-              <span className="flex-1 truncate">
-                {visible ? endpoint : masked}
-              </span>
-              <button onClick={() => setVisible(v => !v)} style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
-                {visible ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
-              <button onClick={copy} style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
-                <Copy size={12} />
-              </button>
-            </div>
-          ) : (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              No endpoint set. Start your RunPod instance and paste the URL here.
-            </p>
-          )}
-          <button
-            onClick={open}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold self-start"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-          >
-            <Pencil size={11} /> {endpoint ? 'Update Endpoint' : 'Set Endpoint'}
-          </button>
-        </div>
-      )}
-
-      <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-        Update this each time you start a new RunPod session. All render window models share this endpoint.
-      </p>
-    </div>
-  )
-}
 
 // ─── Workflow Editor ──────────────────────────────────────────────────────────
 
@@ -567,26 +424,17 @@ const handleToggleRW = async () => {
 
 export default function RenderWindowModelManager() {
   const [models,        setModels]        = useState([])
-  const [endpoint,      setEndpoint]      = useState('')
   const [loading,       setLoading]       = useState(true)
   const [filter,        setFilter]        = useState('all')
   const [search,        setSearch]        = useState('')
 
 const load = useCallback(async () => {
     setLoading(true)
-    const [modelsRes, endpointRes] = await Promise.all([
-      supabase
-        .from('models')
-        .select('*')
-        .order('label'),
-      supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'comfyui_endpoint')
-        .single()
-    ])
-    setModels(modelsRes.data  || [])
-    setEndpoint(endpointRes.data?.value || '')
+    const { data } = await supabase
+      .from('models')
+      .select('*')
+      .order('label')
+    setModels(data || [])
     setLoading(false)
   }, [])
 
@@ -650,10 +498,7 @@ const load = useCallback(async () => {
         </button>
       </div>
 
-      {/* Endpoint Manager */}
-      <EndpointManager endpoint={endpoint} onSaved={setEndpoint} />
-
-      {/* Stats */}
+    {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
         {[
           { label: 'RW Models',        value: rwCount,       color: '#6366f1' },
