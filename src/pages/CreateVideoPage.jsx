@@ -7,6 +7,7 @@ import {
   Mic, Library, Play, Pause, Loader2, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
@@ -833,6 +834,7 @@ const ProcessingOverlay = ({ phase, convertProgress }) => (
 export default function CreateVideoPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
+  const { canUseRWModels }                         = useRenderWindowSubscription()
   const textareaRef = useRef(null)
 
   const [prompt,        setPrompt]        = useState('')
@@ -949,18 +951,23 @@ const loadModels = useCallback(async () => {
         .order('sort_order'),
     ])
 
-    const merged = [...(byFeature || [])]
+const merged = [...(byFeature || [])]
     for (const m of crossover || []) {
       if (!merged.some((x) => x.value === m.value)) merged.push(m)
     }
 
     const isMaster     = profile?.user_tier === 'master'
-    const tierFiltered = merged.filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = merged
+      .filter((m) => isMaster || m.tier_required !== 'master')
+      // Render-window (ComfyUI) models are only visible with an active
+      // subscription AND a currently-open window — otherwise they'd be
+      // shown but unusable.
+      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
     return list
-  }, [])
+  }, [canUseRWModels])
 
   useEffect(() => {
     loadModels().then((list) => {
