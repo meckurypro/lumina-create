@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, Loader2, Pencil, Trash2, Package } from 'lucide-react'
-import { ugcBrandProducts } from '@/lib/ugcBrands'
+import { ugcBrandProducts, ITEM_TYPE_OPTIONS } from '@/lib/ugcBrands'
 import toast from 'react-hot-toast'
 
 const ACCENT     = 'var(--tool-ugc)'
@@ -13,6 +13,7 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
   const isEdit = !!product
   const [name, setName] = useState(product?.name || '')
   const [category, setCategory] = useState(product?.category || '')
+  const [itemType, setItemType] = useState(product?.item_type || 'product')
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(product?.image_url || null)
   const [saving, setSaving] = useState(false)
@@ -35,11 +36,12 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
         imageUrl = await ugcBrandProducts.uploadPhoto(userId, brandId, productId, file)
       }
 
-      if (isEdit) {
+    if (isEdit) {
         const { data, error } = await ugcBrandProducts.update(product.id, {
           name: name.trim(),
           category: category.trim() || null,
           image_url: imageUrl,
+          item_type: itemType,
         })
         if (error) throw error
         onSaved(data)
@@ -51,6 +53,7 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
           name: name.trim(),
           category: category.trim() || null,
           image_url: imageUrl,
+          item_type: itemType,
         })
         if (error) throw error
         onSaved(data)
@@ -95,9 +98,25 @@ function ProductSheet({ brandId, userId, product, onClose, onSaved, onDeleted })
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: 'var(--border-color)' }} />
-        <p className="text-lg font-black mb-4" style={{ color: 'var(--text-primary)' }}>
+       <p className="text-lg font-black mb-4" style={{ color: 'var(--text-primary)' }}>
           {isEdit ? 'Edit Product / Service' : 'Add Product / Service'}
         </p>
+
+        <div className="flex gap-2 p-1 rounded-2xl mb-4" style={{ background: 'var(--bg-elevated)' }}>
+          {ITEM_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setItemType(opt.value)}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+              style={{
+                background: itemType === opt.value ? ACCENT : 'transparent',
+                color:      itemType === opt.value ? '#fff' : 'var(--text-muted)',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
         <div className="flex justify-center mb-2">
           {preview ? (
@@ -200,7 +219,7 @@ export default function BrandProductManager({ brandId, userId, products, onProdu
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        {products.map((p) => (
+    {products.map((p) => (
           <button key={p.id} onClick={() => openEdit(p)} className="flex flex-col gap-1.5 text-left">
             <div
               className="relative aspect-square rounded-2xl overflow-hidden flex items-center justify-center"
@@ -211,6 +230,12 @@ export default function BrandProductManager({ brandId, userId, products, onProdu
               ) : (
                 <Package size={20} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
               )}
+              <span
+                className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold"
+                style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}
+              >
+                {p.item_type === 'service' ? '🛠' : '📦'}
+              </span>
             </div>
             <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
           </button>
