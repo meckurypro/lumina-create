@@ -7,6 +7,7 @@ import {
   AlertTriangle, CheckCircle2, RefreshCw, Scissors,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
@@ -895,6 +896,7 @@ function ValidationBanner({ errors }) {
 export default function CreateTalkingHeadPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
+  const { canUseRWModels }                         = useRenderWindowSubscription()
 
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
@@ -1004,7 +1006,7 @@ export default function CreateTalkingHeadPage() {
   }, [videoFile?.duration, durationNum, videoTrimStart])
 
   // ── Load models ──────────────────────────────────────────────────────────
-  const loadModels = useCallback(async () => {
+ const loadModels = useCallback(async () => {
     setModelsLoading(true)
     const { data } = await supabase
       .from('models')
@@ -1014,12 +1016,17 @@ export default function CreateTalkingHeadPage() {
       .eq('is_user_facing', true)
       .order('sort_order')
     const isMaster     = profile?.user_tier === 'master'
-    const tierFiltered = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered = (data || [])
+      .filter((m) => isMaster || m.tier_required !== 'master')
+      // Same render-window gate as CreateVideoPage — hide ComfyUI models
+      // (e.g. meckury_i2v_max) unless the user has an active RW subscription
+      // and a window is currently open.
+      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
 
-    setPendingVideoSubject((isPending) => {
+   setPendingVideoSubject((isPending) => {
       if (pendingModelRef.current) {
         const preferredModel = list.find((m) => m.value === pendingModelRef.current && !m.is_locked)
         pendingModelRef.current = null
@@ -1039,7 +1046,7 @@ export default function CreateTalkingHeadPage() {
       }
       return false
     })
-  }, []) // eslint-disable-line
+  }, [canUseRWModels]) // eslint-disable-line
 
   useEffect(() => { loadModels() }, [loadModels])
 
