@@ -5,6 +5,7 @@ import {
   Plus, X, Check, Clock, Zap, ZapOff,
   CalendarDays, Users, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, Pencil, Trash2,
+  History as HistoryIcon, CreditCard, ArrowLeft,
 } from 'lucide-react'
 import { supabase, renderWindows } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -36,6 +37,35 @@ const fmtDisplay = (iso) => {
   })
 }
 
+const fmtDateOnly = (iso) => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day:   '2-digit',
+    month: 'short',
+    year:  'numeric',
+  })
+}
+
+const fmtTimeOnly = (iso) => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    hour:   '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const fmtDuration = (startIso, endIso) => {
+  if (!startIso || !endIso) return '—'
+  const diffMs = new Date(endIso) - new Date(startIso)
+  if (diffMs <= 0) return '—'
+  const mins = Math.round(diffMs / 60000)
+  const hrs  = Math.floor(mins / 60)
+  const rem  = mins % 60
+  if (hrs === 0) return `${rem}m`
+  if (rem === 0) return `${hrs}h`
+  return `${hrs}h ${rem}m`
+}
+
 const timeUntil = (iso) => {
   if (!iso) return ''
   const diff = new Date(iso) - new Date()
@@ -55,6 +85,41 @@ const timeLeft = (iso) => {
   if (mins < 60) return `${mins}m left`
   return `${Math.floor(mins / 60)}h ${mins % 60}m left`
 }
+
+// ─── Modal Shell ──────────────────────────────────────────────────────────────
+
+const Modal = ({ title, onClose, children }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    style={{ background: 'rgba(0,0,0,0.55)' }}
+    onClick={onClose}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 24 }}
+      transition={{ duration: 0.18 }}
+      onClick={(e) => e.stopPropagation()}
+      className="w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>{title}</p>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-xl flex items-center justify-center"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+      {children}
+    </motion.div>
+  </motion.div>
+)
 
 // ─── Tier Pricing Editor ──────────────────────────────────────────────────
 
@@ -181,25 +246,17 @@ const TierPricingEditor = ({ tiers, onTiersChange }) => {
   }
 
   return (
-    <div
-      className="rounded-2xl p-4"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-    >
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
-        Subscription Tiers
-      </p>
-      <div className="flex flex-col gap-2">
-        {tiers.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No tiers configured.</p>
-        ) : (
-          tiers
-            .slice()
-            .sort((a, b) => a.display_order - b.display_order)
-            .map((tier) => (
-              <TierRow key={tier.id} tier={tier} onSaved={handleSaved} />
-            ))
-        )}
-      </div>
+    <div className="flex flex-col gap-2">
+      {tiers.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No tiers configured.</p>
+      ) : (
+        tiers
+          .slice()
+          .sort((a, b) => a.display_order - b.display_order)
+          .map((tier) => (
+            <TierRow key={tier.id} tier={tier} onSaved={handleSaved} />
+          ))
+      )}
     </div>
   )
 }
@@ -342,7 +399,7 @@ const WindowForm = ({ initial, onSave, onCancel, saving }) => {
   )
 }
 
-// ─── Window Card ──────────────────────────────────────────────────────────────
+// ─── Window Card (active / scheduled / cancelled — full actions) ─────────────
 
 const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) => {
   const [expanded, setExpanded] = useState(false)
@@ -470,7 +527,7 @@ const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) =
                       <ZapOff size={12} />
                       {loading ? 'Closing…' : 'Close Window'}
                     </button>
-                  ) : win.status !== 'closed' ? (
+                  ) : (
                     <button
                       onClick={() => onOpen(win.id)}
                       disabled={loading}
@@ -480,11 +537,11 @@ const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) =
                       <Zap size={12} />
                       {loading ? 'Opening…' : 'Open Now'}
                     </button>
-                  ) : null
+                  )
                 )}
 
-                {/* Edit — only for scheduled or closed */}
-                {(win.status === 'scheduled' || win.status === 'closed') && (
+                {/* Edit — only for scheduled */}
+                {win.status === 'scheduled' && (
                   <button
                     onClick={() => onEdit(win)}
                     className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
@@ -513,6 +570,34 @@ const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) =
     </motion.div>
   )
 }
+
+// ─── History Row (closed windows — read only, no expand, no actions) ────────
+
+const HistoryRow = ({ win }) => (
+  <div
+    className="flex items-center gap-3 rounded-2xl p-4"
+    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+  >
+    <div
+      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+      style={{ background: STATUS_META.closed.color }}
+    />
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+        {win.label}
+      </p>
+      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+        {fmtDateOnly(win.starts_at)} · {fmtTimeOnly(win.starts_at)}–{fmtTimeOnly(win.ends_at)}
+      </p>
+    </div>
+    <div className="text-right flex-shrink-0">
+      <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
+        {fmtDuration(win.starts_at, win.ends_at)}
+      </p>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>duration</p>
+    </div>
+  </div>
+)
 
 // ─── Summary Bar ──────────────────────────────────────────────────────────────
 
@@ -582,6 +667,8 @@ export default function RenderWindowManager() {
   const [editingWindow, setEditingWindow]     = useState(null)
   const [formSaving,    setFormSaving]        = useState(false)
   const [filter,        setFilter]            = useState('all')
+  const [view,          setView]              = useState('manage') // 'manage' | 'history'
+  const [showSubs,      setShowSubs]          = useState(false)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -674,17 +761,21 @@ export default function RenderWindowManager() {
     loadAll()
   }
 
-  // ── Filter ───────────────────────────────────────────────────────────────
-  const filtered = windows.filter((w) => {
+  // ── Split windows: manage (non-closed) vs history (closed) ─────────────────
+  const manageWindows = windows.filter((w) => w.status !== 'closed')
+  const historyWindows = windows
+    .filter((w) => w.status === 'closed')
+    .sort((a, b) => new Date(b.ends_at) - new Date(a.ends_at))
+
+  const filtered = manageWindows.filter((w) => {
     if (filter === 'all')       return true
     if (filter === 'active')    return w.status === 'active'
     if (filter === 'scheduled') return w.status === 'scheduled'
-    if (filter === 'closed')    return w.status === 'closed'
     if (filter === 'cancelled') return w.status === 'cancelled'
     return true
   })
 
-  const filters = ['all', 'active', 'scheduled', 'closed', 'cancelled']
+  const filters = ['all', 'active', 'scheduled', 'cancelled']
 
   return (
     <div className="flex flex-col gap-4">
@@ -701,15 +792,57 @@ export default function RenderWindowManager() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => setShowSubs(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+          >
+            <CreditCard size={13} /> Subscriptions
+          </button>
+          <button
             onClick={loadAll}
             className="w-9 h-9 rounded-xl flex items-center justify-center"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
           >
             <RefreshCw size={14} />
           </button>
+        </div>
+      </div>
+
+      {/* Tab switcher: Manage / History */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setView('manage')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
+          style={{
+            background: view === 'manage' ? 'var(--brand)' : 'var(--bg-card)',
+            color:      view === 'manage' ? 'white'        : 'var(--text-muted)',
+            border:     `1px solid ${view === 'manage' ? 'var(--brand)' : 'var(--border-color)'}`,
+          }}
+        >
+          <CalendarDays size={13} /> Windows {manageWindows.length > 0 && `· ${manageWindows.length}`}
+        </button>
+        <button
+          onClick={() => setView('history')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
+          style={{
+            background: view === 'history' ? 'var(--brand)' : 'var(--bg-card)',
+            color:      view === 'history' ? 'white'        : 'var(--text-muted)',
+            border:     `1px solid ${view === 'history' ? 'var(--brand)' : 'var(--border-color)'}`,
+          }}
+        >
+          <HistoryIcon size={13} /> History {historyWindows.length > 0 && `· ${historyWindows.length}`}
+        </button>
+      </div>
+
+      {view === 'manage' ? (
+        <>
+          {/* Summary bar */}
+          <SummaryBar summary={summary} loading={summaryLoad} />
+
+          {/* New window trigger */}
           <button
             onClick={() => { setEditingWindow(null); setShowForm((s) => !s) }}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
             style={{
               background: showForm ? 'var(--bg-elevated)' : 'var(--brand)',
               color:      showForm ? 'var(--text-muted)'  : 'white',
@@ -718,135 +851,169 @@ export default function RenderWindowManager() {
             {showForm ? <X size={13} /> : <Plus size={13} />}
             {showForm ? 'Cancel' : 'New Window'}
           </button>
-        </div>
-      </div>
 
-      {/* Summary bar */}
-      <SummaryBar summary={summary} loading={summaryLoad} />
-
-     {/* Tier pricing editor */}
-      <TierPricingEditor tiers={tiers} onTiersChange={setTiers} />
-
-      {/* Create form */}
-      <AnimatePresence>
-        {showForm && !editingWindow && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <WindowForm
-              onSave={handleCreate}
-              onCancel={() => setShowForm(false)}
-              saving={formSaving}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Edit form */}
-      <AnimatePresence>
-        {editingWindow && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                Editing: {editingWindow.label}
-              </p>
-              <button
-                onClick={() => setEditingWindow(null)}
-                style={{ color: 'var(--text-muted)' }}
+          {/* Create form */}
+          <AnimatePresence>
+            {showForm && !editingWindow && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
               >
-                <X size={14} />
-              </button>
+                <WindowForm
+                  onSave={handleCreate}
+                  onCancel={() => setShowForm(false)}
+                  saving={formSaving}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Edit form */}
+          <AnimatePresence>
+            {editingWindow && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    Editing: {editingWindow.label}
+                  </p>
+                  <button
+                    onClick={() => setEditingWindow(null)}
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <WindowForm
+                  initial={{
+                    label:     editingWindow.label,
+                    starts_at: fmtDatetimeLocal(editingWindow.starts_at),
+                    ends_at:   fmtDatetimeLocal(editingWindow.ends_at),
+                    capacity:  editingWindow.capacity ?? '',
+                    notes:     editingWindow.notes ?? '',
+                  }}
+                  onSave={handleEdit}
+                  onCancel={() => setEditingWindow(null)}
+                  saving={formSaving}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Filter pills */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {filters.map((f) => {
+              const meta  = f === 'all' ? null : STATUS_META[f]
+              const count = f === 'all'
+                ? manageWindows.length
+                : manageWindows.filter((w) => w.status === f).length
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
+                  style={{
+                    background: filter === f
+                      ? (meta?.bg ?? 'var(--bg-elevated)')
+                      : 'var(--bg-card)',
+                    color: filter === f
+                      ? (meta?.color ?? 'var(--text-primary)')
+                      : 'var(--text-muted)',
+                    border: `1px solid ${filter === f
+                      ? (meta?.color ?? 'var(--border-color)') + '44'
+                      : 'var(--border-color)'}`,
+                  }}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)} {count > 0 && `· ${count}`}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Window list */}
+          {loading ? (
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 rounded-2xl animate-pulse"
+                  style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }}
+                />
+              ))}
             </div>
-            <WindowForm
-              initial={{
-                label:     editingWindow.label,
-                starts_at: fmtDatetimeLocal(editingWindow.starts_at),
-                ends_at:   fmtDatetimeLocal(editingWindow.ends_at),
-                capacity:  editingWindow.capacity ?? '',
-                notes:     editingWindow.notes ?? '',
-              }}
-              onSave={handleEdit}
-              onCancel={() => setEditingWindow(null)}
-              saving={formSaving}
-            />
-          </motion.div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12">
+              <CalendarDays size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {filter === 'all' ? 'No windows yet' : `No ${filter} windows`}
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                {filter === 'all' ? 'Create your first render window above.' : 'Try a different filter.'}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <AnimatePresence mode="popLayout">
+                {filtered.map((win) => (
+                  <WindowCard
+                    key={win.id}
+                    win={win}
+                    onOpen={handleOpen}
+                    onClose={handleClose}
+                    onEdit={(w) => { setShowForm(false); setEditingWindow(w) }}
+                    onDelete={handleDelete}
+                    actionLoading={actionLoading}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {/* History list — read-only, no actions */}
+          {loading ? (
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 rounded-2xl animate-pulse"
+                  style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }}
+                />
+              ))}
+            </div>
+          ) : historyWindows.length === 0 ? (
+            <div className="text-center py-12">
+              <HistoryIcon size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                No closed windows yet
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Closed windows will appear here once they end.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {historyWindows.map((win) => (
+                <HistoryRow key={win.id} win={win} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Subscriptions modal */}
+      <AnimatePresence>
+        {showSubs && (
+          <Modal title="Subscription Tiers" onClose={() => setShowSubs(false)}>
+            <TierPricingEditor tiers={tiers} onTiersChange={setTiers} />
+          </Modal>
         )}
       </AnimatePresence>
-
-      {/* Filter pills */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {filters.map((f) => {
-          const meta  = f === 'all' ? null : STATUS_META[f]
-          const count = f === 'all'
-            ? windows.length
-            : windows.filter((w) => w.status === f).length
-          return (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
-              style={{
-                background: filter === f
-                  ? (meta?.bg ?? 'var(--bg-elevated)')
-                  : 'var(--bg-card)',
-                color: filter === f
-                  ? (meta?.color ?? 'var(--text-primary)')
-                  : 'var(--text-muted)',
-                border: `1px solid ${filter === f
-                  ? (meta?.color ?? 'var(--border-color)') + '44'
-                  : 'var(--border-color)'}`,
-              }}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)} {count > 0 && `· ${count}`}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Window list */}
-      {loading ? (
-        <div className="flex flex-col gap-2">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="h-16 rounded-2xl animate-pulse"
-              style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }}
-            />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <CalendarDays size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {filter === 'all' ? 'No windows yet' : `No ${filter} windows`}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            {filter === 'all' ? 'Create your first render window above.' : 'Try a different filter.'}
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((win) => (
-              <WindowCard
-                key={win.id}
-                win={win}
-                onOpen={handleOpen}
-                onClose={handleClose}
-                onEdit={(w) => { setShowForm(false); setEditingWindow(w) }}
-                onDelete={handleDelete}
-                actionLoading={actionLoading}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
     </div>
   )
 }
