@@ -762,15 +762,14 @@ const loadModels = useCallback(async () => {
 const videoRequired   = selectedModel?.requires_video ?? true
   const subjectRequired = selectedModel?.requires_image ?? true
 
-  const canGenerate =
+ const canGenerate =
     (!videoRequired   || (hasVideo && compat.compatible && !settingsDrifted)) &&
     (!subjectRequired || (hasSubject && !subjectSizeErr)) &&
     canAfford &&
     !!selectedModel &&
     !isProcessing &&
     !weeklyBlocked &&
-    creditCost > 0
-
+    (creditCost > 0 || selectedModel?.model_access_type === 'render_window')
   // ── Upload handlers ──────────────────────────────────────
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
