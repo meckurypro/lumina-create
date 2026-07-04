@@ -408,22 +408,23 @@ const RWModelCard = ({ model, onToggleRW, onUpdate, onRemove }) => {
   const [expanded, setExpanded] = useState(false)
   const [toggling, setToggling] = useState(false)
 
-  const handleToggleRW = async () => {
+const handleToggleRW = async () => {
     setToggling(true)
+    const newAccessType = model.model_access_type === 'render_window' ? 'normal' : 'render_window'
     const { error } = await supabase
       .from('models')
-      .update({ is_render_window: !model.is_render_window })
+      .update({ model_access_type: newAccessType })
       .eq('id', model.id)
     setToggling(false)
     if (error) { toast.error('Failed to update model'); return }
-    onToggleRW(model.id, !model.is_render_window)
-    toast.success(model.is_render_window
-      ? `${model.label} removed from render window`
-      : `${model.label} added to render window`
+    onToggleRW(model.id, newAccessType)
+    toast.success(newAccessType === 'render_window'
+      ? `${model.label} added to render window`
+      : `${model.label} removed from render window (now per-credit)`
     )
   }
 
-  const isRW = model.is_render_window
+  const isRW = model.model_access_type === 'render_window'
 
   return (
     <motion.div
@@ -571,14 +572,13 @@ export default function RenderWindowModelManager() {
   const [filter,        setFilter]        = useState('all')
   const [search,        setSearch]        = useState('')
 
-  const load = useCallback(async () => {
+const load = useCallback(async () => {
     setLoading(true)
     const [modelsRes, endpointRes] = await Promise.all([
-   supabase
-  .from('models')
-  .select('*')
-  .eq('model_access_type', 'render_window')
-  .order('label'),
+      supabase
+        .from('models')
+        .select('*')
+        .order('label'),
       supabase
         .from('app_settings')
         .select('value')
@@ -592,8 +592,8 @@ export default function RenderWindowModelManager() {
 
   useEffect(() => { load() }, [load])
 
-  const handleToggleRW = (id, isRW) => {
-    setModels(prev => prev.map(m => m.id === id ? { ...m, is_render_window: isRW } : m))
+ const handleToggleRW = (id, newAccessType) => {
+    setModels(prev => prev.map(m => m.id === id ? { ...m, model_access_type: newAccessType } : m))
   }
 
   const handleUpdate = (id, updates) => {
@@ -604,9 +604,9 @@ export default function RenderWindowModelManager() {
   const filtered = models.filter(m => {
     const matchesFilter =
       filter === 'all'          ? true :
-      filter === 'render_window'? m.is_render_window :
+      filter === 'render_window'? m.model_access_type === 'render_window' :
       filter === 'with_workflow'? !!m.comfyui_workflow_json :
-      filter === 'missing'      ? (m.is_render_window && !m.comfyui_workflow_json) :
+      filter === 'missing'      ? (m.model_access_type === 'render_window' && !m.comfyui_workflow_json) :
       true
 
     const matchesSearch = search.trim() === '' ||
@@ -617,9 +617,9 @@ export default function RenderWindowModelManager() {
     return matchesFilter && matchesSearch
   })
 
-  const rwCount      = models.filter(m => m.is_render_window).length
+  const rwCount      = models.filter(m => m.model_access_type === 'render_window').length
   const workflowCount= models.filter(m => m.comfyui_workflow_json).length
-  const missingCount = models.filter(m => m.is_render_window && !m.comfyui_workflow_json).length
+  const missingCount = models.filter(m => m.model_access_type === 'render_window' && !m.comfyui_workflow_json).length
 
   const filters = [
     { key: 'all',           label: 'All',            count: models.length },
