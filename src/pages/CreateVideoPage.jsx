@@ -1578,7 +1578,7 @@ const uploadedRefUrls = []
     || (caps.requiresImage &&  multiMode && refImages.length === 0)
     || (caps.requiresVideo && !caps.isVideoEdit && !editVideo)
     || (caps.requiresAudio && audioSlots.filter(Boolean).length === 0)
-    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit && !selectedModel?.is_render_window)
+    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit && selectedModel?.model_access_type !== 'render_window')
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
