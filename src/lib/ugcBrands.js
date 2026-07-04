@@ -256,6 +256,15 @@ export const OFFERING_TYPE_OPTIONS = [
   { value: 'both',      label: '⚡ Products & Services' },
 ]
 
+// Per-item type for individual ugc_brand_products rows — distinct from the
+// brand-level OFFERING_TYPE_OPTIONS above, which describes the brand as a
+// whole. This tags each library item so it renders correctly in the picker
+// and gets described accurately to the model.
+export const ITEM_TYPE_OPTIONS = [
+  { value: 'product', label: '📦 Product' },
+  { value: 'service', label: '🛠 Service' },
+]
+
 export const VISUAL_STYLE_OPTIONS = [
   { value: 'dark_moody',    label: '🖤 Dark & Moody'   },
   { value: 'light_airy',   label: '🤍 Light & Airy'   },
