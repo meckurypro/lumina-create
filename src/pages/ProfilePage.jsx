@@ -190,7 +190,8 @@ const RenderWindowCard = ({
   hasActiveSub,
   windowIsOpen,
   canUseRW,
-  hoursRemaining,
+  windowClosesAt,   // when the CURRENT open window closes (only meaningful while live)
+  windowOpensAt,    // when the NEXT window opens (only meaningful while closed)
   activeSub,
   activeTier,
   tiers,
@@ -198,7 +199,15 @@ const RenderWindowCard = ({
   onSubscribe,
   loading,
 }) => {
-  const fmtExpiry = (iso) => {
+  const fmtDate = (iso) => {
+    if (!iso) return null
+    return new Date(iso).toLocaleDateString('en-GB', {
+      day:   '2-digit',
+      month: 'short',
+    })
+  }
+
+  const fmtDateTime = (iso) => {
     if (!iso) return null
     return new Date(iso).toLocaleString('en-GB', {
       day:    '2-digit',
@@ -206,6 +215,17 @@ const RenderWindowCard = ({
       hour:   '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const fmtCountdown = (iso) => {
+    if (!iso) return null
+    const diffMs = new Date(iso) - new Date()
+    if (diffMs <= 0) return null
+    const mins = Math.floor(diffMs / 60000)
+    if (mins < 60) return `${mins}m`
+    const hrs = Math.floor(mins / 60)
+    const remMins = mins % 60
+    return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`
   }
 
   const [pendingTier, setPendingTier] = useState(null)
@@ -263,20 +283,23 @@ const RenderWindowCard = ({
         )}
       </div>
 
-      {loading ? (
+{loading ? (
         <div className="h-8 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
       ) : hasActiveSub ? (
         <>
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-sm font-black" style={{ color: canUseRW ? '#10b981' : 'var(--text-primary)' }}>
-                {canUseRW ? '🪟 Access Active' : '🕐 Waiting for Window'}
+                {canUseRW ? '🪟 Free access is live' : '🕐 Waiting for next window'}
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {activeTier?.display_name ? `${activeTier.display_name} plan · ` : ''}
                 {canUseRW
-                  ? 'Use premium models for free right now'
-                  : 'Window is currently closed'}
+                  ? (fmtCountdown(windowClosesAt)
+                      ? `Premium models free for ${fmtCountdown(windowClosesAt)} more`
+                      : 'Use premium models for free right now')
+                  : (windowOpensAt
+                      ? `Next window opens ${fmtDateTime(windowOpensAt)}`
+                      : 'No window scheduled yet')}
               </p>
             </div>
           </div>
@@ -289,18 +312,13 @@ const RenderWindowCard = ({
             }}
           >
             <div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Expires</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Your plan</p>
               <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                {fmtExpiry(activeSub?.expires_at)} · {hoursRemaining}h remaining
+                {activeTier?.display_name ? `${activeTier.display_name} · ` : ''}
+                expires {fmtDate(activeSub?.expires_at)}
               </p>
             </div>
           </div>
-
-          {!windowIsOpen && (
-            <p className="text-xs mt-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Check back when the next window opens.
-            </p>
-          )}
         </>
       ) : (
         <>
@@ -374,7 +392,8 @@ export default function ProfilePage() {
     hasActiveSub:   hasRWSub,
     windowIsOpen:   rwWindowOpen,
     canUseRWModels: canUseRW,
-    hoursRemaining: rwHoursLeft,
+    windowClosesAt: rwWindowClosesAt,
+    windowOpensAt:  rwWindowOpensAt,
     activeSub:      rwSub,
     activeTier:     rwActiveTier,
     tiers:          rwTiers,
@@ -544,11 +563,12 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Render Window card ── */}
-     <RenderWindowCard
+<RenderWindowCard
           hasActiveSub={hasRWSub}
           windowIsOpen={rwWindowOpen}
           canUseRW={canUseRW}
-          hoursRemaining={rwHoursLeft}
+          windowClosesAt={rwWindowClosesAt}
+          windowOpensAt={rwWindowOpensAt}
           activeSub={rwSub}
           activeTier={rwActiveTier}
           tiers={rwTiers}
