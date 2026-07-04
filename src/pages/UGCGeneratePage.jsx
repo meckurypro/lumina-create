@@ -8,6 +8,7 @@ import {
   X, Maximize2, Plus, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -118,7 +119,8 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
 export default function UGCGeneratePage() {
   const { profileId }                                            = useParams()
   const navigate                                                 = useNavigate()
-  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+ const { user, profile: userProfile, credits, refreshProfile } = useAuth()
+  const { canUseRWModels }                                       = useRenderWindowSubscription()
   const textareaRef                                              = useRef(null)
 
   const isMaster = userProfile?.user_tier === 'master'
@@ -169,13 +171,17 @@ const loadModels = useCallback(async () => {
       .eq('supports_multi_image', true)
       .order('sort_order')
     const isMaster      = userProfile?.user_tier === 'master'
-    const tierFiltered  = (data || []).filter((m) => isMaster || m.tier_required !== 'master')
+    const tierFiltered  = (data || [])
+      .filter((m) => isMaster || m.tier_required !== 'master')
+      // Render-window (ComfyUI) models only show with an active subscription
+      // AND a currently-open window.
+      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
     const list          = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked && m.type === 'image')
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
-  }, [userProfile?.user_tier, user?.id])
+  }, [userProfile?.user_tier, user?.id, canUseRWModels])
   const filteredModels = models.filter((m) => m.type === outputType)
   const selectedModel  = filteredModels.find((m) => m.value === model) || filteredModels[0]
 
