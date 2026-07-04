@@ -5,7 +5,7 @@ import {
   Plus, X, Check, Clock, Zap, ZapOff,
   CalendarDays, Users, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, Pencil, Trash2,
-  History as HistoryIcon, CreditCard, ArrowLeft,
+  History as HistoryIcon, CreditCard, ArrowLeft, Server,
 } from 'lucide-react'
 import { supabase, renderWindows } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -271,8 +271,13 @@ const EMPTY_FORM = {
   notes:     '',
 }
 
-const WindowForm = ({ initial, onSave, onCancel, saving }) => {
+const WindowForm = ({ initial, renderWindowModels, onSave, onCancel, saving }) => {
   const [form, setForm] = useState(initial ?? EMPTY_FORM)
+  const [stagedModels,   setStagedModels]   = useState([])
+  const [stagedModelId,  setStagedModelId]  = useState('')
+  const [stagedEndpoint, setStagedEndpoint] = useState('')
+
+  const isCreating = !initial
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
@@ -282,6 +287,33 @@ const WindowForm = ({ initial, onSave, onCancel, saving }) => {
     form.ends_at &&
     new Date(form.ends_at) > new Date(form.starts_at)
 
+  const availableToStage = (renderWindowModels ?? []).filter(
+    (m) => !stagedModels.some((s) => s.model_id === m.id)
+  )
+
+  const addStagedModel = () => {
+    if (!stagedModelId || !stagedEndpoint.trim()) {
+      toast.error('Select a model and paste its endpoint')
+      return
+    }
+    if (!stagedEndpoint.startsWith('http')) {
+      toast.error('Endpoint must be a valid URL')
+      return
+    }
+    const model = renderWindowModels.find((m) => m.id === stagedModelId)
+    setStagedModels((prev) => [...prev, {
+      model_id: stagedModelId,
+      label:    model?.label ?? stagedModelId,
+      endpoint: stagedEndpoint.trim(),
+    }])
+    setStagedModelId('')
+    setStagedEndpoint('')
+  }
+
+  const removeStagedModel = (modelId) => {
+    setStagedModels((prev) => prev.filter((m) => m.model_id !== modelId))
+  }
+
   const handleSubmit = () => {
     if (!isValid) return
     onSave({
@@ -290,6 +322,7 @@ const WindowForm = ({ initial, onSave, onCancel, saving }) => {
       ends_at:   new Date(form.ends_at).toISOString(),
       capacity:  form.capacity ? parseInt(form.capacity, 10) : null,
       notes:     form.notes.trim() || null,
+      models:    isCreating ? stagedModels : undefined,
     })
   }
 
@@ -373,6 +406,73 @@ const WindowForm = ({ initial, onSave, onCancel, saving }) => {
         />
       </div>
 
+      {/* Models & Endpoints — creation only; existing windows use the live editor on the card */}
+      {isCreating && (
+        <div>
+          <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+            Models & Endpoints (optional — can add later)
+          </label>
+
+          {stagedModels.length > 0 && (
+            <div className="flex flex-col gap-2 mb-2">
+              {stagedModels.map((m) => (
+                <div
+                  key={m.model_id}
+                  className="rounded-xl px-3 py-2 flex items-center gap-2"
+                  style={{ background: 'var(--bg-card)' }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
+                    <p className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)' }}>{m.endpoint}</p>
+                  </div>
+                  <button
+                    onClick={() => removeStagedModel(m.model_id)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {availableToStage.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <select
+                value={stagedModelId}
+                onChange={(e) => setStagedModelId(e.target.value)}
+                className="input-base w-full text-sm"
+              >
+                <option value="">Select a model…</option>
+                {availableToStage.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <input
+                  value={stagedEndpoint}
+                  onChange={(e) => setStagedEndpoint(e.target.value)}
+                  placeholder="https://abc123-8188.proxy.runpod.net"
+                  className="input-base flex-1 text-sm font-mono"
+                />
+                <button
+                  onClick={addStagedModel}
+                  className="px-4 rounded-xl text-xs font-bold flex-shrink-0"
+                  style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              No more render-window models available to add.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
@@ -395,6 +495,216 @@ const WindowForm = ({ initial, onSave, onCancel, saving }) => {
           Cancel
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Window Models Editor (live — for existing scheduled/active windows) ─────
+
+const WindowModelsEditor = ({ windowId, isLive }) => {
+  const [attachments,      setAttachments]      = useState([])
+  const [availableModels,  setAvailableModels]  = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [selectedModelId,  setSelectedModelId]  = useState('')
+  const [endpointDraft,    setEndpointDraft]    = useState('')
+  const [adding,           setAdding]           = useState(false)
+  const [editingId,        setEditingId]        = useState(null)
+  const [editDraft,        setEditDraft]        = useState('')
+  const [busyId,           setBusyId]           = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [attachRes, modelsRes] = await Promise.all([
+      supabase
+        .from('render_window_models')
+        .select('id, model_id, comfyui_endpoint, sort_order, model:models(id, label, value)')
+        .eq('render_window_id', windowId)
+        .order('sort_order'),
+      supabase
+        .from('models')
+        .select('id, label, value')
+        .eq('model_access_type', 'render_window')
+        .order('label'),
+    ])
+    setAttachments(attachRes.data || [])
+    setAvailableModels(modelsRes.data || [])
+    setLoading(false)
+  }, [windowId])
+
+  useEffect(() => { load() }, [load])
+
+  const attachedIds     = new Set(attachments.map((a) => a.model_id))
+  const selectableModels = availableModels.filter((m) => !attachedIds.has(m.id))
+
+  const handleAdd = async () => {
+    if (!selectedModelId || !endpointDraft.trim()) {
+      toast.error('Select a model and paste its endpoint')
+      return
+    }
+    if (!endpointDraft.startsWith('http')) {
+      toast.error('Endpoint must be a valid URL')
+      return
+    }
+    setAdding(true)
+    const { data, error } = await supabase
+      .from('render_window_models')
+      .insert({
+        render_window_id: windowId,
+        model_id:          selectedModelId,
+        comfyui_endpoint:  endpointDraft.trim(),
+        sort_order:        attachments.length,
+      })
+      .select('id, model_id, comfyui_endpoint, sort_order, model:models(id, label, value)')
+      .single()
+    setAdding(false)
+    if (error) { toast.error('Failed to add model — it may already be attached'); return }
+    toast.success(`${data.model.label} added`)
+    setAttachments((prev) => [...prev, data])
+    setSelectedModelId('')
+    setEndpointDraft('')
+  }
+
+  const handleRemove = async (id, label) => {
+    setBusyId(id)
+    const { error } = await supabase.from('render_window_models').delete().eq('id', id)
+    setBusyId(null)
+    if (error) { toast.error('Failed to remove model'); return }
+    toast.success(`${label} removed${isLive ? ' — blocked immediately' : ''}`)
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  const startEdit = (att) => { setEditingId(att.id); setEditDraft(att.comfyui_endpoint) }
+
+  const saveEdit = async (id) => {
+    if (!editDraft.trim() || !editDraft.startsWith('http')) {
+      toast.error('Endpoint must be a valid URL')
+      return
+    }
+    setBusyId(id)
+    const { error } = await supabase
+      .from('render_window_models')
+      .update({ comfyui_endpoint: editDraft.trim(), updated_at: new Date().toISOString() })
+      .eq('id', id)
+    setBusyId(null)
+    if (error) { toast.error('Failed to update endpoint'); return }
+    toast.success('Endpoint updated')
+    setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, comfyui_endpoint: editDraft.trim() } : a))
+    setEditingId(null)
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+      <div className="flex items-center gap-2 mb-2">
+        <Server size={12} style={{ color: 'var(--text-muted)' }} />
+        <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+          Models & Endpoints
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {attachments.length === 0 && (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              No models attached — generations against this window will be blocked until you add at least one.
+            </p>
+          )}
+
+          {attachments.map((att) => (
+            <div key={att.id} className="rounded-xl p-3" style={{ background: 'var(--bg-elevated)' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {att.model?.label ?? att.model_id}
+                </p>
+                <button
+                  onClick={() => handleRemove(att.id, att.model?.label)}
+                  disabled={busyId === att.id}
+                  className="text-xs px-2 py-1 rounded-lg"
+                  style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+
+              {editingId === att.id ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(att.id); if (e.key === 'Escape') setEditingId(null) }}
+                    className="input-base flex-1 text-xs font-mono"
+                  />
+                  <button
+                    onClick={() => saveEdit(att.id)}
+                    disabled={busyId === att.id}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 text-xs font-mono truncate" style={{ color: 'var(--text-muted)' }}>
+                    {att.comfyui_endpoint}
+                  </p>
+                  <button
+                    onClick={() => startEdit(att)}
+                    className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
+                    style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
+                  >
+                    <Pencil size={10} /> Edit
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {selectableModels.length > 0 && (
+            <div
+              className="rounded-xl p-3 flex flex-col gap-2"
+              style={{ background: 'var(--bg-card)', border: '1px dashed var(--border-color)' }}
+            >
+              <select
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+                className="input-base w-full text-xs"
+              >
+                <option value="">Select a model to add…</option>
+                {selectableModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <input
+                value={endpointDraft}
+                onChange={(e) => setEndpointDraft(e.target.value)}
+                placeholder="https://abc123-8188.proxy.runpod.net"
+                className="input-base w-full text-xs font-mono"
+              />
+              <button
+                onClick={handleAdd}
+                disabled={adding || !selectedModelId || !endpointDraft.trim()}
+                className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
+                style={{
+                  background: selectedModelId && endpointDraft.trim() ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
+                  color:      selectedModelId && endpointDraft.trim() ? '#10b981' : 'var(--text-muted)',
+                }}
+              >
+                <Plus size={12} /> {adding ? 'Adding…' : 'Add Model'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -511,6 +821,11 @@ const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) =
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Notes</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{win.notes}</p>
                 </div>
+              )}
+
+              {/* Models & Endpoints — live editing, changes apply immediately */}
+              {win.status !== 'cancelled' && (
+                <WindowModelsEditor windowId={win.id} isLive={isLive} />
               )}
 
               {/* Actions */}
@@ -669,20 +984,23 @@ export default function RenderWindowManager() {
   const [filter,        setFilter]            = useState('all')
   const [view,          setView]              = useState('manage') // 'manage' | 'history'
   const [showSubs,      setShowSubs]          = useState(false)
+  const [renderWindowModels, setRenderWindowModels] = useState([])
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     setSummaryLoad(true)
 
-    const [windowsRes, summaryRes, tiersRes] = await Promise.all([
+    const [windowsRes, summaryRes, tiersRes, rwModelsRes] = await Promise.all([
       renderWindows.getUpcoming(),
       renderWindows.getAdminSummary(),
       supabase.from('render_window_tiers').select('*').order('display_order'),
+      supabase.from('models').select('id, label, value').eq('model_access_type', 'render_window').order('label'),
     ])
 
     setWindows(windowsRes.data || [])
     setSummary(summaryRes.data ?? null)
     setTiers(tiersRes.data     || [])
+    setRenderWindowModels(rwModelsRes.data || [])
     setLoading(false)
     setSummaryLoad(false)
   }, [])
@@ -692,13 +1010,33 @@ export default function RenderWindowManager() {
   // ── Create window ────────────────────────────────────────────────────────
   const handleCreate = async (payload) => {
     setFormSaving(true)
+    const { models, ...windowPayload } = payload
     const { data, error } = await renderWindows.create({
-      ...payload,
+      ...windowPayload,
       created_by: user.id,
       status:     'scheduled',
     })
+
+    if (error) {
+      setFormSaving(false)
+      toast.error(`Failed to create window: ${error.message}`)
+      return
+    }
+
+    if (models?.length) {
+      const rows = models.map((m, idx) => ({
+        render_window_id: data.id,
+        model_id:          m.model_id,
+        comfyui_endpoint:  m.endpoint,
+        sort_order:        idx,
+      }))
+      const { error: modelsError } = await supabase.from('render_window_models').insert(rows)
+      if (modelsError) {
+        toast.error('Window created, but models failed to attach — add them from the window card.')
+      }
+    }
+
     setFormSaving(false)
-    if (error) { toast.error(`Failed to create window: ${error.message}`); return }
     toast.success('Window created')
     setShowForm(false)
     setWindows((prev) => [data, ...prev].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)))
@@ -861,6 +1199,7 @@ export default function RenderWindowManager() {
                 exit={{ opacity: 0, y: -8 }}
               >
                 <WindowForm
+                  renderWindowModels={renderWindowModels}
                   onSave={handleCreate}
                   onCancel={() => setShowForm(false)}
                   saving={formSaving}
