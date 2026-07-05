@@ -2,17 +2,17 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Zap, Home, Grip, Film, User, Users } from 'lucide-react'
+import { ArrowLeft, Zap, Home, Grip, Film, User, MessageCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { CreditBadge } from '@/components/ui/Modal'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 const NAV_ITEMS = [
-  { path: '/feed',       icon: Home,     label: 'Home'    },
-  { path: '/create', icon: Grip, label: 'Create' },
-  { path: '/create/ugc', icon: Users,    label: 'UGC'     },
-  { path: '/media',      icon: Film,     label: 'Media'   },
-  { path: '/profile',    icon: User,     label: 'Profile' },
+  { path: '/feed',    icon: Home,          label: 'Home'    },
+  { path: '/create',  icon: Grip,          label: 'Create'  },
+  { path: '/muse',     icon: MessageCircle, label: 'Muse'    },
+  { path: '/media',   icon: Film,          label: 'Media'   },
+  { path: '/profile', icon: User,          label: 'Profile' },
 ]
 
 const DesktopNavItem = ({ path, label }) => {
