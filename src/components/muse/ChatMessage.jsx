@@ -6,9 +6,8 @@ export default function ChatMessage({ message }) {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex flex-col gap-2 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col gap-2 max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
 
-        {/* Attachment chips — shown on user messages that included assets */}
         {message.attachments?.length > 0 && (
           <div className="flex gap-2 flex-wrap justify-end">
             {message.attachments.map((a) => (
@@ -26,21 +25,19 @@ export default function ChatMessage({ message }) {
           </div>
         )}
 
-        {/* Text bubble */}
         {message.content && (
           <div
-            className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+            className="rounded-3xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap"
             style={{
-              background: isUser ? 'var(--brand)' : 'var(--bg-card)',
+              background: isUser ? 'var(--brand)' : 'transparent',
               color:      isUser ? '#fff' : 'var(--text-primary)',
-              border:     isUser ? 'none' : '1px solid var(--border-color)',
+              ...(isUser ? {} : { padding: 0 }),
             }}
           >
             {message.content}
           </div>
         )}
 
-        {/* Proposal card — Muse proposed a generation, awaiting confirmation */}
         {message.tool?.kind === 'proposal' && (
           <div
             className="rounded-2xl px-4 py-3 flex flex-col gap-1.5 max-w-full"
@@ -58,12 +55,10 @@ export default function ChatMessage({ message }) {
           </div>
         )}
 
-        {/* Generation in progress — bound to the actual generations row */}
         {message.generation_id && (
           <GenerationCard generationId={message.generation_id} />
         )}
 
-        {/* Execution error surfaced inline instead of just a toast */}
         {message.tool?.kind === 'executing' && message.tool.error && (
           <div
             className="rounded-2xl px-4 py-2.5 text-sm"
