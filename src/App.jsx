@@ -31,6 +31,7 @@ import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
 import CreateImageUpscalerPage  from '@/pages/CreateImageUpscalerPage'
 import CreateVideoUpscalerPage  from '@/pages/CreateVideoUpscalerPage'
 import ModelPreferencesPage     from '@/pages/ModelPreferencesPage'
+import MusePage from '@/pages/MusePage'
 
 // ── UGC ──────────────────────────────────────────────────────
 import CreateUGCPage            from '@/pages/CreateUGCPage'
@@ -189,6 +190,10 @@ export default function App() {
             {/* ── Cinematic ───────────────────────────────────── */}
             <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
             <Route path="/cinematic/:projectId"        element={<Auth><CinematicResultPage /></Auth>} />
+
+            {/* ── Muse (full-screen — no AppLayout/BottomNav) ── */}
+            <Route path="/muse"              element={<RequireAuth><MusePage /></RequireAuth>} />
+            <Route path="/muse/:sessionId"   element={<RequireAuth><MusePage /></RequireAuth>} />
 
             {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
             <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
