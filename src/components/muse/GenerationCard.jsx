@@ -2,14 +2,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, XCircle, Download } from 'lucide-react'
+import { XCircle, ExternalLink } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 const POLL_MS = 4_000
 
 export default function GenerationCard({ generationId }) {
   const navigate = useNavigate()
-  const [gen, setGen]   = useState(null)
+  const [gen, setGen]         = useState(null)
   const [loading, setLoading] = useState(true)
   const pollRef = useRef(null)
 
@@ -19,7 +19,7 @@ export default function GenerationCard({ generationId }) {
     const fetchOnce = async () => {
       const { data } = await supabase
         .from('generations')
-        .select('id, status, output_url, output_thumbnail_url, output_type, error_message, credits_charged')
+        .select('id, status, output_url, output_thumbnail_url, output_type, error_message')
         .eq('id', generationId)
         .single()
       if (!cancelled && data) setGen(data)
@@ -38,16 +38,13 @@ export default function GenerationCard({ generationId }) {
       }
     })
 
-    return () => {
-      cancelled = true
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
+    return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current) }
   }, [generationId])
 
   if (loading || !gen) {
     return (
       <div
-        className="w-48 h-48 rounded-2xl flex items-center justify-center"
+        className="w-52 h-52 rounded-2xl flex items-center justify-center"
         style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
       >
         <SpinnerDot />
@@ -61,7 +58,7 @@ export default function GenerationCard({ generationId }) {
 
   return (
     <div
-      className="w-48 rounded-2xl overflow-hidden"
+      className="w-52 rounded-2xl overflow-hidden"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
     >
       <div
@@ -95,7 +92,7 @@ export default function GenerationCard({ generationId }) {
         ) : null}
       </div>
 
-      <div className="px-3 py-2 flex items-center justify-between">
+      <div className="px-3 py-2.5 flex items-center justify-between">
         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
           {isPending ? 'Creating…' : isFailed ? 'Failed' : 'Ready'}
         </span>
@@ -105,8 +102,8 @@ export default function GenerationCard({ generationId }) {
             className="flex items-center gap-1 text-xs font-semibold"
             style={{ color: 'var(--brand)' }}
           >
-            <Download size={12} />
             View
+            <ExternalLink size={12} />
           </button>
         )}
       </div>
