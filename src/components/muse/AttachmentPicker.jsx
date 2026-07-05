@@ -1,7 +1,7 @@
 // src/components/muse/AttachmentPicker.jsx
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { X, Upload, ImageIcon } from 'lucide-react'
+import { X, Upload, ImageIcon, VideoIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
 import { uploadAsset, listAssets, isVideoAsset } from '@/lib/assets'
@@ -31,6 +31,7 @@ export default function AttachmentPicker({ onSelect, onClose }) {
       onSelect({
         asset_id:      asset.id,
         thumbnail_url: asset.thumbnail_url || asset.file_url,
+        asset_type:    file.type.startsWith('video/') ? 'video' : 'image',
       })
     } catch (err) {
       toast.error(err.message || 'Upload failed')
@@ -40,15 +41,10 @@ export default function AttachmentPicker({ onSelect, onClose }) {
   }
 
   const handlePick = (asset) => {
-    if (isVideoAsset(asset)) {
-      // Muse's proposal/execution tools currently expect image assets;
-      // video attachment support can extend this same picker later.
-      toast('Video attachments are coming soon here — try an image for now.')
-      return
-    }
     onSelect({
       asset_id:      asset.id,
       thumbnail_url: asset.thumbnail_url || asset.file_url,
+      asset_type:    isVideoAsset(asset) ? 'video' : 'image',
     })
   }
 
@@ -73,7 +69,7 @@ export default function AttachmentPicker({ onSelect, onClose }) {
           </div>
 
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Add an image</p>
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Add media</p>
             <button onClick={onClose}>
               <X size={18} style={{ color: 'var(--text-muted)' }} />
             </button>
@@ -87,12 +83,12 @@ export default function AttachmentPicker({ onSelect, onClose }) {
             style={{ background: 'var(--brand)', color: '#fff', opacity: uploading ? 0.6 : 1 }}
           >
             <Upload size={16} />
-            {uploading ? 'Uploading…' : 'Upload a new photo'}
+            {uploading ? 'Uploading…' : 'Upload a photo or video'}
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             className="hidden"
             onChange={(e) => handleUpload(e.target.files)}
           />
@@ -116,26 +112,44 @@ export default function AttachmentPicker({ onSelect, onClose }) {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {assets.map((asset) => (
-                  <button
-                    key={asset.id}
-                    onClick={() => handlePick(asset)}
-                    className="aspect-square rounded-xl overflow-hidden relative"
-                    style={{ background: 'var(--bg-elevated)' }}
-                  >
-                    {asset.thumbnail_url || !isVideoAsset(asset) ? (
-                      <img
-                        src={asset.thumbnail_url || asset.file_url}
-                        alt={asset.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ImageIcon size={16} style={{ color: 'var(--text-muted)' }} />
-                      </div>
-                    )}
-                  </button>
-                ))}
+                {assets.map((asset) => {
+                  const isVideo = isVideoAsset(asset)
+                  return (
+                    <button
+                      key={asset.id}
+                      onClick={() => handlePick(asset)}
+                      className="aspect-square rounded-xl overflow-hidden relative"
+                      style={{ background: 'var(--bg-elevated)' }}
+                    >
+                      {asset.thumbnail_url ? (
+                        <img
+                          src={asset.thumbnail_url}
+                          alt={asset.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : !isVideo ? (
+                        <img
+                          src={asset.file_url}
+                          alt={asset.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <VideoIcon size={16} style={{ color: 'var(--text-muted)' }} />
+                        </div>
+                      )}
+
+                      {isVideo && (
+                        <div
+                          className="absolute bottom-1 right-1 w-5 h-5 rounded-md flex items-center justify-center"
+                          style={{ background: 'rgba(0,0,0,0.55)' }}
+                        >
+                          <VideoIcon size={11} color="#fff" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
