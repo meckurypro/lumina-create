@@ -2,16 +2,16 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Grip, GalleryHorizontalEnd, User, Zap, Users } from 'lucide-react'
+import { Home, Grip, GalleryHorizontalEnd, User, Zap, MessageCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 const NAV_ITEMS = [
-  { path: '/feed',       icon: Home,                 label: 'Home'    },
-  { path: '/create', icon: Grip, label: 'Create' },
-  { path: '/create/ugc', icon: Users,                 label: 'UGC'     },
-  { path: '/media',      icon: GalleryHorizontalEnd,  label: 'Media'   },
-  { path: '/profile',    icon: User,                  label: 'Profile' },
+  { path: '/feed',    icon: Home,                 label: 'Home'    },
+  { path: '/create',  icon: Grip,                 label: 'Create'  },
+  { path: '/muse',     icon: MessageCircle,        label: 'Muse'    },
+  { path: '/media',   icon: GalleryHorizontalEnd, label: 'Media'   },
+  { path: '/profile', icon: User,                 label: 'Profile' },
 ]
 
 const STAFF_NAV_LEFT  = NAV_ITEMS.slice(0, 2)
