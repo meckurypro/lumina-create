@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Lock, Unlock, CheckCircle, XCircle,
   ChevronDown, ChevronUp, Pencil, Check, X,
-  Image, Video, Repeat, Layers, Zap, RefreshCw, Crown
+  Image, Video, Repeat, Layers, Zap, RefreshCw, Crown,
+  Mic, Film, Wand2
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -85,6 +86,13 @@ const WAVESPEED_PRICING = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORY CONFIG
+// Every value in the `feature` DB column (per the models table CHECK
+// constraint) must map to exactly one category here, so nothing falls
+// through to "Other". The full feature list is:
+//   text_to_image, image_to_image, text_image_to_image, text_to_video,
+//   image_to_video, image_text_to_video, frame_to_frame, motion_transfer,
+//   image_generation, prompt_to_video, cinematic, face_swap, head_swap,
+//   lipsync, video_to_video, upscale
 // ─────────────────────────────────────────────────────────────────────────────
 const CATEGORIES = [
   {
@@ -135,6 +143,27 @@ const CATEGORIES = [
     icon: Layers,
     features: ['motion_transfer', 'cinematic'],
     color: '#f97316',
+  },
+  {
+    key: 'lipsync',
+    label: 'Lipsync / Talking Head',
+    icon: Mic,
+    features: ['lipsync'],
+    color: '#14b8a6',
+  },
+  {
+    key: 'video_to_video',
+    label: 'Video Editing',
+    icon: Film,
+    features: ['video_to_video'],
+    color: '#84cc16',
+  },
+  {
+    key: 'upscale',
+    label: 'Upscale & Enhance',
+    icon: Wand2,
+    features: ['upscale'],
+    color: '#a855f7',
   },
 ]
 
@@ -747,7 +776,10 @@ export default function ModelsManager() {
         ))}
       </div>
 
-      {/* Models not matching any category */}
+      {/* Models not matching any category — should always be empty now that
+          every DB `feature` value maps to a category above, but kept as a
+          safety net in case a new feature value is added to the DB later
+          without a matching category. */}
       {(() => {
         const allCatFeatures = CATEGORIES.flatMap(c => c.features)
         const uncategorised = filteredModels.filter(m => !allCatFeatures.includes(m.feature))
