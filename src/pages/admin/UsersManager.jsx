@@ -231,17 +231,42 @@ const TierAdjuster = ({ user, onClose, onUpdated }) => {
 }
 
 // ─── RW Granter ──────────────────────────────────────────
+// Now tier-aware: loads active render_window_tiers (e.g. 24hr / 1 week / 1 month)
+// and lets the admin pick which one to grant instead of a hardcoded 24hr window.
 
 const RWGranter = ({ user, onClose }) => {
   const { user: admin } = useAuth()
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [tiers, setTiers]     = useState([])
+  const [tiersLoading, setTiersLoading] = useState(true)
+  const [selectedTierId, setSelectedTierId] = useState(null)
+
+  useEffect(() => {
+    const fetchTiers = async () => {
+      setTiersLoading(true)
+      const { data, error } = await supabase
+        .from('render_window_tiers')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+      setTiersLoading(false)
+      if (error) { toast.error('Failed to load render window tiers'); return }
+      setTiers(data || [])
+      if (data?.length) setSelectedTierId(data[0].id)
+    }
+    fetchTiers()
+  }, [])
+
+  const selectedTier = tiers.find((t) => t.id === selectedTierId)
 
   const handleGrant = async () => {
+    if (!selectedTierId) return
     setSaving(true)
 
     const { data, error } = await supabase.rpc('admin_grant_render_window', {
       p_admin_id: admin.id,
       p_user_id:  user.id,
+      p_tier_id:  selectedTierId,
     })
 
     setSaving(false)
@@ -249,7 +274,7 @@ const RWGranter = ({ user, onClose }) => {
     if (error) { toast.error(`Failed: ${error.message}`); return }
     if (!data?.success) { toast.error(`Failed: ${data?.error || 'Unknown error'}`); return }
 
-    toast.success(`Render Window access granted to @${user.username} for 24hrs`)
+    toast.success(`Render Window access granted to @${user.username} · ${selectedTier?.display_name || ''}`)
     onClose()
   }
 
@@ -271,7 +296,7 @@ const RWGranter = ({ user, onClose }) => {
           <div>
             <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Grant Render Window</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              @{user.username} · 24hr free access to RW models
+              @{user.username} · free access to RW models
             </p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center"
@@ -286,23 +311,56 @@ const RWGranter = ({ user, onClose }) => {
         >
           <p className="text-xs font-bold mb-1" style={{ color: '#818cf8' }}>What this does</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            Inserts an active subscription row with ₦0 and expires in 24 hours.
+            Inserts an active subscription row with ₦0 for the selected duration.
             The user will be able to use render window models for free whenever a window is open — no payment required.
           </p>
         </div>
 
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>Duration</p>
+          {tiersLoading ? (
+            <div className="flex gap-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex-1 h-10 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)', opacity: 0.5 }} />
+              ))}
+            </div>
+          ) : tiers.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No active render window tiers found.</p>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {tiers.map((tier) => (
+                <button
+                  key={tier.id}
+                  onClick={() => setSelectedTierId(tier.id)}
+                  className="flex-1 min-w-[90px] py-2.5 rounded-xl text-xs font-bold transition-all"
+                  style={{
+                    background: selectedTierId === tier.id ? '#818cf8' : 'var(--bg-elevated)',
+                    color:      selectedTierId === tier.id ? 'white' : 'var(--text-secondary)',
+                  }}
+                >
+                  {tier.display_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button
           onClick={handleGrant}
-          disabled={saving}
+          disabled={saving || !selectedTierId}
           className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all"
           style={{
-            background: saving ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.12)',
+            background: saving || !selectedTierId ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.12)',
             color:      '#818cf8',
             border:     '1px solid rgba(99,102,241,0.3)',
             opacity:    saving ? 0.7 : 1,
           }}
         >
-          {saving ? 'Granting…' : '🪟 Grant 24hr Render Window Access'}
+          {saving
+            ? 'Granting…'
+            : selectedTier
+              ? `🪟 Grant ${selectedTier.display_name} Render Window Access`
+              : '🪟 Grant Render Window Access'}
         </button>
       </motion.div>
     </motion.div>
@@ -641,6 +699,9 @@ export default function UsersManager() {
     loadRecent()
   }, [])
 
+  // Search now delegates to the admin_search_users RPC, which matches
+  // username, display_name, AND email (via a join against auth.users
+  // server-side, since PostgREST can't query auth.users directly).
   const search = useCallback(async (q) => {
     const trimmed = q.trim()
     if (!trimmed) {
@@ -657,12 +718,7 @@ export default function UsersManager() {
     }
     setIsSearching(true)
     setLoading(true)
-    const { data, error } = await supabase
-      .from('profiles')
-      .select(FIELDS)
-      .or(`username.ilike.%${trimmed}%,display_name.ilike.%${trimmed}%`)
-      .order('username')
-      .limit(30)
+    const { data, error } = await supabase.rpc('admin_search_users', { p_query: trimmed })
     setLoading(false)
     if (error) { toast.error('Search failed'); return }
     setUsers(data || [])
@@ -698,7 +754,7 @@ export default function UsersManager() {
         <input
           value={query}
           onChange={handleChange}
-          placeholder="Search by username or name…"
+          placeholder="Search by username, name, or email…"
           className="input-base w-full pl-9 pr-9 text-sm"
           autoComplete="off"
         />
@@ -718,7 +774,7 @@ export default function UsersManager() {
               {isSearching ? 'No users found' : 'No users yet'}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {isSearching ? 'Try a different username or name.' : 'Users will appear here once they sign up.'}
+              {isSearching ? 'Try a different username, name, or email.' : 'Users will appear here once they sign up.'}
             </p>
           </motion.div>
         ) : (
