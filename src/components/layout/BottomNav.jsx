@@ -6,10 +6,14 @@ import { Home, Grip, GalleryHorizontalEnd, User, Zap, MessageCircle } from 'luci
 import { useAuth } from '@/context/AuthContext'
 import PromptIQPage from '@/pages/PromptIQPage'
 
+// Flip to true when Muse is ready to launch — routes, edge function, and
+// FeedPage stay wired regardless; this is the single on/off switch for nav.
+const MUSE_ENABLED = false
+
 const NAV_ITEMS = [
   { path: '/feed',    icon: Home,                 label: 'Home'    },
   { path: '/create',  icon: Grip,                 label: 'Create'  },
-  { path: '/muse',     icon: MessageCircle,        label: 'Muse'    },
+  ...(MUSE_ENABLED ? [{ path: '/muse', icon: MessageCircle, label: 'Muse' }] : []),
   { path: '/media',   icon: GalleryHorizontalEnd, label: 'Media'   },
   { path: '/profile', icon: User,                 label: 'Profile' },
 ]
