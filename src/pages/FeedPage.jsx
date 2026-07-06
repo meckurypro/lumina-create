@@ -346,7 +346,7 @@ const SplashScreen = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5, duration: 0.4 }}
         whileTap={{ scale: 0.96 }}
-        onClick={() => navigate('/muse')}
+        onClick={() => navigate('/create')}
         className="mt-6 px-8 py-3 rounded-2xl font-bold text-sm"
         style={{
           background: 'var(--brand)',
