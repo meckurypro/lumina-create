@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle,
   ChevronDown, ChevronUp, Copy, Zap, Film,
-  Image, User, Calendar, Search, X, Filter, Download, Eye,
+  Image, User, Calendar, Search, X, Filter, Download, Eye, Mail,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -309,6 +309,7 @@ const GenDetail = ({ gen }) => {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <DetailField label="Generation ID" value={gen.id} mono copyable />
           <DetailField label="User ID"       value={gen.user_id} mono copyable />
+          <DetailField label="User Email"    value={gen._email || 'Loading…'} copyable={!!gen._email} />
           {gen.provider_request_id && (
             <DetailField label="Provider Request ID" value={gen.provider_request_id} mono copyable />
           )}
@@ -499,11 +500,20 @@ const GenRow = ({ gen, onSync, syncing }) => {
             </span>
           </div>
 
-          {/* Second line: user ID + time + credits */}
+          {/* Second line: user email (or ID fallback) + time + credits */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-muted)' }}>
-              <User size={9} />
-              <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{gen.user_id?.slice(0, 8)}…</span>
+            <span
+              title={gen.user_id}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-muted)', maxWidth: 220 }}
+            >
+              {gen._email ? <Mail size={9} /> : <User size={9} />}
+              <span style={{
+                fontFamily: gen._email ? undefined : 'monospace',
+                fontSize: gen._email ? 10 : 9,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {gen._email || `${gen.user_id?.slice(0, 8)}…`}
+              </span>
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-muted)' }}>
               <Calendar size={9} />
@@ -658,7 +668,36 @@ export default function GenerationsManager() {
   const [syncingId,     setSyncingId]     = useState(null)
   const [bulkSyncing,   setBulkSyncing]   = useState(false)
 
+  // Cache of user_id -> email, populated as pages load.
+  const [emailMap, setEmailMap] = useState({})
+  const emailMapRef = useRef({})
+  emailMapRef.current = emailMap
+
   const debounceRef = useRef(null)
+
+  // ── Fetch emails for any user_ids we haven't resolved yet ─
+
+  const fetchEmailsFor = useCallback(async (rows) => {
+    const unresolved = [...new Set(
+      (rows || []).map(g => g.user_id).filter(Boolean)
+    )].filter(id => !(id in emailMapRef.current))
+
+    if (!unresolved.length) return
+
+    const { data, error } = await supabase.rpc('get_user_emails', { user_ids: unresolved })
+    if (error) {
+      console.error('Failed to fetch user emails', error)
+      return
+    }
+
+    setEmailMap(prev => {
+      const next = { ...prev }
+      for (const row of data || []) next[row.id] = row.email
+      // mark any ids that came back empty so we don't refetch them every page
+      for (const id of unresolved) if (!(id in next)) next[id] = null
+      return next
+    })
+  }, [])
 
   // ── Fetch counts ──────────────────────────────────────
 
@@ -702,7 +741,10 @@ export default function GenerationsManager() {
     setHasMore((offset + PAGE_SIZE) < (count || 0))
     setLoading(false)
     setLoadingMore(false)
-  }, [statusFilter, typeFilter, userSearch])
+
+    // Resolve emails for whatever landed on this page.
+    fetchEmailsFor(data)
+  }, [statusFilter, typeFilter, userSearch, fetchEmailsFor])
 
   useEffect(() => {
     setPage(0)
@@ -924,7 +966,7 @@ export default function GenerationsManager() {
           {gens.map(gen => (
             <GenRow
               key={gen.id}
-              gen={gen}
+              gen={{ ...gen, _email: emailMap[gen.user_id] }}
               onSync={handleSync}
               syncing={syncingId === gen.id}
             />
