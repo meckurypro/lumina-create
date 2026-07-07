@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Play, Film, Image, X, Sparkles, ArrowRight, Star, TrendingUp } from 'lucide-react'
 import { feed as feedDb, templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { useSubscriptionExpiryToast } from '@/hooks/useSubscriptionExpiryToast'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { Skeleton, EmptyState } from '@/components/ui/Modal'
@@ -387,6 +388,7 @@ const SplashScreen = () => {
 export default function FeedPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  useSubscriptionExpiryToast()
 
   const [feedEnabled,      setFeedEnabled]      = useState(true)
   const [configLoading,    setConfigLoading]    = useState(true)
