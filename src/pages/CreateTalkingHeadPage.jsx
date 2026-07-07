@@ -1394,7 +1394,15 @@ export default function CreateTalkingHeadPage() {
         .invoke(edgeFn, { body: { generationId: genRow.id } })
 
       if (invokeErr || invokeData?.error) {
-        const msg = invokeData?.error || invokeErr?.message || 'Generation blocked'
+        let msg = invokeData?.error || 'Generation blocked'
+        if (invokeErr) {
+          try {
+            const body = await invokeErr.context.json()
+            msg = body?.error || invokeErr.message || msg
+          } catch {
+            msg = invokeErr.message || msg
+          }
+        }
         toast.error(msg)
         await refreshProfile()
         return
