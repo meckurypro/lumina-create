@@ -27,6 +27,8 @@ import EmailManager          from '@/pages/admin/EmailManager'
 import RenderWindowManager   from '@/pages/admin/RenderWindowManager'
 import RenderWindowModelManager from '@/pages/admin/RenderWindowModelManager'
 import RenderWindowAnalytics from '@/pages/admin/RenderWindowAnalytics'
+import RenderWindowTeamTierManager from '@/pages/admin/RenderWindowTeamTierManager'
+import RWSellerManager       from '@/pages/admin/RWSellerManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -51,9 +53,11 @@ const TABS = (pendingCount) => [
   { id: 'staff',          label: 'Staff'                                               },
   { id: 'models',         label: 'Models'                                              },
   { id: 'generations',    label: 'Generations'                                         },
-  { id: 'render_windows', label: '🪟 Render Windows'                                   },
+ { id: 'render_windows', label: '🪟 Render Windows'                                   },
   { id: 'rw_models', label: '🖥️ RW Models' },
   { id: 'rw_analytics', label: '📊 RW Analytics' },
+  { id: 'rw_team_tiers', label: '👥 RW Team Tiers' },
+  { id: 'rw_sellers', label: '🛡️ RW Sellers' },
   { id: 'prompts',        label: 'Prompts'                                             },
   { id: 'templates',      label: 'Templates'                                           },
   { id: 'cinematic',      label: 'Cinematic'                                           },
@@ -335,10 +339,24 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* ── RW Analytics ── */}
+     {/* ── RW Analytics ── */}
         {activeTab === 'rw_analytics' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <RenderWindowAnalytics />
+          </motion.div>
+        )}
+
+        {/* ── RW Team Tiers ── */}
+        {activeTab === 'rw_team_tiers' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RenderWindowTeamTierManager />
+          </motion.div>
+        )}
+
+        {/* ── RW Sellers ── */}
+        {activeTab === 'rw_sellers' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RWSellerManager />
           </motion.div>
         )}
 
