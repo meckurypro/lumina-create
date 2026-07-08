@@ -3,8 +3,11 @@ import { useState } from 'react'
 import {
   Copy, Check, Users, RefreshCw, Trash2, AlertTriangle, KeyRound,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { CalendarClock } from 'lucide-react'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { useRenderWindowTeam } from '@/hooks/useRenderWindowTeam'
+import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import toast from 'react-hot-toast'
@@ -448,7 +451,100 @@ const TeamMemberCard = ({ memberTeam, usageToday }) => {
   )
 }
 
-// ─── Render Window Page ────────────────────────────────────
+// ─── Private Booking Summary Card ─────────────────────────
+
+const fmtCountdown = (ms) => {
+  if (ms == null) return null
+  if (ms <= 0) return 'starting now'
+  const totalSec = Math.floor(ms / 1000)
+  const d = Math.floor(totalSec / 86400)
+  const h = Math.floor((totalSec % 86400) / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  return `${m}m ${s}s`
+}
+
+const PrivateBookingCard = () => {
+  const navigate = useNavigate()
+  const {
+    loading, activeBookings, upcomingBooking, pendingBookings,
+    resetPendingBookings, countdownMs,
+  } = useRenderWindowBooking()
+
+  if (loading) return null
+
+  const hasLive     = activeBookings.length > 0
+  const hasUpcoming = !!upcomingBooking
+  const hasPending  = pendingBookings.length > 0
+  const hasReset    = resetPendingBookings.length > 0
+
+  return (
+    <div
+      className="rounded-2xl p-5 mb-3"
+      style={{
+        background: hasLive ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+        border:     `1px solid ${hasLive ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
+      }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <CalendarClock size={15} style={{ color: hasLive ? '#10b981' : 'var(--text-muted)' }} />
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          Private Booking
+        </p>
+        {hasLive && (
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
+            LIVE NOW
+          </span>
+        )}
+      </div>
+
+      {hasLive && (
+        <p className="text-sm font-black mb-1" style={{ color: '#10b981' }}>
+          Your private session is active — fire off jobs freely.
+        </p>
+      )}
+
+      {!hasLive && hasUpcoming && (
+        <>
+          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Your session starts in</p>
+          <p className="text-2xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>
+            {fmtCountdown(countdownMs)}
+          </p>
+        </>
+      )}
+
+      {!hasLive && !hasUpcoming && hasPending && (
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+          You have a booking awaiting admin confirmation.
+        </p>
+      )}
+
+      {hasReset && (
+        <p className="text-xs mb-2 font-semibold" style={{ color: '#6366f1' }}>
+          One of your bookings needs a new time — pick one below.
+        </p>
+      )}
+
+      {!hasLive && !hasUpcoming && !hasPending && !hasReset && (
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Book guaranteed, fire-and-forget access to a specific model for a chosen number of hours.
+        </p>
+      )}
+
+      <button
+        onClick={() => navigate('/render-window/book')}
+        className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+      >
+        {hasReset ? 'Pick a new time' : 'View / Book a Private Session'}
+      </button>
+    </div>
+  )
+}
+
+// ─── Render Window Page ────────────────────────────────
 
 export default function RenderWindowPage() {
   const rw = useRenderWindowSubscription()
@@ -464,6 +560,8 @@ export default function RenderWindowPage() {
     <>
       <TopBar showBack title="Render Window" showCredits />
       <PageWrapper>
+
+        <PrivateBookingCard />
 
         <IndividualPlanCard
           hasActiveSub={rw.hasActiveSub}
