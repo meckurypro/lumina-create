@@ -529,7 +529,7 @@ const PrivateBookingCard = () => {
 
       {!hasLive && !hasUpcoming && !hasPending && !hasReset && (
         <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Reserve a private studio session on the model(s) of your choice — no credit costs, use it as much as you like.
+          Reserve a private session on the model(s) of your choice — no credit costs, use it as much as you like.
         </p>
       )}
 
