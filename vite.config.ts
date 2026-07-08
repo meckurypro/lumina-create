@@ -36,9 +36,10 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
         ],
-        skipWaiting: true,
+     skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB — main chunk grew past the 2 MiB default
       },
       manifest: {
         name:             'Meckury AI',
