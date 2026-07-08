@@ -23,6 +23,7 @@ import ProfilePage              from '@/pages/ProfilePage'
 import CreditsPage              from '@/pages/CreditsPage'
 import RenderWindowPage         from '@/pages/RenderWindowPage'
 import PrivateBookingPage       from '@/pages/PrivateBookingPage'
+import PrivateBookingPage       from '@/pages/PrivateBookingPage'
 import ReferralsPage            from '@/pages/ReferralsPage'
 import SettingsPage             from '@/pages/SettingsPage'
 import AdminPage                from '@/pages/AdminPage'
@@ -267,6 +268,7 @@ export default function App() {
             <Route path="/profile"         element={<Auth><ProfilePage /></Auth>} />
             <Route path="/credits"         element={<Auth><CreditsPage /></Auth>} />
             <Route path="/render-window"        element={<Auth><RenderWindowPage /></Auth>} />
+            <Route path="/render-window/book"   element={<Auth><PrivateBookingPage /></Auth>} />
             <Route path="/render-window/book"   element={<Auth><PrivateBookingPage /></Auth>} />
             <Route path="/referrals"       element={<Auth><ReferralsPage /></Auth>} />
             <Route path="/settings"        element={<Auth><SettingsPage /></Auth>} />
