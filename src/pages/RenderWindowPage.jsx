@@ -502,7 +502,7 @@ const PrivateBookingCard = () => {
 
       {hasLive && (
         <p className="text-sm font-black mb-1" style={{ color: '#10b981' }}>
-          Your private session is active — fire off jobs freely.
+          Your private session is live — create as much as you like, no credit charges.
         </p>
       )}
 
@@ -529,7 +529,7 @@ const PrivateBookingCard = () => {
 
       {!hasLive && !hasUpcoming && !hasPending && !hasReset && (
         <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Book guaranteed, fire-and-forget access to a specific model for a chosen number of hours.
+          Reserve a private studio session on the model(s) of your choice — no credit costs, use it as much as you like.
         </p>
       )}
 
