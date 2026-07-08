@@ -453,7 +453,7 @@ const TeamMemberCard = ({ memberTeam, usageToday }) => {
 
 // ─── Private Booking Summary Card ─────────────────────────
 
-const fmtCountdown = (ms) => {
+const fmtCountdownMs = (ms) => {
   if (ms == null) return null
   if (ms <= 0) return 'starting now'
   const totalSec = Math.floor(ms / 1000)
@@ -509,8 +509,8 @@ const PrivateBookingCard = () => {
       {!hasLive && hasUpcoming && (
         <>
           <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Your session starts in</p>
-          <p className="text-2xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>
-            {fmtCountdown(countdownMs)}
+         <p className="text-2xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>
+            {fmtCountdownMs(countdownMs)}
           </p>
         </>
       )}
