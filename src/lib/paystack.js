@@ -100,7 +100,10 @@ export const getPendingPayment = () => {
 // Server-side creates the transaction, then we navigate to the hosted page.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const initializePayment = async ({ email, userId, packageSlug, tier, teamTierId }) => {
+export const initializePayment = async ({
+  email, userId, packageSlug, tier, teamTierId,
+  modelIds, startAt, durationHours, whatsappNumber,
+}) => {
   if (!email || !userId || !packageSlug) throw new Error('email, userId, packageSlug required')
 
   const callbackUrl = `${window.location.origin}/payment/callback`
@@ -111,7 +114,10 @@ export const initializePayment = async ({ email, userId, packageSlug, tier, team
       'Content-Type': 'application/json',
       Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({ email, userId, packageSlug, callbackUrl, tier, teamTierId }),
+    body: JSON.stringify({
+      email, userId, packageSlug, callbackUrl, tier, teamTierId,
+      modelIds, startAt, durationHours, whatsappNumber,
+    }),
   })
 
   let data
