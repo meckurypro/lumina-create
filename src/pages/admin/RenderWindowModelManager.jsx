@@ -259,6 +259,83 @@ const ResolutionEditor = ({ model, onSaved }) => {
   )
 }
 
+// ─── Hourly Booking Rate Editor ────────────────────────────────────────────
+
+const HourlyRateEditor = ({ model, onSaved }) => {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(model.booking_hourly_rate_ngn ?? '')
+  const [saving,  setSaving]  = useState(false)
+
+  const open = () => { setDraft(model.booking_hourly_rate_ngn ?? ''); setEditing(true) }
+
+  const save = async () => {
+    const value = draft === '' ? null : parseFloat(draft)
+    if (value !== null && (isNaN(value) || value < 0)) {
+      toast.error('Enter a valid rate, or clear it to disable private booking for this model')
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase
+      .from('models')
+      .update({ booking_hourly_rate_ngn: value })
+      .eq('id', model.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to save hourly rate'); return }
+    toast.success(value === null ? 'Private booking disabled for this model' : `Hourly rate set to ₦${value.toLocaleString()}`)
+    onSaved(value)
+    setEditing(false)
+  }
+
+  return (
+    <div>
+      {editing ? (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>₦</span>
+          <input
+            type="number"
+            min={0}
+            step="100"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Leave blank to disable"
+            className="input-base flex-1 text-sm"
+          />
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-3 py-2 rounded-xl text-xs font-bold"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="px-3 py-2 rounded-xl text-xs font-bold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {model.booking_hourly_rate_ngn != null
+              ? `₦${Number(model.booking_hourly_rate_ngn).toLocaleString()}/hr — bookable`
+              : 'Not bookable privately'}
+          </span>
+          <button
+            onClick={open}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+          >
+            <Pencil size={10} /> {model.booking_hourly_rate_ngn != null ? 'Edit' : 'Set rate'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Model Card ───────────────────────────────────────────────────────────────
 
 const RWModelCard = ({ model, onToggleRW, onUpdate, onRemove }) => {
@@ -399,7 +476,7 @@ const handleToggleRW = async () => {
                 />
               </div>
 
-              {/* Resolution */}
+            {/* Resolution */}
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
                 <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
                   Resolution Capabilities
@@ -410,6 +487,20 @@ const handleToggleRW = async () => {
                 <ResolutionEditor
                   model={model}
                   onSaved={(res) => onUpdate(model.id, res)}
+                />
+              </div>
+
+              {/* Private Booking Rate */}
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                  Private Booking Rate
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Price per hour for users booking guaranteed private access to this model. Leave blank to keep it off the booking page.
+                </p>
+                <HourlyRateEditor
+                  model={model}
+                  onSaved={(rate) => onUpdate(model.id, { booking_hourly_rate_ngn: rate })}
                 />
               </div>
             </div>
@@ -455,6 +546,7 @@ const load = useCallback(async () => {
       filter === 'render_window'? m.model_access_type === 'render_window' :
       filter === 'with_workflow'? !!m.comfyui_workflow_json :
       filter === 'missing'      ? (m.model_access_type === 'render_window' && !m.comfyui_workflow_json) :
+      filter === 'bookable'     ? m.booking_hourly_rate_ngn != null :
       true
 
     const matchesSearch = search.trim() === '' ||
@@ -469,11 +561,14 @@ const load = useCallback(async () => {
   const workflowCount= models.filter(m => m.comfyui_workflow_json).length
   const missingCount = models.filter(m => m.model_access_type === 'render_window' && !m.comfyui_workflow_json).length
 
+const bookableCount = models.filter(m => m.booking_hourly_rate_ngn != null).length
+
   const filters = [
     { key: 'all',           label: 'All',            count: models.length },
     { key: 'render_window', label: 'Render Window',  count: rwCount },
     { key: 'with_workflow', label: 'Has Workflow',   count: workflowCount },
     { key: 'missing',       label: 'Missing Workflow',count: missingCount },
+    { key: 'bookable',      label: 'Bookable',       count: bookableCount },
   ]
 
   return (
