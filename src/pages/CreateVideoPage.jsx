@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
@@ -1571,7 +1572,9 @@ const uploadedRefUrls = []
   const fullscreenImage = fullscreenIdx !== null ? refImages[fullscreenIdx] : null
   const isProcessing    = phase !== null
 
-  const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel
+ const { blocked: concurrencyBlocked, reason: concurrencyReason } = useModelConcurrency(selectedModel)
+
+  const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel || concurrencyBlocked
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
     || (caps.requiresEndFrame && !activeEndFrame)
     || (caps.requiresImage && !multiMode && !activeStartFrame)
@@ -1990,6 +1993,11 @@ const uploadedRefUrls = []
           {caps.requiresAudio && audioSlots.filter(Boolean).length === 0 && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               This model requires an audio track.
+            </p>
+          )}
+{concurrencyBlocked && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              {concurrencyReason || 'You already have a job running for this model — wait for it to finish.'}
             </p>
           )}
           {!canAfford && (
