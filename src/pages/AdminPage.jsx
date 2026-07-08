@@ -29,6 +29,7 @@ import RenderWindowModelManager from '@/pages/admin/RenderWindowModelManager'
 import RenderWindowAnalytics from '@/pages/admin/RenderWindowAnalytics'
 import RenderWindowTeamTierManager from '@/pages/admin/RenderWindowTeamTierManager'
 import RWSellerManager       from '@/pages/admin/RWSellerManager'
+import RenderWindowBookingsManager from '@/pages/admin/RenderWindowBookingsManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ const TABS = (pendingCount) => [
   { id: 'rw_analytics', label: '📊 RW Analytics' },
   { id: 'rw_team_tiers', label: '👥 RW Team Tiers' },
   { id: 'rw_sellers', label: '🛡️ RW Sellers' },
+  { id: 'rw_bookings', label: '📅 RW Bookings' },
   { id: 'prompts',        label: 'Prompts'                                             },
   { id: 'templates',      label: 'Templates'                                           },
   { id: 'cinematic',      label: 'Cinematic'                                           },
@@ -353,10 +355,17 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* ── RW Sellers ── */}
+      {/* ── RW Sellers ── */}
         {activeTab === 'rw_sellers' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <RWSellerManager />
+          </motion.div>
+        )}
+
+        {/* ── RW Bookings ── */}
+        {activeTab === 'rw_bookings' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RenderWindowBookingsManager />
           </motion.div>
         )}
 
