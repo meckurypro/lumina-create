@@ -1,0 +1,326 @@
+// src/pages/PrivateBookingPage.jsx
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Clock, Users, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
+import { bookableModels } from '@/lib/renderWindowBooking'
+import { TopBar } from '@/components/layout/TopBar'
+import { PageWrapper } from '@/components/layout/PageWrapper'
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+const fmtDateTime = (iso) => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+const fmtCountdown = (ms) => {
+  if (ms == null) return null
+  if (ms <= 0) return 'starting now'
+  const totalSec = Math.floor(ms / 1000)
+  const d = Math.floor(totalSec / 86400)
+  const h = Math.floor((totalSec % 86400) / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  return `${m}m ${s}s`
+}
+
+const STATUS_META = {
+  pending:       { label: 'Awaiting admin confirmation', color: '#f59e0b' },
+  accepted:      { label: 'Confirmed',                   color: '#10b981' },
+  cancelled:     { label: 'Cancelled',                    color: '#ef4444' },
+  reset_pending: { label: 'Needs a new time',             color: '#6366f1' },
+  expired:       { label: 'Expired',                      color: '#888'    },
+}
+
+// ── Booking form (used for both new bookings and reconfiguring a reset) ──
+
+const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
+  const [selectedIds, setSelectedIds] = useState([])
+  const [startAt,      setStartAt]    = useState('')
+  const [hours,        setHours]      = useState(2)
+  const [whatsapp,     setWhatsapp]   = useState('')
+
+  const toggleModel = (id) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
+
+  const total = useMemo(() => {
+    return models
+      .filter((m) => selectedIds.includes(m.id))
+      .reduce((sum, m) => sum + Number(m.booking_hourly_rate_ngn) * hours, 0)
+  }, [models, selectedIds, hours])
+
+  const overBudget = maxAmountNgn != null && total > maxAmountNgn + 1
+  const minStart = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) // 1hr min lead time
+
+  const isValid = selectedIds.length > 0 && startAt && hours > 0 && !overBudget
+
+  const handleSubmit = () => {
+    if (!isValid) return
+    onSubmit({ modelIds: selectedIds, startAt, durationHours: hours, whatsappNumber: whatsapp })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="text-xs font-bold uppercase tracking-wide block mb-2" style={{ color: 'var(--text-muted)' }}>
+          Select model(s)
+        </label>
+        <div className="flex flex-col gap-2">
+          {models.map((m) => {
+            const isSelected = selectedIds.includes(m.id)
+            return (
+              <button
+                key={m.id}
+                onClick={() => toggleModel(m.id)}
+                className="w-full flex items-center justify-between gap-2 py-3 px-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                style={{
+                  background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
+                  color:      isSelected ? '#818cf8' : 'var(--text-primary)',
+                  border:     `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'var(--border-color)'}`,
+                }}
+              >
+                <span>{isSelected ? '✓ ' : ''}{m.label}</span>
+                <span className="text-xs font-semibold">₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          Start time
+        </label>
+        <input
+          type="datetime-local"
+          min={minStart}
+          value={startAt}
+          onChange={(e) => setStartAt(e.target.value)}
+          className="input-base w-full text-sm"
+        />
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          At least 1 hour from now — admin needs time to confirm and prep a pod.
+        </p>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          Duration (hours)
+        </label>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={hours}
+          onChange={(e) => setHours(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          className="input-base w-full text-sm"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          WhatsApp number (optional)
+        </label>
+        <input
+          type="tel"
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          placeholder="e.g. 0803 000 0000"
+          className="input-base w-full text-sm"
+        />
+      </div>
+
+      <div
+        className="rounded-xl px-3.5 py-3 flex items-center justify-between"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+      >
+        <span className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>Total</span>
+        <span className="text-lg font-black" style={{ color: overBudget ? '#ef4444' : 'var(--text-primary)' }}>
+          ₦{total.toLocaleString()}
+        </span>
+      </div>
+
+      {overBudget && (
+        <p className="text-xs flex items-center gap-1.5" style={{ color: '#ef4444' }}>
+          <AlertTriangle size={12} /> This exceeds the ₦{maxAmountNgn.toLocaleString()} you already paid. Reduce hours or models.
+        </p>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!isValid || submitting}
+        className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all"
+        style={{
+          background: isValid ? 'var(--brand)' : 'var(--bg-card)',
+          color:      isValid ? 'white'        : 'var(--text-muted)',
+          opacity:    submitting ? 0.7 : 1,
+        }}
+      >
+        {submitting ? 'Processing…' : submitLabel}
+      </button>
+    </div>
+  )
+}
+
+// ── Booking Card (read-only, for pending/accepted/cancelled) ──────────────
+
+const BookingCard = ({ b, now }) => {
+  const meta = STATUS_META[b.status] ?? STATUS_META.pending
+  const modelLabels = (b.models || []).map((m) => m.model?.label).filter(Boolean).join(', ')
+  const isUpcoming = b.status === 'accepted' && b.requested_start_at && new Date(b.requested_start_at) > now
+  const isLive     = b.status === 'accepted' && new Date(b.requested_start_at) <= now && new Date(b.ends_at) > now
+  const countdown  = isUpcoming ? fmtCountdown(new Date(b.requested_start_at).getTime() - now.getTime()) : null
+
+  return (
+    <div
+      className="rounded-2xl p-4 mb-3"
+      style={{
+        background: isLive ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+        border:     `1px solid ${isLive ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{modelLabels || 'Booking'}</p>
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${meta.color}20`, color: meta.color }}>
+          {isLive ? 'Live now' : meta.label}
+        </span>
+      </div>
+
+      {b.requested_start_at && (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {fmtDateTime(b.requested_start_at)} → {fmtDateTime(b.ends_at)}
+        </p>
+      )}
+
+      {countdown && (
+        <p className="text-lg font-black mt-2" style={{ color: '#10b981' }}>⏳ {countdown}</p>
+      )}
+
+      {isLive && (
+        <p className="text-xs mt-2 font-semibold" style={{ color: '#10b981' }}>
+          Your private session is active — fire off as many jobs as you need for {modelLabels}.
+        </p>
+      )}
+
+      <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+        ₦{Number(b.amount_ngn).toLocaleString()} paid
+        {b.duration_hours ? ` · ${b.duration_hours}h` : ''}
+      </p>
+
+      {b.admin_notes && (
+        <p className="text-xs mt-2 italic" style={{ color: 'var(--text-muted)' }}>"{b.admin_notes}"</p>
+      )}
+    </div>
+  )
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────
+
+export default function PrivateBookingPage() {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const {
+    bookings, loading, booking, book, reconfigure, refresh,
+    resetPendingBookings, countdownMs,
+  } = useRenderWindowBooking()
+
+  const [models,        setModels]        = useState([])
+  const [modelsLoading,  setModelsLoading] = useState(true)
+
+  useEffect(() => {
+    bookableModels.getAll().then(({ data }) => {
+      setModels(data || [])
+      setModelsLoading(false)
+    })
+  }, [])
+
+  const now = new Date()
+  const activeReset = resetPendingBookings[0] ?? null
+
+  return (
+    <>
+      <TopBar showBack title="Book Private Session" showCredits />
+      <PageWrapper>
+
+        {activeReset && (
+          <div
+            className="rounded-2xl p-4 mb-4"
+            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <RefreshCw size={14} style={{ color: '#6366f1' }} />
+              <p className="text-sm font-bold" style={{ color: '#6366f1' }}>
+                Pick a new time — ₦{Number(activeReset.amount_ngn).toLocaleString()} already paid
+              </p>
+            </div>
+            {activeReset.admin_notes && (
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>"{activeReset.admin_notes}"</p>
+            )}
+            {!modelsLoading && (
+              <BookingForm
+                models={models}
+                maxAmountNgn={Number(activeReset.amount_ngn)}
+                submitting={booking}
+                submitLabel="Save new time"
+                onSubmit={(cfg) => reconfigure(activeReset.id, cfg)}
+              />
+            )}
+          </div>
+        )}
+
+        {!activeReset && (
+          <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Clock size={15} style={{ color: 'var(--text-muted)' }} />
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                New Private Booking
+              </p>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Book guaranteed access to specific model(s) for a chosen number of hours.
+              Payment is instant; an admin then confirms your slot — you'll see a countdown here once confirmed.
+            </p>
+            {modelsLoading ? (
+              <div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+            ) : models.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+                No models are currently available for private booking.
+              </p>
+            ) : (
+              <BookingForm
+                models={models}
+                maxAmountNgn={null}
+                submitting={booking}
+                submitLabel="Pay & Request Booking"
+                onSubmit={book}
+              />
+            )}
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+            Your Bookings
+          </p>
+          {loading ? (
+            <div className="h-20 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
+          ) : bookings.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No bookings yet.</p>
+          ) : (
+            bookings
+              .filter((b) => b.status !== 'reset_pending')
+              .map((b) => <BookingCard key={b.id} b={b} now={now} />)
+          )}
+        </div>
+
+      </PageWrapper>
+    </>
+  )
+}
