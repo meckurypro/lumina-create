@@ -1,7 +1,7 @@
 // src/pages/PrivateBookingPage.jsx
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Users, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { Clock, AlertTriangle, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
 import { bookableModels } from '@/lib/renderWindowBooking'
@@ -36,6 +36,25 @@ const STATUS_META = {
   cancelled:     { label: 'Cancelled',                    color: '#ef4444' },
   reset_pending: { label: 'Needs a new time',             color: '#6366f1' },
   expired:       { label: 'Expired',                      color: '#888'    },
+}
+
+// ── Bookings tab status dot ─────────────────────────────────────────────
+// Derives a single glanceable indicator for the tab bar from the full
+// bookings list, without the user needing to open the tab first.
+const getTabIndicator = (bookings, now) => {
+  if (!bookings || bookings.length === 0) return null
+
+  const isLive = (b) =>
+    b.status === 'accepted' &&
+    b.requested_start_at && new Date(b.requested_start_at) <= now &&
+    b.ends_at && new Date(b.ends_at) > now
+
+  if (bookings.some(isLive)) return { color: '#10b981', pulse: true }
+  if (bookings.some((b) => b.status === 'pending' || b.status === 'reset_pending')) {
+    return { color: '#f59e0b', pulse: false }
+  }
+  if (bookings.some((b) => b.status === 'accepted')) return { color: '#10b981', pulse: false }
+  return { color: '#888', pulse: false } // only history (cancelled/expired) left
 }
 
 // ── Booking form (used for both new bookings and reconfiguring a reset) ──
@@ -75,19 +94,38 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
         <div className="flex flex-col gap-2">
           {models.map((m) => {
             const isSelected = selectedIds.includes(m.id)
+            // description is a per-model DB field (models.description) — plain-language
+            // explanation of what the model is for, editable by admins without a deploy.
+            const blurb = m.description || m.sublabel || null
             return (
               <button
                 key={m.id}
                 onClick={() => toggleModel(m.id)}
-                className="w-full flex items-center justify-between gap-2 py-3 px-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                className="w-full flex items-start justify-between gap-3 py-3 px-3.5 rounded-xl text-left transition-all active:scale-[0.98]"
                 style={{
                   background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
-                  color:      isSelected ? '#818cf8' : 'var(--text-primary)',
                   border:     `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'var(--border-color)'}`,
                 }}
               >
-                <span>{isSelected ? '✓ ' : ''}{m.label}</span>
-                <span className="text-xs font-semibold">₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr</span>
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                  >
+                    {isSelected ? '✓ ' : ''}{m.label}
+                  </span>
+                  {blurb && (
+                    <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                      {blurb}
+                    </span>
+                  )}
+                </div>
+                <span
+                  className="text-xs font-semibold shrink-0 pt-0.5"
+                  style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                >
+                  ₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr
+                </span>
               </button>
             )
           })}
@@ -221,6 +259,57 @@ const BookingCard = ({ b, now }) => {
   )
 }
 
+// ── Tab bar ──────────────────────────────────────────────────────────────
+
+const TabBar = ({ activeTab, setActiveTab, indicator }) => {
+  const tabs = [
+    { id: 'book',     label: 'Book' },
+    { id: 'bookings', label: 'Your Bookings' },
+  ]
+
+  return (
+    <div
+      className="flex gap-1 p-1 rounded-2xl mb-4"
+      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
+      {tabs.map((t) => {
+        const isActive = activeTab === t.id
+        return (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all"
+            style={{
+              background: isActive ? 'var(--bg-elevated)' : 'transparent',
+              color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+            }}
+          >
+            {t.label}
+            {t.id === 'bookings' && indicator && (
+              <span
+                className="inline-block rounded-full"
+                style={{
+                  width: 7,
+                  height: 7,
+                  background: indicator.color,
+                  boxShadow: indicator.pulse ? `0 0 0 3px ${indicator.color}33` : 'none',
+                  animation: indicator.pulse ? 'pulse-dot 1.6s ease-in-out infinite' : 'none',
+                }}
+              />
+            )}
+          </button>
+        )
+      })}
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────
 
 export default function PrivateBookingPage() {
@@ -233,6 +322,7 @@ export default function PrivateBookingPage() {
 
   const [models,        setModels]        = useState([])
   const [modelsLoading,  setModelsLoading] = useState(true)
+  const [activeTab,      setActiveTab]     = useState('book')
 
   useEffect(() => {
     bookableModels.getAll().then(({ data }) => {
@@ -243,83 +333,95 @@ export default function PrivateBookingPage() {
 
   const now = new Date()
   const activeReset = resetPendingBookings[0] ?? null
+  const indicator = useMemo(() => getTabIndicator(bookings, now), [bookings])
+
+  // If a reset needs attention, surface it by default — same reasoning as
+  // before, just now expressed as a tab switch instead of a reorder.
+  useEffect(() => {
+    if (activeReset) setActiveTab('book')
+  }, [activeReset])
 
   return (
     <>
       <TopBar showBack title="Book Private Session" showCredits />
       <PageWrapper>
 
-        {activeReset && (
-          <div
-            className="rounded-2xl p-4 mb-4"
-            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <RefreshCw size={14} style={{ color: '#6366f1' }} />
-              <p className="text-sm font-bold" style={{ color: '#6366f1' }}>
-                Pick a new time — ₦{Number(activeReset.amount_ngn).toLocaleString()} already paid
-              </p>
-            </div>
-            {activeReset.admin_notes && (
-              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>"{activeReset.admin_notes}"</p>
+        <TabBar activeTab={activeTab} setActiveTab={setActiveTab} indicator={indicator} />
+
+        {activeTab === 'book' && (
+          <>
+            {activeReset && (
+              <div
+                className="rounded-2xl p-4 mb-4"
+                style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <RefreshCw size={14} style={{ color: '#6366f1' }} />
+                  <p className="text-sm font-bold" style={{ color: '#6366f1' }}>
+                    Pick a new time — ₦{Number(activeReset.amount_ngn).toLocaleString()} already paid
+                  </p>
+                </div>
+                {activeReset.admin_notes && (
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>"{activeReset.admin_notes}"</p>
+                )}
+                {!modelsLoading && (
+                  <BookingForm
+                    models={models}
+                    maxAmountNgn={Number(activeReset.amount_ngn)}
+                    submitting={booking}
+                    submitLabel="Save new time"
+                    onSubmit={(cfg) => reconfigure(activeReset.id, cfg)}
+                  />
+                )}
+              </div>
             )}
-            {!modelsLoading && (
-              <BookingForm
-                models={models}
-                maxAmountNgn={Number(activeReset.amount_ngn)}
-                submitting={booking}
-                submitLabel="Save new time"
-                onSubmit={(cfg) => reconfigure(activeReset.id, cfg)}
-              />
+
+            {!activeReset && (
+              <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock size={15} style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    New Private Booking
+                  </p>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Reserve a private studio session on the model(s) of your choice — no credit costs,
+                  use it as much as you like for the time you book. Payment is instant; we'll confirm
+                  your session shortly after, and you'll see a countdown here once it's locked in.
+                </p>
+                {modelsLoading ? (
+                  <div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+                ) : models.length === 0 ? (
+                  <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+                    No models are currently available for private booking.
+                  </p>
+                ) : (
+                  <BookingForm
+                    models={models}
+                    maxAmountNgn={null}
+                    submitting={booking}
+                    submitLabel="Pay & Request Booking"
+                    onSubmit={book}
+                  />
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
 
-        {!activeReset && (
-          <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={15} style={{ color: 'var(--text-muted)' }} />
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                New Private Booking
-              </p>
-            </div>
-            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Reserve a private studio session on the model(s) of your choice — no credit costs,
-              use it as much as you like for the time you book. Payment is instant; we'll confirm
-              your session shortly after, and you'll see a countdown here once it's locked in.
-            </p>
-            {modelsLoading ? (
-              <div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
-            ) : models.length === 0 ? (
-              <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
-                No models are currently available for private booking.
-              </p>
+        {activeTab === 'bookings' && (
+          <div>
+            {loading ? (
+              <div className="h-20 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
+            ) : bookings.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No bookings yet.</p>
             ) : (
-              <BookingForm
-                models={models}
-                maxAmountNgn={null}
-                submitting={booking}
-                submitLabel="Pay & Request Booking"
-                onSubmit={book}
-              />
+              bookings
+                .filter((b) => b.status !== 'reset_pending')
+                .map((b) => <BookingCard key={b.id} b={b} now={now} />)
             )}
           </div>
         )}
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
-            Your Bookings
-          </p>
-          {loading ? (
-            <div className="h-20 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
-          ) : bookings.length === 0 ? (
-            <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>No bookings yet.</p>
-          ) : (
-            bookings
-              .filter((b) => b.status !== 'reset_pending')
-              .map((b) => <BookingCard key={b.id} b={b} now={now} />)
-          )}
-        </div>
 
       </PageWrapper>
     </>
