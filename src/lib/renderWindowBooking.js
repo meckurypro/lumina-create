@@ -46,7 +46,7 @@ export const bookableModels = {
     const [{ data: models, error: modelsError }, { rate, error: rateError }] = await Promise.all([
       supabase
         .from('models')
-        .select('id, label, value, feature')
+        .select('id, label, value, feature, description, sublabel')
         .eq('model_access_type', 'render_window')
         .eq('is_active', true)
         .order('label'),
