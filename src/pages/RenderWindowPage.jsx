@@ -1,13 +1,16 @@
 // src/pages/RenderWindowPage.jsx
 import { useState } from 'react'
 import {
-  Copy, Check, Users, RefreshCw, Trash2, AlertTriangle, KeyRound,
+  Copy, Check, Users, RefreshCw, Trash2, AlertTriangle, KeyRound, LogOut,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { CalendarClock } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { useRenderWindowTeam } from '@/hooks/useRenderWindowTeam'
+import { useRenderWindowCohort } from '@/hooks/useRenderWindowCohort'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
+import { joinRenderWindowCode } from '@/lib/renderWindowCohort'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import toast from 'react-hot-toast'
@@ -46,6 +49,11 @@ const expiryLabel = (days) =>
   days === 0 ? 'less than a day' : days === 1 ? '1 day' : `${days} days`
 
 // ─── Individual Plan Card ─────────────────────────────────
+// NOTE: Weekend Access needs no changes here — it's just another row in
+// `tiers` (render_window_tiers), same as Daily/Weekly/Monthly. The tier's
+// `duration_type` ('fixed_days' vs 'weekend') only affects how expires_at
+// is computed server-side on subscribe; this card already renders whatever
+// tiers come back generically.
 
 const IndividualPlanCard = ({
   hasActiveSub, windowIsOpen, canUseRW, windowClosesAt, windowOpensAt,
@@ -188,7 +196,9 @@ const IndividualPlanCard = ({
                         ? 'Currently unavailable'
                         : isPending
                           ? 'Activating…'
-                          : `₦${Number(t.price_ngn).toLocaleString()} · ${t.duration_days}d`}
+                          : `₦${Number(t.price_ngn).toLocaleString()} · ${
+                              t.duration_type === 'weekend' ? 'Weekend' : `${t.duration_days}d`
+                            }`}
                     </span>
                   </button>
                 )
@@ -201,9 +211,11 @@ const IndividualPlanCard = ({
   )
 }
 
-// ─── Team Code Join Card ──────────────────────────────────
+// ─── Unified "Have a Code?" Join Card ──────────────────────
+// Tries Team codes and Cohort codes transparently — the user doesn't need
+// to know which kind of code they were given.
 
-const TeamJoinCard = ({ onJoin, joining }) => {
+const CodeJoinCard = ({ onJoin, joining }) => {
   const [code, setCode] = useState('')
 
   return (
@@ -214,14 +226,14 @@ const TeamJoinCard = ({ onJoin, joining }) => {
       <div className="flex items-center gap-2 mb-3">
         <KeyRound size={15} style={{ color: 'var(--text-muted)' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          Have a team code?
+          Have a code?
         </p>
       </div>
       <div className="flex gap-2">
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="Enter team code"
+          placeholder="Enter team or cohort code"
           className="input-base flex-1 text-sm font-mono"
         />
         <button
@@ -451,6 +463,62 @@ const TeamMemberCard = ({ memberTeam, usageToday }) => {
   )
 }
 
+// ─── Cohort Member Card ─────────────────────────────────────
+// Same experience as Team Member — seat, quota, expiry — plus a Leave
+// button, since cohorts have no owner to manage the roster for you.
+
+const CohortMemberCard = ({ memberCohort, usageToday, leaving, onLeave }) => {
+  const { cohort, seat } = memberCohort
+  const days = daysRemaining(cohort.ends_at)
+  const showWarning = days !== null && days <= 3
+
+  return (
+    <div
+      className="rounded-2xl p-5 mb-3"
+      style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Users size={15} style={{ color: 'var(--text-muted)' }} />
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          {cohort.name} · Seat #{seat.seat_number}
+        </p>
+      </div>
+
+      {showWarning && (
+        <div
+          className="rounded-xl px-3 py-2.5 mb-3 flex items-center gap-2"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}
+        >
+          <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <p className="text-xs font-bold" style={{ color: '#ef4444' }}>
+            Cohort access ends in {expiryLabel(days)}
+          </p>
+        </div>
+      )}
+
+      <div
+        className="rounded-xl px-3 py-2.5 mb-3"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+      >
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Today's usage</p>
+        <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
+          {usageToday}/{cohort.daily_unit_quota} units · ends {fmtDate(cohort.ends_at)}
+        </p>
+      </div>
+
+      <button
+        onClick={onLeave}
+        disabled={leaving}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
+        style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+      >
+        <LogOut size={12} />
+        {leaving ? 'Leaving…' : 'Leave cohort'}
+      </button>
+    </div>
+  )
+}
+
 // ─── Private Booking Summary Card ─────────────────────────
 
 const fmtCountdownMs = (ms) => {
@@ -547,14 +615,40 @@ const PrivateBookingCard = () => {
 // ─── Render Window Page ────────────────────────────────
 
 export default function RenderWindowPage() {
+  const { user } = useAuth()
   const rw = useRenderWindowSubscription()
   const {
     isRwSeller, tiers: teamTiers, ownerTeam, memberTeam, usageToday, seatUsageMap,
-    loading: teamLoading, purchasing, joining, busySeat, resetting,
-    purchase, joinByCode, removeMember, resetCode,
+    loading: teamLoading, purchasing, busySeat, resetting,
+    purchase, removeMember, resetCode, refresh: refreshTeam,
   } = useRenderWindowTeam()
+  const {
+    memberCohort, usageToday: cohortUsageToday, loading: cohortLoading,
+    leaving, leave: leaveCohort, refresh: refreshCohort,
+  } = useRenderWindowCohort()
 
-  const showJoinCard = !ownerTeam && !memberTeam
+  const [joining, setJoining] = useState(false)
+
+  // Unified join — tries Team code, then Cohort code, server-side.
+  // Mutual exclusivity (can't join a cohort while in a team, and vice
+  // versa, one of each at a time) is enforced by the RPC, not here.
+  const handleJoin = async (code) => {
+    if (!user?.id) return
+    if (!code?.trim()) { toast.error('Enter a code'); return }
+    setJoining(true)
+    const { data, error } = await joinRenderWindowCode(user.id, code.trim())
+    setJoining(false)
+    if (error || !data?.success) {
+      toast.error(data?.error || 'Could not join')
+      return
+    }
+    toast.success(data.seat_number ? `Joined — seat #${data.seat_number}` : 'Joined')
+    refreshTeam()
+    refreshCohort()
+  }
+
+  const groupsLoading = teamLoading || cohortLoading
+  const showJoinCard  = !groupsLoading && !ownerTeam && !memberTeam && !memberCohort
 
   return (
     <>
@@ -592,12 +686,21 @@ export default function RenderWindowPage() {
           <TeamMemberCard memberTeam={memberTeam} usageToday={usageToday} />
         )}
 
+        {!cohortLoading && memberCohort && (
+          <CohortMemberCard
+            memberCohort={memberCohort}
+            usageToday={cohortUsageToday}
+            leaving={leaving}
+            onLeave={leaveCohort}
+          />
+        )}
+
         {!teamLoading && isRwSeller && !ownerTeam && (
           <TeamPurchaseCard tiers={teamTiers} purchasing={purchasing} onPurchase={purchase} />
         )}
 
-        {!teamLoading && showJoinCard && (
-          <TeamJoinCard onJoin={joinByCode} joining={joining} />
+        {showJoinCard && (
+          <CodeJoinCard onJoin={handleJoin} joining={joining} />
         )}
 
       </PageWrapper>
