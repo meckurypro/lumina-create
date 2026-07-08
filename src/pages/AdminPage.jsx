@@ -30,6 +30,7 @@ import RenderWindowAnalytics from '@/pages/admin/RenderWindowAnalytics'
 import RenderWindowTeamTierManager from '@/pages/admin/RenderWindowTeamTierManager'
 import RWSellerManager       from '@/pages/admin/RWSellerManager'
 import RenderWindowBookingsManager from '@/pages/admin/RenderWindowBookingsManager'
+import CohortManager from '@/pages/admin/CohortManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ const TABS = (pendingCount) => [
   { id: 'rw_team_tiers', label: '👥 RW Team Tiers' },
   { id: 'rw_sellers', label: '🛡️ RW Sellers' },
   { id: 'rw_bookings', label: '📅 RW Bookings' },
+  { id: 'rw_cohorts', label: '🎓 RW Cohorts' },
   { id: 'prompts',        label: 'Prompts'                                             },
   { id: 'templates',      label: 'Templates'                                           },
   { id: 'cinematic',      label: 'Cinematic'                                           },
@@ -366,6 +368,13 @@ export default function AdminPage() {
         {activeTab === 'rw_bookings' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <RenderWindowBookingsManager />
+          </motion.div>
+        )}
+ 
+        {/* ── RW Cohorts ── */}
+        {activeTab === 'rw_cohorts' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <CohortManager />
           </motion.div>
         )}
 
