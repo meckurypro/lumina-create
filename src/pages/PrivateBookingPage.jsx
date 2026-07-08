@@ -8,6 +8,10 @@ import { bookableModels } from '@/lib/renderWindowBooking'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 
+// ── Config ───────────────────────────────────────────────────────────────
+
+const MIN_BOOKING_LEAD_HOURS = 2 // admin needs time to confirm and schedule the session
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const fmtDateTime = (iso) => {
@@ -77,9 +81,14 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
   }, [models, selectedIds, hours])
 
   const overBudget = maxAmountNgn != null && total > maxAmountNgn + 1
-  const minStart = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16) // 1hr min lead time
+  const minStart = new Date(Date.now() + MIN_BOOKING_LEAD_HOURS * 60 * 60 * 1000).toISOString().slice(0, 16)
 
-  const isValid = selectedIds.length > 0 && startAt && hours > 0 && !overBudget
+  const isValid =
+    selectedIds.length > 0 &&
+    startAt &&
+    new Date(startAt) >= new Date(minStart) &&
+    hours > 0 &&
+    !overBudget
 
   const handleSubmit = () => {
     if (!isValid) return
@@ -176,7 +185,7 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
           className="input-base w-full text-sm"
         />
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          At least 1 hour from now — admin needs time to confirm and prep a pod.
+          At least 2 hours from now — admin needs time to confirm and schedule the session.
         </p>
       </div>
 
@@ -417,7 +426,7 @@ export default function PrivateBookingPage() {
                   </p>
                 </div>
                 <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Reserve a private studio session on the model(s) of your choice — no credit costs,
+                  Reserve a private creative session on the model(s) of your choice — no credit costs,
                   use it as much as you like for the time you book. Payment is instant; we'll confirm
                   your session shortly after, and you'll see a countdown here once it's locked in.
                 </p>
