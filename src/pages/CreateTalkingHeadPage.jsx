@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
@@ -1050,8 +1051,9 @@ export default function CreateTalkingHeadPage() {
 
   useEffect(() => { loadModels() }, [loadModels])
 
-  const selectedModel = models.find((m) => m.value === model)
+ const selectedModel = models.find((m) => m.value === model)
   const caps          = getModelCaps(selectedModel)
+  const { blocked: concurrencyBlocked, reason: concurrencyReason } = useModelConcurrency(selectedModel)
 
   // ── Reset when model changes ─────────────────────────────────────────────
   useEffect(() => {
@@ -1112,13 +1114,16 @@ export default function CreateTalkingHeadPage() {
 
     if (caps.requiresVoiceId && !script1.trim())
       errors.push('Type a script — this model converts your text to speech')
-   if (!canAfford) errors.push('Not enough credits')
+  if (!canAfford) errors.push('Not enough credits')
     if (creditCost === 0 && selectedModel && selectedModel?.model_access_type !== 'render_window')
       errors.push('Model pricing is misconfigured — contact support')
+    if (concurrencyBlocked)
+      errors.push(concurrencyReason || 'You already have a job running for this model — wait for it to finish.')
 
     return errors
   }, [selectedModel, caps, faceImage, videoFile, videoTooShort, videoNeedsTrim,
-      audioMode1, audioSlots1, audioMode2, audioSlots2, script1, canAfford])
+      audioMode1, audioSlots1, audioMode2, audioSlots2, script1, canAfford,
+      concurrencyBlocked, concurrencyReason])
 
   const buttonDisabled = isProcessing || validationErrors.length > 0
 
