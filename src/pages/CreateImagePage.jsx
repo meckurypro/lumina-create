@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, Maximize2, Plus } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -294,10 +295,11 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
       ? (resolutionCosts[resolution] ?? resolutionCosts['1k'] ?? 0)
       : (hasImages && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
     : 0
-  const canAfford      = credits >= creditCost
+const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const imageRequired  = modelRequiresImage && !hasImages
-  const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired
+  const { blocked: concurrencyBlocked, reason: concurrencyReason } = useModelConcurrency(selectedModel)
+  const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired || concurrencyBlocked
     || (creditCost === 0 && !!selectedModel && selectedModel?.model_access_type !== 'render_window')
 
   useEffect(() => {
@@ -700,7 +702,12 @@ const [fullscreenIdx, setFullscreenIdx] = useState(null)
               ? 'Not enough credits'
               : `Generate${creditCost ? ` · ${creditCost} cr` : ''}`}
           </button>
-          {promptEmpty && !submitting && (
+  {concurrencyBlocked && (
+            <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
+              {concurrencyReason || 'You already have a job running for this model — wait for it to finish.'}
+            </p>
+          )}
+          {promptEmpty && !submitting && !concurrencyBlocked && (
             <p className="text-xs text-center mt-2" style={{ color: 'var(--text-muted)' }}>
               Enter a prompt to continue.
             </p>
