@@ -533,8 +533,18 @@ const WindowModelsEditor = ({ windowId, isLive }) => {
 
   useEffect(() => { load() }, [load])
 
-  const attachedIds     = new Set(attachments.map((a) => a.model_id))
-  const selectableModels = availableModels.filter((m) => !attachedIds.has(m.id))
+  // NOTE: models can now be attached to the SAME window more than once
+  // (multiple pods for the same model, round-robin dispatched). So we no
+  // longer exclude already-attached models from the picker — we just label
+  // them so admin knows they're adding an additional pod, not a first one.
+  const attachedCounts = attachments.reduce((acc, a) => {
+    acc[a.model_id] = (acc[a.model_id] || 0) + 1
+    return acc
+  }, {})
+  const selectableModels = availableModels.map((m) => ({
+    ...m,
+    _alreadyAttachedCount: attachedCounts[m.id] || 0,
+  }))
 
   const handleAdd = async () => {
     if (!selectedModelId || !endpointDraft.trim()) {
@@ -681,7 +691,9 @@ const WindowModelsEditor = ({ windowId, isLive }) => {
               >
                 <option value="">Select a model to add…</option>
                 {selectableModels.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
+                  <option key={m.id} value={m.id}>
+                    {m.label}{m._alreadyAttachedCount > 0 ? ` (+${m._alreadyAttachedCount} pod${m._alreadyAttachedCount > 1 ? 's' : ''} already attached)` : ''}
+                  </option>
                 ))}
               </select>
               <input
@@ -855,14 +867,14 @@ const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) =
                   )
                 )}
 
-                {/* Edit — only for scheduled */}
-                {win.status === 'scheduled' && (
+               {/* Edit — scheduled or currently active (lets admin extend/change end time live) */}
+                {(win.status === 'scheduled' || win.status === 'active') && (
                   <button
                     onClick={() => onEdit(win)}
                     className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
                     style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
                   >
-                    <Pencil size={11} /> Edit
+                    <Pencil size={11} /> {win.status === 'active' ? 'Edit / Extend' : 'Edit'}
                   </button>
                 )}
 
