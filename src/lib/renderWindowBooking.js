@@ -7,15 +7,59 @@
 import { supabase } from '@/lib/supabase'
 import { initializePayment } from '@/lib/paystack'
 
-// ── Bookable models (admin has set an hourly rate) ────────────────────────
-export const bookableModels = {
-  getAll: () =>
+const GLOBAL_RATE_SETTING_KEY = 'render_window_booking_hourly_rate_ngn'
+
+// ── Global booking rate (single Naira/hr rate applied to every bookable
+// render-window model) ──────────────────────────────────────────────────
+export const renderWindowBookingSettings = {
+  getRate: async () => {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', GLOBAL_RATE_SETTING_KEY)
+      .maybeSingle()
+    if (error) return { rate: null, error }
+    return { rate: data?.value != null ? Number(data.value) : null, error: null }
+  },
+
+  setRate: (adminId, rateNgn) =>
     supabase
-      .from('models')
-      .select('id, label, value, feature, booking_hourly_rate_ngn')
-      .not('booking_hourly_rate_ngn', 'is', null)
-      .eq('is_active', true)
-      .order('label'),
+      .from('app_settings')
+      .upsert(
+        {
+          key:         GLOBAL_RATE_SETTING_KEY,
+          value:       String(rateNgn),
+          description: 'Global hourly rate (NGN) charged for private render-window bookings',
+          updated_by:  adminId,
+          updated_at:  new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      ),
+}
+
+// ── Bookable models — now derived automatically from render-window status.
+// A model is bookable the moment an admin sets it to
+// model_access_type = 'render_window' AND is_active = true. No separate
+// per-model rate step; every bookable model shares the one global rate.
+export const bookableModels = {
+  getAll: async () => {
+    const [{ data: models, error: modelsError }, { rate, error: rateError }] = await Promise.all([
+      supabase
+        .from('models')
+        .select('id, label, value, feature')
+        .eq('model_access_type', 'render_window')
+        .eq('is_active', true)
+        .order('label'),
+      renderWindowBookingSettings.getRate(),
+    ])
+
+    if (modelsError) return { data: [], error: modelsError }
+
+    // Shape preserved as `booking_hourly_rate_ngn` so PrivateBookingPage's
+    // BookingForm (which reads that field per model) needs no changes.
+    const data = (models || []).map((m) => ({ ...m, booking_hourly_rate_ngn: rate }))
+    return { data, error: rateError || null }
+  },
 }
 
 // ── Current user's bookings ────────────────────────────────────────────────
