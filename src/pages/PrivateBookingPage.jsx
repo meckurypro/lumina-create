@@ -1,7 +1,7 @@
 // src/pages/PrivateBookingPage.jsx
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Clock, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
 import { bookableModels } from '@/lib/renderWindowBooking'
@@ -61,6 +61,7 @@ const getTabIndicator = (bookings, now) => {
 
 const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
   const [selectedIds, setSelectedIds] = useState([])
+  const [expandedId,  setExpandedId]  = useState(null) // which model card is expanded, if any
   const [startAt,      setStartAt]    = useState('')
   const [hours,        setHours]      = useState(2)
   const [whatsapp,     setWhatsapp]   = useState('')
@@ -94,39 +95,70 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
         <div className="flex flex-col gap-2">
           {models.map((m) => {
             const isSelected = selectedIds.includes(m.id)
+            const isExpanded = expandedId === m.id
             // description is a per-model DB field (models.description) — plain-language
             // explanation of what the model is for, editable by admins without a deploy.
             const blurb = m.description || m.sublabel || null
+
             return (
-              <button
+              <div
                 key={m.id}
-                onClick={() => toggleModel(m.id)}
-                className="w-full flex items-start justify-between gap-3 py-3 px-3.5 rounded-xl text-left transition-all active:scale-[0.98]"
+                className="rounded-xl overflow-hidden transition-all"
                 style={{
                   background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
                   border:     `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'var(--border-color)'}`,
                 }}
               >
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span
-                    className="text-sm font-bold"
-                    style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
-                  >
-                    {isSelected ? '✓ ' : ''}{m.label}
-                  </span>
-                  {blurb && (
-                    <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-                      {blurb}
-                    </span>
-                  )}
-                </div>
-                <span
-                  className="text-xs font-semibold shrink-0 pt-0.5"
-                  style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                {/* Header row — expands the description if there is one,
+                    otherwise just toggles selection directly. */}
+                <button
+                  onClick={() => blurb ? setExpandedId(isExpanded ? null : m.id) : toggleModel(m.id)}
+                  className="w-full flex items-center justify-between gap-3 py-3 px-3.5 text-left active:scale-[0.99] transition-all"
                 >
-                  ₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr
-                </span>
-              </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isSelected && <Check size={14} style={{ color: '#818cf8', flexShrink: 0 }} />}
+                    <span
+                      className="text-sm font-bold truncate"
+                      style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                    >
+                      {m.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className="text-xs font-semibold"
+                      style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                    >
+                      ₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr
+                    </span>
+                    {blurb && (
+                      isExpanded
+                        ? <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
+                        : <ChevronDown size={16} style={{ color: 'var(--text-muted)' }} />
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded panel — read the description, then an explicit
+                    CTA to add/remove it from the booking. */}
+                {isExpanded && blurb && (
+                  <div className="px-3.5 pb-3.5 flex flex-col gap-3">
+                    <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                      {blurb}
+                    </p>
+                    <button
+                      onClick={() => toggleModel(m.id)}
+                      className="w-full py-2.5 rounded-lg text-xs font-bold transition-all active:scale-[0.98]"
+                      style={{
+                        background: isSelected ? 'rgba(239,68,68,0.12)' : 'var(--brand)',
+                        color:      isSelected ? '#ef4444' : 'white',
+                      }}
+                    >
+                      {isSelected ? 'Remove from booking' : 'Add to booking'}
+                    </button>
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
