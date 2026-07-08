@@ -500,11 +500,11 @@ const PrivateBookingCard = () => {
         )}
       </div>
 
-      {hasLive && (
-        <p className="text-sm font-black mb-1" style={{ color: '#10b981' }}>
-          Your private session is live — create as much as you like, no credit charges.
-        </p>
-      )}
+    {hasLive && (
+  <p className="text-sm font-black mb-1" style={{ color: '#10b981' }}>
+    Your private session is live — enjoy creating with your Model(s), no credit charges.
+  </p>
+)}
 
       {!hasLive && hasUpcoming && (
         <>
