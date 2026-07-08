@@ -205,7 +205,7 @@ const BookingCard = ({ b, now }) => {
 
       {isLive && (
         <p className="text-xs mt-2 font-semibold" style={{ color: '#10b981' }}>
-          Your private session is active — fire off as many jobs as you need for {modelLabels}.
+          Your private session is live — use {modelLabels} as much as you like, no credit charges, until it ends.
         </p>
       )}
 
@@ -284,8 +284,9 @@ export default function PrivateBookingPage() {
               </p>
             </div>
             <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Book guaranteed access to specific model(s) for a chosen number of hours.
-              Payment is instant; an admin then confirms your slot — you'll see a countdown here once confirmed.
+              Reserve a private studio session on the model(s) of your choice — no credit costs,
+              use it as much as you like for the time you book. Payment is instant; we'll confirm
+              your session shortly after, and you'll see a countdown here once it's locked in.
             </p>
             {modelsLoading ? (
               <div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
