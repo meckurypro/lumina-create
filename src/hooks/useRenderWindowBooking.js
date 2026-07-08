@@ -12,12 +12,10 @@ const POLL_INTERVAL_MS = 30_000
 
 export function useRenderWindowBooking() {
   const { user } = useAuth()
-
-  const [bookings,   setBookings]   = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [booking,    setBookingBusy] = useState(false)
-  const [now,        setNow]        = useState(() => new Date())
-
+  const [bookings,    setBookings]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [booking,     setBookingBusy] = useState(false)
+  const [now,         setNow]         = useState(() => new Date())
   const pollRef = useRef(null)
   const tickRef = useRef(null)
 
@@ -70,10 +68,19 @@ export function useRenderWindowBooking() {
   }, [user?.id, refresh])
 
   // ── Derived state ──────────────────────────────────────────────────────
-  const activeBookings = bookings.filter((b) => b.status === 'accepted' && new Date(b.ends_at) > now)
+  // A booking is "active" (live) only once its start time has actually
+  // arrived — accepted-but-not-yet-started bookings must NOT count as
+  // active just because they haven't ended yet.
+  const activeBookings = bookings.filter(
+    (b) => b.status === 'accepted' &&
+      new Date(b.requested_start_at) <= now &&
+      new Date(b.ends_at) > now
+  )
+
   const upcomingBooking = bookings
     .filter((b) => b.status === 'accepted' && new Date(b.requested_start_at) > now)
     .sort((a, b) => new Date(a.requested_start_at) - new Date(b.requested_start_at))[0] ?? null
+
   const pendingBookings      = bookings.filter((b) => b.status === 'pending')
   const resetPendingBookings = bookings.filter((b) => b.status === 'reset_pending')
 
