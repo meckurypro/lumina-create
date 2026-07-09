@@ -138,7 +138,7 @@ export default function ProfilePage() {
           style={{ border: '1px solid var(--border-color)' }}
         >
           <NavRow icon={Zap}         label="Credits"       onClick={() => navigate('/credits')} />
-          <NavRow icon={MonitorPlay} label="Render Window" onClick={() => navigate('/render-window')} />
+          <NavRow icon={MonitorPlay} label="AI Sessions"   onClick={() => navigate('/render-window')} />
           <NavRow icon={Gift}        label="Referrals"     onClick={() => navigate('/referrals')} />
           <NavRow icon={Settings}    label="Settings"      onClick={() => navigate('/settings')} />
           {isAdmin && (
@@ -163,4 +163,4 @@ export default function ProfilePage() {
       </PageWrapper>
     </>
   )
-}
+                                                                                   }
