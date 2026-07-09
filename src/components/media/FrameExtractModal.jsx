@@ -227,12 +227,14 @@ export default function FrameExtractModal({
     }
   }
 
-  const videoStyle = (() => {
+ const videoStyle = (() => {
     const geo = getGeometry()
     if (!geo) return { opacity: 0 }
     return {
       width:     geo.videoDispW,
       height:    geo.videoDispH,
+      maxWidth:  'none',   // override Tailwind Preflight's `video { max-width: 100% }` —
+      maxHeight: 'none',   // without this, the video is silently clamped to box size
       transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
       position:  'absolute',
       left:      '50%',
