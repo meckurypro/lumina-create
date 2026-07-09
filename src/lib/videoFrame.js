@@ -21,7 +21,7 @@ const POSTER_QUALITY     = 0.72
 // pixel-capture code path is identical between them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function captureFrameFromVideoElement(video) {
+export function captureFrameFromVideoElement(video) {
   return new Promise((resolve, reject) => {
     try {
       const canvas = document.createElement('canvas')
@@ -50,6 +50,75 @@ function captureFrameFromVideoElement(video) {
     } catch (err) {
       reject(err)
     }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// captureCroppedFrameFromVideoElement
+//
+// Same idea as captureFrameFromVideoElement but draws only a native-pixel
+// source rectangle. Used by the merged frame picker to extract directly from
+// its own live <video> element — no re-fetch, no re-seek, since the element
+// is already showing exactly the frame the user picked.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function captureCroppedFrameFromVideoElement(video, { sx, sy, sWidth, sHeight }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.max(1, Math.round(sWidth))
+      canvas.height = Math.max(1, Math.round(sHeight))
+
+      let ctx
+      try { ctx = canvas.getContext('2d', { colorSpace: 'srgb' }) } catch { ctx = null }
+      if (!ctx) ctx = canvas.getContext('2d')
+
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height)
+
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob)
+        else reject(new Error('Canvas toBlob failed'))
+      }, 'image/png')
+    } catch (err) {
+      reject(err)
+    }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// crawlToExactEndTime
+//
+// Same quarter-frame crawl-forward algorithm as extractLastFrame, factored
+// out so the merged frame picker can run it against its own live, already-
+// loaded <video> element (just to find + seek to the precise end timestamp)
+// without extracting anything yet — the user still chooses when to extract.
+//
+// Resolves the exact end timestamp (in seconds) once the video element has
+// been seeked there. Does not capture a frame.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function crawlToExactEndTime(video, duration) {
+  return new Promise((resolve, reject) => {
+    if (!isFinite(duration) || duration <= 0) {
+      reject(new Error('Video has no readable duration'))
+      return
+    }
+    const target = Math.max(0, duration - FRAME_STEP_SECONDS)
+    let lastSeekTime = -1
+
+    video.onseeked = () => {
+      const reachedEnd    = video.currentTime >= duration - 0.0005
+      const noFurtherMove = video.currentTime <= lastSeekTime
+      if (reachedEnd || noFurtherMove) {
+        video.onseeked = null
+        resolve(video.currentTime)
+        return
+      }
+      lastSeekTime = video.currentTime
+      video.currentTime = Math.min(duration, video.currentTime + FRAME_STEP_SECONDS / 4)
+    }
+
+    video.currentTime = target
   })
 }
 
