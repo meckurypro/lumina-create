@@ -173,10 +173,76 @@ const ExtendForm = ({ cohort, onSave, onCancel, saving }) => {
         >
           {saving ? '…' : <><Check size={12} /> Save</>}
         </button>
-        <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+       <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
           Cancel
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Add Member Search (admin manual add) ──────────────────────────────
+
+const AddMemberSearch = ({ cohortId, onAdded }) => {
+  const { user } = useAuth()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [addingId, setAddingId] = useState(null)
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      const { data } = await cohortAdmin.searchUsers(user.id, query.trim())
+      setResults(data)
+      setSearching(false)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [query, user.id])
+
+  const handleAdd = async (userId) => {
+    setAddingId(userId)
+    const { data, error } = await cohortAdmin.addMember(user.id, cohortId, userId)
+    setAddingId(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to add member'); return }
+    toast.success(`Added — seat #${data.seat_number}`)
+    setQuery('')
+    setResults([])
+    onAdded()
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by username, name, or email…"
+        className="input-base w-full text-sm"
+      />
+      {searching && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Searching…</p>}
+      {results.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {results.map((r) => (
+            <div key={r.id} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: 'var(--bg-elevated)' }}>
+              <div className="min-w-0">
+                <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                  @{r.username}{r.display_name ? ` · ${r.display_name}` : ''}
+                </p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{r.email}</p>
+              </div>
+              <button
+                onClick={() => handleAdd(r.id)}
+                disabled={addingId === r.id}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+              >
+                {addingId === r.id ? '…' : 'Add'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -266,6 +332,10 @@ const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) 
                   <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>{fmtDate(cohort.ends_at)}</p>
                 </div>
               </div>
+
+              {cohort.status === 'active' && (
+                <AddMemberSearch cohortId={cohort.id} onAdded={loadSeats} />
+              )}
 
               {/* Seats */}
               <div>
