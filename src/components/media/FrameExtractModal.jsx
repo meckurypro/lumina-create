@@ -75,8 +75,14 @@ export default function FrameExtractModal({
   const [exactEndTime, setExactEndTime] = useState(null) // set once crawl has run; null = not verified
   const [jumping,      setJumping]      = useState(false)
   const [capturing,    setCapturing]    = useState(false) // local canvas-capture step only (fast)
+  const [naturalAspect, setNaturalAspect] = useState(null) // video's own width/height ratio, once known
 
-  const boxAspect = parseAspect(aspectRatio)
+  // If the caller gave us an aspectRatio (generations have aspect_ratio;
+  // assets don't), trust it. Otherwise fall back to the video's own native
+  // dimensions once loaded, rather than silently assuming 9:16 — matters
+  // for AssetsPage, where uploaded videos can be any shape. Before the
+  // video has loaded, 9:16 is just a harmless placeholder for one frame.
+  const boxAspect = aspectRatio ? parseAspect(aspectRatio) : (naturalAspect ?? 9 / 16)
   const isAtExactEnd = exactEndTime !== null && Math.abs(scrubTime - exactEndTime) <= END_EPSILON
   const disabled = busy || capturing || jumping
 
@@ -103,6 +109,7 @@ export default function FrameExtractModal({
     if (!v) return
     const onLoaded = () => {
       setDuration(v.duration)
+      if (v.videoWidth && v.videoHeight) setNaturalAspect(v.videoWidth / v.videoHeight)
       const start = Math.max(0, v.duration - 0.001)
       v.currentTime = start
       setScrubTime(start)
@@ -227,14 +234,12 @@ export default function FrameExtractModal({
     }
   }
 
- const videoStyle = (() => {
+  const videoStyle = (() => {
     const geo = getGeometry()
     if (!geo) return { opacity: 0 }
     return {
       width:     geo.videoDispW,
       height:    geo.videoDispH,
-      maxWidth:  'none',   // override Tailwind Preflight's `video { max-width: 100% }` —
-      maxHeight: 'none',   // without this, the video is silently clamped to box size
       transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
       position:  'absolute',
       left:      '50%',
