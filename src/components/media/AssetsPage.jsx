@@ -36,8 +36,9 @@ import {
   uploadAsset, listAssets, renameAsset,
   deleteAsset, isVideoAsset, formatBytes,
 } from '@/lib/assets.js'
-import { FallbackBanner, ExtractEndFrameConfirmModal, FilterPill } from './MediaCardComponents.jsx'
-import { extractLastFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
+import { FallbackBanner, FilterPill } from './MediaCardComponents.jsx'
+import { EXTRACT_END_FRAME_COST } from '@/lib/videoFrame'
+import FrameExtractModal from './FrameExtractModal.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -291,8 +292,8 @@ export default function AssetsPage() {
   const [pendingDelete,        setPendingDelete]        = useState(null)
   const [renamingId,           setRenamingId]           = useState(null)
   const [renameValue,          setRenameValue]          = useState('')
-  const [extractingId,         setExtractingId]         = useState(null)
-  const [extractConfirmAsset,  setExtractConfirmAsset]  = useState(null)
+  const [extractingId,     setExtractingId]     = useState(null)  // asset.id currently uploading — drives busy overlay
+  const [extractPickerAsset, setExtractPickerAsset] = useState(null) // asset currently open in the picker
 
   const dismissFallback = () => {
     try { localStorage.setItem(LS_FALLBACK_DISMISSED, new Date().toDateString()) } catch {}
@@ -494,52 +495,50 @@ export default function AssetsPage() {
 
   // ── Extract end frame ──────────────────────────────────────────────────────
 
-  const handleExtractEndFrame = (asset) => {
+  const handleOpenFramePicker = (asset) => {
     closeSheet()
-    if (!isMaster) {
-      if (credits < EXTRACT_END_FRAME_COST) {
-        toast.error(`Not enough credits — extracting end frame costs ${EXTRACT_END_FRAME_COST} credits`)
-        return
-      }
-      const skipConfirm = localStorage.getItem(LS_SKIP_EXTRACT_CONFIRM) === 'true'
-      if (!skipConfirm) { setExtractConfirmAsset(asset); return }
+    if (!isMaster && credits < EXTRACT_END_FRAME_COST) {
+      toast.error(`Not enough credits — extracting a frame costs ${EXTRACT_END_FRAME_COST} credits`)
+      return
     }
-    runExtractEndFrame(asset)
+    setExtractPickerAsset(asset)
   }
 
-  const runExtractEndFrame = async (asset) => {
-    setExtractConfirmAsset(null)
-    setExtractingId(asset.id)
+  const runExtractFrame = async (blob, { isEndFrame } = {}) => {
+    const asset = extractPickerAsset
+    if (!asset) return
+    setExtractingId(asset.id)   // shows busy overlay; picker modal stays mounted underneath
     try {
-      const frameBlob = await extractLastFrame(asset.file_url)
+      const suffix = isEndFrame ? '_end_frame' : '_frame'
+      const label  = isEndFrame ? 'end frame' : 'frame'
       const frameFile = new File(
-        [frameBlob],
-        `${asset.name.replace(/[^\w\-]+/g, '_')}_end_frame.png`,
+        [blob],
+        `${asset.name.replace(/[^\w\-]+/g, '_')}${suffix}.png`,
         { type: 'image/png' },
       )
-      const saved = await uploadAsset(user.id, frameFile, `${asset.name} — end frame`)
+      const saved = await uploadAsset(user.id, frameFile, `${asset.name} — ${label}`)
       setAssets((prev) => [saved, ...prev])
       setTotalCount((c) => c + 1)
 
       if (!isMaster) {
         const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
           p_user_id: user.id, p_amount: EXTRACT_END_FRAME_COST,
-          p_generation_id: null, p_description: 'End frame extraction',
+          p_generation_id: null, p_description: 'Frame extraction',
         })
         if (dErr || !deduct?.success) {
-          toast.success('End frame saved to Assets')
-          toast.error(`Credit deduction failed — contact support`, { duration: 8000 })
+          toast.success(`Saved ${label} to Assets`)
+          toast.error('Credit deduction failed — contact support', { duration: 8000 })
         } else {
           refreshProfile()
-          toast.success(`End frame saved — ${EXTRACT_END_FRAME_COST} credits used`)
+          toast.success(`Saved ${label} — ${EXTRACT_END_FRAME_COST} credits used`)
         }
       } else {
-        toast.success('End frame saved to Assets')
+        toast.success(`Saved ${label} to Assets`)
       }
     } catch (err) {
-      toast.error(err.message || 'Could not extract end frame')
+      toast.error(err.message || 'Could not extract frame')
     } finally {
-      setExtractingId(null)
+      setExtractingId(null)   // hides overlay — picker stays open, same scrub/crop state
     }
   }
 
@@ -596,12 +595,14 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* Extracting end frame overlay */}
+      {/* Frame extraction busy overlay — sits ABOVE the picker modal
+          (z-[70] > picker's z-[60]) so it visually covers it while the
+          upload/credit-deduct runs, then disappears back to the picker. */}
       <AnimatePresence>
         {extractingId && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+            className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
             <motion.div
@@ -609,8 +610,7 @@ export default function AssetsPage() {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
-            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Extracting end frame…</p>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>This may take a moment</p>
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Saving frame…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -847,7 +847,7 @@ export default function AssetsPage() {
             onSetVideoForMotion={isVideoAsset(activeAsset) ? () => handleSetVideoForMotion(activeAsset) : undefined}
             onUpscaleImage={!isVideoAsset(activeAsset) ? () => handleUpscaleImage(activeAsset) : undefined}
             onUpscaleVideo={isVideoAsset(activeAsset)  ? () => handleUpscaleVideo(activeAsset)  : undefined}
-            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleExtractEndFrame(activeAsset) : undefined}
+            onExtractEndFrame={isVideoAsset(activeAsset) ? () => handleOpenFramePicker(activeAsset) : undefined}
             onDelete={() => handleDelete(activeAsset)}
           />
         )}
@@ -892,16 +892,17 @@ export default function AssetsPage() {
         )}
       </AnimatePresence>
 
-      {/* Extract end frame confirm */}
+     {/* Frame picker — stays mounted through extraction; only the
+          user's own Cancel closes it. */}
       <AnimatePresence>
-        {extractConfirmAsset && (
-          <ExtractEndFrameConfirmModal
+        {extractPickerAsset && (
+          <FrameExtractModal
+            videoUrl={extractPickerAsset.file_url}
             cost={EXTRACT_END_FRAME_COST}
-            onConfirm={(skipNext) => {
-              if (skipNext) localStorage.setItem(LS_SKIP_EXTRACT_CONFIRM, 'true')
-              runExtractEndFrame(extractConfirmAsset)
-            }}
-            onCancel={() => setExtractConfirmAsset(null)}
+            isMaster={isMaster}
+            busy={extractingId === extractPickerAsset.id}
+            onExtract={runExtractFrame}
+            onCancel={() => setExtractPickerAsset(null)}
           />
         )}
       </AnimatePresence>
@@ -934,7 +935,7 @@ function AssetActionSheet({
     { icon: Wand2,        label: 'Edit',      onClick: onEditVideo         },
     { icon: Mic2,         label: 'Lipsync',   onClick: onLipsyncVideo      },
     { icon: Clapperboard, label: 'Motion',    onClick: onSetVideoForMotion },
-    { icon: ScanLine,     label: 'End Frame', onClick: onExtractEndFrame   },
+    { icon: ScanLine,     label: 'Frames', onClick: onExtractEndFrame   },
     { icon: Maximize,     label: 'Upscale',   onClick: onUpscaleVideo      },
   ]
 
@@ -981,7 +982,7 @@ function AssetActionSheet({
               single-word), only for non-master users on video assets. */}
           {isVideo && !isMaster && (
             <p className="text-xs px-1 mb-2.5" style={{ color: 'var(--text-muted)' }}>
-              Extract End Frame costs {EXTRACT_END_FRAME_COST} credits · Master plan unlocks it for free.
+              Extracting a frame costs {EXTRACT_END_FRAME_COST} credits · Master plan unlocks it for free.
             </p>
           )}
 
