@@ -110,9 +110,9 @@ const ModelRequiredSection = () => {
   const [savingModel, setSavingModel] = useState(null)
 
   useEffect(() => {
-    supabase
+   supabase
       .from('models')
-      .select('id, label, aka, feature, tier_required, is_required, is_active')
+      .select('id, label, aka, feature, tier_required, is_required, is_active, model_access_type')
       .eq('is_user_facing', true)
       .order('feature')
       .order('label')
@@ -169,9 +169,17 @@ const ModelRequiredSection = () => {
           <div className="flex flex-col gap-3">
             {featureModels.map((model) => (
               <div key={model.id} className="flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
+               <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                     {model.label}{model.aka ? ` · ${model.aka}` : ''}
+                    {model.model_access_type === 'render_window' && (
+                      <span
+                        className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-md align-middle"
+                        style={{ background: 'rgba(139,92,246,0.15)', color: '#8b5cf6' }}
+                      >
+                        RENDER WINDOW
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {model.tier_required === 'master' ? '⭐ Master' : '🆓 Free'} · {model.feature}
