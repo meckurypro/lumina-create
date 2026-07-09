@@ -195,7 +195,7 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
     if (!open || query.trim().length < 2) { setResults([]); return }
     const t = setTimeout(async () => {
       setSearching(true)
-      const { data } = await cohortAdmin.searchUsers(user.id, query.trim())
+      const { data } = await cohortAdmin.searchUsers(query.trim())
       setResults(data)
       setSearching(false)
     }, 300)
