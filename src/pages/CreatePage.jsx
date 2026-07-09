@@ -47,7 +47,7 @@ const TOOLS = [
   {
     id:        'talking_head',
     label:     'Talking Head',
-    subtitle:  'Animate faces with voice or audio',
+    subtitle:  'Animate faces with text, voice or audio',
     icon:      Mic,
     route:     '/create/talking-head',
     accentVar: '--tool-talking-head',
