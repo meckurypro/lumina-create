@@ -185,13 +185,14 @@ const ExtendForm = ({ cohort, onSave, onCancel, saving }) => {
 
 const AddMemberSearch = ({ cohortId, onAdded }) => {
   const { user } = useAuth()
+  const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [addingId, setAddingId] = useState(null)
 
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return }
+    if (!open || query.trim().length < 2) { setResults([]); return }
     const t = setTimeout(async () => {
       setSearching(true)
       const { data } = await cohortAdmin.searchUsers(user.id, query.trim())
@@ -199,7 +200,7 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
       setSearching(false)
     }, 300)
     return () => clearTimeout(t)
-  }, [query, user.id])
+  }, [open, query, user.id])
 
   const handleAdd = async (userId) => {
     setAddingId(userId)
@@ -209,12 +210,32 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
     toast.success(`Added — seat #${data.seat_number}`)
     setQuery('')
     setResults([])
+    setOpen(false)
     onAdded()
   }
 
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+      >
+        <Plus size={12} /> Add member
+      </button>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: 'var(--bg-elevated)' }}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>Add member</p>
+        <button onClick={() => { setOpen(false); setQuery(''); setResults([]) }} style={{ color: 'var(--text-muted)' }}>
+          <X size={13} />
+        </button>
+      </div>
       <input
+        autoFocus
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search by username, name, or email…"
@@ -224,7 +245,7 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
       {results.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {results.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: 'var(--bg-elevated)' }}>
+            <div key={r.id} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: 'var(--bg-card)' }}>
               <div className="min-w-0">
                 <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                   @{r.username}{r.display_name ? ` · ${r.display_name}` : ''}
@@ -246,7 +267,6 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
     </div>
   )
 }
-
 // ─── Cohort Card ────────────────────────────────────────────────────────
 
 const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) => {
