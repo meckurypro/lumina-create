@@ -147,7 +147,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Sign out ── */}
-       <button
+        <button
           onClick={handleSignOut}
           className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-medium transition-all active:scale-[0.98]"
           style={{
@@ -160,8 +160,9 @@ export default function ProfilePage() {
           Sign out
         </button>
 
+        {/* ── Support ── */}
         
-         href="https://wa.me/2348162465247?text=Hi%2C%20I%20need%20help%20with%20Meckury%20AI"
+          href="https://wa.me/2348162465247?text=Hi%2C%20I%20need%20help%20with%20Meckury%20AI"
           target="_blank"
           rel="noopener noreferrer"
           className="w-full flex items-center justify-center gap-1.5 py-4 text-xs font-medium"
@@ -174,4 +175,4 @@ export default function ProfilePage() {
       </PageWrapper>
     </>
   )
-                                                                                   }
+}
