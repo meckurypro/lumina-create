@@ -32,6 +32,9 @@ export default function UploadZone({
   size         = 'md',         // 'sm' | 'md' | 'lg' — icon scale only
   aspectRatio  = '1/1',        // ignored if `height` is set
   height       = null,         // e.g. '200px' — for wide banner-style zones instead of a square
+  accept       = null,         // override the native file input's accept attr (default: derived from `kind`)
+  pickerTypeFilter = null,     // override the Media/Assets picker's typeFilter (default: `kind`) —
+                                // use 'all' for slots whose native input already accepts image+video
   allowBrowse  = true,         // set false to hide the long-press/right-click menu entirely
   className    = '',
 }) {
