@@ -96,11 +96,26 @@ export const cohortAdmin = {
     return { data, error }
   },
 
-  async removeMember(adminId, cohortId, seatNumber) {
+ async removeMember(adminId, cohortId, seatNumber) {
     const { data, error } = await supabase.rpc('admin_remove_cohort_member', {
       p_admin_id:    adminId,
       p_cohort_id:   cohortId,
       p_seat_number: seatNumber,
+    })
+    return { data, error }
+  },
+  async searchUsers(adminId, query) {
+    const { data, error } = await supabase.rpc('admin_search_users', {
+      p_admin_id: adminId,
+      p_query:    query,
+    })
+    return { data: data || [], error }
+  },
+  async addMember(adminId, cohortId, userId) {
+    const { data, error } = await supabase.rpc('admin_add_cohort_member', {
+      p_admin_id:  adminId,
+      p_cohort_id: cohortId,
+      p_user_id:   userId,
     })
     return { data, error }
   },
