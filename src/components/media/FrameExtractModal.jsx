@@ -26,8 +26,9 @@ export default function FrameExtractModal({
   videoUrl,
   cost,
   isMaster,
-  onExtract,   // (blob, { isEndFrame }) => Promise<void> — caller handles upload/credits/toasts
+  onExtract,       // (blob, { isEndFrame }) => Promise<void> — caller handles upload/credits/toasts
   onCancel,
+  onSwitchToCrop,  // optional — shows a "Reframe instead" link that hands off to CropFrameExtractModal
 }) {
   const videoRef        = useRef(null)
   const lastSeekAtRef   = useRef(0)
@@ -187,6 +188,17 @@ export default function FrameExtractModal({
               : <SkipForward size={13} />}
             {isAtEnd ? `Extract Absolute End Frame${!isMaster ? ` · ${cost} cr` : ''}` : 'Jump to Absolute End Frame'}
           </button>
+
+{onSwitchToCrop && (
+            <button
+              onClick={onSwitchToCrop}
+              disabled={!!extracting}
+              className="w-full py-2 rounded-xl text-xs font-semibold"
+              style={{ color: 'var(--brand)' }}
+            >
+              Reframe / crop instead
+            </button>
+          )}
 
           <button
             onClick={onCancel}
