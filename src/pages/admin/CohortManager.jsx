@@ -269,7 +269,7 @@ const AddMemberSearch = ({ cohortId, onAdded }) => {
 }
 // ─── Cohort Card ────────────────────────────────────────────────────────
 
-const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) => {
+const CohortCard = ({ cohort, filledCount, onExtend, onCancelCohort, onRemoveMember, busy }) => {
   const [expanded, setExpanded] = useState(false)
   const [extending, setExtending] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -295,7 +295,7 @@ const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) 
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const filledCount = seats ? seats.filter((s) => s.member_id).length : null
+ const expandedFilledCount = seats ? seats.filter((s) => s.member_id).length : filledCount
 
   return (
     <motion.div
@@ -313,8 +313,8 @@ const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) 
               {meta.label}
             </span>
           </div>
-          <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
-            {cohort.cohort_code} · {cohort.seat_count} seats · {cohort.daily_unit_quota} units/day
+         <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
+            {cohort.cohort_code} · {filledCount}/{cohort.seat_count} seats · {cohort.daily_unit_quota} units/day
           </p>
         </div>
         <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
@@ -359,8 +359,8 @@ const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) 
 
               {/* Seats */}
               <div>
-                <p className="text-xs font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Seats {filledCount !== null && `· ${filledCount}/${cohort.seat_count} filled`}
+               <p className="text-xs font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+                  Seats {expandedFilledCount !== null && `· ${expandedFilledCount}/${cohort.seat_count} filled`}
                 </p>
                 {seats === null ? (
                   <div className="h-10 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
@@ -438,17 +438,22 @@ const CohortCard = ({ cohort, onExtend, onCancelCohort, onRemoveMember, busy }) 
 
 export default function CohortManager() {
   const { user } = useAuth()
-  const [cohorts,  setCohorts]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [busy,     setBusy]     = useState(false)
-  const [filter,   setFilter]   = useState('active')
+ const [cohorts,      setCohorts]      = useState([])
+  const [filledCounts, setFilledCounts] = useState({})
+  const [loading,      setLoading]      = useState(true)
+  const [showForm,     setShowForm]     = useState(false)
+  const [creating,     setCreating]     = useState(false)
+  const [busy,         setBusy]         = useState(false)
+  const [filter,       setFilter]       = useState('active')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await cohortAdmin.getAll()
+    const [{ data }, { data: counts }] = await Promise.all([
+      cohortAdmin.getAll(),
+      cohortAdmin.getFilledCounts(),
+    ])
     setCohorts(data)
+    setFilledCounts(counts)
     setLoading(false)
   }, [])
 
@@ -556,9 +561,10 @@ export default function CohortManager() {
         <div className="flex flex-col gap-2">
           <AnimatePresence mode="popLayout">
             {filtered.map((cohort) => (
-              <CohortCard
+             <CohortCard
                 key={cohort.id}
                 cohort={cohort}
+                filledCount={filledCounts[cohort.id] ?? 0}
                 onExtend={handleExtend}
                 onCancelCohort={handleCancel}
                 onRemoveMember={handleRemoveMember}
