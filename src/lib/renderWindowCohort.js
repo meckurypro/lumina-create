@@ -50,13 +50,24 @@ export const cohortAdmin = {
     return { data: data || [], error }
   },
 
-  async getSeats(cohortId) {
+async getSeats(cohortId) {
     const { data, error } = await supabase
       .from('render_window_cohort_seats')
       .select('*, member:profiles(username)')
       .eq('cohort_id', cohortId)
       .order('seat_number')
     return { data: data || [], error }
+  },
+
+  async getFilledCounts() {
+    const { data, error } = await supabase
+      .from('render_window_cohort_seats')
+      .select('cohort_id')
+      .not('member_id', 'is', null)
+    if (error) return { data: {}, error }
+    const map = {}
+    for (const row of data) map[row.cohort_id] = (map[row.cohort_id] || 0) + 1
+    return { data: map, error: null }
   },
 
   async getSeatUsageMap(cohortId) {
