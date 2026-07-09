@@ -1,6 +1,6 @@
 // src/pages/ProfilePage.jsx
 import { useNavigate } from 'react-router-dom'
-import { Settings, Zap, LogOut, Crown, ChevronRight, Gift, MonitorPlay } from 'lucide-react'
+import { Settings, Zap, LogOut, Crown, ChevronRight, Gift, MonitorPlay, MessageCircle } from 'lucide-react'
 import { auth } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useMasterUpgrade } from '@/hooks/useMasterUpgrade'
@@ -147,7 +147,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Sign out ── */}
-        <button
+       <button
           onClick={handleSignOut}
           className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-medium transition-all active:scale-[0.98]"
           style={{
@@ -159,6 +159,17 @@ export default function ProfilePage() {
           <LogOut size={15} strokeWidth={1.5} />
           Sign out
         </button>
+
+        
+         href="https://wa.me/2348162465247?text=Hi%2C%20I%20need%20help%20with%20Meckury%20AI"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-1.5 py-4 text-xs font-medium"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <MessageCircle size={13} strokeWidth={1.5} />
+          Need help? Chat with us
+        </a>
 
       </PageWrapper>
     </>
