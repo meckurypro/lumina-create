@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, Maximize2, Plus } from 'lucide-react'
+import { ArrowLeft, Zap, X, Maximize2, Plus } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { useModelConcurrency } from '@/hooks/useModelConcurrency'
@@ -13,6 +13,7 @@ import { detectAspectRatio, compressImage, tagForSlot } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import { MentionPicker } from '@/components/create/MentionPicker'
+import UploadZone from '@/components/create/UploadZone'
 import { usePromptTagging } from '@/hooks/usePromptTagging'
 import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
@@ -34,7 +35,7 @@ const ALL_ASPECT_RATIOS = [
 
 // ─── single image slot ────────────────────────────────────────────────────────
 
-const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupportsImage }) => {
+const SingleImageSlot = ({ image, onFile, onPick, onRemove, onFullscreen, modelSupportsImage }) => {
   if (image) {
     const ar = image.w && image.h ? `${image.w} / ${image.h}` : '1 / 1'
     const maxW = image.w && image.h ? (image.w > image.h ? '100%' : '200px') : '140px'
@@ -69,29 +70,24 @@ const SingleImageSlot = ({ image, onUpload, onRemove, onFullscreen, modelSupport
 
   return (
     <div className="flex justify-center">
-      <label
-        className="flex flex-col items-center justify-center rounded-2xl transition-all"
-        style={{
-          width: '140px', aspectRatio: '1 / 1',
-          border: `1.5px dashed ${ACCENT_BDR}`,
-          background: ACCENT_SUB,
-          cursor: modelSupportsImage ? 'pointer' : 'not-allowed',
-          opacity: modelSupportsImage ? 1 : 0.4,
-        }}
-      >
-        <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={!modelSupportsImage} />
-        <ImagePlus size={22} style={{ color: ACCENT, marginBottom: 6 }} />
-        <span className="text-xs font-medium" style={{ color: ACCENT }}>
-          {modelSupportsImage ? 'Add reference' : 'Not supported'}
-        </span>
-      </label>
+      <UploadZone
+        kind="image"
+        accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+        label={modelSupportsImage ? 'Add reference' : 'Not supported'}
+        disabled={!modelSupportsImage}
+        size="sm"
+        aspectRatio="1/1"
+        className="w-[140px]"
+        onFile={onFile}
+        onPick={onPick}
+      />
     </div>
   )
 }
 
 // ─── multi-image grid ────────────────────────────────────────────────────────
 
-const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFullscreen }) => {
+const MultiImageGrid = ({ images, maxImages, onAdd, onAddPick, onRemove, onTagInsert, onFullscreen }) => {
   const filledCount = images.filter(Boolean).length
   const visibleSlots = filledCount < maxImages ? filledCount + 1 : filledCount
   const slots = Array.from({ length: visibleSlots }, (_, i) => images[i] || null)
@@ -151,22 +147,23 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                   </button>
                 </div>
               ) : isNextSlot ? (
-                <label className="cursor-pointer">
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onAdd(e, idx)} />
+                <div className="flex flex-col gap-1.5">
+                  <UploadZone
+                    kind="image"
+                    accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+                    label={`img${idx + 1}`}
+                    size="sm"
+                    aspectRatio="1/1"
+                    onFile={(file) => onAdd(file, idx)}
+                    onPick={(picked) => onAddPick(picked, idx)}
+                  />
                   <div
-                    className="flex flex-col items-center justify-center rounded-xl transition-all"
-                    style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-                  >
-                    <Plus size={18} style={{ color: ACCENT, marginBottom: 4 }} />
-                    <span className="text-xs font-medium" style={{ color: ACCENT }}>img{idx + 1}</span>
-                  </div>
-                  <div
-                    className="w-full mt-1.5 py-1 rounded-lg text-xs font-mono font-semibold text-center"
+                    className="w-full py-1 rounded-lg text-xs font-mono font-semibold text-center"
                     style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', opacity: 0.4 }}
                   >
                     {tagForSlot(idx)}
                   </div>
-                </label>
+                </div>
               ) : null}
             </div>
           )
@@ -334,8 +331,7 @@ const canAfford      = credits >= creditCost
     draftDelete(DRAFT_IMAGES)
   }
 
-  const handleAddImage = async (e, slotIdx) => {
-    const file = e.target.files?.[0]
+  const handleAddImage = async (file, slotIdx) => {
     if (!file) return
     const compressed = await compressImage(file)
     setImages((prev) => {
@@ -348,14 +344,38 @@ const canAfford      = credits >= creditCost
     })
   }
 
-  const handleSingleImageUpload = async (e) => {
-    const file = e.target.files?.[0]
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  // from UploadZone's Media/Assets browser — no local File, so we build the
+  // slot straight from the URL instead of running it through compressImage.
+  const handleAddImagePick = (picked, slotIdx) => {
+    const img = { file: null, url: picked.url, ar: picked.aspectRatio || '1:1' }
+    setImages((prev) => {
+      const next = [...prev]
+      next[slotIdx] = img
+      const trimmed = next.filter((_, i) => i <= slotIdx || next[i] != null)
+      persistImages(trimmed)
+      return trimmed
+    })
+    if (slotIdx === 0) {
+      setAspectRatio(picked.aspectRatio || '1:1')
+      setAutoRatio(!!picked.aspectRatio)
+    }
+  }
+
+  const handleSingleImageUpload = async (file) => {
     if (!file) return
     const compressed = await compressImage(file)
     setImages([compressed])
     persistImages([compressed])
     setAspectRatio(compressed.ar)
     setAutoRatio(true)
+  }
+
+  const handleSingleImagePick = (picked) => {
+    const img = { file: null, url: picked.url, ar: picked.aspectRatio || '1:1' }
+    setImages([img])
+    persistImages([img])
+    if (picked.aspectRatio) { setAspectRatio(picked.aspectRatio); setAutoRatio(true) }
   }
 
   const handleRemoveImage = (idx) => {
@@ -595,6 +615,7 @@ const canAfford      = credits >= creditCost
                 images={images}
                 maxImages={maxImages}
                 onAdd={handleAddImage}
+                onAddPick={handleAddImagePick}
                 onRemove={handleRemoveImage}
                onTagInsert={insertAtCursor}
                 onFullscreen={(idx) => setFullscreenIdx(idx)}
@@ -602,7 +623,8 @@ const canAfford      = credits >= creditCost
             ) : (
               <SingleImageSlot
                 image={images[0] || null}
-                onUpload={handleSingleImageUpload}
+                onFile={handleSingleImageUpload}
+                onPick={handleSingleImagePick}
                 onRemove={() => handleRemoveImage(0)}
                 onFullscreen={() => setFullscreenIdx(0)}
                 modelSupportsImage={modelSupportsImage}
