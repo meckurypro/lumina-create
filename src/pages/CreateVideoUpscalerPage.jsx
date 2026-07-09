@@ -2,12 +2,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, Film } from 'lucide-react'
+import { ArrowLeft, Zap, X } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { formatBytes, formatDuration, readVideoMetadata } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
+import UploadZone from '@/components/create/UploadZone'
 
 const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
@@ -15,62 +16,61 @@ const ACCENT_BDR = 'var(--tool-motion-border)'
 
 const SS_UPSCALE_VIDEO = 'meckury_upscale_video'
 
-// ── Video Upload Zone ─────────────────────────────────────────────────────────
-const VideoUploadZone = ({ value, onUpload, onRemove }) => {
-  if (value) {
-    return (
-      <div
-        className="relative rounded-2xl overflow-hidden"
-        style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)', maxHeight: 280 }}
-      >
-        <video
-          src={value.url}
-          className="w-full h-full object-cover"
-          muted loop autoPlay playsInline
-        />
-        {/* Meta badges */}
-        <div className="absolute top-2 left-2 flex items-center gap-1.5">
-          {value.duration != null && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
-              {formatDuration(value.duration)}
-            </span>
-          )}
-          {value.width && value.height && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
-              {value.width}×{value.height}
-            </span>
-          )}
-          {value.size && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
-              {formatBytes(value.size)}
-            </span>
-          )}
-        </div>
-        <button
-          onClick={onRemove}
-          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
-        >
-          <X size={13} />
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <label
-      className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-      style={{ height: '200px', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-    >
-      <input type="file" accept="video/*" className="hidden" onChange={onUpload} />
-      <Film size={28} style={{ color: ACCENT, marginBottom: 10 }} />
-      <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload a video</span>
-      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-        MP4 · MOV · WEBM
-      </span>
-    </label>
-  )
+// ── helper: read duration/width/height straight from a URL (picker result) ──
+function readVideoMetaFromUrl(url) {
+  return new Promise((resolve) => {
+    const vid = document.createElement('video')
+    vid.preload = 'metadata'
+    vid.onloadedmetadata = () => {
+      resolve({
+        duration: vid.duration ? Math.round(vid.duration) : null,
+        width:    vid.videoWidth  || null,
+        height:   vid.videoHeight || null,
+      })
+    }
+    vid.onerror = () => resolve({ duration: null, width: null, height: null })
+    vid.src = url
+  })
 }
+
+// ── Video Upload Zone (filled state) ──────────────────────────────────────────
+const VideoPreview = ({ value, onRemove }) => (
+  <div
+    className="relative rounded-2xl overflow-hidden"
+    style={{ aspectRatio: '16/9', background: 'var(--bg-elevated)', maxHeight: 280 }}
+  >
+    <video
+      src={value.url}
+      className="w-full h-full object-cover"
+      muted loop autoPlay playsInline
+    />
+    {/* Meta badges */}
+    <div className="absolute top-2 left-2 flex items-center gap-1.5">
+      {value.duration != null && (
+        <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+          {formatDuration(value.duration)}
+        </span>
+      )}
+      {value.width && value.height && (
+        <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+          {value.width}×{value.height}
+        </span>
+      )}
+      {value.size && (
+        <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+          {formatBytes(value.size)}
+        </span>
+      )}
+    </div>
+    <button
+      onClick={onRemove}
+      className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
+    >
+      <X size={13} />
+    </button>
+  </div>
+)
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CreateVideoUpscalerPage() {
@@ -170,19 +170,23 @@ export default function CreateVideoUpscalerPage() {
   const canUpscale = !!video && canAfford && !submitting && !!selectedModel && creditCost > 0
 
   // ── Upload ────────────────────────────────────────────────────────────────
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const handleUpload = async (file) => {
     if (!file) return
 
     if (file.size > 200 * 1024 * 1024) {
       toast.error('Video must be under 200 MB.')
-      e.target.value = ''
       return
     }
 
     const url  = URL.createObjectURL(file)
     const meta = await readVideoMetadata(file)
     setVideo({ file, url, duration: meta.duration, width: meta.width, height: meta.height, size: file.size })
+  }
+
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  const handlePick = async (picked) => {
+    const meta = await readVideoMetaFromUrl(picked.url)
+    setVideo({ file: null, url: picked.url, duration: meta.duration, width: meta.width, height: meta.height, size: null })
   }
 
   const handleRemove = () => {
@@ -338,11 +342,20 @@ export default function CreateVideoUpscalerPage() {
             <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Source Video
             </p>
-            <VideoUploadZone
-              value={video}
-              onUpload={handleUpload}
-              onRemove={handleRemove}
-            />
+            {video ? (
+              <VideoPreview value={video} onRemove={handleRemove} />
+            ) : (
+              <UploadZone
+                kind="video"
+                accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+                label="Upload a video"
+                sublabel="MP4 · MOV · WEBM"
+                size="lg"
+                height="200px"
+                onFile={handleUpload}
+                onPick={handlePick}
+              />
+            )}
           </div>
 
           {/* Quality picker — dynamic from model */}
