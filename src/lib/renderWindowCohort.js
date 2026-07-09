@@ -104,10 +104,9 @@ export const cohortAdmin = {
     })
     return { data, error }
   },
-  async searchUsers(adminId, query) {
+  async searchUsers(query) {
     const { data, error } = await supabase.rpc('admin_search_users', {
-      p_admin_id: adminId,
-      p_query:    query,
+      p_query: query,
     })
     return { data: data || [], error }
   },
