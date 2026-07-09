@@ -11,6 +11,7 @@ import { useRenderWindowTeam } from '@/hooks/useRenderWindowTeam'
 import { useRenderWindowCohort } from '@/hooks/useRenderWindowCohort'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
 import { joinRenderWindowCode } from '@/lib/renderWindowCohort'
+import { ActiveModelsTab } from '@/components/renderWindow/ActiveModelsTab'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import toast from 'react-hot-toast'
@@ -628,6 +629,7 @@ export default function RenderWindowPage() {
   } = useRenderWindowCohort()
 
   const [joining, setJoining] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview')
 
   // Unified join — tries Team code, then Cohort code, server-side.
   // Mutual exclusivity (can't join a cohort while in a team, and vice
@@ -650,57 +652,98 @@ export default function RenderWindowPage() {
   const groupsLoading = teamLoading || cohortLoading
   const showJoinCard  = !groupsLoading && !ownerTeam && !memberTeam && !memberCohort
 
+  // Active Models tab is only shown to "Community" users — active Individual
+  // subscribers, Team members/owners, or Cohort members. Private-booking-only
+  // and credit-only users never see the tab exists. This check uses state
+  // already loaded by the hooks above (no extra round trip), and is purely
+  // for whether to SHOW the tab — the RPC behind it enforces the real
+  // eligibility boundary server-side regardless of what the UI does.
+  const isCommunityUser = rw.hasActiveSub || !!ownerTeam || !!memberTeam || !!memberCohort
+
   return (
     <>
       <TopBar showBack title="Render Window" showCredits />
       <PageWrapper>
 
-        <PrivateBookingCard />
-
-        <IndividualPlanCard
-          hasActiveSub={rw.hasActiveSub}
-          windowIsOpen={rw.windowIsOpen}
-          canUseRW={rw.canUseRWModels}
-          windowClosesAt={rw.windowClosesAt}
-          windowOpensAt={rw.windowOpensAt}
-          activeSub={rw.activeSub}
-          activeTier={rw.activeTier}
-          tiers={rw.tiers}
-          subscribing={rw.subscribing}
-          onSubscribe={rw.subscribe}
-          loading={rw.loading}
-        />
-
-        {!teamLoading && ownerTeam && (
-          <TeamOwnerCard
-            ownerTeam={ownerTeam}
-            seatUsageMap={seatUsageMap}
-            busySeat={busySeat}
-            resetting={resetting}
-            onRemove={removeMember}
-            onReset={resetCode}
-          />
+        {!groupsLoading && isCommunityUser && (
+          <div
+            className="flex gap-1 p-1 rounded-2xl mb-4"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+          >
+            {[
+              { id: 'overview',      label: 'Overview' },
+              { id: 'active_models', label: 'Active Models' },
+            ].map((t) => {
+              const isActive = activeTab === t.id
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
+                  style={{
+                    background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                    color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
         )}
 
-        {!teamLoading && !ownerTeam && memberTeam && (
-          <TeamMemberCard memberTeam={memberTeam} usageToday={usageToday} />
-        )}
+        {activeTab === 'active_models' && isCommunityUser ? (
+          <ActiveModelsTab />
+        ) : (
+          <>
+            <PrivateBookingCard />
 
-        {!cohortLoading && memberCohort && (
-          <CohortMemberCard
-            memberCohort={memberCohort}
-            usageToday={cohortUsageToday}
-            leaving={leaving}
-            onLeave={leaveCohort}
-          />
-        )}
+            <IndividualPlanCard
+              hasActiveSub={rw.hasActiveSub}
+              windowIsOpen={rw.windowIsOpen}
+              canUseRW={rw.canUseRWModels}
+              windowClosesAt={rw.windowClosesAt}
+              windowOpensAt={rw.windowOpensAt}
+              activeSub={rw.activeSub}
+              activeTier={rw.activeTier}
+              tiers={rw.tiers}
+              subscribing={rw.subscribing}
+              onSubscribe={rw.subscribe}
+              loading={rw.loading}
+            />
 
-        {!teamLoading && isRwSeller && !ownerTeam && (
-          <TeamPurchaseCard tiers={teamTiers} purchasing={purchasing} onPurchase={purchase} />
-        )}
+            {!teamLoading && ownerTeam && (
+              <TeamOwnerCard
+                ownerTeam={ownerTeam}
+                seatUsageMap={seatUsageMap}
+                busySeat={busySeat}
+                resetting={resetting}
+                onRemove={removeMember}
+                onReset={resetCode}
+              />
+            )}
 
-        {showJoinCard && (
-          <CodeJoinCard onJoin={handleJoin} joining={joining} />
+            {!teamLoading && !ownerTeam && memberTeam && (
+              <TeamMemberCard memberTeam={memberTeam} usageToday={usageToday} />
+            )}
+
+            {!cohortLoading && memberCohort && (
+              <CohortMemberCard
+                memberCohort={memberCohort}
+                usageToday={cohortUsageToday}
+                leaving={leaving}
+                onLeave={leaveCohort}
+              />
+            )}
+
+            {!teamLoading && isRwSeller && !ownerTeam && (
+              <TeamPurchaseCard tiers={teamTiers} purchasing={purchasing} onPurchase={purchase} />
+            )}
+
+            {showJoinCard && (
+              <CodeJoinCard onJoin={handleJoin} joining={joining} />
+            )}
+          </>
         )}
 
       </PageWrapper>
