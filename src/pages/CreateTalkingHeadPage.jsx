@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Zap, X, ImagePlus, VideoIcon, Mic, FileText,
+  ArrowLeft, Zap, X, VideoIcon, Mic, FileText,
   Users, User, Library, Play, Pause, Loader2, ChevronDown,
   AlertTriangle, CheckCircle2, RefreshCw, Scissors,
 } from 'lucide-react'
@@ -17,6 +17,7 @@ import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { detectAspectRatio, compressImage, readVideoMetadata, formatDuration, formatBytes } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
+import UploadZone from '@/components/create/UploadZone'
 import { saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
 
 const ACCENT     = 'var(--tool-talking-head)'
@@ -40,6 +41,34 @@ const ALL_ASPECT_RATIOS = [
 ]
 
 const VIDEO_TRIM_COST = 2
+
+// ─── helpers to read metadata straight from a picker URL (no local File) ──────
+
+function readImageMetaFromUrl(url) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.width, h: img.height })
+    img.onerror = () => resolve({ w: null, h: null })
+    img.src = url
+  })
+}
+
+function readVideoMetaFromUrl(url) {
+  return new Promise((resolve) => {
+    const vid = document.createElement('video')
+    vid.preload = 'metadata'
+    vid.onloadedmetadata = () => {
+      resolve({
+        duration:    vid.duration ? Math.round(vid.duration) : null,
+        width:       vid.videoWidth  || null,
+        height:      vid.videoHeight || null,
+        aspectRatio: (vid.videoWidth && vid.videoHeight) ? detectAspectRatio(vid.videoWidth, vid.videoHeight) : null,
+      })
+    }
+    vid.onerror = () => resolve({ duration: null, width: null, height: null, aspectRatio: null })
+    vid.src = url
+  })
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPABILITY HELPERS
@@ -264,7 +293,11 @@ const restoreFile = (key) => new Promise((resolve) => {
 // SUBJECT SLOT
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, onFaceRemove, onVideoRemove, videoCompatStatus }) => {
+const SubjectSlot = ({
+  mode, faceImage, videoFile,
+  onFaceFile, onFacePick, onVideoFile, onVideoPick,
+  onFaceRemove, onVideoRemove, videoCompatStatus,
+}) => {
   if (mode === 'face') {
     return faceImage ? (
       <div className="relative flex justify-center">
@@ -281,14 +314,17 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
       </div>
     ) : (
       <div className="flex justify-center">
-        <label
-          className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all w-full max-w-[200px]"
-          style={{ aspectRatio: '1/1', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
-          <input type="file" accept="image/*" className="hidden" onChange={onFaceUpload} />
-          <ImagePlus size={24} style={{ color: ACCENT, marginBottom: 8 }} />
-          <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload face photo</span>
-          <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Clear, front-facing</span>
-        </label>
+        <UploadZone
+          kind="image"
+          accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+          label="Upload face photo"
+          sublabel="Clear, front-facing"
+          size="sm"
+          aspectRatio="1/1"
+          className="w-full max-w-[200px]"
+          onFile={onFaceFile}
+          onPick={onFacePick}
+        />
       </div>
     )
   }
@@ -329,14 +365,16 @@ const SubjectSlot = ({ mode, faceImage, videoFile, onFaceUpload, onVideoUpload, 
   }
 
   return (
-    <label
-      className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-      style={{ minHeight: 160, border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}>
-      <input type="file" accept="video/*" className="hidden" onChange={onVideoUpload} />
-      <VideoIcon size={24} style={{ color: ACCENT, marginBottom: 8 }} />
-      <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload subject video</span>
-      <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>MP4 · MOV · max 40 MB</span>
-    </label>
+    <UploadZone
+      kind="video"
+      accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+      label="Upload subject video"
+      sublabel="MP4 · MOV · max 40 MB"
+      size="sm"
+      height="160px"
+      onFile={onVideoFile}
+      onPick={onVideoPick}
+    />
   )
 }
 
@@ -1137,29 +1175,51 @@ export default function CreateTalkingHeadPage() {
   })()
 
   // ── Upload handlers ──────────────────────────────────────────────────────
-  const handleFaceUpload = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return
+  const handleFaceUpload = async (file) => {
+    if (!file) return
     const compressed = await compressImage(file)
     setFaceImage(compressed)
     setAspectRatio(compressed.ar)
     setAutoRatio(true)
   }
 
-  const handleVideoUpload = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  const handleFacePick = async (picked) => {
+    const { w, h } = await readImageMetaFromUrl(picked.url)
+    const ar = picked.aspectRatio || (w && h ? detectAspectRatio(w, h) : '9:16')
+    setFaceImage({ file: null, url: picked.url, ar })
+    setAspectRatio(ar)
+    setAutoRatio(true)
+  }
+
+  const handleVideoUpload = async (file) => {
+    if (!file) return
     if (file.size > 40 * 1024 * 1024) {
       toast.error(`Video must be under 40 MB. Yours is ${formatBytes(file.size)}.`)
-      e.target.value = ''; return
+      return
     }
     const meta = await readVideoMetadata(file)
     if (meta.duration != null && meta.duration < 1) {
       toast.error('Video is too short — minimum 1 second.')
-      e.target.value = ''; return
+      return
     }
     const url = URL.createObjectURL(file)
     setVideoFile({ file, url, name: file.name, duration: meta.duration, size: file.size, aspectRatio: meta.aspectRatio })
     setVideoTrimStart(0)
-    e.target.value = ''
+  }
+
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  const handleVideoPick = async (picked) => {
+    const meta = await readVideoMetaFromUrl(picked.url)
+    if (meta.duration != null && meta.duration < 1) {
+      toast.error('Video is too short — minimum 1 second.')
+      return
+    }
+    setVideoFile({
+      file: null, url: picked.url, name: picked.name,
+      duration: meta.duration, size: null, aspectRatio: picked.aspectRatio || meta.aspectRatio,
+    })
+    setVideoTrimStart(0)
   }
 
   const handleRemoveVideo = () => {
@@ -1513,7 +1573,8 @@ export default function CreateTalkingHeadPage() {
 
               <SubjectSlot
                 mode={subjectMode} faceImage={faceImage} videoFile={videoFile}
-                onFaceUpload={handleFaceUpload} onVideoUpload={handleVideoUpload}
+                onFaceFile={handleFaceUpload} onFacePick={handleFacePick}
+                onVideoFile={handleVideoUpload} onVideoPick={handleVideoPick}
                 onFaceRemove={() => {
                   setFaceImage(null); setAutoRatio(false); setAspectRatio('9:16')
                   try { sessionStorage.removeItem(SS_SUBJECT_IMG) } catch {}
