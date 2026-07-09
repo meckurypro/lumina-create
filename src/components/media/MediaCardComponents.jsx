@@ -688,9 +688,9 @@ export const ActionSheet = ({
   if (canShowPrompt) {
     gridItems.push({ icon: RefreshCw, label: 'Regenerate', onClick: onRegenerate })
   }
-  if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEndFrame) {
+if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEndFrame) {
     gridItems.push({
-      icon: ScanLine, label: extractLoading ? 'Extracting…' : 'End Frame',
+      icon: ScanLine, label: extractLoading ? 'Extracting…' : 'Frames',
       onClick: onExtractEndFrame, disabled: extractLoading,
     })
   }
