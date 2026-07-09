@@ -49,12 +49,13 @@ const daysRemaining = (iso) => {
 const expiryLabel = (days) =>
   days === 0 ? 'less than a day' : days === 1 ? '1 day' : `${days} days`
 
-// ─── Individual Plan Card ─────────────────────────────────
+// ─── Studio Access Card (formerly "Individual Plan") ───────
 // NOTE: Weekend Access needs no changes here — it's just another row in
 // `tiers` (render_window_tiers), same as Daily/Weekly/Monthly. The tier's
 // `duration_type` ('fixed_days' vs 'weekend') only affects how expires_at
 // is computed server-side on subscribe; this card already renders whatever
-// tiers come back generically.
+// tiers come back generically. Tier display names ("Day Pass" etc.) live
+// in the DB (`display_name` column) — not renamed here.
 
 const IndividualPlanCard = ({
   hasActiveSub, windowIsOpen, canUseRW, windowClosesAt, windowOpensAt,
@@ -94,7 +95,7 @@ const IndividualPlanCard = ({
           }}
         />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          Individual Plan
+          Studio Access
         </p>
         {canUseRW && (
           <span
@@ -140,7 +141,7 @@ const IndividualPlanCard = ({
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
           >
             <div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Your plan</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Your pass</p>
               <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
                 {activeTier?.display_name ? `${activeTier.display_name} · ` : ''}
                 expires {fmtDate(activeSub?.expires_at)}
@@ -151,13 +152,13 @@ const IndividualPlanCard = ({
       ) : (
         <>
           <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Get access to premium models. Use them for free during open render windows.
+            Get access to premium models. Use them for free whenever the studio window is open.
           </p>
 
           <div className="flex flex-col gap-2 mb-4">
             {[
               { icon: '⚡', text: 'Zero credits charged during open windows' },
-              { icon: '📅', text: 'Pick the plan length that fits how often you create' },
+              { icon: '📅', text: 'Pick the pass length that fits how often you create' },
             ].map(({ icon, text }) => (
               <div key={text} className="flex items-start gap-2.5">
                 <span style={{ fontSize: 13, lineHeight: '18px', flexShrink: 0 }}>{icon}</span>
@@ -272,11 +273,11 @@ const TeamPurchaseCard = ({ tiers, purchasing, onPurchase }) => {
       <div className="flex items-center gap-2 mb-3">
         <Users size={15} style={{ color: '#f59e0b' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#f59e0b' }}>
-          Team Plans · RW Seller
+          Team Plans · Studio Seller
         </p>
       </div>
       <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Buy a Team plan and share your invite code — each seat gets its own daily render quota.
+        Buy a Team plan and share your invite code — each seat gets its own daily quota.
       </p>
 
       {tiers.length === 0 ? (
@@ -520,7 +521,7 @@ const CohortMemberCard = ({ memberCohort, usageToday, leaving, onLeave }) => {
   )
 }
 
-// ─── Private Booking Summary Card ─────────────────────────
+// ─── AI Session Card (private booking) ─────────────────────
 
 const fmtCountdownMs = (ms) => {
   if (ms == null) return null
@@ -560,7 +561,7 @@ const PrivateBookingCard = () => {
       <div className="flex items-center gap-2 mb-3">
         <CalendarClock size={15} style={{ color: hasLive ? '#10b981' : 'var(--text-muted)' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          Private Booking
+          AI Session
         </p>
         {hasLive && (
           <span className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
@@ -571,7 +572,7 @@ const PrivateBookingCard = () => {
 
     {hasLive && (
   <p className="text-sm font-black mb-1" style={{ color: '#10b981' }}>
-    Your private session is live — enjoy creating with your Model(s), no credit charges.
+    Your session is live — enjoy creating with your Model(s), no credit charges.
   </p>
 )}
 
@@ -598,7 +599,7 @@ const PrivateBookingCard = () => {
 
       {!hasLive && !hasUpcoming && !hasPending && !hasReset && (
         <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Reserve a private session on the model(s) of your choice — no credit costs, use it as much as you like.
+          Reserve a session on the model(s) of your choice — no credit costs, use it as much as you like.
         </p>
       )}
 
@@ -607,7 +608,7 @@ const PrivateBookingCard = () => {
         className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
         style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
       >
-        {hasReset ? 'Pick a new time' : 'View / Book a Private Session'}
+        {hasReset ? 'Pick a new time' : 'Book AI Session'}
       </button>
     </div>
   )
@@ -662,7 +663,7 @@ export default function RenderWindowPage() {
 
   return (
     <>
-      <TopBar showBack title="Render Window" showCredits />
+      <TopBar showBack title="Studio" showCredits />
       <PageWrapper>
 
         {!groupsLoading && isCommunityUser && (
@@ -749,4 +750,4 @@ export default function RenderWindowPage() {
       </PageWrapper>
     </>
   )
-}
+          }
