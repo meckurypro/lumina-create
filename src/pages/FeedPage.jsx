@@ -338,7 +338,7 @@ const SplashScreen = () => {
           lineHeight: 1.2,
         }}
       >
-        Imagine it? Create it!
+        Book A Session. Unlimited Creation.
       </motion.p>
 
       {/* CTA Button */}
@@ -347,7 +347,7 @@ const SplashScreen = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5, duration: 0.4 }}
         whileTap={{ scale: 0.96 }}
-        onClick={() => navigate('/create')}
+        onClick={() => navigate('/render-window')}
         className="mt-6 px-8 py-3 rounded-2xl font-bold text-sm"
         style={{
           background: 'var(--brand)',
@@ -475,7 +475,7 @@ export default function FeedPage() {
                 color: '#ffffff',
               }}
             >
-              Content &amp; Film Making Studio
+              Meckury AI Studio
             </motion.h1>
           ) : (
             /* Feed on (or config still loading): normal Discover header */
