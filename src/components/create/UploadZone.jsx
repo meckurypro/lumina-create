@@ -30,7 +30,8 @@ export default function UploadZone({
   sublabel,
   disabled     = false,
   size         = 'md',         // 'sm' | 'md' | 'lg' — icon scale only
-  aspectRatio  = '1/1',
+  aspectRatio  = '1/1',        // ignored if `height` is set
+  height       = null,         // e.g. '200px' — for wide banner-style zones instead of a square
   allowBrowse  = true,         // set false to hide the long-press/right-click menu entirely
   className    = '',
 }) {
@@ -105,7 +106,7 @@ export default function UploadZone({
         onTouchMove={clearPressTimer}
         className="flex flex-col items-center justify-center rounded-2xl w-full transition-all select-none"
         style={{
-          aspectRatio,
+          ...(height ? { height } : { aspectRatio }),
           border:     `1.5px dashed ${accentBorder}`,
           background: accentSub,
           cursor:     disabled ? 'not-allowed' : 'pointer',
