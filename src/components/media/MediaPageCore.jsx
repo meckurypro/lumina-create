@@ -1,3 +1,4 @@
+// src/components/media/MediaPageCore.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate }                               from 'react-router-dom'
 import { motion, AnimatePresence }                   from 'framer-motion'
@@ -7,12 +8,14 @@ import toast                                         from 'react-hot-toast'
 import {
   MediaCard, GridCard, SkeletonCard,
   ActionSheet, RegenerateSheet, EditSheet,
-  FallbackBanner, ExtractEndFrameConfirmModal,
+  FallbackBanner,
   FilterPill,
 } from './MediaCardComponents.jsx'
+import FrameExtractModal     from './FrameExtractModal.jsx'
+import CropFrameExtractModal from './CropFrameExtractModal.jsx'
 import { Film, Loader2, CheckCircle2, XCircle, Clock, Image as ImageIcon } from 'lucide-react'
 import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
-import { extractLastFrame, extractPosterFrame, EXTRACT_END_FRAME_COST, LS_SKIP_EXTRACT_CONFIRM } from '@/lib/videoFrame'
+import { extractPosterFrame, EXTRACT_END_FRAME_COST } from '@/lib/videoFrame'
 
 async function extractImageThumbnail(imageUrl, maxSize = 400, quality = 0.6) {
   const res  = await fetch(imageUrl)
@@ -148,8 +151,9 @@ export default function MediaPageCore({
   const [refreshLoading,   setRefreshLoading]   = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
   const [savingAsset,      setSavingAsset]      = useState(false)
-  const [extractingId,     setExtractingId]     = useState(null)
-  const [extractConfirmGen,setExtractConfirmGen] = useState(null)
+  const [extractingId,      setExtractingId]      = useState(null)
+  const [extractPickerGen,  setExtractPickerGen]  = useState(null)   // gen currently in the frame picker
+  const [extractPickerMode, setExtractPickerMode] = useState('frame') // 'frame' | 'crop'
 
   const isMaster = profile?.user_tier === 'master'
 
@@ -444,51 +448,50 @@ const runThumbQueue = useCallback(() => {
     }
   }
 
-  const handleExtractEndFrame = (gen) => {
+const handleOpenFramePicker = (gen) => {
     closeSheet()
     if (gen.status !== 'completed' || !gen.output_url) return
-    if (!isMaster) {
-      if (credits < EXTRACT_END_FRAME_COST) {
-        toast.error(`Not enough credits — extracting end frame costs ${EXTRACT_END_FRAME_COST} credits`)
-        return
-      }
-      const skipConfirm = localStorage.getItem(LS_SKIP_EXTRACT_CONFIRM) === 'true'
-      if (!skipConfirm) { setExtractConfirmGen(gen); return }
+    if (!isMaster && credits < EXTRACT_END_FRAME_COST) {
+      toast.error(`Not enough credits — extracting a frame costs ${EXTRACT_END_FRAME_COST} credits`)
+      return
     }
-    runExtractEndFrame(gen)
+    setExtractPickerMode('frame')
+    setExtractPickerGen(gen)
   }
 
-  const runExtractEndFrame = async (gen) => {
-    setExtractConfirmGen(null)
+const runExtractFrame = async (blob, { isEndFrame } = {}) => {
+    const gen = extractPickerGen
+    if (!gen) return
+    setExtractPickerGen(null)
     setExtractingId(gen.id)
     try {
-      const frameBlob = await extractLastFrame(gen.output_url)
       const baseName  = `meckury-${gen.id.slice(0, 8)}`
-      const frameFile = new File([frameBlob], `${baseName}_end_frame.png`, { type: 'image/png' })
-      await uploadAsset(user.id, frameFile, `${baseName} — end frame`)
+      const suffix    = isEndFrame ? '_end_frame' : '_frame'
+      const label     = isEndFrame ? 'end frame' : 'frame'
+      const frameFile = new File([blob], `${baseName}${suffix}.png`, { type: 'image/png' })
+      await uploadAsset(user.id, frameFile, `${baseName} — ${label}`)
 
       if (!isMaster) {
         const { data: deduct, error: dErr } = await supabase.rpc('deduct_credits', {
           p_user_id: user.id, p_amount: EXTRACT_END_FRAME_COST,
-          p_generation_id: null, p_description: 'End frame extraction',
+          p_generation_id: null, p_description: 'Frame extraction',
         })
         if (dErr || !deduct?.success) {
-          toast.success('End frame saved to your Assets')
+          toast.success(`Saved ${label} to your Assets`)
           toast.error('Credit deduction failed — contact support', { duration: 8000 })
         } else {
           refreshProfile()
-          toast.success(`End frame saved to Assets — ${EXTRACT_END_FRAME_COST} credits used`)
+          toast.success(`Saved ${label} to Assets — ${EXTRACT_END_FRAME_COST} credits used`)
         }
       } else {
-        toast.success('End frame saved to your Assets')
+        toast.success(`Saved ${label} to your Assets`)
       }
     } catch (err) {
-      toast.error(err.message || 'Could not extract end frame')
+      toast.error(err.message || 'Could not extract frame')
     } finally {
       setExtractingId(null)
     }
   }
-
   const handleRefresh = async (gen) => {
     closeSheet()
     if (!gen?.provider_request_id) {
@@ -778,7 +781,7 @@ const runThumbQueue = useCallback(() => {
             onDownload={() => handleDownload(activeGen)}
             onSaveAsset={() => handleSaveAsset(activeGen)}
             onRetry={isPreDispatchFailure(activeGen) && !activeGen.is_system_prompt ? () => handleRetry(activeGen) : undefined}
-            onExtractEndFrame={activeGen?.output_type === 'video' ? () => handleExtractEndFrame(activeGen) : undefined}
+            onExtractEndFrame={activeGen?.output_type === 'video' ? () => handleOpenFramePicker(activeGen) : undefined}
             extractLoading={extractingId === activeGen?.id}
             refreshLoading={refreshLoading}
           />
@@ -918,16 +921,26 @@ const runThumbQueue = useCallback(() => {
         )}
       </AnimatePresence>
 
-      {/* Extract end frame confirm */}
+{/* Frame extraction picker — scrub-to-frame or reframe/crop */}
       <AnimatePresence>
-        {extractConfirmGen && (
-          <ExtractEndFrameConfirmModal
+        {extractPickerGen && extractPickerMode === 'frame' && (
+          <FrameExtractModal
+            videoUrl={extractPickerGen.output_url}
             cost={EXTRACT_END_FRAME_COST}
-            onConfirm={(skipNext) => {
-              if (skipNext) localStorage.setItem(LS_SKIP_EXTRACT_CONFIRM, 'true')
-              runExtractEndFrame(extractConfirmGen)
-            }}
-            onCancel={() => setExtractConfirmGen(null)}
+            isMaster={isMaster}
+            onExtract={runExtractFrame}
+            onCancel={() => setExtractPickerGen(null)}
+            onSwitchToCrop={() => setExtractPickerMode('crop')}
+          />
+        )}
+        {extractPickerGen && extractPickerMode === 'crop' && (
+          <CropFrameExtractModal
+            videoUrl={extractPickerGen.output_url}
+            aspectRatio={extractPickerGen.aspect_ratio}
+            cost={EXTRACT_END_FRAME_COST}
+            isMaster={isMaster}
+            onExtract={(blob) => runExtractFrame(blob, { isEndFrame: false })}
+            onCancel={() => setExtractPickerGen(null)}
           />
         )}
       </AnimatePresence>
