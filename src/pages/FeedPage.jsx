@@ -290,75 +290,6 @@ const TrendingSection = ({ slides, onPlayVideo, onNavigate }) => {
   )
 }
 
-// ─── Ping-Pong Video (forward → reverse → forward → ...) ──
-
-const PingPongVideo = ({ src, className, style }) => {
-  const videoRef      = useRef(null)
-  const rafRef        = useRef(null)
-  const lastTsRef      = useRef(null)
-
-  const REVERSE_RATE = 1 // seconds of video-time per second of real-time while reversing
-
-  const stopRaf = () => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    rafRef.current = null
-    lastTsRef.current = null
-  }
-
-  const stepReverse = useCallback((ts) => {
-    const video = videoRef.current
-    if (!video) return
-    if (lastTsRef.current === null) lastTsRef.current = ts
-    const dt = (ts - lastTsRef.current) / 1000
-    lastTsRef.current = ts
-
-    const next = video.currentTime - dt * REVERSE_RATE
-
-    if (next <= 0) {
-      video.currentTime = 0
-      stopRaf()
-      video.play().catch(() => {})
-      return
-    }
-
-    video.currentTime = next
-    rafRef.current = requestAnimationFrame(stepReverse)
-  }, [])
-
-  const startReverse = useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-    video.pause()
-    lastTsRef.current = null
-    rafRef.current = requestAnimationFrame(stepReverse)
-  }, [stepReverse])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    const handleEnded = () => startReverse()
-    video.addEventListener('ended', handleEnded)
-    video.play().catch(() => {})
-
-    return () => {
-      video.removeEventListener('ended', handleEnded)
-      stopRaf()
-    }
-  }, [startReverse])
-
-  return (
-    <video
-      ref={videoRef}
-      src={src}
-      muted
-      playsInline
-      className={className}
-      style={style}
-    />
-  )
-}
-
 // ─── Splash Screen (feed disabled) ───────────────────────
 
 const SplashScreen = () => {
@@ -383,8 +314,12 @@ const SplashScreen = () => {
           boxShadow: 'var(--shadow-lg)',
         }}
       >
-        <PingPongVideo
+        <video
           src="/splash.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
           className="splash-video w-full h-full"
           style={{ objectFit: 'cover', display: 'block' }}
         />
