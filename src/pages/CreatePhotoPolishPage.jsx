@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, Maximize2, Crown, Lock } from 'lucide-react'
+import { ArrowLeft, Zap, X, Maximize2, Crown, Lock } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
 import { PHOTO_POLISH_PRESETS } from '@/config/photoPolishPresets'
@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { detectAspectRatio, compressImage } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
+import UploadZone from '@/components/create/UploadZone'
 
 const ACCENT = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
@@ -101,6 +102,16 @@ const ALL_ASPECT_RATIOS = [
 
 const OUTPUT_RESOLUTION = 2048 // 2K
 const DEFAULT_MODEL_VALUE = 'nano-banana-edit-pro' // nano banana edit pro
+
+// ── helper: read width/height from a URL (picker result — no local File) ─────
+function readImageMetaFromUrl(url) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.width, h: img.height })
+    img.onerror = () => resolve({ w: null, h: null })
+    img.src = url
+  })
+}
 
 // ── Preset Card ───────────────────────────────────────────────────────────────
 const PresetCard = ({ preset, selected, onSelect, locked }) => (
@@ -328,12 +339,21 @@ export default function CreatePhotoPolishPage() {
   }
 
   // ── upload handler (local file) ───────────────────────────────────────────
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const handleUpload = async (file) => {
     if (!file) return
     const compressed = await compressImage(file)
     setPhoto(compressed)
     setAspectRatio(compressed.ar)
+    setAutoRatio(true)
+    setResultUrl(null)
+  }
+
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  const handlePick = async (picked) => {
+    const { w, h } = await readImageMetaFromUrl(picked.url)
+    const ar = picked.aspectRatio || (w && h ? detectAspectRatio(w, h) : '9:16')
+    setPhoto({ file: null, url: picked.url, ar, w, h })
+    setAspectRatio(ar)
     setAutoRatio(true)
     setResultUrl(null)
   }
@@ -578,17 +598,16 @@ export default function CreatePhotoPolishPage() {
                 </div>
               </div>
             ) : (
-              <label
-                className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-                style={{ height: '180px', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-              >
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-                <ImagePlus size={28} style={{ color: ACCENT, marginBottom: 10 }} />
-                <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload a photo</span>
-                <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  One person only — close-up or full body
-                </span>
-              </label>
+              <UploadZone
+                kind="image"
+                accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+                label="Upload a photo"
+                sublabel="One person only — close-up or full body"
+                size="lg"
+                height="180px"
+                onFile={handleUpload}
+                onPick={handlePick}
+              />
             )}
           </div>
 
