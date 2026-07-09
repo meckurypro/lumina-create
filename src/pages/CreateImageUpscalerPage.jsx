@@ -2,11 +2,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, Maximize2 } from 'lucide-react'
+import { ArrowLeft, Zap, X, Maximize2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
+import UploadZone from '@/components/create/UploadZone'
 
 const ACCENT     = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
@@ -23,6 +24,15 @@ async function readImageMeta(file) {
     img.onload = () => {
       resolve({ w: img.width, h: img.height, url })
     }
+    img.onerror = () => resolve({ w: null, h: null, url })
+    img.src = url
+  })
+}
+
+function readImageMetaFromUrl(url) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.width, h: img.height, url })
     img.onerror = () => resolve({ w: null, h: null, url })
     img.src = url
   })
@@ -113,11 +123,16 @@ export default function CreateImageUpscalerPage() {
   const canUpscale    = !!image && canAfford && !submitting && !!selectedModel && creditCost > 0
 
   // ── Upload ────────────────────────────────────────────────────────────────
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const handleUpload = async (file) => {
     if (!file) return
     const { w, h, url } = await readImageMeta(file)
     setImage({ file, url, w, h })
+  }
+
+  // picked = { url, name, mimeType, aspectRatio, thumbnailUrl, isVideo, source }
+  const handlePick = async (picked) => {
+    const { w, h } = await readImageMetaFromUrl(picked.url)
+    setImage({ file: null, url: picked.url, w, h })
   }
 
   const handleRemove = () => setImage(null)
@@ -190,7 +205,7 @@ export default function CreateImageUpscalerPage() {
 
       refreshProfile()
       toast.success('Upscaling your image… Check your Media page.', { duration: 4000 })
-      setImage(null)
+      handleRemove()
 
     } catch (err) {
       toast.error(err.message || 'Something went wrong')
@@ -337,17 +352,16 @@ export default function CreateImageUpscalerPage() {
                 </div>
               </div>
             ) : (
-              <label
-                className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-                style={{ height: '200px', border: `1.5px dashed ${ACCENT_BDR}`, background: ACCENT_SUB }}
-              >
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-                <ImagePlus size={28} style={{ color: ACCENT, marginBottom: 10 }} />
-                <span className="text-sm font-semibold" style={{ color: ACCENT }}>Upload an image</span>
-                <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  JPG, PNG, WEBP — any size
-                </span>
-              </label>
+              <UploadZone
+                kind="image"
+                accent={ACCENT} accentSub={ACCENT_SUB} accentBorder={ACCENT_BDR}
+                label="Upload an image"
+                sublabel="JPG, PNG, WEBP — any size"
+                size="lg"
+                height="200px"
+                onFile={handleUpload}
+                onPick={handlePick}
+              />
             )}
           </div>
 
