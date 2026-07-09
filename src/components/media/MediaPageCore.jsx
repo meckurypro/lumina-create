@@ -11,8 +11,7 @@ import {
   FallbackBanner,
   FilterPill,
 } from './MediaCardComponents.jsx'
-import FrameExtractModal     from './FrameExtractModal.jsx'
-import CropFrameExtractModal from './CropFrameExtractModal.jsx'
+import FrameExtractModal from './FrameExtractModal.jsx'
 import { Film, Loader2, CheckCircle2, XCircle, Clock, Image as ImageIcon } from 'lucide-react'
 import { uploadAsset, uploadGenerationThumbnail } from '@/lib/assets'
 import { extractPosterFrame, EXTRACT_END_FRAME_COST } from '@/lib/videoFrame'
@@ -151,9 +150,8 @@ export default function MediaPageCore({
   const [refreshLoading,   setRefreshLoading]   = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
   const [savingAsset,      setSavingAsset]      = useState(false)
-  const [extractingId,      setExtractingId]      = useState(null)
-  const [extractPickerGen,  setExtractPickerGen]  = useState(null)   // gen currently in the frame picker
-  const [extractPickerMode, setExtractPickerMode] = useState('frame') // 'frame' | 'crop'
+  const [extractingId,     setExtractingId]     = useState(null)
+  const [extractPickerGen, setExtractPickerGen] = useState(null)   // gen currently in the frame picker
 
   const isMaster = profile?.user_tier === 'master'
 
@@ -455,14 +453,12 @@ const handleOpenFramePicker = (gen) => {
       toast.error(`Not enough credits — extracting a frame costs ${EXTRACT_END_FRAME_COST} credits`)
       return
     }
-    setExtractPickerMode('frame')
     setExtractPickerGen(gen)
   }
 
 const runExtractFrame = async (blob, { isEndFrame } = {}) => {
     const gen = extractPickerGen
     if (!gen) return
-    setExtractPickerGen(null)
     setExtractingId(gen.id)
     try {
       const baseName  = `meckury-${gen.id.slice(0, 8)}`
@@ -834,12 +830,14 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
         )}
       </AnimatePresence>
 
-      {/* Extracting end frame overlay */}
+      {/* Frame extraction busy overlay — sits ABOVE the picker modal
+          (z-[70] > modal's z-[60]) so it visually covers the modal while
+          the upload/credit-deduct runs, then disappears back to it. */}
       <AnimatePresence>
         {extractingId && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4"
+            className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.5)' }}
           >
             <motion.div
@@ -847,7 +845,7 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
               className="w-10 h-10 rounded-full border-2"
               style={{ borderColor: 'rgba(91,110,247,0.3)', borderTopColor: '#5B6EF7' }}
             />
-            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Extracting end frame…</p>
+            <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>Saving frame…</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -921,25 +919,17 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
         )}
       </AnimatePresence>
 
-{/* Frame extraction picker — scrub-to-frame or reframe/crop */}
+{/* Frame extraction picker — stays mounted through extraction;
+          only the user's own Cancel click closes it. */}
       <AnimatePresence>
-        {extractPickerGen && extractPickerMode === 'frame' && (
+        {extractPickerGen && (
           <FrameExtractModal
-            videoUrl={extractPickerGen.output_url}
-            cost={EXTRACT_END_FRAME_COST}
-            isMaster={isMaster}
-            onExtract={runExtractFrame}
-            onCancel={() => setExtractPickerGen(null)}
-            onSwitchToCrop={() => setExtractPickerMode('crop')}
-          />
-        )}
-        {extractPickerGen && extractPickerMode === 'crop' && (
-          <CropFrameExtractModal
             videoUrl={extractPickerGen.output_url}
             aspectRatio={extractPickerGen.aspect_ratio}
             cost={EXTRACT_END_FRAME_COST}
             isMaster={isMaster}
-            onExtract={(blob) => runExtractFrame(blob, { isEndFrame: false })}
+            busy={extractingId === extractPickerGen.id}
+            onExtract={runExtractFrame}
             onCancel={() => setExtractPickerGen(null)}
           />
         )}
