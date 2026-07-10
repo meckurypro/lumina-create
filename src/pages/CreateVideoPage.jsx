@@ -23,6 +23,7 @@ import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
 import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
+import { watchForEarlyFailure } from '@/lib/generationWatch'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
@@ -1431,7 +1432,14 @@ const merged = [...(byFeature || [])]
           return
         }
 
-        refreshProfile()
+        const { failed, message } = await watchForEarlyFailure(genRow.id)
+        await refreshProfile()
+
+        if (failed) {
+          toast.error(message)
+          return
+        }
+
         toast.success('Your edited video is being generated. Check your Media page.', { duration: 4000 })
         setPrompt(''); handleRemoveEditVideo()
         return
@@ -1555,7 +1563,14 @@ const uploadedRefUrls = []
         return
       }
 
-      refreshProfile()
+      const { failed, message } = await watchForEarlyFailure(genRow.id)
+      await refreshProfile()
+
+      if (failed) {
+        toast.error(message)
+        return
+      }
+
       toast.success('Your video is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
       setStartFrame(null); setEndFrame(null); setRefImages([])
