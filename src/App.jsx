@@ -268,7 +268,6 @@ export default function App() {
             <Route path="/credits"         element={<Auth><CreditsPage /></Auth>} />
             <Route path="/render-window"        element={<Auth><RenderWindowPage /></Auth>} />
             <Route path="/render-window/book"   element={<Auth><PrivateBookingPage /></Auth>} />
-            <Route path="/render-window/book"   element={<Auth><PrivateBookingPage /></Auth>} />
             <Route path="/referrals"       element={<Auth><ReferralsPage /></Auth>} />
             <Route path="/settings"        element={<Auth><SettingsPage /></Auth>} />
             <Route path="/settings/models" element={<Auth><ModelPreferencesPage /></Auth>} />
