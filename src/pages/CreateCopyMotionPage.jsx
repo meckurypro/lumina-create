@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
+import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { detectAspectRatio, formatDuration, readVideoMetadata } from '@/lib/mediaUtils'
@@ -567,20 +568,23 @@ export default function CreateCopyMotionPage() {
   // ── Load models ──────────────────────────────────────────
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const { data } = await supabase
-      .from('models')
-      .select('*')
-      .eq('type', 'video')
-      .eq('is_active', true)
-      .eq('is_user_facing', true)
-      .eq('feature', 'motion_transfer')
-      .order('sort_order')
+    const [{ data }, activeRWModelIds] = await Promise.all([
+      supabase
+        .from('models')
+        .select('*')
+        .eq('type', 'video')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .eq('feature', 'motion_transfer')
+        .order('sort_order'),
+      canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
+    ])
     const isMaster      = profile?.user_tier === 'master'
     const tierFiltered  = (data || [])
       .filter((m) => isMaster || m.tier_required !== 'master')
       // Render-window (ComfyUI) models only show with an active subscription
-      // AND a currently-open window.
-      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
+      // AND a currently-open window AND being attached to that live window.
+      .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list          = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const firstUnlocked = list.find((m) => !m.is_locked)
