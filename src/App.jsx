@@ -9,6 +9,7 @@ import AuthPage                 from '@/pages/AuthPage'
 import ResetPasswordPage        from '@/pages/ResetPasswordPage'
 import PrivacyPage              from '@/pages/PrivacyPage'
 import TermsPage                from '@/pages/TermsPage'
+import RefundPolicyPage         from '@/pages/RefundPolicyPage'
 import FeedPage                 from '@/pages/FeedPage'
 import CreatePage               from '@/pages/CreatePage'
 import CreateImagePage          from '@/pages/CreateImagePage'
@@ -155,6 +156,7 @@ export default function App() {
         <Route path="/reset-password"   element={<ResetPasswordPage />} />
         <Route path="/privacy"          element={<PrivacyPage />} />
         <Route path="/terms"            element={<TermsPage />} />
+        <Route path="/refund-policy"    element={<RefundPolicyPage />} />
 
         {loading ? (
           <Route path="*" element={<FullLoader />} />
