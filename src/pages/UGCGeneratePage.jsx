@@ -17,6 +17,7 @@ import { compressImage, tagForSlot } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
+import { watchForEarlyFailure } from '@/lib/generationWatch'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
@@ -344,7 +345,14 @@ const loadModels = useCallback(async () => {
         return
       }
 
-      refreshProfile()
+      const { failed, message } = await watchForEarlyFailure(genRow.id)
+      await refreshProfile()
+
+      if (failed) {
+        toast.error(message)
+        return
+      }
+
       toast.success(
         <span>
           Generating! View in{' '}
