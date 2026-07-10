@@ -15,6 +15,7 @@ import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { detectAspectRatio, formatDuration, readVideoMetadata } from '@/lib/mediaUtils'
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
+import { watchForEarlyFailure } from '@/lib/generationWatch'
 
 // ── Theme constants ────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-motion)'
@@ -1018,7 +1019,14 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
         return
       }
 
-      refreshProfile()
+      const { failed, message } = await watchForEarlyFailure(genRow.id)
+      await refreshProfile()
+
+      if (failed) {
+        toast.error(message)
+        return
+      }
+
       toast.success('Copy Motion is being generated. Check your Media page.', { duration: 4000 })
 
       handleRemoveVideo()
