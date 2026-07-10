@@ -18,6 +18,7 @@ import UploadZone from '@/components/create/UploadZone'
 import { usePromptTagging } from '@/hooks/usePromptTagging'
 import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
+import { watchForEarlyFailure } from '@/lib/generationWatch'
 
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
@@ -481,7 +482,7 @@ const canAfford      = credits >= creditCost
         throw new Error(deduct?.error || 'Not enough credits')
       }
 
-      const { data: invokeData, error: invokeErr } = await supabase.functions
+     const { data: invokeData, error: invokeErr } = await supabase.functions
         .invoke('image-generate', { body: { generationId: genRow.id } })
 
       if (invokeErr || invokeData?.error) {
@@ -491,7 +492,14 @@ const canAfford      = credits >= creditCost
         return
       }
 
-      refreshProfile()
+      const { failed, message } = await watchForEarlyFailure(genRow.id)
+      await refreshProfile()
+
+      if (failed) {
+        toast.error(message)
+        return
+      }
+
       toast.success('Your image is being generated. Check your Media page.', { duration: 4000 })
       setPrompt('')
       clearAllImages()
