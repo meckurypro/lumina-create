@@ -8,7 +8,7 @@ import {
   X, Maximize2, Plus, Crown,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { ugcProfiles, ugcGenerations } from '@/lib/ugc'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
@@ -121,7 +121,7 @@ export default function UGCGeneratePage() {
   const { profileId }                                            = useParams()
   const navigate                                                 = useNavigate()
  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
-  const { canUseRWModels }                                       = useRenderWindowSubscription()
+ const { eligible: canUseRWModels }                             = useRenderWindowEligibility()
   const textareaRef                                              = useRef(null)
 
   const isMaster = userProfile?.user_tier === 'master'
