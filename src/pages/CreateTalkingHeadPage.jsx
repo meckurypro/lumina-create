@@ -11,6 +11,7 @@ import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription
 import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
+import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 import { ugcAudioChunks } from '@/lib/ugcVoices'
 import toast from 'react-hot-toast'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
@@ -1045,22 +1046,25 @@ export default function CreateTalkingHeadPage() {
   }, [videoFile?.duration, durationNum, videoTrimStart])
 
   // ── Load models ──────────────────────────────────────────────────────────
- const loadModels = useCallback(async () => {
+const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const { data } = await supabase
-      .from('models')
-      .select('*')
-      .eq('feature', 'lipsync')
-      .eq('is_active', true)
-      .eq('is_user_facing', true)
-      .order('sort_order')
+    const [{ data }, activeRWModelIds] = await Promise.all([
+      supabase
+        .from('models')
+        .select('*')
+        .eq('feature', 'lipsync')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .order('sort_order'),
+      canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
+    ])
     const isMaster     = profile?.user_tier === 'master'
     const tierFiltered = (data || [])
       .filter((m) => isMaster || m.tier_required !== 'master')
       // Same render-window gate as CreateVideoPage — hide ComfyUI models
-      // (e.g. meckury_i2v_max) unless the user has an active RW subscription
-      // and a window is currently open.
-      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
+      // (e.g. meckury_i2v_max) unless the user has an active RW subscription,
+      // a window is currently open, AND this model is attached to that window.
+      .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
