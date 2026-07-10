@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, Maximize2, Plus } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb, profiles as profilesApi } from '@/lib/supabase'
@@ -179,7 +179,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onAddPick, onRemove, onTagIn
 export default function CreateImagePage() {
   const navigate = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
-  const { canUseRWModels } = useRenderWindowSubscription()
+ const { eligible: canUseRWModels } = useRenderWindowEligibility()
   const textareaRef = useRef(null)
 
   const [models,        setModels]        = useState([])
