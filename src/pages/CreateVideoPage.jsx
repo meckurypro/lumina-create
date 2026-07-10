@@ -20,6 +20,7 @@ import { SettingChips } from '@/components/create/SettingChips'
 import { MentionPicker } from '@/components/create/MentionPicker'
 import { usePromptTagging } from '@/hooks/usePromptTagging'
 import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
@@ -855,7 +856,7 @@ async function getActiveRenderWindowModelIds() {
 export default function CreateVideoPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
-  const { canUseRWModels }                         = useRenderWindowSubscription()
+  const { eligible: canUseRWModels }               = useRenderWindowEligibility()
   const textareaRef = useRef(null)
 
   const [prompt,        setPrompt]        = useState('')
