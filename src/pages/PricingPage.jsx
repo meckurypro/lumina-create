@@ -10,7 +10,7 @@ const CREDIT_PACKS = [
   { name: 'Creator',  credits: '41333 + 840 bonus',  price: '₦99,200' },
 ]
 
-const STUDIO_PASSES = [
+const RENDER_WINDOW_PASSES = [
   { name: 'Daily Access',   price: '₦1,500', period: '1 day' },
   { name: 'Weekend Access', price: '₦3,000', period: 'weekend' },
   { name: 'Weekly Access',  price: '₦6,000', period: '1 week' },
@@ -59,10 +59,25 @@ export default function PricingPage() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Last updated: July 2026</p>
           <p className="mt-3 text-sm">
             All prices are in Nigerian Naira (₦) and are processed securely through Paystack. Meckury AI
-            offers three ways to pay: one-time credit purchases, Studio Access passes, and hourly AI Session
-            bookings.
+            offers four ways to access the platform: a free tier, paid credits, Render Window access, and
+            private AI Sessions.
           </p>
         </div>
+
+        <section>
+          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>User Tiers</h2>
+          <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
+            Every account starts on the Novice tier. Upgrade to Master for full platform access.
+          </p>
+          <div>
+            <PriceRow left="Novice" mid="Free — core generation features" right="₦0" />
+            <PriceRow
+              left="Master"
+              mid="Unlimited UGC characters &amp; brands, voice cloning as TTS, generations kept beyond 7 days, and more"
+              right="₦5,000/mo"
+            />
+          </div>
+        </section>
 
         <section>
           <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Credits</h2>
@@ -77,23 +92,32 @@ export default function PricingPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Studio Access</h2>
+          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Render Window Access</h2>
           <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
-            Get unlimited access to premium models for a set period — zero credits charged while your pass
-            is active.
+            Certain premium models are made available for free during scheduled windows announced by
+            Meckury AI (for example, "Meckury I2V Max open 12:30pm–1:30pm"). A Render Window pass gives you
+            access to use those models at zero credit cost whenever a window is open. Batch generation is
+            not available during Render Window sessions — generations are made one at a time as the window
+            is open.
           </p>
           <div>
-            {STUDIO_PASSES.map((pass) => (
+            {RENDER_WINDOW_PASSES.map((pass) => (
               <PriceRow key={pass.name} left={pass.name} mid={pass.period} right={pass.price} />
             ))}
           </div>
+          <p className="text-sm mt-3">
+            Teams and communities can also get Render Window access together through a Group or Cohort
+            code, with a daily content cap per member. Contact us for Group/Cohort pricing.
+          </p>
         </section>
 
         <section>
-          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>AI Sessions (Tender Window)</h2>
+          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>AI Sessions</h2>
           <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
-            Book a private, model-specific session and use it as much as you like for the duration booked —
-            no credit costs during the session. Priced per duration block, per model.
+            Book a private session on a model of your choice for a set duration. Unlike Render Window
+            access, AI Sessions are not tied to a scheduled availability window — you get dedicated,
+            uninterrupted access to the model for the time you book, with no credit cost and no restriction
+            on batch generation. Priced per duration, per model.
           </p>
           <div>
             {SESSION_RATES.map((rate) => (
