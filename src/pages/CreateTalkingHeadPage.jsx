@@ -20,6 +20,7 @@ import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import UploadZone from '@/components/create/UploadZone'
 import { saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
+import { watchForEarlyFailure } from '@/lib/generationWatch'
 
 const ACCENT     = 'var(--tool-talking-head)'
 const ACCENT_SUB = 'var(--tool-talking-head-subtle)'
@@ -1459,7 +1460,7 @@ const loadModels = useCallback(async () => {
         ? 'lipsync-generate'
         : 'talking-head-generate'
 
-      const { data: invokeData, error: invokeErr } = await supabase.functions
+     const { data: invokeData, error: invokeErr } = await supabase.functions
         .invoke(edgeFn, { body: { generationId: genRow.id } })
 
       if (invokeErr || invokeData?.error) {
@@ -1477,7 +1478,14 @@ const loadModels = useCallback(async () => {
         return
       }
 
-      refreshProfile()
+      const { failed, message } = await watchForEarlyFailure(genRow.id)
+      await refreshProfile()
+
+      if (failed) {
+        toast.error(message)
+        return
+      }
+
       toast.success('Your talking head video is being generated. Check your Media page.', { duration: 4000 })
       clearAll()
 
