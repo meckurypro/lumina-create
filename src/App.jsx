@@ -10,6 +10,7 @@ import ResetPasswordPage        from '@/pages/ResetPasswordPage'
 import PrivacyPage              from '@/pages/PrivacyPage'
 import TermsPage                from '@/pages/TermsPage'
 import RefundPolicyPage         from '@/pages/RefundPolicyPage'
+import PricingPage              from '@/pages/PricingPage'
 import FeedPage                 from '@/pages/FeedPage'
 import CreatePage               from '@/pages/CreatePage'
 import CreateImagePage          from '@/pages/CreateImagePage'
@@ -157,6 +158,7 @@ export default function App() {
         <Route path="/privacy"          element={<PrivacyPage />} />
         <Route path="/terms"            element={<TermsPage />} />
         <Route path="/refund-policy"    element={<RefundPolicyPage />} />
+        <Route path="/pricing"          element={<PricingPage />} />
 
         {loading ? (
           <Route path="*" element={<FullLoader />} />
