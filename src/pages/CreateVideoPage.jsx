@@ -831,6 +831,26 @@ const ProcessingOverlay = ({ phase, convertProgress }) => (
   </motion.div>
 )
 
+// Render-window models must pass BOTH gates: canUseRWModels (subscription/window-open
+// eligibility) AND actual attachment to the currently-live window's render_window_models
+// rows — otherwise every RW-type model a user has preference-enabled leaks into the
+// dropdown regardless of whether it's the model actually running right now.
+async function getActiveRenderWindowModelIds() {
+  const { data: activeWindow } = await supabase
+    .from('render_windows')
+    .select('id')
+    .eq('status', 'active')
+    .maybeSingle()
+  if (!activeWindow) return new Set()
+
+  const { data: attached } = await supabase
+    .from('render_window_models')
+    .select('model_id')
+    .eq('render_window_id', activeWindow.id)
+
+  return new Set((attached || []).map((a) => a.model_id))
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 export default function CreateVideoPage() {
   const navigate                                   = useNavigate()
@@ -933,7 +953,7 @@ export default function CreateVideoPage() {
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
 
-    const [{ data: byFeature }, { data: crossover }] = await Promise.all([
+    const [{ data: byFeature }, { data: crossover }, activeRWModelIds] = await Promise.all([
       supabase
         .from('models')
         .select('*')
@@ -950,6 +970,7 @@ const loadModels = useCallback(async () => {
         .eq('is_user_facing', true)
         .in('value', CROSSOVER_ALLOWLIST)
         .order('sort_order'),
+      canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
     ])
 
 const merged = [...(byFeature || [])]
@@ -961,9 +982,10 @@ const merged = [...(byFeature || [])]
     const tierFiltered = merged
       .filter((m) => isMaster || m.tier_required !== 'master')
       // Render-window (ComfyUI) models are only visible with an active
-      // subscription AND a currently-open window — otherwise they'd be
-      // shown but unusable.
-      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
+      // subscription AND a currently-open window AND being attached to
+      // that specific live window — otherwise they'd be shown but unusable,
+      // or worse, shown as usable when they're not the model actually running.
+      .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     setModelsLoading(false)
