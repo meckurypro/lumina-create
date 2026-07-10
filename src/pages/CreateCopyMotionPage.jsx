@@ -7,7 +7,7 @@ import {
   AlertCircle, RefreshCw, CheckCircle2, Scissors, Undo2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 import toast from 'react-hot-toast'
@@ -524,7 +524,7 @@ const FirstConversionPanel = ({
 export default function CreateCopyMotionPage() {
   const navigate                                   = useNavigate()
   const { user, credits, refreshProfile, profile } = useAuth()
-  const { canUseRWModels }                         = useRenderWindowSubscription()
+ const { eligible: canUseRWModels }               = useRenderWindowEligibility()
   const isNovice                                   = profile?.user_tier !== 'master'
   const [weeklyUsed,  setWeeklyUsed]               = useState(null)
   const [weeklyLimit, setWeeklyLimit]              = useState(20)
