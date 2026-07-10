@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
 import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts, MAX_BRAND_PRODUCTS } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
+import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 import BrandProductManager from '@/components/BrandProductManager'
 import toast from 'react-hot-toast'
 import { compressImage, tagForSlot } from '@/lib/mediaUtils'
@@ -196,18 +197,21 @@ export default function UGCBrandGeneratePage() {
 
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const { data } = await supabase
-      .from('models')
-      .select('*')
-      .eq('is_active', true)
-      .eq('is_user_facing', true)
-      .eq('supports_multi_image', true)
-      .order('sort_order')
+    const [{ data }, activeRWModelIds] = await Promise.all([
+      supabase
+        .from('models')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .eq('supports_multi_image', true)
+        .order('sort_order'),
+      canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
+    ])
     const tierFiltered = (data || [])
       .filter((m) => isMaster || m.tier_required !== 'master')
       // Render-window (ComfyUI) models only show with an active subscription
-      // AND a currently-open window.
-      .filter((m) => m.model_access_type !== 'render_window' || canUseRWModels)
+      // AND a currently-open window AND being attached to that live window.
+      .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
     const first = list.find((m) => !m.is_locked && m.type === 'image')
