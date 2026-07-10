@@ -22,6 +22,7 @@ import { usePromptTagging } from '@/hooks/usePromptTagging'
 import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
+import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
@@ -831,26 +832,6 @@ const ProcessingOverlay = ({ phase, convertProgress }) => (
     )}
   </motion.div>
 )
-
-// Render-window models must pass BOTH gates: canUseRWModels (subscription/window-open
-// eligibility) AND actual attachment to the currently-live window's render_window_models
-// rows — otherwise every RW-type model a user has preference-enabled leaks into the
-// dropdown regardless of whether it's the model actually running right now.
-async function getActiveRenderWindowModelIds() {
-  const { data: activeWindow } = await supabase
-    .from('render_windows')
-    .select('id')
-    .eq('status', 'active')
-    .maybeSingle()
-  if (!activeWindow) return new Set()
-
-  const { data: attached } = await supabase
-    .from('render_window_models')
-    .select('model_id')
-    .eq('render_window_id', activeWindow.id)
-
-  return new Set((attached || []).map((a) => a.model_id))
-}
 
 // ─── main page ────────────────────────────────────────────────────────────────
 export default function CreateVideoPage() {
