@@ -23,7 +23,9 @@ export default function RefundPolicyPage() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Last updated: July 2026</p>
           <p className="mt-3 text-sm">
             This Refund Policy explains when Meckury AI ("we", "us", or "our") issues refunds for credit
-            purchases, AI Sessions, and Studio Access subscriptions on the Platform.
+            purchases, AI Sessions, and Studio Access subscriptions on the Platform. See our{' '}
+            <a href="/pricing" className="underline" style={{ color: 'var(--brand)' }}>Pricing</a> page for
+            current rates.
           </p>
         </div>
 
@@ -76,8 +78,8 @@ export default function RefundPolicyPage() {
           <h2 className="text-base font-bold mb-2" style={{ color: 'var(--text-primary)' }}>5. How to Request a Refund</h2>
           <p className="text-sm">
             To request a refund under the terms above, contact us at{' '}
-            <a href="mailto:hey@meckury.ai" className="underline" style={{ color: 'var(--brand)' }}>
-              hey@meckury.ai
+            <a href="mailto:meckurypro@gmail.com" className="underline" style={{ color: 'var(--brand)' }}>
+              meckurypro@gmail.com
             </a>{' '}
             with your account email and a description of the issue. We aim to review and resolve refund
             requests promptly; approved refunds are processed back to your original payment method via
@@ -97,4 +99,3 @@ export default function RefundPolicyPage() {
     </div>
   )
 }
-
