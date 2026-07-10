@@ -35,14 +35,13 @@ const TOOLS = [
     route:     '/create/video',
     accentVar: '--tool-video',
   },
-  {
+{
     id:        'copy_motion',
     label:     'Copy Motion',
     subtitle:  'Transfer motion from video to image',
     icon:      Layers,
     route:     '/create/copy-motion',
     accentVar: '--tool-motion',
-    comingSoonForPublic: true,
   },
   {
     id:        'talking_head',
@@ -51,7 +50,6 @@ const TOOLS = [
     icon:      Mic,
     route:     '/create/talking-head',
     accentVar: '--tool-talking-head',
-    comingSoonForPublic: true,
   },
   {
     id:        'create_ugc',
