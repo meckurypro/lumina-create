@@ -314,7 +314,7 @@ const TeamPurchaseCard = ({ tiers, purchasing, onPurchase }) => {
 
 // ─── Team Owner Dashboard ──────────────────────────────────
 
-const TeamOwnerCard = ({ ownerTeam, seatUsageMap, busySeat, resetting, onRemove, onReset }) => {
+const TeamOwnerCard = ({ ownerTeam, seatUsageMap, busySeat, resetting, onRemove, onReset, windowIsOpen, windowClosesAt }) => {
   const [copied, setCopied] = useState(false)
   const { team, seats } = ownerTeam
   const tier = team.tier
@@ -331,14 +331,31 @@ const TeamOwnerCard = ({ ownerTeam, seatUsageMap, busySeat, resetting, onRemove,
   return (
     <div
       className="rounded-2xl p-5 mb-3"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+      style={{
+        background: windowIsOpen ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+        border:     `1px solid ${windowIsOpen ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
+      }}
     >
       <div className="flex items-center gap-2 mb-3">
         <Users size={15} style={{ color: 'var(--text-muted)' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           Your Team · {tier?.display_name}
         </p>
+        {windowIsOpen && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            LIVE NOW
+          </span>
+        )}
       </div>
+
+      {windowIsOpen && (
+        <p className="text-sm font-black mb-3" style={{ color: '#10b981' }}>
+          🪟 Free access is live for your team{fmtCountdown(windowClosesAt) ? ` — ${fmtCountdown(windowClosesAt)} left` : ''}
+        </p>
+      )}
 
       {showWarning && (
         <div
@@ -422,7 +439,7 @@ const TeamOwnerCard = ({ ownerTeam, seatUsageMap, busySeat, resetting, onRemove,
 
 // ─── Team Member Card ──────────────────────────────────────
 
-const TeamMemberCard = ({ memberTeam, usageToday }) => {
+const TeamMemberCard = ({ memberTeam, usageToday, windowIsOpen, windowClosesAt }) => {
   const { team, seat } = memberTeam
   const tier = team.tier
   const days = daysRemaining(team.expires_at)
@@ -431,14 +448,31 @@ const TeamMemberCard = ({ memberTeam, usageToday }) => {
   return (
     <div
       className="rounded-2xl p-5 mb-3"
-      style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}
+      style={{
+        background: windowIsOpen ? 'rgba(16,185,129,0.06)' : 'rgba(99,102,241,0.06)',
+        border:     `1px solid ${windowIsOpen ? 'rgba(16,185,129,0.25)' : 'rgba(99,102,241,0.2)'}`,
+      }}
     >
       <div className="flex items-center gap-2 mb-3">
         <Users size={15} style={{ color: 'var(--text-muted)' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           Team Member · Seat #{seat.seat_number}
         </p>
+        {windowIsOpen && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            LIVE NOW
+          </span>
+        )}
       </div>
+
+      {windowIsOpen && (
+        <p className="text-sm font-black mb-2" style={{ color: '#10b981' }}>
+          🪟 Free access is live{fmtCountdown(windowClosesAt) ? ` — ${fmtCountdown(windowClosesAt)} left` : ''}
+        </p>
+      )}
 
       {showWarning && (
         <div
@@ -469,7 +503,7 @@ const TeamMemberCard = ({ memberTeam, usageToday }) => {
 // Same experience as Team Member — seat, quota, expiry — plus a Leave
 // button, since cohorts have no owner to manage the roster for you.
 
-const CohortMemberCard = ({ memberCohort, usageToday, leaving, onLeave }) => {
+const CohortMemberCard = ({ memberCohort, usageToday, leaving, onLeave, windowIsOpen, windowClosesAt }) => {
   const { cohort, seat } = memberCohort
   const days = daysRemaining(cohort.ends_at)
   const showWarning = days !== null && days <= 3
@@ -477,14 +511,31 @@ const CohortMemberCard = ({ memberCohort, usageToday, leaving, onLeave }) => {
   return (
     <div
       className="rounded-2xl p-5 mb-3"
-      style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}
+      style={{
+        background: windowIsOpen ? 'rgba(16,185,129,0.06)' : 'rgba(99,102,241,0.06)',
+        border:     `1px solid ${windowIsOpen ? 'rgba(16,185,129,0.25)' : 'rgba(99,102,241,0.2)'}`,
+      }}
     >
       <div className="flex items-center gap-2 mb-3">
         <Users size={15} style={{ color: 'var(--text-muted)' }} />
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           {cohort.name} · Seat #{seat.seat_number}
         </p>
+        {windowIsOpen && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            LIVE NOW
+          </span>
+        )}
       </div>
+
+      {windowIsOpen && (
+        <p className="text-sm font-black mb-2" style={{ color: '#10b981' }}>
+          🪟 Free access is live{fmtCountdown(windowClosesAt) ? ` — ${fmtCountdown(windowClosesAt)} left` : ''}
+        </p>
+      )}
 
       {showWarning && (
         <div
@@ -713,7 +764,7 @@ export default function RenderWindowPage() {
               loading={rw.loading}
             />
 
-            {!teamLoading && ownerTeam && (
+           {!teamLoading && ownerTeam && (
               <TeamOwnerCard
                 ownerTeam={ownerTeam}
                 seatUsageMap={seatUsageMap}
@@ -721,11 +772,18 @@ export default function RenderWindowPage() {
                 resetting={resetting}
                 onRemove={removeMember}
                 onReset={resetCode}
+                windowIsOpen={rw.windowIsOpen}
+                windowClosesAt={rw.windowClosesAt}
               />
             )}
 
             {!teamLoading && !ownerTeam && memberTeam && (
-              <TeamMemberCard memberTeam={memberTeam} usageToday={usageToday} />
+              <TeamMemberCard
+                memberTeam={memberTeam}
+                usageToday={usageToday}
+                windowIsOpen={rw.windowIsOpen}
+                windowClosesAt={rw.windowClosesAt}
+              />
             )}
 
             {!cohortLoading && memberCohort && (
@@ -734,9 +792,10 @@ export default function RenderWindowPage() {
                 usageToday={cohortUsageToday}
                 leaving={leaving}
                 onLeave={leaveCohort}
+                windowIsOpen={rw.windowIsOpen}
+                windowClosesAt={rw.windowClosesAt}
               />
             )}
-
             {!teamLoading && isRwSeller && !ownerTeam && (
               <TeamPurchaseCard tiers={teamTiers} purchasing={purchasing} onPurchase={purchase} />
             )}
