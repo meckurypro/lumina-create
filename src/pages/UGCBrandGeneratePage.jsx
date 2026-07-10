@@ -8,7 +8,7 @@ import {
   X, Plus, Maximize2, Crown, Package,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { ugcBrandProfiles, ugcBrandGenerations, ugcBrandProducts, MAX_BRAND_PRODUCTS } from '@/lib/ugcBrands'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
 import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
@@ -139,7 +139,7 @@ export default function UGCBrandGeneratePage() {
   const { brandId }                                              = useParams()
   const navigate                                                 = useNavigate()
  const { user, profile: userProfile, credits, refreshProfile } = useAuth()
-  const { canUseRWModels } = useRenderWindowSubscription()
+const { eligible: canUseRWModels } = useRenderWindowEligibility()
   const isMaster     = userProfile?.user_tier === 'master'
   const textareaRef  = useRef(null)
 
