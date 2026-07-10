@@ -7,7 +7,7 @@ import {
   AlertTriangle, CheckCircle2, RefreshCw, Scissors,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useRenderWindowSubscription } from '@/hooks/useRenderWindowSubscription'
+import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { useModelConcurrency } from '@/hooks/useModelConcurrency'
 import { Textarea } from '@/components/ui/Input'
 import { supabase, generations as generationsDb } from '@/lib/supabase'
@@ -936,7 +936,7 @@ function ValidationBanner({ errors }) {
 export default function CreateTalkingHeadPage() {
   const navigate                                   = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
-  const { canUseRWModels }                         = useRenderWindowSubscription()
+ const { eligible: canUseRWModels }               = useRenderWindowEligibility()
 
   const [models,        setModels]        = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
