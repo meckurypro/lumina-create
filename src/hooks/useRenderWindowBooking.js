@@ -45,15 +45,21 @@ export function useRenderWindowBooking() {
     return () => clearInterval(tickRef.current)
   }, [])
 
-const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber }) => {
+const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber, couponCode }) => {
     setBookingBusy(true)
     try {
-      await bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber })
+      const result = await bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber, couponCode })
+      if (result?.free) {
+        toast.success('Your free booking is confirmed — awaiting admin approval.')
+        setBookingBusy(false)
+        refresh()
+      }
+      // Otherwise the browser is already navigating to Paystack.
     } catch (e) {
       toast.error(e.message || 'Could not start booking payment')
       setBookingBusy(false)
     }
-  }, [user])
+  }, [user, refresh])
   const reconfigure = useCallback(async (bookingId, { modelIds, startAt, durationId }) => {
     if (!user?.id) return
     const { data, error } = await submitBookingReconfig(user.id, bookingId, modelIds, startAt, durationId)
