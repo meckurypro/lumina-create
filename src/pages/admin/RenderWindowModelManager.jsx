@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { renderWindowBookingSettings } from '@/lib/renderWindowBooking'
+import { renderWindowBookingDurations } from '@/lib/renderWindowBooking'
 import toast from 'react-hot-toast'
 
 // ─── Workflow Editor ──────────────────────────────────────────────────────────
@@ -260,30 +260,215 @@ const ResolutionEditor = ({ model, onSaved }) => {
   )
 }
 
-// ─── Global Booking Rate Card ───────────────────────────────────────────────
-// Replaces the old per-model HourlyRateEditor. Every render-window model
-// that is active is now automatically bookable, and every bookable model
-// shares this single Naira/hr rate — one place to set price instead of
-// one editor per model.
+// ─── Booking Durations Manager ───────────────────────────────────────────
+// Replaces GlobalBookingRateCard. Admin defines a list of bookable
+// durations, each with its own flat per-model price (e.g. "30 minutes" →
+// ₦3,000/model, "2 hours" → ₦9,000/model) — not derived from a multiplier.
 
-const GlobalBookingRateCard = ({ rate, onRateSaved }) => {
-  const { user } = useAuth()
+const EMPTY_DURATION = { label: '', minutes: '', price_ngn: '' }
+
+const DurationRow = ({ duration, onSaved, onRemoved }) => {
   const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState('')
+  const [draft,   setDraft]   = useState(EMPTY_DURATION)
   const [saving,  setSaving]  = useState(false)
 
-  const open = () => { setDraft(rate != null ? String(rate) : ''); setEditing(true) }
+  const open = () => {
+    setDraft({
+      label:     duration.label,
+      minutes:   String(duration.minutes),
+      price_ngn: String(duration.price_ngn),
+    })
+    setEditing(true)
+  }
 
   const save = async () => {
-    const value = parseFloat(draft)
-    if (isNaN(value) || value < 0) { toast.error('Enter a valid rate in Naira'); return }
+    const minutes = parseInt(draft.minutes, 10)
+    const price   = parseFloat(draft.price_ngn)
+    if (!draft.label.trim()) { toast.error('Enter a label'); return }
+    if (isNaN(minutes) || minutes <= 0) { toast.error('Minutes must be greater than zero'); return }
+    if (isNaN(price) || price < 0) { toast.error('Enter a valid price'); return }
+
     setSaving(true)
-    const { error } = await renderWindowBookingSettings.setRate(user.id, value)
+    const { data, error } = await renderWindowBookingDurations.update(duration.id, {
+      label:     draft.label.trim(),
+      minutes,
+      price_ngn: price,
+    })
     setSaving(false)
-    if (error) { toast.error('Failed to save rate'); return }
-    toast.success(`Global booking rate set to ₦${value.toLocaleString()}/hr`)
-    onRateSaved(value)
+    if (error) { toast.error('Failed to save duration'); return }
+    toast.success(`${data.label} updated`)
+    onSaved(data)
     setEditing(false)
+  }
+
+  const toggleActive = async () => {
+    setSaving(true)
+    const { data, error } = await renderWindowBookingDurations.update(duration.id, {
+      is_active: !duration.is_active,
+    })
+    setSaving(false)
+    if (error) { toast.error('Failed to update status'); return }
+    toast.success(`${duration.label} ${!duration.is_active ? 'enabled' : 'disabled'}`)
+    onSaved(data)
+  }
+
+  const remove = async () => {
+    if (!window.confirm(`Delete "${duration.label}"? This cannot be undone.`)) return
+    setSaving(true)
+    const { error } = await renderWindowBookingDurations.remove(duration.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to delete — it may be referenced by an existing booking'); return }
+    toast.success(`${duration.label} deleted`)
+    onRemoved(duration.id)
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="rounded-xl p-3.5 flex flex-col gap-2"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Label</label>
+            <input
+              value={draft.label}
+              onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
+              placeholder="e.g. 30 minutes"
+              className="input-base w-full text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Minutes</label>
+            <input
+              type="number"
+              min={1}
+              value={draft.minutes}
+              onChange={(e) => setDraft((d) => ({ ...d, minutes: e.target.value }))}
+              className="input-base w-full text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Price per model (₦)</label>
+          <input
+            type="number"
+            min={0}
+            step="100"
+            value={draft.price_ngn}
+            onChange={(e) => setDraft((d) => ({ ...d, price_ngn: e.target.value }))}
+            className="input-base w-full text-sm"
+          />
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold flex-1 justify-center"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+          >
+            {saving ? '…' : <><Check size={12} /> Save</>}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="px-4 py-2 rounded-xl text-xs font-bold"
+            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="rounded-xl p-3.5 flex items-center justify-between gap-3"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+            {duration.label}
+          </p>
+          {!duration.is_active && (
+            <span
+              className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(239,68,68,0.10)', color: '#ef4444' }}
+            >
+              Disabled
+            </span>
+          )}
+        </div>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          ₦{Number(duration.price_ngn).toLocaleString()} per model · {duration.minutes} min
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          onClick={toggleActive}
+          disabled={saving}
+          className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
+          style={{
+            background: duration.is_active ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.12)',
+            color:      duration.is_active ? '#ef4444' : '#10b981',
+          }}
+        >
+          {duration.is_active ? 'Disable' : 'Enable'}
+        </button>
+        <button
+          onClick={open}
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
+        >
+          <Pencil size={12} />
+        </button>
+        <button
+          onClick={remove}
+          disabled={saving}
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const BookingDurationsManager = ({ durations, onDurationsChange }) => {
+  const [adding, setAdding] = useState(false)
+  const [draft,  setDraft]  = useState(EMPTY_DURATION)
+  const [saving, setSaving] = useState(false)
+
+  const create = async () => {
+    const minutes = parseInt(draft.minutes, 10)
+    const price   = parseFloat(draft.price_ngn)
+    if (!draft.label.trim()) { toast.error('Enter a label'); return }
+    if (isNaN(minutes) || minutes <= 0) { toast.error('Minutes must be greater than zero'); return }
+    if (isNaN(price) || price < 0) { toast.error('Enter a valid price'); return }
+
+    setSaving(true)
+    const { data, error } = await renderWindowBookingDurations.create({
+      label:      draft.label.trim(),
+      minutes,
+      price_ngn:  price,
+      sort_order: durations.length,
+    })
+    setSaving(false)
+    if (error) { toast.error('Failed to create duration'); return }
+    toast.success(`${data.label} added`)
+    onDurationsChange((prev) => [...prev, data])
+    setDraft(EMPTY_DURATION)
+    setAdding(false)
+  }
+
+  const handleSaved = (updated) => {
+    onDurationsChange((prev) => prev.map((d) => d.id === updated.id ? updated : d))
+  }
+
+  const handleRemoved = (id) => {
+    onDurationsChange((prev) => prev.filter((d) => d.id !== id))
   }
 
   return (
@@ -291,59 +476,88 @@ const GlobalBookingRateCard = ({ rate, onRateSaved }) => {
       className="rounded-2xl p-4"
       style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <Wallet size={13} style={{ color: '#10b981' }} />
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#10b981' }}>
-          Global Private Booking Rate
-        </p>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Wallet size={13} style={{ color: '#10b981' }} />
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#10b981' }}>
+            Private Booking Durations
+          </p>
+        </div>
+        <button
+          onClick={() => { setDraft(EMPTY_DURATION); setAdding((a) => !a) }}
+          className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg"
+          style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+        >
+          {adding ? <X size={11} /> : <Plus size={11} />}
+          {adding ? 'Cancel' : 'Add duration'}
+        </button>
       </div>
       <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Every active render-window model is bookable automatically at this one rate. No per-model pricing needed.
+        Each duration has its own flat price per model — not multiplied automatically. Users pick one
+        of these from a dropdown when booking; every active render-window model is bookable at
+        whichever duration they choose.
       </p>
 
-      {editing ? (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>₦</span>
-          <input
-            autoFocus
-            type="number"
-            min={0}
-            step="100"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
-            className="input-base flex-1 text-lg font-black"
-            style={{ color: '#10b981' }}
-          />
-          <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>/hr</span>
+      {adding && (
+        <div
+          className="rounded-xl p-3.5 flex flex-col gap-2 mb-2"
+          style={{ background: 'var(--bg-card)', border: '1px dashed var(--border-color)' }}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Label</label>
+              <input
+                value={draft.label}
+                onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
+                placeholder="e.g. 30 minutes"
+                className="input-base w-full text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Minutes</label>
+              <input
+                type="number"
+                min={1}
+                value={draft.minutes}
+                onChange={(e) => setDraft((d) => ({ ...d, minutes: e.target.value }))}
+                className="input-base w-full text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Price per model (₦)</label>
+            <input
+              type="number"
+              min={0}
+              step="100"
+              value={draft.price_ngn}
+              onChange={(e) => setDraft((d) => ({ ...d, price_ngn: e.target.value }))}
+              className="input-base w-full text-sm"
+            />
+          </div>
           <button
-            onClick={save}
+            onClick={create}
             disabled={saving}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
             style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
           >
-            {saving ? '…' : <Check size={15} />}
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
-          >
-            <X size={15} />
+            {saving ? 'Adding…' : <><Check size={12} /> Add Duration</>}
           </button>
         </div>
+      )}
+
+      {durations.length === 0 ? (
+        <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>
+          No durations yet — add one above to enable private bookings.
+        </p>
       ) : (
-        <div className="flex items-center justify-between">
-          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
-            {rate != null ? `₦${Number(rate).toLocaleString()}/hr` : 'Not set — bookings disabled'}
-          </p>
-          <button
-            onClick={open}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
-            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-          >
-            <Pencil size={11} /> {rate != null ? 'Edit' : 'Set rate'}
-          </button>
+        <div className="flex flex-col gap-2">
+          {durations
+            .slice()
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((d) => (
+              <DurationRow key={d.id} duration={d} onSaved={handleSaved} onRemoved={handleRemoved} />
+            ))}
         </div>
       )}
     </div>
@@ -498,15 +712,15 @@ const handleToggleRW = async () => {
                 />
               </div>
 
-              {/* Private booking — now informational only; rate is global,
-                  set once at the top of this page, not per model. */}
+              {/* Private booking — now informational only; pricing lives in
+                  the Private Booking Durations manager, not per model. */}
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
                 <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
                   Private Booking
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                   {isBookable
-                    ? 'Bookable now, at the global rate set above — no per-model setup needed.'
+                    ? 'Bookable now, at whichever duration the user picks — no per-model setup needed.'
                     : isRW
                       ? 'Will become bookable automatically once this model is Active.'
                       : 'Add this model to the render window to make it bookable.'}
@@ -527,8 +741,8 @@ export default function RenderWindowModelManager() {
   const [loading,       setLoading]       = useState(true)
   const [filter,        setFilter]        = useState('all')
   const [search,        setSearch]        = useState('')
-  const [globalRate,     setGlobalRate]     = useState(null)
-  const [rateLoading,    setRateLoading]    = useState(true)
+  const [durations,      setDurations]      = useState([])
+  const [durationsLoading, setDurationsLoading] = useState(true)
 
 const load = useCallback(async () => {
     setLoading(true)
@@ -541,14 +755,14 @@ const load = useCallback(async () => {
     setLoading(false)
   }, [])
 
-  const loadRate = useCallback(async () => {
-    setRateLoading(true)
-    const { rate } = await renderWindowBookingSettings.getRate()
-    setGlobalRate(rate)
-    setRateLoading(false)
+  const loadDurations = useCallback(async () => {
+    setDurationsLoading(true)
+    const { data } = await renderWindowBookingDurations.getAll()
+    setDurations(data || [])
+    setDurationsLoading(false)
   }, [])
 
-  useEffect(() => { load(); loadRate() }, [load, loadRate])
+  useEffect(() => { load(); loadDurations() }, [load, loadDurations])
 
  const handleToggleRW = (id, newAccessType) => {
     setModels(prev => prev.map(m => m.id === id ? { ...m, model_access_type: newAccessType } : m))
@@ -600,7 +814,7 @@ const workflowCount = models.filter(m => m.comfyui_workflow_json).length
           </p>
         </div>
         <button
-          onClick={() => { load(); loadRate() }}
+          onClick={() => { load(); loadDurations() }}
           className="w-9 h-9 rounded-xl flex items-center justify-center"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
         >
@@ -608,9 +822,9 @@ const workflowCount = models.filter(m => m.comfyui_workflow_json).length
         </button>
       </div>
 
-      {/* Global booking rate — one control instead of one editor per model */}
-      {!rateLoading && (
-        <GlobalBookingRateCard rate={globalRate} onRateSaved={setGlobalRate} />
+      {/* Booking durations — replaces the old single global rate */}
+      {!durationsLoading && (
+        <BookingDurationsManager durations={durations} onDurationsChange={setDurations} />
       )}
 
     {/* Stats */}
