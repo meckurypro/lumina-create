@@ -135,14 +135,6 @@ const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, su
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {selectedDuration && (
-                      <span
-                        className="text-xs font-semibold"
-                        style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
-                      >
-                        ₦{Number(selectedDuration.price_ngn).toLocaleString()}
-                      </span>
-                    )}
                     {blurb && (
                       isExpanded
                         ? <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
