@@ -120,7 +120,10 @@ export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId
   if (!startAt) throw new Error('Pick a start time.')
   if (!durationId) throw new Error('Pick a duration.')
 
-  await initializePayment({
+  // For a paid booking, initializePayment navigates the browser away and
+  // this call never meaningfully resolves. For a free (100%-off) booking,
+  // it resolves with { free: true, bookingId } instead.
+  return await initializePayment({
     email:         user.email,
     userId:        user.id,
     packageSlug:   'render_window_booking',
@@ -130,7 +133,6 @@ export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId
     whatsappNumber: whatsappNumber || null,
     couponCode:     couponCode || null,
   })
-  // Browser navigates away to Paystack — no further state to set.
 }
 
 // ── User resubmits a reset_pending booking with new models/time/duration ──
