@@ -264,14 +264,74 @@ const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmoun
         />
       </div>
 
+      <div>
+        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          Coupon code (optional)
+        </label>
+        {coupon ? (
+          <div
+            className="flex items-center justify-between rounded-xl px-3.5 py-2.5"
+            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
+          >
+            <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: '#10b981' }}>
+              <Tag size={12} /> {coupon.code} applied — ₦{Number(coupon.discount_ngn).toLocaleString()} off
+            </span>
+            <button onClick={removeCoupon} className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ color: '#10b981' }}>
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyCoupon() }}
+              placeholder="e.g. WELCOME10"
+              className="input-base flex-1 text-sm"
+            />
+            <button
+              onClick={applyCoupon}
+              disabled={!couponInput.trim() || subtotal <= 0 || couponChecking}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap"
+              style={{
+                background: couponInput.trim() ? 'var(--brand)' : 'var(--bg-card)',
+                color:      couponInput.trim() ? 'white' : 'var(--text-muted)',
+              }}
+            >
+              {couponChecking ? '…' : 'Apply'}
+            </button>
+          </div>
+        )}
+        {couponError && (
+          <p className="text-xs mt-1.5 flex items-center gap-1.5" style={{ color: '#ef4444' }}>
+            <AlertTriangle size={11} /> {couponError}
+          </p>
+        )}
+      </div>
+
       <div
-        className="rounded-xl px-3.5 py-3 flex items-center justify-between"
+        className="rounded-xl px-3.5 py-3 flex flex-col gap-1"
         style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
       >
-        <span className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>Total</span>
-        <span className="text-lg font-black" style={{ color: overBudget ? '#ef4444' : 'var(--text-primary)' }}>
-          ₦{total.toLocaleString()}
-        </span>
+        {discount > 0 && (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Subtotal</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>₦{subtotal.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: '#10b981' }}>Discount</span>
+              <span className="text-xs" style={{ color: '#10b981' }}>-₦{discount.toLocaleString()}</span>
+            </div>
+          </>
+        )}
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>Total</span>
+          <span className="text-lg font-black" style={{ color: overBudget ? '#ef4444' : 'var(--text-primary)' }}>
+            ₦{total.toLocaleString()}
+          </span>
+        </div>
       </div>
 
       {overBudget && (
@@ -461,6 +521,7 @@ export default function PrivateBookingPage() {
                 )}
                 {!modelsLoading && !durationsLoading && (
                   <BookingForm
+                    userId={user?.id}
                     models={models}
                     durations={durations}
                     maxAmountNgn={Number(activeReset.amount_ngn)}
@@ -497,6 +558,7 @@ export default function PrivateBookingPage() {
                   </p>
                 ) : (
                   <BookingForm
+                    userId={user?.id}
                     models={models}
                     durations={durations}
                     maxAmountNgn={null}
