@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Clock, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
-import { bookableModels } from '@/lib/renderWindowBooking'
+import { bookableModels, renderWindowBookingDurations } from '@/lib/renderWindowBooking'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 
@@ -63,22 +63,23 @@ const getTabIndicator = (bookings, now) => {
 
 // ── Booking form (used for both new bookings and reconfiguring a reset) ──
 
-const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
-  const [selectedIds, setSelectedIds] = useState([])
-  const [expandedId,  setExpandedId]  = useState(null) // which model card is expanded, if any
-  const [startAt,      setStartAt]    = useState('')
-  const [hours,        setHours]      = useState(2)
-  const [whatsapp,     setWhatsapp]   = useState('')
+const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
+  const [selectedIds, setSelectedIds]   = useState([])
+  const [expandedId,  setExpandedId]    = useState(null) // which model card is expanded, if any
+  const [startAt,      setStartAt]      = useState('')
+  const [durationId,   setDurationId]   = useState(durations[0]?.id ?? '')
+  const [whatsapp,     setWhatsapp]     = useState('')
 
   const toggleModel = (id) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   }
 
+  const selectedDuration = durations.find((d) => d.id === durationId) ?? null
+
   const total = useMemo(() => {
-    return models
-      .filter((m) => selectedIds.includes(m.id))
-      .reduce((sum, m) => sum + Number(m.booking_hourly_rate_ngn) * hours, 0)
-  }, [models, selectedIds, hours])
+    if (!selectedDuration) return 0
+    return Number(selectedDuration.price_ngn) * selectedIds.length
+  }, [selectedDuration, selectedIds])
 
   const overBudget = maxAmountNgn != null && total > maxAmountNgn + 1
   const minStart = new Date(Date.now() + MIN_BOOKING_LEAD_HOURS * 60 * 60 * 1000).toISOString().slice(0, 16)
@@ -87,12 +88,12 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
     selectedIds.length > 0 &&
     startAt &&
     new Date(startAt) >= new Date(minStart) &&
-    hours > 0 &&
+    !!durationId &&
     !overBudget
 
   const handleSubmit = () => {
     if (!isValid) return
-    onSubmit({ modelIds: selectedIds, startAt, durationHours: hours, whatsappNumber: whatsapp })
+    onSubmit({ modelIds: selectedIds, startAt, durationId, whatsappNumber: whatsapp })
   }
 
   return (
@@ -134,12 +135,14 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className="text-xs font-semibold"
-                      style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
-                    >
-                      ₦{Number(m.booking_hourly_rate_ngn).toLocaleString()}/hr
-                    </span>
+                    {selectedDuration && (
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                      >
+                        ₦{Number(selectedDuration.price_ngn).toLocaleString()}
+                      </span>
+                    )}
                     {blurb && (
                       isExpanded
                         ? <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
@@ -191,16 +194,25 @@ const BookingForm = ({ models, onSubmit, submitting, maxAmountNgn, submitLabel }
 
       <div>
         <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-          Duration (hours)
+          Duration
         </label>
-        <input
-          type="number"
-          min={1}
-          step={1}
-          value={hours}
-          onChange={(e) => setHours(Math.max(1, parseInt(e.target.value, 10) || 1))}
-          className="input-base w-full text-sm"
-        />
+        {durations.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            No durations are currently available.
+          </p>
+        ) : (
+          <select
+            value={durationId}
+            onChange={(e) => setDurationId(e.target.value)}
+            className="input-base w-full text-sm"
+          >
+            {durations.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label} · ₦{Number(d.price_ngn).toLocaleString()}/model
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div>
@@ -363,12 +375,18 @@ export default function PrivateBookingPage() {
 
   const [models,        setModels]        = useState([])
   const [modelsLoading,  setModelsLoading] = useState(true)
+  const [durations,      setDurations]     = useState([])
+  const [durationsLoading, setDurationsLoading] = useState(true)
   const [activeTab,      setActiveTab]     = useState('book')
 
   useEffect(() => {
     bookableModels.getAll().then(({ data }) => {
       setModels(data || [])
       setModelsLoading(false)
+    })
+    renderWindowBookingDurations.getActive().then(({ data }) => {
+      setDurations(data || [])
+      setDurationsLoading(false)
     })
   }, [])
 
@@ -405,9 +423,10 @@ export default function PrivateBookingPage() {
                 {activeReset.admin_notes && (
                   <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>"{activeReset.admin_notes}"</p>
                 )}
-                {!modelsLoading && (
+                {!modelsLoading && !durationsLoading && (
                   <BookingForm
                     models={models}
+                    durations={durations}
                     maxAmountNgn={Number(activeReset.amount_ngn)}
                     submitting={booking}
                     submitLabel="Save new time"
@@ -430,15 +449,20 @@ export default function PrivateBookingPage() {
                   use it as much as you like for the time you book. Payment is instant; we'll confirm
                   your session shortly after, and you'll see a countdown here once it's locked in.
                 </p>
-                {modelsLoading ? (
+                {modelsLoading || durationsLoading ? (
                   <div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
                 ) : models.length === 0 ? (
                   <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
                     No models are currently available for private booking.
                   </p>
+                ) : durations.length === 0 ? (
+                  <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+                    No booking durations are currently available.
+                  </p>
                 ) : (
                   <BookingForm
                     models={models}
+                    durations={durations}
                     maxAmountNgn={null}
                     submitting={booking}
                     submitLabel="Pay & Request Booking"
