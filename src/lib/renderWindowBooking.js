@@ -103,7 +103,7 @@ export async function getMyBookings(userId) {
     .from('render_window_bookings')
     .select(`
       id, status, requested_start_at, duration_hours, ends_at,
-      amount_ngn, whatsapp_number, admin_notes, created_at,
+      amount_ngn, subtotal_ngn, whatsapp_number, admin_notes, created_at,
       accepted_at, cancelled_at,
       models:render_window_booking_models(model_id, hourly_rate_ngn, model:models(id, label, value))
     `)
@@ -151,7 +151,7 @@ export async function adminGetBookings({ status } = {}) {
     .from('render_window_bookings')
     .select(`
       id, status, requested_start_at, duration_hours, ends_at,
-      amount_ngn, whatsapp_number, admin_notes, created_at,
+      amount_ngn, subtotal_ngn, whatsapp_number, admin_notes, created_at,
       accepted_at, cancelled_at,
       user:profiles!render_window_bookings_user_id_fkey(id, username, display_name),
       models:render_window_booking_models(model_id, hourly_rate_ngn, model:models(id, label, value))
