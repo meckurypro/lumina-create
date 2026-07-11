@@ -1,1370 +1,669 @@
-// src/pages/admin/RenderWindowManager.jsx
+// src/pages/admin/RenderWindowBookingsManager.jsx
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Plus, X, Check, Clock, Zap, ZapOff,
-  CalendarDays, Users, ChevronDown, ChevronUp,
-  AlertTriangle, RefreshCw, Pencil, Trash2,
-  History as HistoryIcon, CreditCard, ArrowLeft, Server,
-} from 'lucide-react'
-import { supabase, renderWindows } from '@/lib/supabase'
+import { Check, X, RefreshCw, MessageCircle, Mail, Plus, Pencil, Trash2, Tag } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import {
+  adminGetBookings, adminAcceptBooking, adminCancelBooking, adminResetBooking,
+  renderWindowBookingCoupons,
+} from '@/lib/renderWindowBooking'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_META = {
-  scheduled: { label: 'Scheduled', color: '#6366f1', bg: 'rgba(99,102,241,0.12)'  },
-  active:    { label: 'Live Now',  color: '#10b981', bg: 'rgba(16,185,129,0.12)'  },
-  closed:    { label: 'Closed',    color: '#888',    bg: 'rgba(255,255,255,0.06)' },
-  cancelled: { label: 'Cancelled', color: '#ef4444', bg: 'rgba(239,68,68,0.10)'   },
-}
-
-const fmtDatetimeLocal = (iso) => {
-  if (!iso) return ''
-  // Convert ISO → datetime-local input value (YYYY-MM-DDTHH:MM)
-  return new Date(iso).toISOString().slice(0, 16)
-}
-
-const fmtDisplay = (iso) => {
+const fmtDateTime = (iso) => {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-GB', {
-    day:    '2-digit',
-    month:  'short',
-    year:   'numeric',
-    hour:   '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   })
 }
 
-const fmtDateOnly = (iso) => {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day:   '2-digit',
-    month: 'short',
-    year:  'numeric',
-  })
+const STATUS_META = {
+  pending:       { label: 'Pending',       bg: 'rgba(245,158,11,0.12)', color: '#f59e0b' },
+  accepted:      { label: 'Accepted',      bg: 'rgba(16,185,129,0.12)', color: '#10b981' },
+  cancelled:     { label: 'Cancelled',     bg: 'rgba(239,68,68,0.10)',  color: '#ef4444' },
+  reset_pending: { label: 'Reset — awaiting user', bg: 'rgba(99,102,241,0.12)', color: '#6366f1' },
+  expired:       { label: 'Expired',       bg: 'rgba(255,255,255,0.06)', color: '#888' },
 }
 
-const fmtTimeOnly = (iso) => {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleTimeString('en-GB', {
-    hour:   '2-digit',
-    minute: '2-digit',
-  })
-}
+const FILTERS = ['all', 'pending', 'accepted', 'reset_pending', 'cancelled']
 
-const fmtDuration = (startIso, endIso) => {
-  if (!startIso || !endIso) return '—'
-  const diffMs = new Date(endIso) - new Date(startIso)
-  if (diffMs <= 0) return '—'
-  const mins = Math.round(diffMs / 60000)
-  const hrs  = Math.floor(mins / 60)
-  const rem  = mins % 60
-  if (hrs === 0) return `${rem}m`
-  if (rem === 0) return `${hrs}h`
-  return `${hrs}h ${rem}m`
-}
+const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
+  const [notesOpen, setNotesOpen] = useState(null) // 'cancel' | 'reset' | null
+  const [notes,     setNotes]     = useState('')
+  const meta = STATUS_META[b.status] ?? STATUS_META.pending
+  const modelLabels = (b.models || []).map((m) => m.model?.label).filter(Boolean).join(', ')
+  const isBusy = busy === b.id
 
-const timeUntil = (iso) => {
-  if (!iso) return ''
-  const diff = new Date(iso) - new Date()
-  if (diff < 0) return 'passed'
-  const mins  = Math.floor(diff / 60000)
-  if (mins < 60) return `in ${mins}m`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `in ${hrs}h ${mins % 60}m`
-  return `in ${Math.floor(hrs / 24)}d`
-}
+  const submitAction = (action) => {
+    if (action === 'cancel') onCancel(b.id, notes)
+    if (action === 'reset')  onReset(b.id, notes)
+    setNotesOpen(null)
+    setNotes('')
+  }
 
-const timeLeft = (iso) => {
-  if (!iso) return ''
-  const diff = new Date(iso) - new Date()
-  if (diff < 0) return 'ended'
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins}m left`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m left`
-}
-
-// ─── Modal Shell ──────────────────────────────────────────────────────────────
-
-const Modal = ({ title, onClose, children }) => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-    style={{ background: 'rgba(0,0,0,0.55)' }}
-    onClick={onClose}
-  >
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 24 }}
-      transition={{ duration: 0.18 }}
-      onClick={(e) => e.stopPropagation()}
-      className="w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>{title}</p>
-        <button
-          onClick={onClose}
-          className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-        >
-          <X size={14} />
-        </button>
+  return (
+    <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          {b.user?.display_name || b.user?.username || 'User'}
+        </p>
+        <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: meta.bg, color: meta.color }}>
+          {meta.label}
+        </span>
       </div>
-      {children}
-    </motion.div>
-  </motion.div>
-)
 
-// ─── Tier Pricing Editor ──────────────────────────────────────────────────
+      <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+        {modelLabels || 'No models selected'}
+      </p>
 
-const TierRow = ({ tier, onSaved }) => {
-  const { user } = useAuth()
+      {b.requested_start_at && (
+        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+          {fmtDateTime(b.requested_start_at)} → {fmtDateTime(b.ends_at)} · {b.duration_hours}h
+        </p>
+      )}
+
+      <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+        ₦{Number(b.amount_ngn).toLocaleString()} paid
+      </p>
+
+      <div className="flex items-center gap-3 mb-3">
+        {b.whatsapp_number && (
+          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <MessageCircle size={11} /> {b.whatsapp_number}
+          </span>
+        )}
+      </div>
+
+      {b.admin_notes && (
+        <p className="text-xs mb-3 italic" style={{ color: 'var(--text-muted)' }}>"{b.admin_notes}"</p>
+      )}
+
+      {notesOpen ? (
+        <div className="flex flex-col gap-2">
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={notesOpen === 'cancel' ? 'Reason for cancelling (visible to user)…' : 'Note for the user about why this was reset…'}
+            rows={2}
+            className="input-base w-full text-xs resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => submitAction(notesOpen)}
+              disabled={isBusy}
+              className="flex-1 py-2 rounded-xl text-xs font-bold"
+              style={{ background: notesOpen === 'cancel' ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)', color: notesOpen === 'cancel' ? '#ef4444' : '#6366f1' }}
+            >
+              Confirm {notesOpen === 'cancel' ? 'Cancel' : 'Reset'}
+            </button>
+            <button onClick={() => setNotesOpen(null)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+              Back
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 flex-wrap">
+          {b.status === 'pending' && (
+            <button
+              onClick={() => onAccept(b.id)}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+            >
+              <Check size={12} /> {isBusy ? 'Accepting…' : 'Accept'}
+            </button>
+          )}
+          {(b.status === 'pending' || b.status === 'accepted') && (
+            <button
+              onClick={() => setNotesOpen('reset')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold"
+              style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}
+            >
+              <RefreshCw size={12} /> Reset
+            </button>
+          )}
+          {b.status !== 'cancelled' && (
+            <button
+              onClick={() => setNotesOpen('cancel')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold"
+              style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+            >
+              <X size={12} /> Cancel
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Coupons Manager ────────────────────────────────────────────────────
+// Admin creates/edits/disables/deletes coupons here. Redemption is entirely
+// server-side (validate_render_window_coupon + a row-locked check inside
+// process_render_window_booking_payment) — this UI only manages the rows.
+
+const EMPTY_COUPON = {
+  code: '', discount_type: 'percent', discount_value: '',
+  max_discount_ngn: '', min_amount_ngn: '', max_redemptions: '', per_user_limit: '1',
+  expires_at: '',
+}
+
+const couponFormToPayload = (draft) => {
+  const discountValue = parseFloat(draft.discount_value)
+  if (!draft.code.trim()) return { error: 'Enter a coupon code' }
+  if (isNaN(discountValue) || discountValue <= 0) return { error: 'Enter a valid discount value' }
+  if (draft.discount_type === 'percent' && discountValue > 100) return { error: 'Percent discount cannot exceed 100' }
+
+  const perUserLimit = parseInt(draft.per_user_limit, 10)
+  if (isNaN(perUserLimit) || perUserLimit <= 0) return { error: 'Per-user limit must be at least 1' }
+
+  return {
+    payload: {
+      code:             draft.code.trim(),
+      discount_type:    draft.discount_type,
+      discount_value:   discountValue,
+      max_discount_ngn: draft.discount_type === 'percent' && draft.max_discount_ngn !== ''
+        ? parseFloat(draft.max_discount_ngn) : null,
+      min_amount_ngn:   draft.min_amount_ngn !== '' ? parseFloat(draft.min_amount_ngn) : 0,
+      max_redemptions:  draft.max_redemptions !== '' ? parseInt(draft.max_redemptions, 10) : null,
+      per_user_limit:   perUserLimit,
+      expires_at:       draft.expires_at ? new Date(draft.expires_at).toISOString() : null,
+    },
+  }
+}
+
+const CouponRow = ({ coupon, onSaved, onRemoved }) => {
   const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState('')
+  const [draft,   setDraft]   = useState(EMPTY_COUPON)
   const [saving,  setSaving]  = useState(false)
 
-  const open  = () => { setDraft(String(tier.price_ngn ?? '')); setEditing(true) }
-  const close = () => setEditing(false)
-
-  const savePrice = async () => {
-    const price = parseInt(draft, 10)
-    if (isNaN(price) || price < 100) {
-      toast.error('Price must be at least ₦100')
-      return
-    }
-    setSaving(true)
-    const { data, error } = await supabase.rpc('admin_update_render_window_tier', {
-      p_admin_id:  user.id,
-      p_tier_id:   tier.id,
-      p_price_ngn: price,
-      p_is_active: null,
+  const open = () => {
+    setDraft({
+      code:             coupon.code,
+      discount_type:    coupon.discount_type,
+      discount_value:   String(coupon.discount_value),
+      max_discount_ngn: coupon.max_discount_ngn != null ? String(coupon.max_discount_ngn) : '',
+      min_amount_ngn:   coupon.min_amount_ngn != null ? String(coupon.min_amount_ngn) : '',
+      max_redemptions:  coupon.max_redemptions != null ? String(coupon.max_redemptions) : '',
+      per_user_limit:   String(coupon.per_user_limit),
+      expires_at:       coupon.expires_at ? coupon.expires_at.slice(0, 16) : '',
     })
+    setEditing(true)
+  }
+
+  const save = async () => {
+    const { payload, error: formError } = couponFormToPayload(draft)
+    if (formError) { toast.error(formError); return }
+    setSaving(true)
+    const { data, error } = await renderWindowBookingCoupons.update(coupon.id, payload)
     setSaving(false)
-    if (error || !data?.success) { toast.error(data?.error || 'Failed to save price'); return }
-    toast.success(`${tier.display_name} price updated to ₦${price.toLocaleString()}`)
-    onSaved({ ...tier, price_ngn: price })
+    if (error) { toast.error(error.message?.includes('duplicate') ? 'That code is already in use' : 'Failed to save coupon'); return }
+    toast.success(`${data.code} updated`)
+    onSaved(data)
     setEditing(false)
   }
 
   const toggleActive = async () => {
     setSaving(true)
-    const { data, error } = await supabase.rpc('admin_update_render_window_tier', {
-      p_admin_id:  user.id,
-      p_tier_id:   tier.id,
-      p_price_ngn: null,
-      p_is_active: !tier.is_active,
-    })
+    const { data, error } = await renderWindowBookingCoupons.update(coupon.id, { is_active: !coupon.is_active })
     setSaving(false)
-    if (error || !data?.success) { toast.error(data?.error || 'Failed to update status'); return }
-    toast.success(`${tier.display_name} ${!tier.is_active ? 'enabled' : 'disabled'}`)
-    onSaved({ ...tier, is_active: !tier.is_active })
+    if (error) { toast.error('Failed to update status'); return }
+    toast.success(`${coupon.code} ${!coupon.is_active ? 'enabled' : 'disabled'}`)
+    onSaved(data)
   }
 
-  return (
-    <div
-      className="rounded-xl p-3.5"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-            {tier.display_name}
-          </p>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {tier.duration_days}d
-          </span>
-        </div>
-        <button
-          onClick={toggleActive}
-          disabled={saving}
-          className="text-xs font-bold px-2.5 py-1 rounded-full"
-          style={{
-            background: tier.is_active ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)',
-            color:      tier.is_active ? '#10b981' : '#ef4444',
-          }}
-        >
-          {tier.is_active ? 'Enabled' : 'Disabled'}
-        </button>
-      </div>
-
-      {editing ? (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>₦</span>
-          <input
-            autoFocus
-            type="number"
-            min={100}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') close() }}
-            className="input-base flex-1 text-lg font-black"
-            style={{ color: 'var(--brand)' }}
-          />
-          <button
-            onClick={savePrice}
-            disabled={saving}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
-          >
-            {saving ? '…' : <Check size={15} />}
-          </button>
-          <button
-            onClick={close}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
-          >
-            <X size={15} />
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between">
-          <p className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
-            ₦{Number(tier.price_ngn).toLocaleString()}
-          </p>
-          <button
-            onClick={open}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
-            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-          >
-            <Pencil size={11} /> Edit
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-const TierPricingEditor = ({ tiers, onTiersChange }) => {
-  const handleSaved = (updated) => {
-    onTiersChange((prev) => prev.map((t) => t.id === updated.id ? updated : t))
+  const remove = async () => {
+    if (!window.confirm(`Delete "${coupon.code}"? This cannot be undone.`)) return
+    setSaving(true)
+    const { error } = await renderWindowBookingCoupons.remove(coupon.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to delete — it may already have redemptions on record'); return }
+    toast.success(`${coupon.code} deleted`)
+    onRemoved(coupon.id)
   }
 
-  return (
-    <div className="flex flex-col gap-2">
-      {tiers.length === 0 ? (
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No tiers configured.</p>
-      ) : (
-        tiers
-          .slice()
-          .sort((a, b) => a.display_order - b.display_order)
-          .map((tier) => (
-            <TierRow key={tier.id} tier={tier} onSaved={handleSaved} />
-          ))
-      )}
-    </div>
-  )
-}
+  const discountLabel = coupon.discount_type === 'percent'
+    ? `${coupon.discount_value}% off${coupon.max_discount_ngn ? ` (max ₦${Number(coupon.max_discount_ngn).toLocaleString()})` : ''}`
+    : `₦${Number(coupon.discount_value).toLocaleString()} off`
 
-// ─── Window Form ──────────────────────────────────────────────────────────────
+  const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date()
+  const isMaxedOut = coupon.max_redemptions != null && coupon.redemption_count >= coupon.max_redemptions
 
-const EMPTY_FORM = {
-  label:     '',
-  starts_at: '',
-  ends_at:   '',
-  capacity:  '',
-  notes:     '',
-}
-
-const WindowForm = ({ initial, renderWindowModels, onSave, onCancel, saving }) => {
-  const [form, setForm] = useState(initial ?? EMPTY_FORM)
-  const [stagedModels,   setStagedModels]   = useState([])
-  const [stagedModelId,  setStagedModelId]  = useState('')
-  const [stagedEndpoint, setStagedEndpoint] = useState('')
-
-  const isCreating = !initial
-
-  const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
-
-  const isValid =
-    form.label.trim().length > 0 &&
-    form.starts_at &&
-    form.ends_at &&
-    new Date(form.ends_at) > new Date(form.starts_at)
-
-  const availableToStage = (renderWindowModels ?? []).filter(
-    (m) => !stagedModels.some((s) => s.model_id === m.id)
-  )
-
-  const addStagedModel = () => {
-    if (!stagedModelId || !stagedEndpoint.trim()) {
-      toast.error('Select a model and paste its endpoint')
-      return
-    }
-    if (!stagedEndpoint.startsWith('http')) {
-      toast.error('Endpoint must be a valid URL')
-      return
-    }
-    const model = renderWindowModels.find((m) => m.id === stagedModelId)
-    setStagedModels((prev) => [...prev, {
-      model_id: stagedModelId,
-      label:    model?.label ?? stagedModelId,
-      endpoint: stagedEndpoint.trim(),
-    }])
-    setStagedModelId('')
-    setStagedEndpoint('')
-  }
-
-  const removeStagedModel = (modelId) => {
-    setStagedModels((prev) => prev.filter((m) => m.model_id !== modelId))
-  }
-
-  const handleSubmit = () => {
-    if (!isValid) return
-    onSave({
-      label:     form.label.trim(),
-      starts_at: new Date(form.starts_at).toISOString(),
-      ends_at:   new Date(form.ends_at).toISOString(),
-      capacity:  form.capacity ? parseInt(form.capacity, 10) : null,
-      notes:     form.notes.trim() || null,
-      models:    isCreating ? stagedModels : undefined,
-    })
-  }
-
-  return (
-    <div
-      className="rounded-2xl p-4 flex flex-col gap-3"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
-    >
-      {/* Label */}
-      <div>
-        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-          Window Label *
-        </label>
-        <input
-          value={form.label}
-          onChange={(e) => set('label', e.target.value)}
-          placeholder="e.g. Tuesday Evening Window"
-          className="input-base w-full text-sm"
-        />
-      </div>
-
-      {/* Start / End */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-            Opens *
-          </label>
-          <input
-            type="datetime-local"
-            value={form.starts_at}
-            onChange={(e) => set('starts_at', e.target.value)}
-            className="input-base w-full text-sm"
-          />
+  if (editing) {
+    return (
+      <div className="rounded-xl p-3.5 flex flex-col gap-2" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Code</label>
+            <input
+              value={draft.code}
+              onChange={(e) => setDraft((d) => ({ ...d, code: e.target.value.toUpperCase() }))}
+              placeholder="e.g. WELCOME10"
+              className="input-base w-full text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Type</label>
+            <select
+              value={draft.discount_type}
+              onChange={(e) => setDraft((d) => ({ ...d, discount_type: e.target.value }))}
+              className="input-base w-full text-sm"
+            >
+              <option value="percent">Percent off</option>
+              <option value="fixed">Flat ₦ off</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-            Closes *
-          </label>
-          <input
-            type="datetime-local"
-            value={form.ends_at}
-            onChange={(e) => set('ends_at', e.target.value)}
-            className="input-base w-full text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Validation hint */}
-      {form.starts_at && form.ends_at && new Date(form.ends_at) <= new Date(form.starts_at) && (
-        <p className="text-xs flex items-center gap-1.5" style={{ color: '#ef4444' }}>
-          <AlertTriangle size={11} /> End time must be after start time
-        </p>
-      )}
-
-      {/* Capacity */}
-      <div>
-        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-          Capacity (optional)
-        </label>
-        <input
-          type="number"
-          min={1}
-          value={form.capacity}
-          onChange={(e) => set('capacity', e.target.value)}
-          placeholder="Leave blank for unlimited"
-          className="input-base w-full text-sm"
-        />
-      </div>
-
-      {/* Notes */}
-      <div>
-        <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-          Notes (optional)
-        </label>
-        <textarea
-          value={form.notes}
-          onChange={(e) => set('notes', e.target.value)}
-          placeholder="Internal admin notes…"
-          rows={2}
-          className="input-base w-full text-sm resize-none"
-        />
-      </div>
-
-      {/* Models & Endpoints — creation only; existing windows use the live editor on the card */}
-      {isCreating && (
-        <div>
-          <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-            Models & Endpoints (optional — can add later)
-          </label>
-
-          {stagedModels.length > 0 && (
-            <div className="flex flex-col gap-2 mb-2">
-              {stagedModels.map((m) => (
-                <div
-                  key={m.model_id}
-                  className="rounded-xl px-3 py-2 flex items-center gap-2"
-                  style={{ background: 'var(--bg-card)' }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{m.label}</p>
-                    <p className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)' }}>{m.endpoint}</p>
-                  </div>
-                  <button
-                    onClick={() => removeStagedModel(m.model_id)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {availableToStage.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <select
-                value={stagedModelId}
-                onChange={(e) => setStagedModelId(e.target.value)}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>
+              {draft.discount_type === 'percent' ? 'Percent (%)' : 'Amount (₦)'}
+            </label>
+            <input
+              type="number" min={0} step={draft.discount_type === 'percent' ? '1' : '100'}
+              value={draft.discount_value}
+              onChange={(e) => setDraft((d) => ({ ...d, discount_value: e.target.value }))}
+              className="input-base w-full text-sm"
+            />
+          </div>
+          {draft.discount_type === 'percent' && (
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Max discount (₦, optional)</label>
+              <input
+                type="number" min={0} step="100"
+                value={draft.max_discount_ngn}
+                onChange={(e) => setDraft((d) => ({ ...d, max_discount_ngn: e.target.value }))}
+                placeholder="No cap"
                 className="input-base w-full text-sm"
-              >
-                <option value="">Select a model…</option>
-                {availableToStage.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <input
-                  value={stagedEndpoint}
-                  onChange={(e) => setStagedEndpoint(e.target.value)}
-                  placeholder="https://abc123-8188.proxy.runpod.net"
-                  className="input-base flex-1 text-sm font-mono"
-                />
-                <button
-                  onClick={addStagedModel}
-                  className="px-4 rounded-xl text-xs font-bold flex-shrink-0"
-                  style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
-                >
-                  Add
-                </button>
-              </div>
+              />
             </div>
-          ) : (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              No more render-window models available to add.
-            </p>
           )}
         </div>
-      )}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Min booking (₦, optional)</label>
+            <input
+              type="number" min={0} step="100"
+              value={draft.min_amount_ngn}
+              onChange={(e) => setDraft((d) => ({ ...d, min_amount_ngn: e.target.value }))}
+              placeholder="No minimum"
+              className="input-base w-full text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Total uses (optional)</label>
+            <input
+              type="number" min={1}
+              value={draft.max_redemptions}
+              onChange={(e) => setDraft((d) => ({ ...d, max_redemptions: e.target.value }))}
+              placeholder="Unlimited"
+              className="input-base w-full text-sm"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Uses per user</label>
+            <input
+              type="number" min={1}
+              value={draft.per_user_limit}
+              onChange={(e) => setDraft((d) => ({ ...d, per_user_limit: e.target.value }))}
+              className="input-base w-full text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Expires (optional)</label>
+            <input
+              type="datetime-local"
+              value={draft.expires_at}
+              onChange={(e) => setDraft((d) => ({ ...d, expires_at: e.target.value }))}
+              className="input-base w-full text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold flex-1 justify-center" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
+            {saving ? '…' : <><Check size={12} /> Save</>}
+          </button>
+          <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
 
-      {/* Actions */}
-      <div className="flex gap-2 pt-1">
-        <button
-          onClick={handleSubmit}
-          disabled={!isValid || saving}
-          className="flex-1 py-3 rounded-2xl text-sm font-bold transition-all"
-          style={{
-            background: isValid ? 'var(--brand)' : 'var(--bg-card)',
-            color:      isValid ? 'white'        : 'var(--text-muted)',
-            opacity:    saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Create Window'}
+  return (
+    <div className="rounded-xl p-3.5 flex items-center justify-between gap-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{coupon.code}</p>
+          {!coupon.is_active && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.10)', color: '#ef4444' }}>Disabled</span>
+          )}
+          {isExpired && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.10)', color: '#ef4444' }}>Expired</span>
+          )}
+          {isMaxedOut && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.10)', color: '#f59e0b' }}>Maxed out</span>
+          )}
+        </div>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          {discountLabel} · {coupon.redemption_count}{coupon.max_redemptions != null ? `/${coupon.max_redemptions}` : ''} used · {coupon.per_user_limit}/user
+        </p>
+        {coupon.expires_at && (
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Expires {fmtDateTime(coupon.expires_at)}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button onClick={toggleActive} disabled={saving} className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: coupon.is_active ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.12)', color: coupon.is_active ? '#ef4444' : '#10b981' }}>
+          {coupon.is_active ? 'Disable' : 'Enable'}
         </button>
-        <button
-          onClick={onCancel}
-          className="px-5 py-3 rounded-2xl text-sm font-bold"
-          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-        >
-          Cancel
+        <button onClick={open} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+          <Pencil size={12} />
+        </button>
+        <button onClick={remove} disabled={saving} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+          <Trash2 size={12} />
         </button>
       </div>
     </div>
   )
 }
 
-// ─── Window Models Editor (live — for existing scheduled/active windows) ─────
-
-const WindowModelsEditor = ({ windowId, isLive }) => {
-  const [attachments,      setAttachments]      = useState([])
-  const [availableModels,  setAvailableModels]  = useState([])
-  const [loading,          setLoading]          = useState(true)
-  const [selectedModelId,  setSelectedModelId]  = useState('')
-  const [endpointDraft,    setEndpointDraft]    = useState('')
-  const [adding,           setAdding]           = useState(false)
-  const [editingId,        setEditingId]        = useState(null)
-  const [editDraft,        setEditDraft]        = useState('')
-  const [busyId,           setBusyId]           = useState(null)
+const CouponsManager = () => {
+  const { user } = useAuth()
+  const [coupons, setCoupons] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [adding,  setAdding]  = useState(false)
+  const [draft,   setDraft]   = useState(EMPTY_COUPON)
+  const [saving,  setSaving]  = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [attachRes, modelsRes] = await Promise.all([
-      supabase
-        .from('render_window_models')
-        .select('id, model_id, comfyui_endpoint, sort_order, model:models(id, label, value)')
-        .eq('render_window_id', windowId)
-        .order('sort_order'),
-      supabase
-        .from('models')
-        .select('id, label, value')
-        .eq('model_access_type', 'render_window')
-        .order('label'),
-    ])
-    setAttachments(attachRes.data || [])
-    setAvailableModels(modelsRes.data || [])
+    const { data } = await renderWindowBookingCoupons.getAll()
+    setCoupons(data || [])
     setLoading(false)
-  }, [windowId])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
-  // NOTE: models can now be attached to the SAME window more than once
-  // (multiple pods for the same model, round-robin dispatched). So we no
-  // longer exclude already-attached models from the picker — we just label
-  // them so admin knows they're adding an additional pod, not a first one.
-  const attachedCounts = attachments.reduce((acc, a) => {
-    acc[a.model_id] = (acc[a.model_id] || 0) + 1
-    return acc
-  }, {})
-  const selectableModels = availableModels.map((m) => ({
-    ...m,
-    _alreadyAttachedCount: attachedCounts[m.id] || 0,
-  }))
-
-  const handleAdd = async () => {
-    if (!selectedModelId || !endpointDraft.trim()) {
-      toast.error('Select a model and paste its endpoint')
-      return
-    }
-    if (!endpointDraft.startsWith('http')) {
-      toast.error('Endpoint must be a valid URL')
-      return
-    }
-    setAdding(true)
-    const { data, error } = await supabase
-      .from('render_window_models')
-      .insert({
-        render_window_id: windowId,
-        model_id:          selectedModelId,
-        comfyui_endpoint:  endpointDraft.trim(),
-        sort_order:        attachments.length,
-      })
-      .select('id, model_id, comfyui_endpoint, sort_order, model:models(id, label, value)')
-      .single()
+  const create = async () => {
+    const { payload, error: formError } = couponFormToPayload(draft)
+    if (formError) { toast.error(formError); return }
+    setSaving(true)
+    const { data, error } = await renderWindowBookingCoupons.create(user.id, payload)
+    setSaving(false)
+    if (error) { toast.error(error.message?.includes('duplicate') ? 'That code is already in use' : 'Failed to create coupon'); return }
+    toast.success(`${data.code} created`)
+    setCoupons((prev) => [data, ...prev])
+    setDraft(EMPTY_COUPON)
     setAdding(false)
-    if (error) { toast.error('Failed to add model — it may already be attached'); return }
-    toast.success(`${data.model.label} added`)
-    setAttachments((prev) => [...prev, data])
-    setSelectedModelId('')
-    setEndpointDraft('')
   }
-
-  const handleRemove = async (id, label) => {
-    setBusyId(id)
-    const { error } = await supabase.from('render_window_models').delete().eq('id', id)
-    setBusyId(null)
-    if (error) { toast.error('Failed to remove model'); return }
-    toast.success(`${label} removed${isLive ? ' — blocked immediately' : ''}`)
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
-  }
-
-  const startEdit = (att) => { setEditingId(att.id); setEditDraft(att.comfyui_endpoint) }
-
-  const saveEdit = async (id) => {
-    if (!editDraft.trim() || !editDraft.startsWith('http')) {
-      toast.error('Endpoint must be a valid URL')
-      return
-    }
-    setBusyId(id)
-    const { error } = await supabase
-      .from('render_window_models')
-      .update({ comfyui_endpoint: editDraft.trim(), updated_at: new Date().toISOString() })
-      .eq('id', id)
-    setBusyId(null)
-    if (error) { toast.error('Failed to update endpoint'); return }
-    toast.success('Endpoint updated')
-    setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, comfyui_endpoint: editDraft.trim() } : a))
-    setEditingId(null)
-  }
-
-  return (
-    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
-      <div className="flex items-center gap-2 mb-2">
-        <Server size={12} style={{ color: 'var(--text-muted)' }} />
-        <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-          Models & Endpoints
-        </p>
-      </div>
-
-      {loading ? (
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading…</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {attachments.length === 0 && (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              No models attached — generations against this window will be blocked until you add at least one.
-            </p>
-          )}
-
-          {attachments.map((att) => (
-            <div key={att.id} className="rounded-xl p-3" style={{ background: 'var(--bg-elevated)' }}>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {att.model?.label ?? att.model_id}
-                </p>
-                <button
-                  onClick={() => handleRemove(att.id, att.model?.label)}
-                  disabled={busyId === att.id}
-                  className="text-xs px-2 py-1 rounded-lg"
-                  style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
-                >
-                  <Trash2 size={10} />
-                </button>
-              </div>
-
-              {editingId === att.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(att.id); if (e.key === 'Escape') setEditingId(null) }}
-                    className="input-base flex-1 text-xs font-mono"
-                  />
-                  <button
-                    onClick={() => saveEdit(att.id)}
-                    disabled={busyId === att.id}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
-                  >
-                    <Check size={12} />
-                  </button>
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <p className="flex-1 text-xs font-mono truncate" style={{ color: 'var(--text-muted)' }}>
-                    {att.comfyui_endpoint}
-                  </p>
-                  <button
-                    onClick={() => startEdit(att)}
-                    className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
-                    style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-                  >
-                    <Pencil size={10} /> Edit
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {selectableModels.length > 0 && (
-            <div
-              className="rounded-xl p-3 flex flex-col gap-2"
-              style={{ background: 'var(--bg-card)', border: '1px dashed var(--border-color)' }}
-            >
-              <select
-                value={selectedModelId}
-                onChange={(e) => setSelectedModelId(e.target.value)}
-                className="input-base w-full text-xs"
-              >
-                <option value="">Select a model to add…</option>
-                {selectableModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}{m._alreadyAttachedCount > 0 ? ` (+${m._alreadyAttachedCount} pod${m._alreadyAttachedCount > 1 ? 's' : ''} already attached)` : ''}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={endpointDraft}
-                onChange={(e) => setEndpointDraft(e.target.value)}
-                placeholder="https://abc123-8188.proxy.runpod.net"
-                className="input-base w-full text-xs font-mono"
-              />
-              <button
-                onClick={handleAdd}
-                disabled={adding || !selectedModelId || !endpointDraft.trim()}
-                className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
-                style={{
-                  background: selectedModelId && endpointDraft.trim() ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
-                  color:      selectedModelId && endpointDraft.trim() ? '#10b981' : 'var(--text-muted)',
-                }}
-              >
-                <Plus size={12} /> {adding ? 'Adding…' : 'Add Model'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Window Card (active / scheduled / cancelled — full actions) ─────────────
-
-const WindowCard = ({ win, onOpen, onClose, onEdit, onDelete, actionLoading }) => {
-  const [expanded, setExpanded] = useState(false)
-  const meta    = STATUS_META[win.status] ?? STATUS_META.closed
-  const isLive  = win.status === 'active'
-  const loading = actionLoading === win.id
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: isLive ? 'rgba(16,185,129,0.04)' : 'var(--bg-card)',
-        border:     `1px solid ${isLive ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
-      }}
-    >
-      {/* Header row */}
-      <div
-        className="flex items-center gap-3 p-4 cursor-pointer"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        {/* Status dot */}
-        <div
-          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-          style={{
-            background: meta.color,
-            boxShadow:  isLive ? `0 0 8px ${meta.color}` : 'none',
-          }}
-        />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-              {win.label}
-            </p>
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{ background: meta.bg, color: meta.color }}
-            >
-              {meta.label}
-            </span>
-            {isLive && (
-              <span className="text-xs font-bold" style={{ color: '#10b981' }}>
-                · {timeLeft(win.ends_at)}
-              </span>
-            )}
-            {win.status === 'scheduled' && (
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                · {timeUntil(win.starts_at)}
-              </span>
-            )}
-          </div>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {fmtDisplay(win.starts_at)} → {fmtDisplay(win.ends_at)}
-          </p>
-        </div>
-
-        <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
-          {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-        </span>
-      </div>
-
-      {/* Expanded detail */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div
-              className="px-4 pb-4 flex flex-col gap-3"
-              style={{ borderTop: '1px solid var(--border-color)' }}
-            >
-              {/* Details */}
-              <div className="grid grid-cols-2 gap-2 pt-3">
-                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Opens</p>
-                  <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                    {fmtDisplay(win.starts_at)}
-                  </p>
-                </div>
-                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Closes</p>
-                  <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                    {fmtDisplay(win.ends_at)}
-                  </p>
-                </div>
-                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Capacity</p>
-                  <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                    {win.capacity ?? 'Unlimited'}
-                  </p>
-                </div>
-                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Created</p>
-                  <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
-                    {fmtDisplay(win.created_at)}
-                  </p>
-                </div>
-              </div>
-
-              {win.notes && (
-                <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Notes</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{win.notes}</p>
-                </div>
-              )}
-
-              {/* Models & Endpoints — live editing, changes apply immediately */}
-              {win.status !== 'cancelled' && (
-                <WindowModelsEditor windowId={win.id} isLive={isLive} />
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-2 flex-wrap">
-                {/* Open / Close toggle */}
-                {win.status !== 'cancelled' && (
-                  isLive ? (
-                    <button
-                      onClick={() => onClose(win.id)}
-                      disabled={loading}
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
-                      style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
-                    >
-                      <ZapOff size={12} />
-                      {loading ? 'Closing…' : 'Close Window'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onOpen(win.id)}
-                      disabled={loading}
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
-                      style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
-                    >
-                      <Zap size={12} />
-                      {loading ? 'Opening…' : 'Open Now'}
-                    </button>
-                  )
-                )}
-
-               {/* Edit — scheduled or currently active (lets admin extend/change end time live) */}
-                {(win.status === 'scheduled' || win.status === 'active') && (
-                  <button
-                    onClick={() => onEdit(win)}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-                  >
-                    <Pencil size={11} /> {win.status === 'active' ? 'Edit / Extend' : 'Edit'}
-                  </button>
-                )}
-
-                {/* Delete — only for scheduled or cancelled */}
-                {(win.status === 'scheduled' || win.status === 'cancelled') && (
-                  <button
-                    onClick={() => onDelete(win.id)}
-                    disabled={loading}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
-                    style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
-                  >
-                    <Trash2 size={11} /> Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  )
-}
-
-// ─── History Row (closed windows — read only, no expand, no actions) ────────
-
-const HistoryRow = ({ win }) => (
-  <div
-    className="flex items-center gap-3 rounded-2xl p-4"
-    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-  >
-    <div
-      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-      style={{ background: STATUS_META.closed.color }}
-    />
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-        {win.label}
-      </p>
-      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-        {fmtDateOnly(win.starts_at)} · {fmtTimeOnly(win.starts_at)}–{fmtTimeOnly(win.ends_at)}
-      </p>
-    </div>
-    <div className="text-right flex-shrink-0">
-      <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
-        {fmtDuration(win.starts_at, win.ends_at)}
-      </p>
-      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>duration</p>
-    </div>
-  </div>
-)
-
-// ─── Summary Bar ──────────────────────────────────────────────────────────────
-
-const SummaryBar = ({ summary, loading }) => {
-  if (loading || !summary) return null
-
-  const isOpen    = summary.window_open
-  const subCount  = summary.active_sub_count ?? 0
-  const nextWin   = summary.next_window
-
-  return (
-    <div
-      className="rounded-2xl p-4 flex flex-col gap-3"
-      style={{
-        background: isOpen ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
-        border:     `1px solid ${isOpen ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
-      }}
-    >
-      <div className="flex items-center gap-2">
-        <div
-          className="w-2.5 h-2.5 rounded-full"
-          style={{
-            background: isOpen ? '#10b981' : '#888',
-            boxShadow:  isOpen ? '0 0 8px #10b981' : 'none',
-          }}
-        />
-        <p className="text-sm font-black" style={{ color: isOpen ? '#10b981' : 'var(--text-primary)' }}>
-          {isOpen ? 'Window is OPEN' : 'Window is CLOSED'}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <Users size={11} style={{ color: 'var(--text-muted)' }} />
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Active subs</p>
-          </div>
-          <p className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>{subCount}</p>
-        </div>
-        <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <CalendarDays size={11} style={{ color: 'var(--text-muted)' }} />
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Next window</p>
-          </div>
-          <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-            {nextWin?.label
-              ? `${nextWin.label} · ${timeUntil(nextWin.starts_at)}`
-              : 'None scheduled'}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
-export default function RenderWindowManager() {
-  const { user }                              = useAuth()
-  const [windows,       setWindows]           = useState([])
-  const [summary,       setSummary]           = useState(null)
-  const [tiers,         setTiers]             = useState([])
-  const [loading,       setLoading]           = useState(true)
-  const [summaryLoad,   setSummaryLoad]       = useState(true)
-  const [actionLoading, setActionLoading]     = useState(null)
-  const [showForm,      setShowForm]          = useState(false)
-  const [editingWindow, setEditingWindow]     = useState(null)
-  const [formSaving,    setFormSaving]        = useState(false)
-  const [filter,        setFilter]            = useState('all')
-  const [view,          setView]              = useState('manage') // 'manage' | 'history'
-  const [showSubs,      setShowSubs]          = useState(false)
-  const [renderWindowModels, setRenderWindowModels] = useState([])
-
-  const loadAll = useCallback(async () => {
-    setLoading(true)
-    setSummaryLoad(true)
-
-    const [windowsRes, summaryRes, tiersRes, rwModelsRes] = await Promise.all([
-      renderWindows.getUpcoming(),
-      renderWindows.getAdminSummary(),
-      supabase.from('render_window_tiers').select('*').order('display_order'),
-      supabase.from('models').select('id, label, value').eq('model_access_type', 'render_window').order('label'),
-    ])
-
-    setWindows(windowsRes.data || [])
-    setSummary(summaryRes.data ?? null)
-    setTiers(tiersRes.data     || [])
-    setRenderWindowModels(rwModelsRes.data || [])
-    setLoading(false)
-    setSummaryLoad(false)
-  }, [])
-
-  useEffect(() => { loadAll() }, [loadAll])
-
-  // ── Create window ────────────────────────────────────────────────────────
-  const handleCreate = async (payload) => {
-    setFormSaving(true)
-    const { models, ...windowPayload } = payload
-    const { data, error } = await renderWindows.create({
-      ...windowPayload,
-      created_by: user.id,
-      status:     'scheduled',
-    })
-
-    if (error) {
-      setFormSaving(false)
-      toast.error(`Failed to create window: ${error.message}`)
-      return
-    }
-
-    if (models?.length) {
-      const rows = models.map((m, idx) => ({
-        render_window_id: data.id,
-        model_id:          m.model_id,
-        comfyui_endpoint:  m.endpoint,
-        sort_order:        idx,
-      }))
-      const { error: modelsError } = await supabase.from('render_window_models').insert(rows)
-      if (modelsError) {
-        toast.error('Window created, but models failed to attach — add them from the window card.')
-      }
-    }
-
-    setFormSaving(false)
-    toast.success('Window created')
-    setShowForm(false)
-    setWindows((prev) => [data, ...prev].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)))
-    loadAll()
-  }
-
-  // ── Edit window ──────────────────────────────────────────────────────────
-  const handleEdit = async (payload) => {
-    if (!editingWindow) return
-    setFormSaving(true)
-    const { data, error } = await renderWindows.update(editingWindow.id, payload)
-    setFormSaving(false)
-    if (error) { toast.error(`Failed to update window: ${error.message}`); return }
-    toast.success('Window updated')
-    setEditingWindow(null)
-    setWindows((prev) => prev.map((w) => w.id === data.id ? data : w))
-  }
-
-  // ── Open window manually ─────────────────────────────────────────────────
-  const handleOpen = async (windowId) => {
-    setActionLoading(windowId)
-    const { data, error } = await renderWindows.adminOpen(user.id, windowId)
-    setActionLoading(null)
-    if (error || !data?.success) {
-      toast.error(data?.error || 'Failed to open window')
-      return
-    }
-    toast.success('Window is now LIVE')
-    // Optimistic update
-    setWindows((prev) => prev.map((w) => ({
-      ...w,
-      status: w.id === windowId ? 'active' : (w.status === 'active' ? 'closed' : w.status),
-    })))
-    loadAll()
-  }
-
-  // ── Close window manually ────────────────────────────────────────────────
-  const handleClose = async (windowId) => {
-    setActionLoading(windowId)
-    const { data, error } = await renderWindows.adminClose(user.id, windowId)
-    setActionLoading(null)
-    if (error || !data?.success) {
-      toast.error(data?.error || 'Failed to close window')
-      return
-    }
-    toast.success('Window closed')
-    setWindows((prev) => prev.map((w) => w.id === windowId ? { ...w, status: 'closed' } : w))
-    loadAll()
-  }
-
-  // ── Delete window ─────────────────────────────────────────────────────────
-  const handleDelete = async (windowId) => {
-    if (!window.confirm('Delete this window? This cannot be undone.')) return
-    setActionLoading(windowId)
-    const { error } = await renderWindows.delete(windowId)
-    setActionLoading(null)
-    if (error) { toast.error('Failed to delete window'); return }
-    toast.success('Window deleted')
-    setWindows((prev) => prev.filter((w) => w.id !== windowId))
-    loadAll()
-  }
-
-  // ── Split windows: manage (non-closed) vs history (closed) ─────────────────
-  const manageWindows = windows.filter((w) => w.status !== 'closed')
-  const historyWindows = windows
-    .filter((w) => w.status === 'closed')
-    .sort((a, b) => new Date(b.ends_at) - new Date(a.ends_at))
-
-  const filtered = manageWindows.filter((w) => {
-    if (filter === 'all')       return true
-    if (filter === 'active')    return w.status === 'active'
-    if (filter === 'scheduled') return w.status === 'scheduled'
-    if (filter === 'cancelled') return w.status === 'cancelled'
-    return true
-  })
-
-  const filters = ['all', 'active', 'scheduled', 'cancelled']
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="rounded-2xl p-4" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Tag size={13} style={{ color: '#6366f1' }} />
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6366f1' }}>Private Booking Coupons</p>
+          </div>
+          <button
+            onClick={() => { setDraft(EMPTY_COUPON); setAdding((a) => !a) }}
+            className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg"
+            style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+          >
+            {adding ? <X size={11} /> : <Plus size={11} />}
+            {adding ? 'Cancel' : 'Add coupon'}
+          </button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Discounts apply to a booking's subtotal at checkout. Redemption limits are enforced
+          server-side, so a coupon can't be over-redeemed even under concurrent checkouts.
+        </p>
 
-      {/* Header */}
+        {adding && (
+          <div className="rounded-xl p-3.5 flex flex-col gap-2 mb-2" style={{ background: 'var(--bg-card)', border: '1px dashed var(--border-color)' }}>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Code</label>
+                <input
+                  value={draft.code}
+                  onChange={(e) => setDraft((d) => ({ ...d, code: e.target.value.toUpperCase() }))}
+                  placeholder="e.g. WELCOME10"
+                  className="input-base w-full text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Type</label>
+                <select
+                  value={draft.discount_type}
+                  onChange={(e) => setDraft((d) => ({ ...d, discount_type: e.target.value }))}
+                  className="input-base w-full text-sm"
+                >
+                  <option value="percent">Percent off</option>
+                  <option value="fixed">Flat ₦ off</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>
+                  {draft.discount_type === 'percent' ? 'Percent (%)' : 'Amount (₦)'}
+                </label>
+                <input
+                  type="number" min={0} step={draft.discount_type === 'percent' ? '1' : '100'}
+                  value={draft.discount_value}
+                  onChange={(e) => setDraft((d) => ({ ...d, discount_value: e.target.value }))}
+                  className="input-base w-full text-sm"
+                />
+              </div>
+              {draft.discount_type === 'percent' && (
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Max discount (₦, optional)</label>
+                  <input
+                    type="number" min={0} step="100"
+                    value={draft.max_discount_ngn}
+                    onChange={(e) => setDraft((d) => ({ ...d, max_discount_ngn: e.target.value }))}
+                    placeholder="No cap"
+                    className="input-base w-full text-sm"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Min booking (₦, optional)</label>
+                <input
+                  type="number" min={0} step="100"
+                  value={draft.min_amount_ngn}
+                  onChange={(e) => setDraft((d) => ({ ...d, min_amount_ngn: e.target.value }))}
+                  placeholder="No minimum"
+                  className="input-base w-full text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Total uses (optional)</label>
+                <input
+                  type="number" min={1}
+                  value={draft.max_redemptions}
+                  onChange={(e) => setDraft((d) => ({ ...d, max_redemptions: e.target.value }))}
+                  placeholder="Unlimited"
+                  className="input-base w-full text-sm"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Uses per user</label>
+                <input
+                  type="number" min={1}
+                  value={draft.per_user_limit}
+                  onChange={(e) => setDraft((d) => ({ ...d, per_user_limit: e.target.value }))}
+                  className="input-base w-full text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Expires (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={draft.expires_at}
+                  onChange={(e) => setDraft((d) => ({ ...d, expires_at: e.target.value }))}
+                  className="input-base w-full text-sm"
+                />
+              </div>
+            </div>
+            <button
+              onClick={create}
+              disabled={saving}
+              className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+            >
+              {saving ? 'Adding…' : <><Check size={12} /> Add Coupon</>}
+            </button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="h-16 rounded-xl animate-pulse" style={{ background: 'var(--bg-card)' }} />
+        ) : coupons.length === 0 ? (
+          <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>
+            No coupons yet — add one above.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {coupons.map((c) => (
+              <CouponRow
+                key={c.id}
+                coupon={c}
+                onSaved={(updated) => setCoupons((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+                onRemoved={(id) => setCoupons((prev) => prev.filter((x) => x.id !== id))}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────
+
+export default function RenderWindowBookingsManager() {
+  const { user }   = useAuth()
+  const [bookings, setBookings] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [filter,   setFilter]   = useState('pending')
+  const [busy,     setBusy]     = useState(null)
+  const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'coupons'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await adminGetBookings({ status: filter })
+    if (error) toast.error('Failed to load bookings')
+    setBookings(data)
+    setLoading(false)
+  }, [filter])
+
+  useEffect(() => { if (activeTab === 'bookings') load() }, [load, activeTab])
+
+  const handleAccept = async (id) => {
+    setBusy(id)
+    const { data, error } = await adminAcceptBooking(user.id, id)
+    setBusy(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to accept booking'); return }
+    toast.success('Booking accepted — user will see their countdown')
+    load()
+  }
+
+  const handleCancel = async (id, notes) => {
+    setBusy(id)
+    const { data, error } = await adminCancelBooking(user.id, id, notes)
+    setBusy(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to cancel booking'); return }
+    toast.success('Booking cancelled')
+    load()
+  }
+
+  const handleReset = async (id, notes) => {
+    setBusy(id)
+    const { data, error } = await adminResetBooking(user.id, id, notes)
+    setBusy(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to reset booking'); return }
+    toast.success('Booking reset — user can pick a new time worth the same amount')
+    load()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-            Render Windows
-          </p>
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Private Bookings</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Schedule and manage GPU render windows. Only one can be active at a time.
+            Accept, cancel, or reset user requests for private model access.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowSubs(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
-          >
-            <CreditCard size={13} /> Subscriptions
-          </button>
-          <button
-            onClick={loadAll}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-          >
+        {activeTab === 'bookings' && (
+          <button onClick={load} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
             <RefreshCw size={14} />
           </button>
-        </div>
+        )}
       </div>
 
-      {/* Tab switcher: Manage / History */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setView('manage')}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
-          style={{
-            background: view === 'manage' ? 'var(--brand)' : 'var(--bg-card)',
-            color:      view === 'manage' ? 'white'        : 'var(--text-muted)',
-            border:     `1px solid ${view === 'manage' ? 'var(--brand)' : 'var(--border-color)'}`,
-          }}
-        >
-          <CalendarDays size={13} /> Windows {manageWindows.length > 0 && `· ${manageWindows.length}`}
-        </button>
-        <button
-          onClick={() => setView('history')}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
-          style={{
-            background: view === 'history' ? 'var(--brand)' : 'var(--bg-card)',
-            color:      view === 'history' ? 'white'        : 'var(--text-muted)',
-            border:     `1px solid ${view === 'history' ? 'var(--brand)' : 'var(--border-color)'}`,
-          }}
-        >
-          <HistoryIcon size={13} /> History {historyWindows.length > 0 && `· ${historyWindows.length}`}
-        </button>
-      </div>
-
-      {view === 'manage' ? (
-        <>
-          {/* Summary bar */}
-          <SummaryBar summary={summary} loading={summaryLoad} />
-
-          {/* New window trigger */}
+      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+        {[
+          { id: 'bookings', label: 'Bookings' },
+          { id: 'coupons',  label: 'Coupons' },
+        ].map((t) => (
           <button
-            onClick={() => { setEditingWindow(null); setShowForm((s) => !s) }}
-            className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className="flex-1 py-2 rounded-xl text-sm font-bold transition-all"
             style={{
-              background: showForm ? 'var(--bg-elevated)' : 'var(--brand)',
-              color:      showForm ? 'var(--text-muted)'  : 'white',
+              background: activeTab === t.id ? 'var(--bg-elevated)' : 'transparent',
+              color:      activeTab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
             }}
           >
-            {showForm ? <X size={13} /> : <Plus size={13} />}
-            {showForm ? 'Cancel' : 'New Window'}
+            {t.label}
           </button>
+        ))}
+      </div>
 
-          {/* Create form */}
-          <AnimatePresence>
-            {showForm && !editingWindow && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-              >
-                <WindowForm
-                  renderWindowModels={renderWindowModels}
-                  onSave={handleCreate}
-                  onCancel={() => setShowForm(false)}
-                  saving={formSaving}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Edit form */}
-          <AnimatePresence>
-            {editingWindow && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                    Editing: {editingWindow.label}
-                  </p>
-                  <button
-                    onClick={() => setEditingWindow(null)}
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                <WindowForm
-                  initial={{
-                    label:     editingWindow.label,
-                    starts_at: fmtDatetimeLocal(editingWindow.starts_at),
-                    ends_at:   fmtDatetimeLocal(editingWindow.ends_at),
-                    capacity:  editingWindow.capacity ?? '',
-                    notes:     editingWindow.notes ?? '',
-                  }}
-                  onSave={handleEdit}
-                  onCancel={() => setEditingWindow(null)}
-                  saving={formSaving}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Filter pills */}
-          <div className="flex gap-2 overflow-x-auto no-scrollbar">
-            {filters.map((f) => {
-              const meta  = f === 'all' ? null : STATUS_META[f]
-              const count = f === 'all'
-                ? manageWindows.length
-                : manageWindows.filter((w) => w.status === f).length
-              return (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
-                  style={{
-                    background: filter === f
-                      ? (meta?.bg ?? 'var(--bg-elevated)')
-                      : 'var(--bg-card)',
-                    color: filter === f
-                      ? (meta?.color ?? 'var(--text-primary)')
-                      : 'var(--text-muted)',
-                    border: `1px solid ${filter === f
-                      ? (meta?.color ?? 'var(--border-color)') + '44'
-                      : 'var(--border-color)'}`,
-                  }}
-                >
-                  {f.charAt(0).toUpperCase() + f.slice(1)} {count > 0 && `· ${count}`}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Window list */}
-          {loading ? (
-            <div className="flex flex-col gap-2">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-16 rounded-2xl animate-pulse"
-                  style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }}
-                />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-12">
-              <CalendarDays size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {filter === 'all' ? 'No windows yet' : `No ${filter} windows`}
-              </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                {filter === 'all' ? 'Create your first render window above.' : 'Try a different filter.'}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <AnimatePresence mode="popLayout">
-                {filtered.map((win) => (
-                  <WindowCard
-                    key={win.id}
-                    win={win}
-                    onOpen={handleOpen}
-                    onClose={handleClose}
-                    onEdit={(w) => { setShowForm(false); setEditingWindow(w) }}
-                    onDelete={handleDelete}
-                    actionLoading={actionLoading}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
-        </>
+      {activeTab === 'coupons' ? (
+        <CouponsManager />
       ) : (
         <>
-          {/* History list — read-only, no actions */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap"
+                style={{
+                  background: filter === f ? 'var(--bg-elevated)' : 'var(--bg-card)',
+                  color:      filter === f ? 'var(--text-primary)' : 'var(--text-muted)',
+                  border:     '1px solid var(--border-color)',
+                }}
+              >
+                {f === 'all' ? 'All' : (STATUS_META[f]?.label ?? f)}
+              </button>
+            ))}
+          </div>
+
           {loading ? (
             <div className="flex flex-col gap-2">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-16 rounded-2xl animate-pulse"
-                  style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }}
-                />
-              ))}
+              {[...Array(3)].map((_, i) => <div key={i} className="h-32 rounded-2xl animate-pulse" style={{ background: 'var(--bg-card)', opacity: 0.5 - i * 0.1 }} />)}
             </div>
-          ) : historyWindows.length === 0 ? (
-            <div className="text-center py-12">
-              <HistoryIcon size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                No closed windows yet
-              </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                Closed windows will appear here once they end.
-              </p>
-            </div>
+          ) : bookings.length === 0 ? (
+            <p className="text-sm text-center py-12" style={{ color: 'var(--text-muted)' }}>No bookings in this filter.</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {historyWindows.map((win) => (
-                <HistoryRow key={win.id} win={win} />
+              {bookings.map((b) => (
+                <BookingRow key={b.id} b={b} onAccept={handleAccept} onCancel={handleCancel} onReset={handleReset} busy={busy} />
               ))}
             </div>
           )}
         </>
       )}
-
-      {/* Subscriptions modal */}
-      <AnimatePresence>
-        {showSubs && (
-          <Modal title="Subscription Tiers" onClose={() => setShowSubs(false)}>
-            <TierPricingEditor tiers={tiers} onTiersChange={setTiers} />
-          </Modal>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
