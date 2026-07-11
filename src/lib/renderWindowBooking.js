@@ -39,6 +39,48 @@ export const renderWindowBookingDurations = {
     supabase.from('render_window_booking_durations').delete().eq('id', id),
 }
 
+// ── Booking coupons ────────────────────────────────────────────────────
+// Percent or flat-₦ discounts applied to a booking's subtotal. Validation
+// is re-run server-side at initialize-payment and again at verify-payment —
+// this client-side `validate` call is purely for showing a live discounted
+// total as the user types a code; it never itself grants the discount.
+export const renderWindowBookingCoupons = {
+  // Live preview — read-only, does not redeem anything.
+  validate: (code, userId, subtotalNgn) =>
+    supabase.rpc('validate_render_window_coupon', {
+      p_code:         code,
+      p_user_id:      userId,
+      p_subtotal_ngn: subtotalNgn,
+    }),
+
+  // Admin — full list for the manager UI
+  getAll: async () => {
+    const { data, error } = await supabase
+      .from('render_window_booking_coupons')
+      .select('*')
+      .order('created_at', { ascending: false })
+    return { data: data || [], error }
+  },
+
+  create: (adminId, payload) =>
+    supabase
+      .from('render_window_booking_coupons')
+      .insert({ ...payload, code: payload.code.toUpperCase(), created_by: adminId })
+      .select()
+      .single(),
+
+  update: (id, patch) =>
+    supabase
+      .from('render_window_booking_coupons')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
+
+  remove: (id) =>
+    supabase.from('render_window_booking_coupons').delete().eq('id', id),
+}
+
 // ── Bookable models — now derived automatically from render-window status.
 // A model is bookable the moment an admin sets it to
 // model_access_type = 'render_window' AND is_active = true. No separate
@@ -72,7 +114,7 @@ export async function getMyBookings(userId) {
 }
 
 // ── Start a booking checkout — mirrors subscribeToRenderWindow's pattern ──
-export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber }) {
+export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber, couponCode }) {
   if (!user?.email) throw new Error('Sign in to book a session.')
   if (!modelIds?.length) throw new Error('Select at least one model.')
   if (!startAt) throw new Error('Pick a start time.')
@@ -86,6 +128,7 @@ export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId
     startAt:       new Date(startAt).toISOString(),
     durationId,
     whatsappNumber: whatsappNumber || null,
+    couponCode:     couponCode || null,
   })
   // Browser navigates away to Paystack — no further state to set.
 }
