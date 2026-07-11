@@ -120,10 +120,20 @@ export const initializePayment = async ({
     }),
   })
 
-  let data
+let data
   try { data = await res.json() } catch { data = null }
-  if (!res.ok || !data?.success || !data?.authorization_url) {
+  if (!res.ok || !data?.success) {
     throw new Error(data?.error || `initialize-payment failed (HTTP ${res.status})`)
+  }
+
+  // A 100%-off coupon skips Paystack entirely — the booking is already
+  // confirmed server-side, so there's nothing to redirect to.
+  if (data.free) {
+    return { free: true, bookingId: data.booking_id }
+  }
+
+  if (!data.authorization_url) {
+    throw new Error(data?.error || 'initialize-payment did not return a payment URL')
   }
 
   // Persist intent before navigating away — safety net for AuthContext retry.
