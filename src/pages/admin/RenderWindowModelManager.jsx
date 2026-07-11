@@ -827,10 +827,10 @@ const workflowCount = models.filter(m => m.comfyui_workflow_json).length
         <BookingDurationsManager durations={durations} onDurationsChange={setDurations} />
       )}
 
-  {/* Stats */}
+    {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: 'RW Models',        value: models.length, color: '#6366f1' },
+          { label: 'RW Models',        value: rwCount,       color: '#6366f1' },
           { label: 'With Workflow',    value: workflowCount, color: '#10b981' },
           { label: 'Missing Workflow', value: missingCount,  color: missingCount > 0 ? '#ef4444' : '#888' },
         ].map(stat => (
