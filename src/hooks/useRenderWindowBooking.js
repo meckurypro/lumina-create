@@ -45,19 +45,18 @@ export function useRenderWindowBooking() {
     return () => clearInterval(tickRef.current)
   }, [])
 
-  const book = useCallback(async ({ modelIds, startAt, durationHours, whatsappNumber }) => {
+const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber }) => {
     setBookingBusy(true)
     try {
-      await bookRenderWindowSlot({ user, modelIds, startAt, durationHours, whatsappNumber })
+      await bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber })
     } catch (e) {
       toast.error(e.message || 'Could not start booking payment')
       setBookingBusy(false)
     }
   }, [user])
-
-  const reconfigure = useCallback(async (bookingId, { modelIds, startAt, durationHours }) => {
+  const reconfigure = useCallback(async (bookingId, { modelIds, startAt, durationId }) => {
     if (!user?.id) return
-    const { data, error } = await submitBookingReconfig(user.id, bookingId, modelIds, startAt, durationHours)
+    const { data, error } = await submitBookingReconfig(user.id, bookingId, modelIds, startAt, durationId)
     if (error || !data?.success) {
       toast.error(data?.error || error?.message || 'Could not save your new booking time')
       return false
