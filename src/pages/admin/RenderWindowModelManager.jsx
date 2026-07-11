@@ -459,28 +459,12 @@ const handleToggleRW = async () => {
               className="px-4 pb-4 flex flex-col gap-4"
               style={{ borderTop: '1px solid var(--border-color)' }}
             >
-              {/* Render Window Toggle */}
-              <div className="pt-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Render Window Model
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Make this model available during render window sessions. Once active, it's also
-                    automatically bookable for private sessions at the global rate.
-                  </p>
-                </div>
-                <button
-                  onClick={handleToggleRW}
-                  disabled={toggling}
-                  className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
-                  style={{
-                    background: isRW ? 'rgba(239,68,68,0.10)' : 'rgba(99,102,241,0.12)',
-                    color:      isRW ? '#ef4444'               : '#6366f1',
-                  }}
-                >
-                  {toggling ? '…' : isRW ? 'Remove' : 'Add'}
-                </button>
+             {/* Render Window status — set in Models Manager, not here */}
+              <div className="pt-3">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  This model is currently render-window access. To move it back to credits, use the
+                  ⚡ Credits / 🪟 Window toggle in <strong style={{ color: 'var(--text-primary)' }}>Models Manager</strong>.
+                </p>
               </div>
 
               {/* Workflow JSON */}
@@ -551,6 +535,7 @@ const load = useCallback(async () => {
     const { data } = await supabase
       .from('models')
       .select('*')
+      .eq('model_access_type', 'render_window')
       .order('label')
     setModels(data || [])
     setLoading(false)
@@ -574,13 +559,12 @@ const load = useCallback(async () => {
   }
 
   // Filter and search
-  const filtered = models.filter(m => {
+const filtered = models.filter(m => {
     const matchesFilter =
       filter === 'all'          ? true :
-      filter === 'render_window'? m.model_access_type === 'render_window' :
       filter === 'with_workflow'? !!m.comfyui_workflow_json :
-      filter === 'missing'      ? (m.model_access_type === 'render_window' && !m.comfyui_workflow_json) :
-      filter === 'bookable'     ? (m.model_access_type === 'render_window' && m.is_active) :
+      filter === 'missing'      ? !m.comfyui_workflow_json :
+      filter === 'bookable'     ? m.is_active :
       true
 
     const matchesSearch = search.trim() === '' ||
@@ -591,15 +575,12 @@ const load = useCallback(async () => {
     return matchesFilter && matchesSearch
   })
 
-  const rwCount      = models.filter(m => m.model_access_type === 'render_window').length
-  const workflowCount= models.filter(m => m.comfyui_workflow_json).length
-  const missingCount = models.filter(m => m.model_access_type === 'render_window' && !m.comfyui_workflow_json).length
-
-const bookableCount = models.filter(m => m.model_access_type === 'render_window' && m.is_active).length
+const workflowCount = models.filter(m => m.comfyui_workflow_json).length
+  const missingCount  = models.filter(m => !m.comfyui_workflow_json).length
+  const bookableCount = models.filter(m => m.is_active).length
 
   const filters = [
     { key: 'all',           label: 'All',            count: models.length },
-    { key: 'render_window', label: 'Render Window',  count: rwCount },
     { key: 'with_workflow', label: 'Has Workflow',   count: workflowCount },
     { key: 'missing',       label: 'Missing Workflow',count: missingCount },
     { key: 'bookable',      label: 'Bookable',       count: bookableCount },
