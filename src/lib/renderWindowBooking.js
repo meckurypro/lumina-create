@@ -7,34 +7,36 @@
 import { supabase } from '@/lib/supabase'
 import { initializePayment } from '@/lib/paystack'
 
-const GLOBAL_RATE_SETTING_KEY = 'render_window_booking_hourly_rate_ngn'
-
-// ── Global booking rate (single Naira/hr rate applied to every bookable
-// render-window model) ──────────────────────────────────────────────────
-export const renderWindowBookingSettings = {
-  getRate: async () => {
+// ── Booking durations (admin-configurable list of bookable lengths, each
+// with its own flat per-model price — e.g. "30 minutes" → ₦3,000/model) ──
+export const renderWindowBookingDurations = {
+  // Public — active durations only, for the booking dropdown
+  getActive: async () => {
     const { data, error } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', GLOBAL_RATE_SETTING_KEY)
-      .maybeSingle()
-    if (error) return { rate: null, error }
-    return { rate: data?.value != null ? Number(data.value) : null, error: null }
+      .from('render_window_booking_durations')
+      .select('id, label, minutes, price_ngn')
+      .eq('is_active', true)
+      .order('sort_order')
+    return { data: data || [], error }
   },
 
-  setRate: (adminId, rateNgn) =>
-    supabase
-      .from('app_settings')
-      .upsert(
-        {
-          key:         GLOBAL_RATE_SETTING_KEY,
-          value:       String(rateNgn),
-          description: 'Global hourly rate (NGN) charged for private render-window bookings',
-          updated_by:  adminId,
-          updated_at:  new Date().toISOString(),
-        },
-        { onConflict: 'key' }
-      ),
+  // Admin — full list including inactive, for the manager UI
+  getAll: async () => {
+    const { data, error } = await supabase
+      .from('render_window_booking_durations')
+      .select('*')
+      .order('sort_order')
+    return { data: data || [], error }
+  },
+
+  create: (payload) =>
+    supabase.from('render_window_booking_durations').insert(payload).select().single(),
+
+  update: (id, patch) =>
+    supabase.from('render_window_booking_durations').update(patch).eq('id', id).select().single(),
+
+  remove: (id) =>
+    supabase.from('render_window_booking_durations').delete().eq('id', id),
 }
 
 // ── Bookable models — now derived automatically from render-window status.
@@ -43,22 +45,13 @@ export const renderWindowBookingSettings = {
 // per-model rate step; every bookable model shares the one global rate.
 export const bookableModels = {
   getAll: async () => {
-    const [{ data: models, error: modelsError }, { rate, error: rateError }] = await Promise.all([
-      supabase
-        .from('models')
-        .select('id, label, value, feature, description, sublabel')
-        .eq('model_access_type', 'render_window')
-        .eq('is_active', true)
-        .order('label'),
-      renderWindowBookingSettings.getRate(),
-    ])
-
-    if (modelsError) return { data: [], error: modelsError }
-
-    // Shape preserved as `booking_hourly_rate_ngn` so PrivateBookingPage's
-    // BookingForm (which reads that field per model) needs no changes.
-    const data = (models || []).map((m) => ({ ...m, booking_hourly_rate_ngn: rate }))
-    return { data, error: rateError || null }
+    const { data, error } = await supabase
+      .from('models')
+      .select('id, label, value, feature, description, sublabel')
+      .eq('model_access_type', 'render_window')
+      .eq('is_active', true)
+      .order('label')
+    return { data: data || [], error }
   },
 }
 
@@ -79,11 +72,11 @@ export async function getMyBookings(userId) {
 }
 
 // ── Start a booking checkout — mirrors subscribeToRenderWindow's pattern ──
-export async function bookRenderWindowSlot({ user, modelIds, startAt, durationHours, whatsappNumber }) {
+export async function bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber }) {
   if (!user?.email) throw new Error('Sign in to book a session.')
   if (!modelIds?.length) throw new Error('Select at least one model.')
   if (!startAt) throw new Error('Pick a start time.')
-  if (!durationHours || durationHours <= 0) throw new Error('Pick a duration.')
+  if (!durationId) throw new Error('Pick a duration.')
 
   await initializePayment({
     email:         user.email,
@@ -91,20 +84,20 @@ export async function bookRenderWindowSlot({ user, modelIds, startAt, durationHo
     packageSlug:   'render_window_booking',
     modelIds,
     startAt:       new Date(startAt).toISOString(),
-    durationHours,
+    durationId,
     whatsappNumber: whatsappNumber || null,
   })
   // Browser navigates away to Paystack — no further state to set.
 }
 
 // ── User resubmits a reset_pending booking with new models/time/duration ──
-export const submitBookingReconfig = (userId, bookingId, modelIds, startAt, durationHours) =>
+export const submitBookingReconfig = (userId, bookingId, modelIds, startAt, durationId) =>
   supabase.rpc('submit_booking_reconfig', {
-    p_user_id:        userId,
-    p_booking_id:     bookingId,
-    p_model_ids:      modelIds,
-    p_start_at:       new Date(startAt).toISOString(),
-    p_duration_hours: durationHours,
+    p_user_id:       userId,
+    p_booking_id:    bookingId,
+    p_model_ids:     modelIds,
+    p_start_at:      new Date(startAt).toISOString(),
+    p_duration_id:   durationId,
   })
 
 // ── Admin: list all bookings ───────────────────────────────────────────────
