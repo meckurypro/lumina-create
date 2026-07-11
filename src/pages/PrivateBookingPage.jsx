@@ -1,10 +1,10 @@
 // src/pages/PrivateBookingPage.jsx
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { Clock, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Check, Tag, X } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useRenderWindowBooking } from '@/hooks/useRenderWindowBooking'
-import { bookableModels, renderWindowBookingDurations } from '@/lib/renderWindowBooking'
+import { bookableModels, renderWindowBookingDurations, renderWindowBookingCoupons } from '@/lib/renderWindowBooking'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 
@@ -63,12 +63,16 @@ const getTabIndicator = (bookings, now) => {
 
 // ── Booking form (used for both new bookings and reconfiguring a reset) ──
 
-const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
+const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
   const [selectedIds, setSelectedIds]   = useState([])
   const [expandedId,  setExpandedId]    = useState(null) // which model card is expanded, if any
   const [startAt,      setStartAt]      = useState('')
   const [durationId,   setDurationId]   = useState(durations[0]?.id ?? '')
   const [whatsapp,     setWhatsapp]     = useState('')
+  const [couponInput,   setCouponInput]   = useState('')
+  const [coupon,        setCoupon]        = useState(null) // validated result from the server, or null
+  const [couponChecking, setCouponChecking] = useState(false)
+  const [couponError,    setCouponError]    = useState(null)
 
   const toggleModel = (id) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -76,10 +80,42 @@ const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, su
 
   const selectedDuration = durations.find((d) => d.id === durationId) ?? null
 
-  const total = useMemo(() => {
+  const subtotal = useMemo(() => {
     if (!selectedDuration) return 0
     return Number(selectedDuration.price_ngn) * selectedIds.length
   }, [selectedDuration, selectedIds])
+
+  // A previously-applied coupon's discount was computed against a specific
+  // subtotal — if the selection or duration changes, that number is stale.
+  // Require the user to re-apply rather than silently trust an old discount.
+  useEffect(() => {
+    setCoupon(null)
+    setCouponError(null)
+  }, [selectedIds.join(','), durationId])
+
+  const discount = coupon?.discount_ngn ? Number(coupon.discount_ngn) : 0
+  const total = Math.max(0, subtotal - discount)
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim()
+    if (!code || subtotal <= 0) return
+    setCouponChecking(true)
+    setCouponError(null)
+    const { data, error } = await renderWindowBookingCoupons.validate(code, userId, subtotal)
+    setCouponChecking(false)
+    if (error || !data?.valid) {
+      setCoupon(null)
+      setCouponError(data?.error || error?.message || 'Invalid coupon')
+      return
+    }
+    setCoupon(data)
+  }
+
+  const removeCoupon = () => {
+    setCoupon(null)
+    setCouponInput('')
+    setCouponError(null)
+  }
 
   const overBudget = maxAmountNgn != null && total > maxAmountNgn + 1
   const minStart = new Date(Date.now() + MIN_BOOKING_LEAD_HOURS * 60 * 60 * 1000).toISOString().slice(0, 16)
@@ -93,7 +129,7 @@ const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, su
 
   const handleSubmit = () => {
     if (!isValid) return
-    onSubmit({ modelIds: selectedIds, startAt, durationId, whatsappNumber: whatsapp })
+    onSubmit({ modelIds: selectedIds, startAt, durationId, whatsappNumber: whatsapp, couponCode: coupon?.code || null })
   }
 
   return (
@@ -135,6 +171,14 @@ const BookingForm = ({ models, durations, onSubmit, submitting, maxAmountNgn, su
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {selectedDuration && (
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: isSelected ? '#818cf8' : 'var(--text-primary)' }}
+                      >
+                        ₦{Number(selectedDuration.price_ngn).toLocaleString()}
+                      </span>
+                    )}
                     {blurb && (
                       isExpanded
                         ? <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
