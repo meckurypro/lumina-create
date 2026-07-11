@@ -63,7 +63,7 @@ const getTabIndicator = (bookings, now) => {
 
 // ── Booking form (used for both new bookings and reconfiguring a reset) ──
 
-const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmountNgn, submitLabel }) => {
+const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmountNgn, submitLabel, allowCoupon = true }) => {
   const [selectedIds, setSelectedIds]   = useState([])
   const [expandedId,  setExpandedId]    = useState(null) // which model card is expanded, if any
   const [startAt,      setStartAt]      = useState('')
@@ -256,6 +256,7 @@ const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmoun
         />
       </div>
 
+      {allowCoupon && (
       <div>
         <label className="text-xs font-bold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>
           Coupon code (optional)
@@ -301,6 +302,7 @@ const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmoun
           </p>
         )}
       </div>
+      )}
 
       <div
         className="rounded-xl px-3.5 py-3 flex flex-col gap-1"
@@ -328,7 +330,7 @@ const BookingForm = ({ userId, models, durations, onSubmit, submitting, maxAmoun
 
       {overBudget && (
         <p className="text-xs flex items-center gap-1.5" style={{ color: '#ef4444' }}>
-          <AlertTriangle size={12} /> This exceeds the ₦{maxAmountNgn.toLocaleString()} you already paid. Reduce hours or models.
+          <AlertTriangle size={12} /> This exceeds the ₦{maxAmountNgn.toLocaleString()} value of your original booking. Reduce hours or models.
         </p>
       )}
 
@@ -488,6 +490,19 @@ export default function PrivateBookingPage() {
     if (activeReset) setActiveTab('book')
   }, [activeReset])
 
+  // Bumped on a successful free (100%-off) booking to force-remount
+  // BookingForm, clearing its internal selection state — a paid booking
+  // never reaches this because the browser navigates to Paystack instead.
+  const [formKey, setFormKey] = useState(0)
+
+  const handleBook = async (cfg) => {
+    const success = await book(cfg)
+    if (success) {
+      setFormKey((k) => k + 1)
+      setActiveTab('bookings')
+    }
+  }
+
   return (
     <>
       <TopBar showBack title="Book Private Session" showCredits />
@@ -505,7 +520,7 @@ export default function PrivateBookingPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <RefreshCw size={14} style={{ color: '#6366f1' }} />
                   <p className="text-sm font-bold" style={{ color: '#6366f1' }}>
-                    Pick a new time — ₦{Number(activeReset.amount_ngn).toLocaleString()} already paid
+                    Pick a new time — worth up to ₦{Number(activeReset.subtotal_ngn).toLocaleString()}
                   </p>
                 </div>
                 {activeReset.admin_notes && (
@@ -516,7 +531,8 @@ export default function PrivateBookingPage() {
                     userId={user?.id}
                     models={models}
                     durations={durations}
-                    maxAmountNgn={Number(activeReset.amount_ngn)}
+                    maxAmountNgn={Number(activeReset.subtotal_ngn)}
+                    allowCoupon={false}
                     submitting={booking}
                     submitLabel="Save new time"
                     onSubmit={(cfg) => reconfigure(activeReset.id, cfg)}
@@ -550,13 +566,14 @@ export default function PrivateBookingPage() {
                   </p>
                 ) : (
                   <BookingForm
+                    key={formKey}
                     userId={user?.id}
                     models={models}
                     durations={durations}
                     maxAmountNgn={null}
                     submitting={booking}
                     submitLabel="Pay & Request Booking"
-                    onSubmit={book}
+                    onSubmit={handleBook}
                   />
                 )}
               </div>
