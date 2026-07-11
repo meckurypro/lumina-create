@@ -102,7 +102,7 @@ export const getPendingPayment = () => {
 
 export const initializePayment = async ({
   email, userId, packageSlug, tier, teamTierId,
-  modelIds, startAt, durationHours, whatsappNumber,
+  modelIds, startAt, durationId, whatsappNumber,
 }) => {
   if (!email || !userId || !packageSlug) throw new Error('email, userId, packageSlug required')
 
@@ -116,7 +116,7 @@ export const initializePayment = async ({
     },
     body: JSON.stringify({
       email, userId, packageSlug, callbackUrl, tier, teamTierId,
-      modelIds, startAt, durationHours, whatsappNumber,
+      modelIds, startAt, durationId, whatsappNumber,
     }),
   })
 
