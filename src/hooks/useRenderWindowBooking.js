@@ -45,7 +45,11 @@ export function useRenderWindowBooking() {
     return () => clearInterval(tickRef.current)
   }, [])
 
-const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber, couponCode }) => {
+  // Returns true only when the booking was confirmed synchronously (the
+  // free / 100%-off path) so the caller can clear its form and switch tabs.
+  // Returns false for a paid booking (browser is navigating to Paystack —
+  // there's nothing left for the caller to do) and on any failure.
+  const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber, couponCode }) => {
     setBookingBusy(true)
     try {
       const result = await bookRenderWindowSlot({ user, modelIds, startAt, durationId, whatsappNumber, couponCode })
@@ -53,15 +57,19 @@ const book = useCallback(async ({ modelIds, startAt, durationId, whatsappNumber,
         toast.success('Your free booking is confirmed — awaiting admin approval.')
         setBookingBusy(false)
         refresh()
+        return true
       }
       // Otherwise the browser is already navigating to Paystack.
+      return false
     } catch (e) {
       toast.error(e.message || 'Could not start booking payment')
       setBookingBusy(false)
+      return false
     }
   }, [user, refresh])
+
   const reconfigure = useCallback(async (bookingId, { modelIds, startAt, durationId }) => {
-    if (!user?.id) return
+    if (!user?.id) return false
     const { data, error } = await submitBookingReconfig(user.id, bookingId, modelIds, startAt, durationId)
     if (error || !data?.success) {
       toast.error(data?.error || error?.message || 'Could not save your new booking time')
