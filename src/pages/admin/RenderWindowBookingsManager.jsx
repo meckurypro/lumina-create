@@ -1,12 +1,12 @@
 // src/pages/admin/RenderWindowBookingsManager.jsx
 import { useState, useEffect, useCallback } from 'react'
-import { Check, X, RefreshCw, MessageCircle, Mail, Plus, Pencil, Trash2, Tag } from 'lucide-react'
+import { Check, X, RefreshCw, MessageCircle, Plus, Pencil, Trash2, Tag, Play, Square, Radio } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
   adminGetBookings, adminAcceptBooking, adminCancelBooking, adminResetBooking,
+  adminStartBookingNow, adminEndBookingNow,
   renderWindowBookingCoupons,
 } from '@/lib/renderWindowBooking'
-import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 const fmtDateTime = (iso) => {
@@ -14,6 +14,35 @@ const fmtDateTime = (iso) => {
   return new Date(iso).toLocaleString('en-GB', {
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   })
+}
+
+// Compact "Xd Xh Xm" / "Xh Xm" / "Xm Xs" countdown for the session monitor —
+// deliberately shorter than the user-facing fmtCountdown since it sits
+// inline next to a status badge rather than as a standalone hero number.
+const fmtCountdown = (ms) => {
+  if (ms == null) return null
+  if (ms <= 0) return 'now'
+  const totalSec = Math.floor(ms / 1000)
+  const d = Math.floor(totalSec / 86400)
+  const h = Math.floor((totalSec % 86400) / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m ${s}s`
+}
+
+// A booking's status stays 'accepted' from the moment it's approved all the
+// way through the session ending — there's no DB-level 'live' or 'ended'
+// status. Whether a session is upcoming, live, or already over is derived
+// purely from comparing requested_start_at/ends_at against the clock.
+const sessionPhase = (b, now) => {
+  if (b.status !== 'accepted' || !b.requested_start_at || !b.ends_at) return null
+  const start = new Date(b.requested_start_at)
+  const end = new Date(b.ends_at)
+  if (now < start) return 'upcoming'
+  if (now < end) return 'live'
+  return 'ended'
 }
 
 const STATUS_META = {
@@ -26,12 +55,13 @@ const STATUS_META = {
 
 const FILTERS = ['all', 'pending', 'accepted', 'reset_pending', 'cancelled']
 
-const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
+const BookingRow = ({ b, now, onAccept, onCancel, onReset, onStartNow, onEndNow, busy, compact = false }) => {
   const [notesOpen, setNotesOpen] = useState(null) // 'cancel' | 'reset' | null
   const [notes,     setNotes]     = useState('')
   const meta = STATUS_META[b.status] ?? STATUS_META.pending
   const modelLabels = (b.models || []).map((m) => m.model?.label).filter(Boolean).join(', ')
   const isBusy = busy === b.id
+  const phase = sessionPhase(b, now)
 
   const submitAction = (action) => {
     if (action === 'cancel') onCancel(b.id, notes)
@@ -40,15 +70,29 @@ const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
     setNotes('')
   }
 
+  const phaseMeta = phase && {
+    upcoming: { label: `Starts in ${fmtCountdown(new Date(b.requested_start_at) - now)}`, color: '#f59e0b' },
+    live:     { label: `Live · ${fmtCountdown(new Date(b.ends_at) - now)} left`, color: '#10b981' },
+    ended:    { label: 'Session ended', color: '#888' },
+  }[phase]
+
   return (
-    <div className="rounded-2xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+    <div
+      className="rounded-2xl p-4"
+      style={{
+        background: phase === 'live' ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+        border: `1px solid ${phase === 'live' ? 'rgba(16,185,129,0.25)' : 'var(--border-color)'}`,
+      }}
+    >
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
           {b.user?.display_name || b.user?.username || 'User'}
         </p>
-        <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: meta.bg, color: meta.color }}>
-          {meta.label}
-        </span>
+        {!compact && (
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: meta.bg, color: meta.color }}>
+            {meta.label}
+          </span>
+        )}
       </div>
 
       <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -58,6 +102,12 @@ const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
       {b.requested_start_at && (
         <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
           {fmtDateTime(b.requested_start_at)} → {fmtDateTime(b.ends_at)} · {b.duration_hours}h
+        </p>
+      )}
+
+      {phaseMeta && (
+        <p className="text-xs font-bold mb-1 flex items-center gap-1.5" style={{ color: phaseMeta.color }}>
+          {phase === 'live' && <Radio size={11} />} {phaseMeta.label}
         </p>
       )}
 
@@ -112,6 +162,26 @@ const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
               <Check size={12} /> {isBusy ? 'Accepting…' : 'Accept'}
             </button>
           )}
+          {phase === 'upcoming' && (
+            <button
+              onClick={() => onStartNow(b.id)}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}
+            >
+              <Play size={12} /> {isBusy ? 'Starting…' : 'Start Now'}
+            </button>
+          )}
+          {phase === 'live' && (
+            <button
+              onClick={() => onEndNow(b.id)}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold"
+              style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
+            >
+              <Square size={12} /> {isBusy ? 'Ending…' : 'End Now'}
+            </button>
+          )}
           {(b.status === 'pending' || b.status === 'accepted') && (
             <button
               onClick={() => setNotesOpen('reset')}
@@ -132,6 +202,49 @@ const BookingRow = ({ b, onAccept, onCancel, onReset, busy }) => {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Session Monitor ────────────────────────────────────────────────────
+// Pinned above the status filter tabs, independent of whichever filter is
+// selected — accepted bookings never change status when a session starts
+// or ends, so the filter tabs alone can't be trusted to surface them.
+// Shows nothing (renders null) when there's nothing live or upcoming, so it
+// never eats screen space on a quiet day.
+
+const SessionMonitor = ({ accepted, now, onStartNow, onEndNow, busy }) => {
+  const live = accepted.filter((b) => sessionPhase(b, now) === 'live')
+  const upcoming = accepted
+    .filter((b) => sessionPhase(b, now) === 'upcoming')
+    .sort((a, b) => new Date(a.requested_start_at) - new Date(b.requested_start_at))
+
+  if (live.length === 0 && upcoming.length === 0) return null
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Radio size={13} style={{ color: '#10b981' }} />
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#10b981' }}>
+          Live &amp; Upcoming Sessions
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        {[...live, ...upcoming].map((b) => (
+          <BookingRow
+            key={b.id}
+            b={b}
+            now={now}
+            compact
+            onAccept={() => {}}
+            onCancel={() => {}}
+            onReset={() => {}}
+            onStartNow={onStartNow}
+            onEndNow={onEndNow}
+            busy={busy}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -550,21 +663,46 @@ const CouponsManager = () => {
 
 export default function RenderWindowBookingsManager() {
   const { user }   = useAuth()
-  const [bookings, setBookings] = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [filter,   setFilter]   = useState('pending')
-  const [busy,     setBusy]     = useState(null)
+  const [bookings, setBookings]   = useState([])
+  const [accepted, setAccepted]   = useState([]) // full accepted list, for the pinned monitor — independent of `filter`
+  const [loading,  setLoading]    = useState(true)
+  const [filter,   setFilter]     = useState('pending')
+  const [busy,     setBusy]       = useState(null)
   const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'coupons'
+  const [now,      setNow]        = useState(() => new Date())
+
+  // 1s ticker so live countdowns and upcoming→live→ended phase transitions
+  // in the session monitor update without any manual refresh.
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(tick)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await adminGetBookings({ status: filter })
+    const [{ data, error }, { data: acceptedData }] = await Promise.all([
+      adminGetBookings({ status: filter }),
+      adminGetBookings({ status: 'accepted' }),
+    ])
     if (error) toast.error('Failed to load bookings')
     setBookings(data)
+    setAccepted(acceptedData || [])
     setLoading(false)
   }, [filter])
 
   useEffect(() => { if (activeTab === 'bookings') load() }, [load, activeTab])
+
+  // Poll the accepted list independently of the filtered list so the
+  // session monitor keeps catching new acceptances / phase changes even
+  // if the admin is sitting on, say, the "Pending" filter the whole time.
+  useEffect(() => {
+    if (activeTab !== 'bookings') return
+    const poll = setInterval(async () => {
+      const { data } = await adminGetBookings({ status: 'accepted' })
+      setAccepted(data || [])
+    }, 30_000)
+    return () => clearInterval(poll)
+  }, [activeTab])
 
   const handleAccept = async (id) => {
     setBusy(id)
@@ -590,6 +728,24 @@ export default function RenderWindowBookingsManager() {
     setBusy(null)
     if (error || !data?.success) { toast.error(data?.error || 'Failed to reset booking'); return }
     toast.success('Booking reset — user can pick a new time worth the same amount')
+    load()
+  }
+
+  const handleStartNow = async (id) => {
+    setBusy(id)
+    const { data, error } = await adminStartBookingNow(user.id, id)
+    setBusy(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to start session'); return }
+    toast.success('Session started — user has access now')
+    load()
+  }
+
+  const handleEndNow = async (id) => {
+    setBusy(id)
+    const { data, error } = await adminEndBookingNow(user.id, id)
+    setBusy(null)
+    if (error || !data?.success) { toast.error(data?.error || 'Failed to end session'); return }
+    toast.success('Session ended')
     load()
   }
 
@@ -632,6 +788,14 @@ export default function RenderWindowBookingsManager() {
         <CouponsManager />
       ) : (
         <>
+          <SessionMonitor
+            accepted={accepted}
+            now={now}
+            onStartNow={handleStartNow}
+            onEndNow={handleEndNow}
+            busy={busy}
+          />
+
           <div className="flex gap-2 overflow-x-auto no-scrollbar">
             {FILTERS.map((f) => (
               <button
@@ -658,7 +822,17 @@ export default function RenderWindowBookingsManager() {
           ) : (
             <div className="flex flex-col gap-2">
               {bookings.map((b) => (
-                <BookingRow key={b.id} b={b} onAccept={handleAccept} onCancel={handleCancel} onReset={handleReset} busy={busy} />
+                <BookingRow
+                  key={b.id}
+                  b={b}
+                  now={now}
+                  onAccept={handleAccept}
+                  onCancel={handleCancel}
+                  onReset={handleReset}
+                  onStartNow={handleStartNow}
+                  onEndNow={handleEndNow}
+                  busy={busy}
+                />
               ))}
             </div>
           )}
