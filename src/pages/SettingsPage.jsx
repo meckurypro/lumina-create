@@ -76,13 +76,22 @@ export default function SettingsPage() {
   const [passLoading, setPassLoading] = useState(false)
   const [passErrors,  setPassErrors]  = useState({})
 
-  const [displayName,    setDisplayName]    = useState(profile?.display_name || '')
+const [displayName,    setDisplayName]    = useState(profile?.display_name || '')
   const [bio,            setBio]            = useState(profile?.bio || '')
   const [profileLoading, setProfileLoading] = useState(false)
 
   const promptRefinement = profile?.ai_prompt_refinement ?? true
+  const isMaster         = profile?.user_tier === 'master'
 
   const handleToggleRefinement = async (next) => {
+    // Novices can only turn this OFF (or leave it off) — turning it ON
+    // requires Master. The toggle snaps back visually since we never
+    // commit the optimistic update in that case.
+    if (next && !isMaster) {
+      toast.error('Upgrade to Master to use AI prompt refinement')
+      return
+    }
+
     updateProfileLocal({ ai_prompt_refinement: next })
     const { data, error } = await profiles.update(user.id, { ai_prompt_refinement: next })
     if (error) {
@@ -185,10 +194,14 @@ export default function SettingsPage() {
               className="rounded-2xl overflow-hidden"
               style={{ border: '1px solid var(--border-color)' }}
             >
-              <ToggleRow
+            <ToggleRow
                 icon={Sparkles}
                 label="AI prompt refinement"
-                sublabel="Meckury enhances your prompt before generating your content."
+                sublabel={
+                  isMaster
+                    ? 'Meckury enhances your prompt before generating your content.'
+                    : 'Meckury enhances your prompt before generating your content. Master only.'
+                }
                 checked={promptRefinement}
                 onChange={handleToggleRefinement}
                 last
