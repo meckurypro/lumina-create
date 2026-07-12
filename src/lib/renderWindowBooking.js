@@ -179,6 +179,20 @@ export const adminResetBooking = (adminId, bookingId, notes) =>
 // same reconfig flow, keeping one code path for both "reset" and
 // "reschedule" instead of two near-identical ones.
 
+// ── Admin: monitor/control an accepted booking's live session ─────────────
+// A booking's status stays 'accepted' from acceptance all the way through
+// session end — there's no separate 'live'/'ended' status. Whether a
+// session is upcoming, live, or over is derived purely from comparing
+// requested_start_at/ends_at to now() (see sessionPhase() in the admin UI).
+// These two RPCs shift that same start/end window (and the mirrored
+// render_window_private_access row that actually gates model access) —
+// they never touch render_window_bookings.status.
+export const adminStartBookingNow = (adminId, bookingId) =>
+  supabase.rpc('admin_start_booking_now', { p_admin_id: adminId, p_booking_id: bookingId })
+
+export const adminEndBookingNow = (adminId, bookingId) =>
+  supabase.rpc('admin_end_booking_now', { p_admin_id: adminId, p_booking_id: bookingId })
+
 // ── Concurrency check (used by Create* pages before allowing Generate) ────
 export const checkModelConcurrency = (userId, modelId) =>
   supabase.rpc('check_render_window_concurrency', { p_user_id: userId, p_model_id: modelId })
