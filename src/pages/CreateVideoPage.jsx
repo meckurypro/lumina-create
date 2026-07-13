@@ -1949,7 +1949,7 @@ const uploadedRefUrls = []
                   ? `e.g. ${tagForSlot(0)} walks through a neon-lit street. Type @ for uploads, / for characters & brands.`
                   : 'Describe the motion, scene, or action… Type @ for uploads, / for characters & brands.'
             }
-            rows={3} maxLength={500} />
+            rows={3} maxLength={50000} />
 
           <div>
             <SettingChips label="Aspect Ratio"
