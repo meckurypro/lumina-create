@@ -158,12 +158,24 @@ export const FilterPill = ({ active, onClick, label, icon: Icon, tone, pulse = f
 
 export const ProgressOverlay = ({ gen, accentColor = 'var(--brand)' }) => {
   const [pct, setPct] = useState(() => getFakeProgress(gen))
+  const isQueued = gen.status === 'queued'
 
   useEffect(() => {
-    if (gen.status === 'completed' || gen.status === 'failed') return
+    if (gen.status === 'completed' || gen.status === 'failed' || isQueued) return
     const t = setInterval(() => setPct(getFakeProgress(gen)), 800)
     return () => clearInterval(t)
-  }, [gen])
+  }, [gen, isQueued])
+
+  if (isQueued) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center"
+        style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+      >
+        <span className="text-white font-bold text-xs">Queued</span>
+      </div>
+    )
+  }
 
   return (
     <div
