@@ -678,7 +678,7 @@ export const ActionSheet = ({
   extractLoading = false,
 }) => {
   const isCompleted     = gen.status === 'completed'
-  const isProcessing    = gen.status === 'processing' || gen.status === 'pending'
+  const isProcessing    = gen.status === 'processing' || gen.status === 'pending' || gen.status === 'queued'
   const canShowPrompt   = !gen.is_system_prompt
 
   const gridItems = []
