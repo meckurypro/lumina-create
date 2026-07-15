@@ -112,10 +112,10 @@ export function getModelDisplayLabel(modelValue, modelsList) {
 const STATUS_STYLES = {
   completed:  { bg: 'rgba(16,185,129,0.12)', color: '#10b981', label: 'Done'       },
   processing: { bg: 'rgba(234,179,8,0.12)',  color: '#eab308', label: 'Processing' },
+  queued:     { bg: 'rgba(59,130,246,0.12)', color: '#3b82f6', label: 'Queued'     },
   pending:    { bg: 'rgba(234,179,8,0.12)',  color: '#eab308', label: 'Pending'    },
   failed:     { bg: 'rgba(239,68,68,0.12)',  color: '#ef4444', label: 'Failed'     },
 }
-
 export const StatusPill = ({ status }) => {
   const s = STATUS_STYLES[status] ?? STATUS_STYLES.pending
   return (
