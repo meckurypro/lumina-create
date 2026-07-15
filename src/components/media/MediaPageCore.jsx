@@ -87,9 +87,8 @@ function preserveUGCKeys(existing, fresh) {
 }
 
 function isInProgress(g) {
-  return g.status === 'pending' || g.status === 'processing'
+  return g.status === 'pending' || g.status === 'queued' || g.status === 'processing'
 }
-
 export function isPreDispatchFailure(g) {
   return g.status === 'failed' && g.error_message === 'pre_dispatch_failure'
 }
