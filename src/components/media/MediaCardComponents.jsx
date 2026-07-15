@@ -821,7 +821,7 @@ if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEnd
 export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentColor, accentSubtle }) => {
   const isVideo       = gen.output_type === 'video'
   const isComplete    = gen.status === 'completed'
-  const isPending     = gen.status === 'pending' || gen.status === 'processing'
+const isPending     = gen.status === 'pending' || gen.status === 'queued' || gen.status === 'processing'
   const [thumbErr, setThumbErr] = useState(false)
   const thumbUrl      = isVideo
     ? (gen.output_thumbnail_url || null)
@@ -920,7 +920,7 @@ export const MediaCard = ({ gen, modelsList, onClick, onMore, onRetry, accentCol
 
 export const GridCard = ({ gen, index, onClick, onMore, accentColor }) => {
   const isVideo      = gen.output_type === 'video'
-  const isPending    = gen.status === 'pending' || gen.status === 'processing'
+  const isPending    = gen.status === 'pending' || gen.status === 'queued' || gen.status === 'processing'
   const isComplete   = gen.status === 'completed'
   const [thumbErr, setThumbErr] = useState(false)
   const thumbUrl     = isVideo
