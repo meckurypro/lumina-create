@@ -535,7 +535,7 @@ export default function CreatePage() {
                     Video Tools
                   </p>
 
-                  <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+                 <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
                     <UtilityTile
                       Icon={Maximize}
                       iconColor="var(--tool-motion, #8b5cf6)"
@@ -547,6 +547,27 @@ export default function CreatePage() {
                       route="/create/video-upscaler"
                       navigate={navigate}
                       delay={0.14}
+                    />
+                  </div>
+
+                  {/* ── IQ Ads ────────────────────────────────────────── */}
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-4 mt-8"
+                    style={{ color: 'var(--text-muted)' }}>
+                    IQ Ads
+                  </p>
+
+                  <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+                    <UtilityTile
+                      Icon={Sparkles}
+                      iconColor="var(--tool-iqads, #f97316)"
+                      iconBg="var(--tool-iqads-subtle, var(--bg-elevated))"
+                      iconBorder="var(--tool-iqads-border, var(--border-color))"
+                      title="IQ Ads"
+                      titleColor="var(--tool-iqads, #f97316)"
+                      subtitle="Turn your flyer into a cinematic commercial"
+                      route="/create/iq-ads"
+                      navigate={navigate}
+                      delay={0.18}
                     />
                   </div>
 
