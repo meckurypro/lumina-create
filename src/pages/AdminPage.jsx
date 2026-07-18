@@ -32,6 +32,7 @@ import RWSellerManager       from '@/pages/admin/RWSellerManager'
 import RenderWindowBookingsManager from '@/pages/admin/RenderWindowBookingsManager'
 import CohortManager from '@/pages/admin/CohortManager'
 import IQAdsManager  from '@/pages/admin/IQAdsManager'
+import CreditPackagesManager from '@/pages/admin/CreditPackagesManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ const TABS = (pendingCount) => [
   { id: 'email',          label: 'Email'                                               },
   { id: 'settings',       label: 'Tier Settings'                                       },
   { id: 'usage',          label: 'Usage & Pricing'                                     },
+  { id: 'credit_packages', label: '💳 Credit Packages'                                 },
   { id: 'analytics',      label: 'Analytics'                                           },
 ]
 
@@ -217,6 +219,13 @@ export default function AdminPage() {
         {activeTab === 'usage' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <ModelUsageManager />
+          </motion.div>
+        )}
+
+        {/* ── Credit Packages ── */}
+        {activeTab === 'credit_packages' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <CreditPackagesManager />
           </motion.div>
         )}
 
