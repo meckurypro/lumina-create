@@ -166,7 +166,7 @@ export default function IQAdsManager() {
     const { data } = await supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['iqads_usd_to_ngn_rate', 'iqads_margin_multiplier'])
+     .in('key', ['iqads_usd_to_ngn_rate', 'iqads_margin_multiplier', 'iqads_ngn_per_credit'])
     const map = {}
     for (const row of data || []) map[row.key] = row.value
     setSettings(map)
@@ -257,6 +257,14 @@ export default function IQAdsManager() {
           onSave={handleSaveSetting}
           suffix="× cost"
           hint="Retail price = cost × this. e.g. 2.2 means ~55% margin."
+        />
+        <GlobalSettingRow
+          label="NGN per credit"
+          settingKey="iqads_ngn_per_credit"
+          value={settings.iqads_ngn_per_credit}
+          onSave={handleSaveSetting}
+          suffix="₦ per credit"
+          hint="Used to convert an order's Naira price into credits for the credit-payment path."
         />
       </div>
 
