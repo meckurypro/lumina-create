@@ -5,6 +5,10 @@
 // "No flyer?" and "Want something custom?" both route to the IQ Ads
 // creative team on WhatsApp rather than building more self-serve surface
 // for those two segments — see thread history for why.
+//
+// content_type: 'product' | 'event' — branches the prompt built server-side
+// in iqads-generate. Event flyers hide the "Human in the Ad" section since
+// event flyers (e.g. a choir/group photo) already show whoever's in them.
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -35,6 +39,11 @@ const HUMAN_MODES = [
   { label: 'Upload human', value: 'uploaded' },
 ]
 
+const CONTENT_TYPES = [
+  { label: 'Product / Service', value: 'product' },
+  { label: 'Event',             value: 'event' },
+]
+
 export default function CreateIQAdsPage() {
   const navigate = useNavigate()
   const { user, profile, credits, refreshProfile } = useAuth()
@@ -44,6 +53,7 @@ export default function CreateIQAdsPage() {
   const [globalSettings, setGlobalSettings] = useState(null)
 
   const [flyer, setFlyer]             = useState(null)   // { file, url }
+  const [contentType, setContentType] = useState('product') // 'product' | 'event'
   const [modelValue, setModelValue]   = useState('')
   const [resolution, setResolution]   = useState('480p')
   const [duration, setDuration]       = useState('')
@@ -80,6 +90,16 @@ export default function CreateIQAdsPage() {
   if (!supportsResolutionChoice) setResolution('480p')
   }, [modelValue]) // eslint-disable-line
 
+  // Event flyers already show whoever's in them — human_mode doesn't apply.
+  // Reset back to default whenever switching into 'event' so a stale
+  // 'uploaded' selection (and its now-hidden humanRef) can't leak into the order.
+  useEffect(() => {
+    if (contentType === 'event') {
+      setHumanMode('ai_generate')
+      setHumanRef(null)
+    }
+  }, [contentType])
+
   // ── price preview ──────────────────────────────────────────────────────
   const priced = useMemo(() => {
     if (!selectedModel || !duration || !globalSettings?.usdToNgnRate || !globalSettings?.marginMultiplier) return null
@@ -115,7 +135,7 @@ export default function CreateIQAdsPage() {
   }
 
   const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced &&
-    (humanMode !== 'uploaded' || !!humanRef) && !submitting
+    (contentType === 'event' || humanMode !== 'uploaded' || !!humanRef) && !submitting
 
   // ── checkout ────────────────────────────────────────────────────────────
   const handleCheckout = async (method) => {
@@ -124,16 +144,19 @@ export default function CreateIQAdsPage() {
     setPaying(method)
     try {
       const flyerUrl = await uploadToStorage(flyer.file, flyer.url)
-      const humanUrl = humanMode === 'uploaded' ? await uploadToStorage(humanRef.file, humanRef.url) : null
+      const humanUrl = contentType === 'product' && humanMode === 'uploaded'
+        ? await uploadToStorage(humanRef.file, humanRef.url)
+        : null
 
       const order = await createIqadsOrder({
         userId:            user.id,
         flyerUrl,
+        contentType,
         model:              selectedModel,
         duration,
         resolution,
         aspectRatio,
-        humanMode,
+        humanMode:          contentType === 'event' ? null : humanMode,
         humanReferenceUrl:  humanUrl,
         userDirection:       userDirection.trim() || null,
         paymentMethod:       method,
@@ -239,6 +262,17 @@ export default function CreateIQAdsPage() {
             )}
           </div>
 
+          {/* Content type */}
+          <div>
+            <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Flyer Type
+            </p>
+            <SettingChips
+              options={CONTENT_TYPES}
+              value={contentType} onChange={setContentType} accent={ACCENT}
+            />
+          </div>
+
          {/* Resolution / Duration / Aspect ratio */}
           <div>
             {supportsResolutionChoice && (
@@ -254,38 +288,40 @@ export default function CreateIQAdsPage() {
               value={aspectRatio} onChange={setAspectRatio} accent={ACCENT} />
           </div>
 
-          {/* Human mode */}
-          <div>
-            <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Human in the Ad
-            </p>
-            <SettingChips options={HUMAN_MODES} value={humanMode} onChange={setHumanMode} accent={ACCENT} />
+          {/* Human mode — product flyers only; event flyers show whoever's already in them */}
+          {contentType === 'product' && (
+            <div>
+              <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                Human in the Ad
+              </p>
+              <SettingChips options={HUMAN_MODES} value={humanMode} onChange={setHumanMode} accent={ACCENT} />
 
-           {humanMode === 'uploaded' && (
-              <div className="mt-3 flex flex-col gap-2">
-                <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Use a clear photo — the person's face should be vivid and unobstructed for best results.
-                </p>
-                {humanRef ? (
-                  <div className="relative w-24 h-24 rounded-2xl overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-                    <img src={humanRef.url} alt="Human reference" className="w-full h-full object-cover" />
-                    <button onClick={() => setHumanRef(null)}
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}>
-                      <X size={10} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer"
-                    style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
-                    <input type="file" accept="image/*" className="hidden" onChange={handleHumanUpload} />
-                    <ImagePlus size={13} style={{ color: ACCENT }} />
-                    <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload a photo</span>
-                  </label>
-                )}
-              </div>
-            )}
-          </div>
+              {humanMode === 'uploaded' && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Use a clear photo — the person's face should be vivid and unobstructed for best results.
+                  </p>
+                  {humanRef ? (
+                    <div className="relative w-24 h-24 rounded-2xl overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                      <img src={humanRef.url} alt="Human reference" className="w-full h-full object-cover" />
+                      <button onClick={() => setHumanRef(null)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}>
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer"
+                      style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
+                      <input type="file" accept="image/*" className="hidden" onChange={handleHumanUpload} />
+                      <ImagePlus size={13} style={{ color: ACCENT }} />
+                      <span className="text-xs font-semibold" style={{ color: ACCENT }}>Upload a photo</span>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Optional direction */}
           <Textarea
@@ -332,7 +368,7 @@ export default function CreateIQAdsPage() {
             </button>
           </div>
           {!flyer && <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a flyer to continue</p>}
-          {humanMode === 'uploaded' && !humanRef && (
+          {contentType === 'product' && humanMode === 'uploaded' && !humanRef && (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
           )}
         </div>
