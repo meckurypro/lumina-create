@@ -8,7 +8,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Palette, Clapperboard, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -30,8 +30,9 @@ const WHATSAPP_NUMBER = '2348162465247'
 const waLink = (text) => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`
 
 const HUMAN_MODES = [
-  { label: 'No human',      value: 'none' },
-  { label: 'Upload my own', value: 'uploaded' },
+  { label: 'No human',   value: 'none' },
+  { label: 'AI Generate', value: 'ai_generate' },
+  { label: 'Upload human', value: 'uploaded' },
 ]
 
 export default function CreateIQAdsPage() {
@@ -43,11 +44,11 @@ export default function CreateIQAdsPage() {
   const [globalSettings, setGlobalSettings] = useState(null)
 
   const [flyer, setFlyer]             = useState(null)   // { file, url }
-  const [modelId, setModelId]         = useState('')
+  const [modelValue, setModelValue]   = useState('')
   const [resolution, setResolution]   = useState('480p')
   const [duration, setDuration]       = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
-  const [humanMode, setHumanMode]     = useState('none')
+  const [humanMode, setHumanMode]     = useState('ai_generate')
   const [humanRef, setHumanRef]       = useState(null)    // { file, url }
   const [userDirection, setUserDirection] = useState('')
 
@@ -61,12 +62,12 @@ export default function CreateIQAdsPage() {
       const [list, settings] = await Promise.all([fetchIqadsModels(), fetchIqadsGlobalSettings()])
       setModels(list)
       setGlobalSettings(settings)
-      if (list.length) setModelId(list[0].id)
+      if (list.length) setModelValue(list[0].value)
       setModelsLoading(false)
     })()
   }, [])
 
-  const selectedModel = models.find((m) => m.id === modelId)
+  const selectedModel = models.find((m) => m.value === modelValue)
 
   const supportsResolutionChoice = !!selectedModel?.iqads_720p_cost_multiplier
   const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15', '30']
@@ -76,8 +77,8 @@ export default function CreateIQAdsPage() {
     if (!selectedModel) return
     if (!durations.includes(duration)) setDuration(durations[0])
     if (!aspectRatios.includes(aspectRatio)) setAspectRatio(aspectRatios[0])
-    if (!supportsResolutionChoice) setResolution('480p')
-  }, [modelId]) // eslint-disable-line
+  if (!supportsResolutionChoice) setResolution('480p')
+  }, [modelValue]) // eslint-disable-line
 
   // ── price preview ──────────────────────────────────────────────────────
   const priced = useMemo(() => {
@@ -184,10 +185,18 @@ export default function CreateIQAdsPage() {
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>IQ Ads</h1>
           <span className="text-xs font-medium" style={{ color: ACCENT }}>Flyer to Cinematic Video</span>
         </div>
-        <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-          <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-          {Math.floor(credits)}
+        <div className="flex items-center gap-2">
+          {!modelsLoading && (
+            <ModelDropdown
+              models={models} value={modelValue} onChange={setModelValue}
+              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+            />
+          )}
+          <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
+            {Math.floor(credits)}
+          </div>
         </div>
       </div>
 
@@ -230,21 +239,7 @@ export default function CreateIQAdsPage() {
             )}
           </div>
 
-          {/* Model */}
-          <div>
-            <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Model
-            </p>
-            {!modelsLoading && (
-              <ModelDropdown
-                models={models} value={modelId} onChange={setModelId}
-                accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
-                width="100%"
-              />
-            )}
-          </div>
-
-          {/* Resolution / Duration / Aspect ratio */}
+         {/* Resolution / Duration / Aspect ratio */}
           <div>
             {supportsResolutionChoice && (
               <SettingChips label="Resolution"
@@ -266,8 +261,11 @@ export default function CreateIQAdsPage() {
             </p>
             <SettingChips options={HUMAN_MODES} value={humanMode} onChange={setHumanMode} accent={ACCENT} />
 
-            {humanMode === 'uploaded' && (
-              <div className="mt-3">
+           {humanMode === 'uploaded' && (
+              <div className="mt-3 flex flex-col gap-2">
+                <p className="text-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Use a clear photo — the person's face should be vivid and unobstructed for best results.
+                </p>
                 {humanRef ? (
                   <div className="relative w-24 h-24 rounded-2xl overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
                     <img src={humanRef.url} alt="Human reference" className="w-full h-full object-cover" />
@@ -303,7 +301,7 @@ export default function CreateIQAdsPage() {
             target="_blank" rel="noreferrer"
             className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
-            <Sparkles size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <Palette size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             <p className="text-xs flex-1" style={{ color: 'var(--text-muted)' }}>
               Want something fully custom? <strong style={{ color: 'var(--text-secondary)' }}>Talk to our creative team</strong> instead.
             </p>
