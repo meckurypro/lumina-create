@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock, ScanSearch, Maximize } from 'lucide-react'
+import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock, ScanSearch, Maximize, Clapperboard } from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
@@ -367,7 +367,7 @@ export default function CreatePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
-            {['tools', 'templates', 'utilities', 'canvas'].map((tab) => (
+            {['utilities', 'tools', 'templates', 'canvas'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -493,6 +493,27 @@ export default function CreatePage() {
                     2–3 columns instead of one narrow centered row. */}
                 <div className="w-full max-w-2xl lg:max-w-5xl">
 
+                  {/* ── IQ Ads ────────────────────────────────────────── */}
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+                    style={{ color: 'var(--text-muted)' }}>
+                    IQ Ads
+                  </p>
+
+                  <div className="grid gap-4 mb-8 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+                    <UtilityTile
+                      Icon={Clapperboard}
+                      iconColor="var(--tool-iqads, #f97316)"
+                      iconBg="var(--tool-iqads-subtle, var(--bg-elevated))"
+                      iconBorder="var(--tool-iqads-border, var(--border-color))"
+                      title="IQ Ads"
+                      titleColor="var(--tool-iqads, #f97316)"
+                      subtitle="Turn your flyer into a cinematic commercial"
+                      route="/create/iq-ads"
+                      navigate={navigate}
+                      delay={0.02}
+                    />
+                  </div>
+
                   {/* ── Photo Tools ───────────────────────────────────────── */}
                   <p className="text-xs font-semibold uppercase tracking-widest mb-4"
                     style={{ color: 'var(--text-muted)' }}>
@@ -535,7 +556,7 @@ export default function CreatePage() {
                     Video Tools
                   </p>
 
-                 <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+<div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
                     <UtilityTile
                       Icon={Maximize}
                       iconColor="var(--tool-motion, #8b5cf6)"
@@ -547,27 +568,6 @@ export default function CreatePage() {
                       route="/create/video-upscaler"
                       navigate={navigate}
                       delay={0.14}
-                    />
-                  </div>
-
-                  {/* ── IQ Ads ────────────────────────────────────────── */}
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-4 mt-8"
-                    style={{ color: 'var(--text-muted)' }}>
-                    IQ Ads
-                  </p>
-
-                  <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
-                    <UtilityTile
-                      Icon={Sparkles}
-                      iconColor="var(--tool-iqads, #f97316)"
-                      iconBg="var(--tool-iqads-subtle, var(--bg-elevated))"
-                      iconBorder="var(--tool-iqads-border, var(--border-color))"
-                      title="IQ Ads"
-                      titleColor="var(--tool-iqads, #f97316)"
-                      subtitle="Turn your flyer into a cinematic commercial"
-                      route="/create/iq-ads"
-                      navigate={navigate}
-                      delay={0.18}
                     />
                   </div>
 
