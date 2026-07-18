@@ -6,6 +6,7 @@ import {
   getPendingPayment,
   clearPendingPayment,
 } from '@/lib/paystack'
+import { triggerIqadsGeneration } from '@/lib/iqads'
 import { useAuth } from '@/context/AuthContext'
 
 export default function PaymentCallbackPage() {
@@ -41,14 +42,29 @@ export default function PaymentCallbackPage() {
           clearPendingPayment()
           await refreshProfile().catch(() => {})
           setState('success')
+
+          let redirectTo = '/feed'
+
           if (result.kind === 'master_subscription') {
             setMessage('Master subscription activated 🎉')
+          } else if (result.kind === 'iqads_order') {
+            setMessage('Payment confirmed — your video is being generated 🎬')
+            redirectTo = '/media'
+            // Fire-and-forget: generation start failing here shouldn't block
+            // the success screen — the order stays 'paid' and can be retried
+            // from the Media page or support if the invoke call itself fails.
+            if (!result.already_processed) {
+              triggerIqadsGeneration(result.order_id).catch((err) => {
+                console.error('[iqads] generation trigger failed:', err)
+              })
+            }
           } else if (result.credits_added) {
             setMessage(`${result.credits_added} credits added to your account 🎉`)
           } else {
             setMessage('Payment confirmed 🎉')
           }
-          setTimeout(() => navigate('/feed', { replace: true }), 2000)
+
+          setTimeout(() => navigate(redirectTo, { replace: true }), 2000)
         } else {
           setState('error')
           setMessage(result?.error || 'We could not confirm your payment.')
