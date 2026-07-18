@@ -31,6 +31,7 @@ import RenderWindowTeamTierManager from '@/pages/admin/RenderWindowTeamTierManag
 import RWSellerManager       from '@/pages/admin/RWSellerManager'
 import RenderWindowBookingsManager from '@/pages/admin/RenderWindowBookingsManager'
 import CohortManager from '@/pages/admin/CohortManager'
+import IQAdsManager  from '@/pages/admin/IQAdsManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ const TABS = (pendingCount) => [
   { id: 'rw_sellers', label: '🛡️ RW Sellers' },
   { id: 'rw_bookings', label: '📅 RW Bookings' },
   { id: 'rw_cohorts', label: '🎓 RW Cohorts' },
+  { id: 'iqads',       label: '🎬 IQ Ads' },
   { id: 'prompts',        label: 'Prompts'                                             },
   { id: 'templates',      label: 'Templates'                                           },
   { id: 'cinematic',      label: 'Cinematic'                                           },
@@ -371,10 +373,17 @@ export default function AdminPage() {
           </motion.div>
         )}
  
-        {/* ── RW Cohorts ── */}
+       {/* ── RW Cohorts ── */}
         {activeTab === 'rw_cohorts' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <CohortManager />
+          </motion.div>
+        )}
+
+        {/* ── IQ Ads ── */}
+        {activeTab === 'iqads' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <IQAdsManager />
           </motion.div>
         )}
 
