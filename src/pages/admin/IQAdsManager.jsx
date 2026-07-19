@@ -13,16 +13,16 @@
 //   - global USD→NGN rate, margin multiplier, and NGN-per-credit (app_settings,
 //     these ARE IQ-Ads-specific — they only affect this feature's retail price)
 //
-// No pricing math lives here beyond the live preview — calculateIqadsPrice
-// (lib/iqads.js) and any other feature reading cost_usd_per_second_resolution
-// need to be pointed at this column too. Flagging as follow-up since those
-// files aren't in front of me.
+// Pricing math (calculateIqadsPrice / iqadsSupportsResolutionChoice, both
+// in lib/iqads.js) reads this same cost_usd_per_second_resolution column —
+// they used to point at columns that never existed, which silently broke
+// checkout. RESOLUTIONS below now comes from the shared constant so this
+// panel and the calculator can't drift apart again.
 import { useState, useEffect, useCallback } from 'react'
 import { Search, X, Save, DollarSign, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
-
-const RESOLUTIONS = ['480p', '720p']
+import { IQADS_RESOLUTIONS as RESOLUTIONS } from '@/lib/iqadsConstants'
 
 const GlobalSettingRow = ({ label, settingKey, value, onSave, suffix, hint }) => {
   const [draft, setDraft] = useState(value ?? '')
