@@ -22,8 +22,8 @@ import { SettingChips } from '@/components/create/SettingChips'
 import { Textarea } from '@/components/ui/Input'
 import {
   fetchIqadsModels, fetchIqadsGlobalSettings, calculateIqadsPrice,
-  createIqadsOrder, payIqadsOrderWithCredits, payIqadsOrderWithPaystack,
-  triggerIqadsGeneration,
+  iqadsSupportsResolutionChoice, createIqadsOrder, payIqadsOrderWithCredits,
+  payIqadsOrderWithPaystack, triggerIqadsGeneration,
 } from '@/lib/iqads'
 
 const ACCENT     = 'var(--tool-iqads, #f97316)'
@@ -79,7 +79,11 @@ export default function CreateIQAdsPage() {
 
   const selectedModel = models.find((m) => m.value === modelValue)
 
-  const supportsResolutionChoice = !!selectedModel?.iqads_720p_cost_multiplier
+  // Was previously checking model.iqads_720p_cost_multiplier, a column
+  // that doesn't exist on `models` — always false, so Resolution chips
+  // never rendered and 720p was silently unreachable. Now derived from
+  // the same cost_usd_per_second_resolution jsonb the admin panel writes.
+  const supportsResolutionChoice = iqadsSupportsResolutionChoice(selectedModel)
   const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15', '30']
   const aspectRatios  = selectedModel?.supported_aspect_ratios?.length ? selectedModel.supported_aspect_ratios : ['9:16', '16:9', '1:1']
 
@@ -87,7 +91,7 @@ export default function CreateIQAdsPage() {
     if (!selectedModel) return
     if (!durations.includes(duration)) setDuration(durations[0])
     if (!aspectRatios.includes(aspectRatio)) setAspectRatio(aspectRatios[0])
-  if (!supportsResolutionChoice) setResolution('480p')
+    if (!supportsResolutionChoice) setResolution('480p')
   }, [modelValue]) // eslint-disable-line
 
   // Event flyers already show whoever's in them — human_mode doesn't apply.
@@ -123,12 +127,12 @@ export default function CreateIQAdsPage() {
 
   const uploadToStorage = async (fileOrNull, existingUrl) => {
     if (!fileOrNull) return existingUrl
-    const contentType = fileOrNull.type || 'image/jpeg'
-    const ext  = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+    const fileType = fileOrNull.type || 'image/jpeg'
+    const ext  = fileType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
     const path = `${user.id}/${crypto.randomUUID()}.${ext}`
     const { data, error } = await supabase.storage
       .from('generation-uploads')
-      .upload(path, fileOrNull, { upsert: false, cacheControl: '3600', contentType })
+      .upload(path, fileOrNull, { upsert: false, cacheControl: '3600', contentType: fileType })
     if (error) throw new Error(`Upload failed: ${error.message}`)
     const { data: { publicUrl } } = supabase.storage.from('generation-uploads').getPublicUrl(data.path)
     return publicUrl
