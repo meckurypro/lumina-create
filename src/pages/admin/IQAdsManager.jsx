@@ -2,14 +2,27 @@
 //
 // Admin config for the IQ Ads feature:
 //   - search + select which models are available on the IQ Ads page
-//   - set cost-per-second (480p, sound included) per model
-//   - set the 720p cost multiplier (leave blank if the model has no
-//     real resolution tier — e.g. Kling, which prices per-second flat)
-//   - global USD→NGN rate and margin multiplier (app_settings)
+//   - enter real provider cost (USD) per second, per resolution, per model
+//     — models.cost_usd_per_second_resolution jsonb, e.g. {"480p": 0.031, "720p": 0.052}
+//     This is GENERAL model data (what WaveSpeed/fal actually charge), not
+//     an IQ-Ads-specific concept. Other features can and will read the same
+//     column for their own cost/margin math. This page is just the first
+//     place we surfaced it for editing, since it's most visible here.
+//     For is_flat_rate models the value is a flat per-video cost instead of
+//     per-second.
+//   - global USD→NGN rate, margin multiplier, and NGN-per-credit (app_settings,
+//     these ARE IQ-Ads-specific — they only affect this feature's retail price)
+//
+// No pricing math lives here beyond the live preview — calculateIqadsPrice
+// (lib/iqads.js) and any other feature reading cost_usd_per_second_resolution
+// need to be pointed at this column too. Flagging as follow-up since those
+// files aren't in front of me.
 import { useState, useEffect, useCallback } from 'react'
-import { Search, X, Zap, Save, DollarSign } from 'lucide-react'
+import { Search, X, Save, DollarSign, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+
+const RESOLUTIONS = ['480p', '720p']
 
 const GlobalSettingRow = ({ label, settingKey, value, onSave, suffix, hint }) => {
   const [draft, setDraft] = useState(value ?? '')
@@ -58,26 +71,72 @@ const GlobalSettingRow = ({ label, settingKey, value, onSave, suffix, hint }) =>
   )
 }
 
-const ModelRow = ({ model, onToggle, onSavePricing }) => {
-  const [cost480, setCost480]         = useState(model.iqads_cost_per_second_480p_usd ?? '')
-  const [mult720, setMult720]         = useState(model.iqads_720p_cost_multiplier ?? '')
-  const [saving, setSaving]           = useState(false)
+// Preview: cost/price/margin for a representative 15s clip at each resolution
+// the model has real cost entered for. Purely informational — actual order
+// pricing stays in lib/iqads.js.
+function PricePreview({ model, costDraft, globalSettings }) {
+  const { usd_to_ngn_rate, margin_multiplier, ngn_per_credit } = globalSettings
+  if (!usd_to_ngn_rate || !margin_multiplier || !ngn_per_credit) {
+    return (
+      <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+        <AlertTriangle size={11} /> Set global pricing settings above to see a preview.
+      </p>
+    )
+  }
+
+  const PREVIEW_SECONDS = 15
+
+  return (
+    <div className="flex flex-col gap-1">
+      {RESOLUTIONS.map((res) => {
+        const raw = costDraft[res]
+        const costPerUnit = raw === '' || raw == null ? null : Number(raw)
+        if (costPerUnit == null || Number.isNaN(costPerUnit)) {
+          return (
+            <p key={res} className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {res}: no real cost entered — this resolution won't be offered
+            </p>
+          )
+        }
+        const costUsd = model.is_flat_rate ? costPerUnit : costPerUnit * PREVIEW_SECONDS
+        const priceNgn = costUsd * Number(usd_to_ngn_rate) * Number(margin_multiplier)
+        const credits = priceNgn / Number(ngn_per_credit)
+        const marginPct = ((Number(margin_multiplier) - 1) * 100).toFixed(0)
+        return (
+          <p key={res} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {res}{!model.is_flat_rate && ` · ${PREVIEW_SECONDS}s`}: cost ${costUsd.toFixed(3)} → IQ Ads sell ₦{Math.round(priceNgn).toLocaleString()}
+            {' '}({credits.toFixed(1)} credits, {marginPct}% margin)
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
+const ModelRow = ({ model, onToggle, onSavePricing, globalSettings }) => {
+  const initialCost = model.cost_usd_per_second_resolution || {}
+  const [costDraft, setCostDraft] = useState({
+    '480p': initialCost['480p'] ?? '',
+    '720p': initialCost['720p'] ?? '',
+  })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setCost480(model.iqads_cost_per_second_480p_usd ?? '')
-    setMult720(model.iqads_720p_cost_multiplier ?? '')
-  }, [model.iqads_cost_per_second_480p_usd, model.iqads_720p_cost_multiplier])
+    const c = model.cost_usd_per_second_resolution || {}
+    setCostDraft({ '480p': c['480p'] ?? '', '720p': c['720p'] ?? '' })
+  }, [model.cost_usd_per_second_resolution])
 
-  const dirty =
-    String(cost480) !== String(model.iqads_cost_per_second_480p_usd ?? '') ||
-    String(mult720) !== String(model.iqads_720p_cost_multiplier ?? '')
+  const dirty = RESOLUTIONS.some(
+    (res) => String(costDraft[res]) !== String((model.cost_usd_per_second_resolution || {})[res] ?? '')
+  )
 
   const handleSave = async () => {
     setSaving(true)
-    await onSavePricing(model.id, {
-      iqads_cost_per_second_480p_usd: cost480 === '' ? null : Number(cost480),
-      iqads_720p_cost_multiplier:     mult720 === '' ? null : Number(mult720),
-    })
+    const cleaned = {}
+    for (const res of RESOLUTIONS) {
+      if (costDraft[res] !== '' && costDraft[res] != null) cleaned[res] = Number(costDraft[res])
+    }
+    await onSavePricing(model.id, { cost_usd_per_second_resolution: Object.keys(cleaned).length ? cleaned : null })
     setSaving(false)
   }
 
@@ -90,7 +149,7 @@ const ModelRow = ({ model, onToggle, onSavePricing }) => {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{model.label}</p>
           <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-            {model.value} · {model.provider}
+            {model.value} · {model.provider}{model.is_flat_rate ? ' · flat rate' : ' · per-second'}
           </p>
         </div>
         <button
@@ -106,37 +165,36 @@ const ModelRow = ({ model, onToggle, onSavePricing }) => {
       </div>
 
       {model.is_iqads_model && (
-        <div className="flex items-center gap-2 pt-1" style={{ borderTop: '1px solid var(--border-color)' }}>
-          <div className="flex-1 flex items-center gap-1.5">
-            <DollarSign size={11} style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="number" step="0.001" placeholder="$/sec @480p"
-              value={cost480} onChange={(e) => setCost480(e.target.value)}
-              className="w-full px-2 py-1.5 rounded-lg text-xs"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-            />
+        <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <div className="flex items-center gap-2">
+            {RESOLUTIONS.map((res) => (
+              <div key={res} className="flex-1 flex items-center gap-1.5">
+                <DollarSign size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <input
+                  type="number" step="0.001"
+                  placeholder={`${res}${model.is_flat_rate ? ' flat $' : ' $/sec'}`}
+                  value={costDraft[res]}
+                  onChange={(e) => setCostDraft((prev) => ({ ...prev, [res]: e.target.value }))}
+                  className="w-full px-2 py-1.5 rounded-lg text-xs"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </div>
+            ))}
+            <button
+              onClick={handleSave}
+              disabled={!dirty || saving}
+              className="flex-shrink-0 p-1.5 rounded-lg"
+              style={{
+                background: dirty ? 'var(--brand)' : 'var(--bg-elevated)',
+                color:      dirty ? '#fff' : 'var(--text-muted)',
+                opacity:    saving ? 0.6 : 1,
+              }}
+            >
+              <Save size={13} />
+            </button>
           </div>
-          <div className="flex-1 flex items-center gap-1.5">
-            <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-muted)' }}>×720p</span>
-            <input
-              type="number" step="0.1" placeholder="blank = no 720p"
-              value={mult720} onChange={(e) => setMult720(e.target.value)}
-              className="w-full px-2 py-1.5 rounded-lg text-xs"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
-            />
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={!dirty || saving}
-            className="flex-shrink-0 p-1.5 rounded-lg"
-            style={{
-              background: dirty ? 'var(--brand)' : 'var(--bg-elevated)',
-              color:      dirty ? '#fff' : 'var(--text-muted)',
-              opacity:    saving ? 0.6 : 1,
-            }}
-          >
-            <Save size={13} />
-          </button>
+
+          <PricePreview model={model} costDraft={costDraft} globalSettings={globalSettings} />
         </div>
       )}
     </div>
@@ -211,8 +269,8 @@ export default function IQAdsManager() {
       .from('models')
       .update({ ...pricing, updated_at: new Date().toISOString() })
       .eq('id', modelId)
-    if (error) { toast.error('Failed to save pricing'); return }
-    toast.success('Pricing saved')
+    if (error) { toast.error('Failed to save cost data'); return }
+    toast.success('Cost data saved')
     await loadEnabled()
   }
 
@@ -231,17 +289,17 @@ export default function IQAdsManager() {
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-        Search and enable video models for the IQ Ads flyer-to-video tool. Only enabled models
-        appear on the IQ Ads page. Set cost-per-second at 480p (sound included — every IQ Ads
-        video generates sound) and, if the model has a real 720p tier, its cost multiplier.
-        Leave the 720p field blank for models like Kling that price per-second flat with no
-        resolution parameter.
+        Search and enable video models for the IQ Ads flyer-to-video tool. The cost fields below
+        (real WaveSpeed/fal cost in USD per second, or flat cost for flat-rate models) live on the
+        model itself — not on IQ Ads — so other features reading the same model row get the same
+        real numbers. Leave a resolution blank until you have real cost data for it; it just won't
+        be offered on that model until then.
       </p>
 
-      {/* ── Global pricing settings ── */}
+      {/* ── IQ Ads global pricing settings ── */}
       <div className="flex flex-col gap-3">
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          Global Pricing
+          IQ Ads Pricing (this feature only)
         </p>
         <GlobalSettingRow
           label="USD → NGN rate"
@@ -256,7 +314,7 @@ export default function IQAdsManager() {
           value={settings.iqads_margin_multiplier}
           onSave={handleSaveSetting}
           suffix="× cost"
-          hint="Retail price = cost × this. e.g. 2.2 means ~55% margin."
+          hint="Retail price = cost × this. e.g. 2.2 means ~55% margin (not 2.2%)."
         />
         <GlobalSettingRow
           label="NGN per credit"
@@ -281,7 +339,7 @@ export default function IQAdsManager() {
           </p>
         ) : (
           enabledList.map((m) => (
-            <ModelRow key={m.id} model={m} onToggle={handleToggle} onSavePricing={handleSavePricing} />
+            <ModelRow key={m.id} model={m} onToggle={handleToggle} onSavePricing={handleSavePricing} globalSettings={settings} />
           ))
         )}
       </div>
@@ -315,7 +373,7 @@ export default function IQAdsManager() {
         {searching && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Searching…</p>}
 
         {displayedResults.map((m) => (
-          <ModelRow key={m.id} model={m} onToggle={handleToggle} onSavePricing={handleSavePricing} />
+          <ModelRow key={m.id} model={m} onToggle={handleToggle} onSavePricing={handleSavePricing} globalSettings={settings} />
         ))}
 
         {!searching && query.trim() && displayedResults.length === 0 && (
