@@ -28,7 +28,7 @@ const KNOWN_TOOLS = [
 ]
 
 // ── inline editable row for one global setting ──────────────────────────
-function SettingRow({ label, value, onSave, suffix, hint }) {
+function SettingRow({ label, value, onSave, suffix, hint, step = '0.01' }) {
   const [draft, setDraft] = useState(value ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -49,7 +49,7 @@ function SettingRow({ label, value, onSave, suffix, hint }) {
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <input
-          type="number" step="0.01" value={draft}
+          type="number" step={step} value={draft}
           onChange={(e) => setDraft(e.target.value)}
           className="w-28 px-2.5 py-1.5 rounded-lg text-sm text-right"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
@@ -102,13 +102,15 @@ function GlobalSettingsSection() {
         value={settings.usdToNgnRate}
         onSave={(v) => handleSave('global_usd_to_ngn_rate', v)}
         suffix="₦ per $1"
+        hint="Only used for pages that charge Naira directly (e.g. IQ Ads via Paystack) or show a ≈ ₦ label. Has no effect on credit pricing."
       />
       <SettingRow
-        label="NGN per credit"
-        value={settings.ngnPerCredit}
-        onSave={(v) => handleSave('global_ngn_per_credit', v)}
-        suffix="₦ per credit"
-        hint="Used everywhere a Naira price gets converted into credits."
+        label="USD per credit"
+        value={settings.usdPerCredit}
+        onSave={(v) => handleSave('global_usd_per_credit', v)}
+        suffix="$ per credit"
+        step="0.0001"
+        hint="What 1 credit is worth in USD. Credits charged = (cost × tool margin) ÷ this value. This is the only input credits are derived from."
       />
     </div>
   )
@@ -412,5 +414,4 @@ export default function ModelPricingManager() {
       </div>
     </div>
   )
-}
-
+          }
