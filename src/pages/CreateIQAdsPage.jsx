@@ -9,7 +9,11 @@
 // content_type: 'product' | 'event' — branches the prompt built server-side
 // in iqads-generate. Event flyers hide the "Human in the Ad" section since
 // event flyers (e.g. a choir/group photo) already show whoever's in them.
-import { useState, useEffect, useMemo } from 'react'
+//
+// Pricing preview is now async (calculateIqadsPrice hits Supabase for the
+// tool margin + global rate settings via lib/pricing.js) so it's computed
+// in an effect rather than a useMemo.
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Palette, Clapperboard, Loader2 } from 'lucide-react'
@@ -21,9 +25,9 @@ import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import { Textarea } from '@/components/ui/Input'
 import {
-  fetchIqadsModels, fetchIqadsGlobalSettings, calculateIqadsPrice,
-  iqadsSupportsResolutionChoice, createIqadsOrder, payIqadsOrderWithCredits,
-  payIqadsOrderWithPaystack, triggerIqadsGeneration,
+  fetchIqadsModels, calculateIqadsPrice, iqadsSupportsResolutionChoice,
+  createIqadsOrder, payIqadsOrderWithCredits, payIqadsOrderWithPaystack,
+  triggerIqadsGeneration,
 } from '@/lib/iqads'
 
 const ACCENT     = 'var(--tool-iqads, #f97316)'
@@ -50,7 +54,6 @@ export default function CreateIQAdsPage() {
 
   const [models, setModels]           = useState([])
   const [modelsLoading, setModelsLoading] = useState(true)
-  const [globalSettings, setGlobalSettings] = useState(null)
 
   const [flyer, setFlyer]             = useState(null)   // { file, url }
   const [contentType, setContentType] = useState('product') // 'product' | 'event'
@@ -62,16 +65,18 @@ export default function CreateIQAdsPage() {
   const [humanRef, setHumanRef]       = useState(null)    // { file, url }
   const [userDirection, setUserDirection] = useState('')
 
+  const [priced, setPriced]           = useState(null)
+  const [pricing, setPricing]         = useState(false)
+
   const [submitting, setSubmitting]   = useState(false)
   const [paying, setPaying]           = useState(null)    // 'credit' | 'paystack' | null
 
-  // ── load enabled models + global pricing ──────────────────────────────
+  // ── load enabled models ────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       setModelsLoading(true)
-      const [list, settings] = await Promise.all([fetchIqadsModels(), fetchIqadsGlobalSettings()])
+      const list = await fetchIqadsModels()
       setModels(list)
-      setGlobalSettings(settings)
       if (list.length) setModelValue(list[0].value)
       setModelsLoading(false)
     })()
@@ -79,10 +84,6 @@ export default function CreateIQAdsPage() {
 
   const selectedModel = models.find((m) => m.value === modelValue)
 
-  // Was previously checking model.iqads_720p_cost_multiplier, a column
-  // that doesn't exist on `models` — always false, so Resolution chips
-  // never rendered and 720p was silently unreachable. Now derived from
-  // the same cost_usd_per_second_resolution jsonb the admin panel writes.
   const supportsResolutionChoice = iqadsSupportsResolutionChoice(selectedModel)
   const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15', '30']
   const aspectRatios  = selectedModel?.supported_aspect_ratios?.length ? selectedModel.supported_aspect_ratios : ['9:16', '16:9', '1:1']
@@ -104,14 +105,16 @@ export default function CreateIQAdsPage() {
     }
   }, [contentType])
 
-  // ── price preview ──────────────────────────────────────────────────────
-  const priced = useMemo(() => {
-    if (!selectedModel || !duration || !globalSettings?.usdToNgnRate || !globalSettings?.marginMultiplier) return null
-    const p = calculateIqadsPrice({ model: selectedModel, duration, resolution })
-    if (!p) return null
-    const ngn = Math.round(p.costUsd * globalSettings.usdToNgnRate * globalSettings.marginMultiplier)
-    return { ...p, ngn }
-  }, [selectedModel, duration, resolution, globalSettings])
+  // ── price preview — async now (hits Supabase for margin + rate) ───────
+  useEffect(() => {
+    let cancelled = false
+    if (!selectedModel || !duration) { setPriced(null); return }
+    setPricing(true)
+    calculateIqadsPrice({ model: selectedModel, duration, resolution })
+      .then((p) => { if (!cancelled) setPriced(p) })
+      .finally(() => { if (!cancelled) setPricing(false) })
+    return () => { cancelled = true }
+  }, [selectedModel, duration, resolution])
 
   // ── upload handlers ────────────────────────────────────────────────────
   const handleFlyerUpload = async (e) => {
@@ -138,7 +141,7 @@ export default function CreateIQAdsPage() {
     return publicUrl
   }
 
-  const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced &&
+  const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced && !pricing &&
     (contentType === 'event' || humanMode !== 'uploaded' || !!humanRef) && !submitting
 
   // ── checkout ────────────────────────────────────────────────────────────
@@ -355,7 +358,12 @@ export default function CreateIQAdsPage() {
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
           {priced && (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-              This video costs <strong style={{ color: ACCENT }}>₦{priced.ngn.toLocaleString()}</strong>
+              This video costs <strong style={{ color: ACCENT }}>₦{priced.priceNgn.toLocaleString()}</strong>
+            </p>
+          )}
+          {!priced && !pricing && selectedModel && duration && (
+            <p className="text-xs text-center" style={{ color: '#fbbf24' }}>
+              This model isn't priced yet — contact support.
             </p>
           )}
           <div className="flex gap-2">
