@@ -16,12 +16,16 @@ import { detectAspectRatio, formatDuration, readVideoMetadata } from '@/lib/medi
 import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import { watchForEarlyFailure } from '@/lib/generationWatch'
+import {
+  calculateModelCostUsd, fetchGlobalPricingSettings, fetchToolMargin,
+} from '@/lib/pricing'
 
 // ── Theme constants ────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
 const ACCENT_BDR = 'var(--tool-motion-border)'
 
+const TOOL_KEY = 'copy_motion'
 const CONVERSION_COST = 2
 
 // ── Subject image constraints (Kling API limits) ───────────────────────────
@@ -366,15 +370,12 @@ const FullscreenOverlay = ({ phase, convertProgress }) => {
 }
 
 // ── Re-conversion warning panel ────────────────────────────────────────────
-// Shown only when the user changed settings AFTER a successful conversion.
-// Offers two choices: revert the setting change, or pay to re-convert.
 const ReconvertWarningPanel = ({
   compat, trimStart, targetDuration,
   convertedAspectRatio, convertedDuration,
   canAffordConvert, isProcessing,
   onRevert, onReconvert, onRemoveVideo,
 }) => {
-  // Build a human-readable summary of what changed
   const changes = []
   if (compat.fixes?.needsCrop)  changes.push(`aspect ratio`)
   if (compat.fixes?.needsTrim)  changes.push(`duration`)
@@ -414,7 +415,6 @@ const ReconvertWarningPanel = ({
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {/* Primary: revert — free and lossless */}
         <button
           onClick={onRevert}
           disabled={isProcessing}
@@ -430,7 +430,6 @@ const ReconvertWarningPanel = ({
           Revert settings
         </button>
 
-        {/* Secondary: re-convert at cost */}
         <button
           onClick={onReconvert}
           disabled={!canAffordConvert || isProcessing}
@@ -444,7 +443,6 @@ const ReconvertWarningPanel = ({
           Re-convert · {CONVERSION_COST} cr
         </button>
 
-        {/* Tertiary: start over */}
         <button
           onClick={onRemoveVideo}
           className="w-full py-2 rounded-xl text-xs font-medium"
@@ -464,7 +462,6 @@ const ReconvertWarningPanel = ({
 }
 
 // ── First-time conversion panel ────────────────────────────────────────────
-// Shown when a freshly uploaded video needs processing before generation.
 const FirstConversionPanel = ({
   compat, trimStart, targetDuration,
   canAffordConvert, isProcessing,
@@ -551,11 +548,23 @@ export default function CreateCopyMotionPage() {
   const [phase,           setPhase]           = useState(null) // null | 'converting' | 'submitting'
   const [convertProgress, setConvertProgress] = useState(0)
 
-  // ── Snapshot of the settings the converted video was built with ──────────
-  // Used to detect when the user changes settings post-conversion so we can
-  // offer "Revert settings" instead of silently re-showing the cost panel.
   const [convertedSettings, setConvertedSettings] = useState(null)
   // { aspectRatio, duration } — set when a conversion completes, cleared on video removal.
+
+  // ── pricing engine state ──────────────────────────────────────────────
+  const [globalSettings, setGlobalSettings] = useState(null)
+  const [toolMargin,     setToolMargin]     = useState(null)
+
+  useEffect(() => {
+    (async () => {
+      const [gs, margin] = await Promise.all([
+        fetchGlobalPricingSettings(),
+        fetchToolMargin(TOOL_KEY),
+      ])
+      setGlobalSettings(gs)
+      setToolMargin(margin)
+    })()
+  }, [])
 
 // ── Cleanup on unmount ───────────────────────────────────
   useEffect(() => {
@@ -583,8 +592,6 @@ const loadModels = useCallback(async () => {
     const isMaster      = profile?.user_tier === 'master'
     const tierFiltered  = (data || [])
       .filter((m) => isMaster || m.tier_required !== 'master')
-      // Render-window (ComfyUI) models only show with an active subscription
-      // AND a currently-open window AND being attached to that live window.
       .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list          = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
@@ -709,18 +716,14 @@ const loadModels = useCallback(async () => {
   }, [motionVideo, selectedModel, aspectRatio, targetDuration])
 
   // ── Conversion state classification ─────────────────────
-  // wasConverted: the current video is the output of a conversion this session
-  // settingsDrifted: the user changed aspect ratio or duration after conversion
   const wasConverted    = !!motionVideo?._converted
   const settingsDrifted = wasConverted && convertedSettings != null && (
     convertedSettings.aspectRatio !== aspectRatio ||
     convertedSettings.duration    !== targetDuration
   )
 
-  // needsConversion: video exists, is incompatible, is not too-short
   const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
 
-  // Separate the two scenarios for the UI
   const showReconvertWarning  = needsConversion && settingsDrifted
   const showFirstConvertPanel = needsConversion && !settingsDrifted
 
@@ -736,25 +739,25 @@ const loadModels = useCallback(async () => {
             ? 'compatible'
             : 'incompatible'
 
-  // ── Credit calculation ───────────────────────────────────
-  const durationMultiplier = (() => {
-    const d = targetDuration
-    if (!d) return 1
-    if (d <= 5)  return 1
-    if (d <= 8)  return 1.6
-    if (d <= 10) return 2
-    if (d <= 12) return 2.4
-    if (d <= 15) return 3
-    if (d <= 20) return 4
-    if (d <= 30) return 6
-    return Math.ceil(d / 5)
-  })()
+  // ── Price via the shared pricing engine ──────────────────
+  // Real cost scales with duration via cost_usd_resolution (per-second for
+  // non-flat-rate models) — no separate hand-rolled duration multiplier needed.
+  const priced = useMemo(() => {
+    if (!selectedModel || !globalSettings || !toolMargin || !targetDuration) return null
+    let costUsd = calculateModelCostUsd({ model: selectedModel, resolution: undefined, duration: targetDuration })
+    if (costUsd == null) return null
 
-  const baseCredits = selectedModel?.credit_cost_i2i ?? 0
-  const baseWithDur = baseCredits * durationMultiplier
-  const creditCost  = withSound && supportsSound
-    ? Math.ceil(baseWithDur * (selectedModel?.sound_cost_multiplier ?? 1.5))
-    : Math.ceil(baseWithDur)
+    if (withSound && supportsSound) {
+      costUsd *= (selectedModel?.sound_cost_multiplier ?? 1.5)
+    }
+
+    const priceUsd = costUsd * toolMargin
+    const credits  = Math.ceil(priceUsd / globalSettings.usdPerCredit)
+    return { costUsd, priceUsd, credits }
+  }, [selectedModel, globalSettings, toolMargin, targetDuration, withSound, supportsSound])
+
+  const isPriced   = priced !== null
+  const creditCost = priced?.credits ?? 0
 
   const canAfford        = credits >= creditCost
   const canAffordConvert = credits >= CONVERSION_COST
@@ -774,7 +777,7 @@ const videoRequired   = selectedModel?.requires_video ?? true
     !!selectedModel &&
     !isProcessing &&
     !weeklyBlocked &&
-    (creditCost > 0 || selectedModel?.model_access_type === 'render_window')
+    isPriced
   // ── Upload handlers ──────────────────────────────────────
   const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -840,8 +843,6 @@ const videoRequired   = selectedModel?.requires_video ?? true
   }
 
   // ── Revert settings to match converted video ─────────────
-  // Snaps aspectRatio and targetDuration back to what the converted video has,
-  // making it immediately compatible without any re-payment.
   const handleRevertSettings = () => {
     if (!convertedSettings) return
     setAspectRatio(convertedSettings.aspectRatio)
@@ -894,7 +895,6 @@ const videoRequired   = selectedModel?.requires_video ?? true
     setPhase(null)
     setConvertProgress(0)
 
-    // Hydrate card inline and snapshot the settings this conversion was built for
     setMotionVideo({
       file:        null,
       url:         processed.url,
@@ -908,7 +908,6 @@ const videoRequired   = selectedModel?.requires_video ?? true
       aspectRatio: processed.aspectRatio,
       duration:    processed.duration,
     })
-    // Snap UI settings to match the conversion output
     setAspectRatio(processed.aspectRatio)
     setTargetDuration(processed.duration)
     setTrimStart(0)
@@ -916,14 +915,12 @@ const videoRequired   = selectedModel?.requires_video ?? true
     toast.success('Video converted — ready to generate!', { duration: 3000 })
   }
 
-  // First-time convert
   const handleConvert = () => runConversion({
     targetAspectRatio: aspectRatio,
     targetDur:         targetDuration,
     start:             trimStart,
   })
 
-  // Re-convert after settings drift
   const handleReconvert = () => runConversion({
     targetAspectRatio: aspectRatio,
     targetDur:         targetDuration,
@@ -938,6 +935,7 @@ const videoRequired   = selectedModel?.requires_video ?? true
     if (!hasSubject)        return toast.error('Upload a subject image')
     if (subjectSizeErr)     return toast.error('Subject image is too large. Use a file under 10 MB.')
     if (!selectedModel)     return toast.error('Pick a model')
+    if (!isPriced)          return toast.error('This model isn\'t priced yet — contact support')
     if (!canAfford)         return toast.error('Not enough credits')
     if (!user)              return toast.error('Please sign in')
 
@@ -1278,6 +1276,12 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                   />
                 )}
               </div>
+
+              {selectedModel && !isPriced && (
+                <p className="text-xs text-center" style={{ color: '#fbbf24' }}>
+                  This model isn't priced yet — contact support.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -1354,4 +1358,4 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
       )}
     </div>
   )
-}
+    }
