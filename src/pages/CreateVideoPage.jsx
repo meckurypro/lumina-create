@@ -24,11 +24,16 @@ import { useRenderWindowEligibility } from '@/hooks/useRenderWindowEligibility'
 import { saveDraftJSON, loadDraftJSON, draftDelete, saveDraftFile, loadDraftFile, saveDraftImages, loadDraftImages } from '@/lib/draftCache'
 import { getActiveRenderWindowModelIds } from '@/lib/renderWindowModels'
 import { watchForEarlyFailure } from '@/lib/generationWatch'
+import {
+  calculateModelCostUsd, fetchGlobalPricingSettings, fetchToolMargin,
+} from '@/lib/pricing'
 
 // ─── theme ────────────────────────────────────────────────────────────────────
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
+
+const TOOL_KEY = 'create_video'
 
 // ─── draft keys (this page's own drafts) ──────────────────────────────────────
 const DRAFT_PROMPT     = 'create_video:prompt'
@@ -37,8 +42,6 @@ const DRAFT_END_FRAME   = 'create_video:end_frame'
 const DRAFT_REF_IMAGES  = 'create_video:ref_images'
 
 // ─── cross-page handoff keys — stay on sessionStorage, NOT draftCache ─────────
-// These are written by other pages (Assets picker, this page's own lipsync
-// redirect into Talking Head) as one-time payloads, not per-page drafts.
 const SS_OMNI_REF = 'meckury_video_omni_ref'
 const TH_SS_SUBJECT_IMG     = 'meckury_th_subject_img'
 const TH_SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
@@ -50,13 +53,16 @@ const ALL_ASPECT_RATIOS = [
   { label: '1:1',  value: '1:1'  },
 ]
 const VIDEO_EDIT_MAX_BILLABLE = 8
+// NOTE: this is a flat, page-level rate for the video-edit/trim feature —
+// it is NOT derived from any model's cost_usd_resolution. It predates the
+// cost-engine migration and hasn't been folded into it yet, since that
+// would require deciding a real $ cost for this feature first. Left as-is
+// intentionally; flagged here so it isn't mistaken for an oversight.
 const VIDEO_EDIT_CPS          = 49
 const VIDEO_EDIT_CONVERT_COST = 2
 const MAX_VIDEO_BYTES         = 40 * 1024 * 1024
 
 // Features that belong on this page (i2v / t2v / start-end / video-edit).
-// Lipsync and motion_transfer models are deliberately excluded — they have
-// their own pages (CreateTalkingHeadPage, CreateCopyMotionPage).
 const VIDEO_PAGE_FEATURES = [
   'image_to_video',
   'image_text_to_video',
@@ -65,13 +71,8 @@ const VIDEO_PAGE_FEATURES = [
   'video_to_video',
 ]
 
-// Dual-purpose models: intentionally shown here even though their `feature`
-// column points to another page's category (e.g. meckury_i2v_max is tagged
-// feature="lipsync" but is also a legitimate i2v model). Add a model's
-// `value` here only when you explicitly want it to cross categories.
 const CROSSOVER_ALLOWLIST = ['meckury_i2v_max']
 
-// ─── model capability helper (page-specific — not duplicated elsewhere) ───────
 function getModelCaps(model) {
   if (!model) return {
     supportsStartFrame:    true,
@@ -870,6 +871,21 @@ export default function CreateVideoPage() {
   const [brandProducts,        setBrandProducts]        = useState([])
   const [brandProductsLoading, setBrandProductsLoading] = useState(false)
 
+  // ── pricing engine state ──────────────────────────────────────────────
+  const [globalSettings, setGlobalSettings] = useState(null)
+  const [toolMargin,     setToolMargin]     = useState(null)
+
+  useEffect(() => {
+    (async () => {
+      const [gs, margin] = await Promise.all([
+        fetchGlobalPricingSettings(),
+        fetchToolMargin(TOOL_KEY),
+      ])
+      setGlobalSettings(gs)
+      setToolMargin(margin)
+    })()
+  }, [])
+
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
   const {
@@ -964,10 +980,6 @@ const merged = [...(byFeature || [])]
     const isMaster     = profile?.user_tier === 'master'
     const tierFiltered = merged
       .filter((m) => isMaster || m.tier_required !== 'master')
-      // Render-window (ComfyUI) models are only visible with an active
-      // subscription AND a currently-open window AND being attached to
-      // that specific live window — otherwise they'd be shown but unusable,
-      // or worse, shown as usable when they're not the model actually running.
       .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list         = await applyModelPreferences(tierFiltered, user?.id)
     setModels(list)
@@ -1066,34 +1078,38 @@ const merged = [...(byFeature || [])]
   const type   = multiMode && refImages.length > 0 ? 'image_to_video' : deriveVideoType(activeStartFrame, activeEndFrame)
   const isI2V  = multiMode ? refImages.length > 0 : !!(activeStartFrame || activeEndFrame)
 
+  // ── price this generation via the shared pricing engine ───────────────
+  // Video-edit keeps its own flat VIDEO_EDIT_CPS system (see note at top of
+  // file) — everything else goes through cost_usd_resolution × margin ÷
+  // usd_per_credit, with the sound multiplier applied to $ cost before
+  // conversion so it's reflected correctly at every step.
+  const priced = useMemo(() => {
+    if (!selectedModel || !globalSettings || !toolMargin) return null
+    if (caps.isVideoEdit) return null // priced via VIDEO_EDIT_CPS below, not the engine
+
+    const dur = parseInt(duration || '5', 10)
+    let costUsd = calculateModelCostUsd({ model: selectedModel, resolution: undefined, duration: dur })
+    if (costUsd == null) return null
+
+    if (withSound && caps.supportsSound) {
+      costUsd *= (selectedModel?.sound_cost_multiplier ?? 1.5)
+    }
+
+    const priceUsd = costUsd * toolMargin
+    const credits  = Math.ceil(priceUsd / globalSettings.usdPerCredit)
+    return { costUsd, priceUsd, credits }
+  }, [selectedModel, globalSettings, toolMargin, duration, withSound, caps.isVideoEdit, caps.supportsSound])
+
+  const isPriced = caps.isVideoEdit ? true : priced !== null
+
   const creditCost = useMemo(() => {
     if (!selectedModel) return 0
     if (caps.isVideoEdit) {
       const billable = billableDuration ?? VIDEO_EDIT_MAX_BILLABLE
       return billable * VIDEO_EDIT_CPS
     }
-    const isFlatRate = selectedModel?.is_flat_rate ?? false
-    if (isFlatRate) {
-      return isI2V
-        ? (selectedModel.credit_cost_i2i || 0)
-        : (selectedModel.credit_cost_t2i || 0)
-    }
-    const dur = parseInt(duration || '5', 10)
-    if (selectedModel.credit_cost_per_second) {
-      const billable = Math.max(dur, selectedModel.min_billable_seconds ?? 1)
-      const base = Math.ceil(selectedModel.credit_cost_per_second * billable)
-      return withSound && caps.supportsSound
-        ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-        : base
-    }
-    const cps = isI2V
-      ? (selectedModel.credit_cost_i2i || 0)
-      : (selectedModel.credit_cost_t2i || 0)
-    const base = cps * dur
-    return withSound && caps.supportsSound
-      ? Math.ceil(base * (selectedModel?.sound_cost_multiplier ?? 1.5))
-      : Math.ceil(base)
-  }, [selectedModel, caps, isI2V, duration, withSound, billableDuration])
+    return priced?.credits ?? 0
+  }, [selectedModel, caps.isVideoEdit, billableDuration, priced])
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
@@ -1221,9 +1237,6 @@ const merged = [...(byFeature || [])]
   }
 
 // ── tag insertion ─────────────────────────────────────────────────────────
-  // insertAtCursor (manual [imgN] buttons) and resolveMention ("@"/"/"
-  // pickers) come from usePromptTagging above.
-
   const addMentionRefImage = (url, role, label) => {
     if (!caps.supportsMultiImage) {
       toast.error('Switch to a multi-reference model to tag characters or brands')
@@ -1378,6 +1391,7 @@ const merged = [...(byFeature || [])]
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
+    if (!isPriced)       return toast.error('This model isn\'t priced yet — contact support')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
@@ -1594,13 +1608,13 @@ const uploadedRefUrls = []
  const { blocked: concurrencyBlocked, reason: concurrencyReason } = useModelConcurrency(selectedModel)
 
   const generateDisabled = isProcessing || !canAfford || promptEmpty || !selectedModel || concurrencyBlocked
+    || !isPriced
     || (caps.isVideoEdit && (!editVideo || editCompat?.tooShort || needsTrim))
     || (caps.requiresEndFrame && !activeEndFrame)
     || (caps.requiresImage && !multiMode && !activeStartFrame)
     || (caps.requiresImage &&  multiMode && refImages.length === 0)
     || (caps.requiresVideo && !caps.isVideoEdit && !editVideo)
     || (caps.requiresAudio && audioSlots.filter(Boolean).length === 0)
-    || (creditCost === 0 && !!selectedModel && !caps.isVideoEdit && selectedModel?.model_access_type !== 'render_window')
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -1969,6 +1983,12 @@ const uploadedRefUrls = []
                 value={String(withSound)} onChange={(v) => setWithSound(v === 'true')} accent={ACCENT} />
             )}
           </div>
+
+          {selectedModel && !caps.isVideoEdit && !isPriced && (
+            <p className="text-xs text-center" style={{ color: '#fbbf24' }}>
+              This model isn't priced yet — contact support.
+            </p>
+          )}
 
         </div>
       </div>
