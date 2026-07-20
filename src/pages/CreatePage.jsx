@@ -13,15 +13,19 @@ import { PageWrapper } from '@/components/layout/PageWrapper'
 
 // ── Accent system ────────────────────────────────────────────────────────────
 // Color is a category signal, not a per-feature decoration: every tile that
-// produces the same kind of output shares the same accent. Four families
-// only — image, video, voice, and UGC (character-driven, spans both) — so a
-// color always means the same thing everywhere it appears, in both themes.
-// These map onto the existing tokens in index.css; no new CSS is required.
+// produces the same kind of output shares the same accent. Five families —
+// image, video, voice, ugc, and motion — so a color always means the same
+// thing everywhere it appears, in both themes. "Motion" is Copy Motion's own
+// established green identity (it already carries through to the Copy Motion
+// generation page), kept distinct from the general "video" family rather
+// than folded into it. These map onto the existing tokens in index.css; no
+// new CSS is required.
 const ACCENTS = {
-  image: { color: 'var(--tool-image)', subtle: 'var(--tool-image-subtle)', border: 'var(--tool-image-border)' },
-  video: { color: 'var(--tool-video)', subtle: 'var(--tool-video-subtle)', border: 'var(--tool-video-border)' },
-  voice: { color: 'var(--tool-talking-head)', subtle: 'var(--tool-talking-head-subtle)', border: 'var(--tool-talking-head-border)' },
-  ugc:   { color: 'var(--tool-ugc)', subtle: 'var(--tool-ugc-subtle)', border: 'var(--tool-ugc-border)' },
+  image:  { color: 'var(--tool-image)', subtle: 'var(--tool-image-subtle)', border: 'var(--tool-image-border)' },
+  video:  { color: 'var(--tool-video)', subtle: 'var(--tool-video-subtle)', border: 'var(--tool-video-border)' },
+  voice:  { color: 'var(--tool-talking-head)', subtle: 'var(--tool-talking-head-subtle)', border: 'var(--tool-talking-head-border)' },
+  ugc:    { color: 'var(--tool-ugc)', subtle: 'var(--tool-ugc-subtle)', border: 'var(--tool-ugc-border)' },
+  motion: { color: 'var(--tool-motion)', subtle: 'var(--tool-motion-subtle)', border: 'var(--tool-motion-border)' },
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -38,7 +42,7 @@ const TOOLS = [
   },
   {
     id: 'copy_motion', label: 'Copy Motion', subtitle: 'Transfer motion from video to image',
-    icon: Layers, route: '/create/copy-motion', accent: 'video',
+    icon: Layers, route: '/create/copy-motion', accent: 'motion',
   },
   {
     id: 'talking_head', label: 'Talking Head', subtitle: 'Animate faces with text, voice or audio',
@@ -51,27 +55,21 @@ const TOOLS = [
 ]
 
 // ── Utilities ────────────────────────────────────────────────────────────────
-const UTILITY_SECTIONS = [
-  {
-    title: 'IQ Ads',
-    items: [
-      { id: 'iq_ads', label: 'IQ Ads', subtitle: 'Turn your flyer into a cinematic commercial', icon: Clapperboard, route: '/create/iq-ads', accent: 'video' },
-    ],
-  },
-  {
-    title: 'Photo Tools',
-    items: [
-      { id: 'photo_polish', label: 'Photo Polish', subtitle: 'Transform any photo into a cinematic shot', icon: Sparkles, route: '/create/photo-polish', accent: 'image' },
-      { id: 'image_upscaler', label: 'Image Upscaler', subtitle: 'Enlarge and sharpen any image with AI', icon: ScanSearch, route: '/create/image-upscaler', accent: 'image' },
-    ],
-  },
-  {
-    title: 'Video Tools',
-    items: [
-      { id: 'video_upscaler', label: 'Video Upscaler', subtitle: 'Upscale any video to higher resolution', icon: Maximize, route: '/create/video-upscaler', accent: 'video' },
-    ],
-  },
-]
+// One flat, ungrouped grid instead of named sections — section headers over
+// one or two tiles each read as empty scaffolding more than structure.
+// IQ Ads is pinned first (it's the tool being promoted right now); every
+// other utility follows in alphabetical order. If IQ Ads no longer needs
+// the top slot, delete `featured: true` and it'll sort into its normal
+// alphabetical place.
+const UTILITIES_PINNED = { id: 'iq_ads', label: 'IQ Ads', subtitle: 'Turn your flyer into a cinematic commercial', icon: Clapperboard, route: '/create/iq-ads', accent: 'video', featured: true }
+
+const UTILITIES_REST = [
+  { id: 'image_upscaler', label: 'Image Upscaler', subtitle: 'Enlarge and sharpen any image with AI', icon: ScanSearch, route: '/create/image-upscaler', accent: 'image' },
+  { id: 'photo_polish', label: 'Photo Polish', subtitle: 'Transform any photo into a cinematic shot', icon: Sparkles, route: '/create/photo-polish', accent: 'image' },
+  { id: 'video_upscaler', label: 'Video Upscaler', subtitle: 'Upscale any video to higher resolution', icon: Maximize, route: '/create/video-upscaler', accent: 'video' },
+].sort((a, b) => a.label.localeCompare(b.label))
+
+const UTILITIES = [UTILITIES_PINNED, ...UTILITIES_REST]
 
 const TABS = ['utilities', 'tools', 'templates', 'canvas']
 
@@ -205,7 +203,7 @@ export default function CreatePage() {
   const location                      = useLocation()
   const { isStaff, isAdmin, profile } = useAuth()
   const isNovice                      = profile?.user_tier !== 'master'
-  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'tools')
+  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'utilities')
   const [templates, setTemplates]     = useState([])
   const [loading, setLoading]         = useState(true)
   const [weeklyUsed, setWeeklyUsed]   = useState(null)
@@ -348,29 +346,21 @@ export default function CreatePage() {
 
             {/* ── Utilities Tab ── */}
             {activeTab === 'utilities' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="overflow-y-auto">
-                {UTILITY_SECTIONS.map((section, si) => (
-                  <div key={section.title} className={si < UTILITY_SECTIONS.length - 1 ? 'mb-8' : ''}>
-                    <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
-                      {section.title}
-                    </p>
-                    <div className={gridClass}>
-                      {section.items.map((item, i) => (
-                        <FeatureTile
-                          key={item.id}
-                          label={item.label}
-                          subtitle={item.subtitle}
-                          icon={item.icon}
-                          route={item.route}
-                          accent={item.accent}
-                          index={i}
-                          navigate={navigate}
-                          locked={!!item.requiresMaster && isNovice && !isPrivileged}
-                          comingSoon={!!item.comingSoonForPublic && !isPrivileged}
-                        />
-                      ))}
-                    </div>
-                  </div>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={gridClass}>
+                {UTILITIES.map((item, i) => (
+                  <FeatureTile
+                    key={item.id}
+                    label={item.label}
+                    subtitle={item.subtitle}
+                    icon={item.icon}
+                    route={item.route}
+                    accent={item.accent}
+                    index={i}
+                    navigate={navigate}
+                    locked={!!item.requiresMaster && isNovice && !isPrivileged}
+                    comingSoon={!!item.comingSoonForPublic && !isPrivileged}
+                    badge={item.featured ? 'Featured' : null}
+                  />
                 ))}
               </motion.div>
             )}
