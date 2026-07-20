@@ -21,10 +21,16 @@ const RESOLUTION_PRESETS = ['480p', '720p', '1080p']
 // ship. This drives which rows appear in "Tool Margins" even before a
 // row exists yet in tool_pricing_settings (falls back to no value set).
 const KNOWN_TOOLS = [
-  { key: 'create_video',  label: 'Create Video' },
-  { key: 'create_image',  label: 'Create Image' },
-  { key: 'iqads',         label: 'IQ Ads' },
-  { key: 'talking_head',  label: 'Talking Head / Lipsync' },
+  { key: 'create_video',   label: 'Create Video' },
+  { key: 'create_image',   label: 'Create Image' },
+  { key: 'iqads',          label: 'IQ Ads' },
+  { key: 'talking_head',   label: 'Talking Head / Lipsync' },
+  { key: 'copy_motion',    label: 'Copy Motion' },
+  { key: 'photo_polish',   label: 'Photo Polish' },
+  { key: 'image_upscale',  label: 'Image Upscaler' },
+  { key: 'video_upscale',  label: 'Video Upscaler' },
+  { key: 'ugc',            label: 'UGC Character' },
+  { key: 'ugc_brand',      label: 'UGC Brand' },
 ]
 
 // ── inline editable row for one global setting ──────────────────────────
@@ -414,4 +420,4 @@ export default function ModelPricingManager() {
       </div>
     </div>
   )
-          }
+      }
