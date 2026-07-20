@@ -33,6 +33,7 @@ import RenderWindowBookingsManager from '@/pages/admin/RenderWindowBookingsManag
 import CohortManager from '@/pages/admin/CohortManager'
 import IQAdsManager  from '@/pages/admin/IQAdsManager'
 import CreditPackagesManager from '@/pages/admin/CreditPackagesManager'
+import ModelPricingManager   from '@/pages/admin/ModelPricingManager'
 
 // ─── Stat Card ────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ const TABS = (pendingCount) => [
   { id: 'users',          label: 'Users'                                               },
   { id: 'staff',          label: 'Staff'                                               },
   { id: 'models',         label: 'Models'                                              },
+  { id: 'model_pricing',  label: '💰 Model Pricing'                                    },
   { id: 'generations',    label: 'Generations'                                         },
  { id: 'render_windows', label: '🪟 Render Windows'                                   },
   { id: 'rw_models', label: '🖥️ RW Models' },
@@ -255,6 +257,13 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+        {/* ── Model Pricing ── */}
+        {activeTab === 'model_pricing' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <ModelPricingManager />
+          </motion.div>
+        )}
+
         {/* ── Cinematic Transitions ── */}
         {activeTab === 'cinematic' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -392,7 +401,7 @@ export default function AdminPage() {
         {/* ── IQ Ads ── */}
         {activeTab === 'iqads' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <IQAdsManager />
+            <IQAdsManager onNavigateToPricing={() => setActiveTab('model_pricing')} />
           </motion.div>
         )}
 
