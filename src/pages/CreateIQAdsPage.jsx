@@ -244,9 +244,9 @@ export default function CreateIQAdsPage() {
 
   // ── footer helper text — single priority-ordered reason, not a stack ──
   const renderBlockingReason = () => {
-    if (!flyer) {
-      return <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a flyer to continue</p>
-    }
+    // No flyer message here on purpose — the empty dropzone above already
+    // makes "no flyer yet" obvious; repeating it under the button was redundant.
+    if (!flyer) return null
     if (contentType === 'product' && humanMode === 'uploaded' && !humanRef) {
       return <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
     }
