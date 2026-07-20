@@ -30,6 +30,14 @@
 // they're committing to. Direction input starts collapsed behind a
 // toggle — most users on this page are not power users and don't need an
 // open textarea staring at them.
+//
+// Checkout: credit and Paystack are two independently-gated payment paths,
+// not one gate with two buttons. canAfford (credit balance) only applies
+// to the credit path — Paystack brings outside money and doesn't care
+// about the user's credit balance. See canCheckoutBase / canCheckoutCredit
+// / canCheckoutPaystack below. The footer below the buttons shows a single
+// priority-ordered blocking reason instead of stacking every unmet
+// condition at once.
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -173,13 +181,22 @@ export default function CreateIQAdsPage() {
     return publicUrl
   }
 
-  const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced && !pricing && canAfford &&
+  // ── checkout gating ─────────────────────────────────────────────────────
+  // canCheckoutBase covers everything both payment paths need (flyer,
+  // model/duration selection, human reference if required, not mid-submit).
+  // canAfford (credit balance) is credit-only — Paystack brings outside
+  // money and must never be blocked by an insufficient in-app balance.
+  const canCheckoutBase = !!flyer && !!selectedModel && !!duration && !!priced && !pricing &&
     durations.length > 0 &&
     (contentType === 'event' || humanMode !== 'uploaded' || !!humanRef) && !submitting
 
+  const canCheckoutCredit   = canCheckoutBase && canAfford
+  const canCheckoutPaystack = canCheckoutBase
+
   // ── checkout ────────────────────────────────────────────────────────────
   const handleCheckout = async (method) => {
-    if (!canCheckout || !user) return
+    const allowed = method === 'credit' ? canCheckoutCredit : canCheckoutPaystack
+    if (!allowed || !user) return
     setSubmitting(true)
     setPaying(method)
     try {
@@ -224,6 +241,29 @@ export default function CreateIQAdsPage() {
   const generateLabel = priced
     ? `Generate · ${creditCost} cr`
     : pricing ? 'Calculating…' : 'Generate'
+
+  // ── footer helper text — single priority-ordered reason, not a stack ──
+  const renderBlockingReason = () => {
+    if (!flyer) {
+      return <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a flyer to continue</p>
+    }
+    if (contentType === 'product' && humanMode === 'uploaded' && !humanRef) {
+      return <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
+    }
+    if (selectedModel && durations.length === 0) {
+      return <p className="text-xs text-center" style={{ color: '#fbbf24' }}>This model has no valid duration configured yet.</p>
+    }
+    if (priced && !canAfford) {
+      return (
+        <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+          Not enough credits for Generate —{' '}
+          <button onClick={() => navigate('/credits')} className="font-semibold" style={{ color: ACCENT }}>top up</button>
+          {' '}or pay with Paystack above.
+        </p>
+      )
+    }
+    return null
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
@@ -410,39 +450,29 @@ export default function CreateIQAdsPage() {
         </div>
       </div>
 
-      {/* Checkout — Generate (credit) is the one real CTA; Paystack is a quiet secondary link */}
+      {/* Checkout — Generate (credit) is the one real CTA; Paystack is a quiet secondary link.
+          The two are gated independently: canCheckoutCredit also requires canAfford,
+          canCheckoutPaystack does not — see comment above canCheckoutBase. */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
-          <button onClick={() => handleCheckout('credit')} disabled={!canCheckout}
+          <button onClick={() => handleCheckout('credit')} disabled={!canCheckoutCredit}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
             style={{
-              background: canCheckout ? ACCENT : 'var(--bg-elevated)',
-              color: canCheckout ? '#fff' : 'var(--text-muted)',
-              opacity: canCheckout ? 1 : 0.5,
+              background: canCheckoutCredit ? ACCENT : 'var(--bg-elevated)',
+              color: canCheckoutCredit ? '#fff' : 'var(--text-muted)',
+              opacity: canCheckoutCredit ? 1 : 0.5,
             }}>
             <Zap size={14} fill="currentColor" />
             {generateLabel}
           </button>
 
-          <button onClick={() => handleCheckout('paystack')} disabled={!canCheckout}
+          <button onClick={() => handleCheckout('paystack')} disabled={!canCheckoutPaystack}
             className="w-full py-2 text-xs font-medium text-center transition-all"
-            style={{ color: canCheckout ? 'var(--text-muted)' : 'var(--text-muted)', opacity: canCheckout ? 1 : 0.4 }}>
+            style={{ color: canCheckoutPaystack ? ACCENT : 'var(--text-muted)', opacity: canCheckoutPaystack ? 1 : 0.4 }}>
             Or pay with Paystack instead
           </button>
 
-          {!flyer && <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a flyer to continue</p>}
-          {contentType === 'product' && humanMode === 'uploaded' && !humanRef && (
-            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
-          )}
-          {selectedModel && durations.length === 0 && (
-            <p className="text-xs text-center" style={{ color: '#fbbf24' }}>This model has no valid duration configured yet.</p>
-          )}
-          {priced && !canAfford && (
-            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-              Not enough credits.{' '}
-              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>Top up</button>
-            </p>
-          )}
+          {renderBlockingReason()}
         </div>
       </div>
     </div>
