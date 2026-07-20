@@ -10,19 +10,26 @@
 // in iqads-generate. Event flyers hide the "Human in the Ad" section since
 // event flyers (e.g. a choir/group photo) already show whoever's in them.
 //
-// Pricing preview is now async (calculateIqadsPrice hits Supabase for the
-// tool margin + global rate settings via lib/pricing.js) so it's computed
-// in an effect rather than a useMemo.
+// Pricing is credit-primary, same convention as CreateVideoPage: priced.credits
+// is what's actually charged (via process_iqads_order_payment on the credit
+// path). Naira never appears in this UI — it only exists server-side as the
+// Paystack charge amount, derived from the same USD cost at order-creation
+// time (see lib/iqads.js createIqadsOrder).
+//
+// Duration is restricted to a fixed tier list (10/15/30/45s) rather than
+// showing every value in a model's supported_durations — anything under
+// 10s is not offered. 30/45s are reserved for future models; a model whose
+// supported_durations doesn't reach those tiers just won't show them.
 //
 // Minimalist pass: header shows only "IQ Ads" (no subtitle, no credit
 // balance). Model dropdown only renders when more than one model is
 // active — most launches will run Seedance-only, so the picker disappears
-// entirely rather than showing a single disabled-looking option. "This
-// video costs ₦x" line is gone; cost now lives inline on the Generate
-// button, matching the pattern on CreateVideoPage. Paystack is a
-// de-emphasized secondary action, not a competing CTA. Direction input
-// starts collapsed behind a toggle — most users on this page are not
-// power users and don't need an open textarea staring at them.
+// entirely rather than showing a single disabled-looking option. Duration
+// picker, by contrast, always renders even with a single option — it stays
+// visible as a selected, non-deselectable chip so the user can see what
+// they're committing to. Direction input starts collapsed behind a
+// toggle — most users on this page are not power users and don't need an
+// open textarea staring at them.
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -46,6 +53,11 @@ const ACCENT_BDR = 'var(--tool-iqads-border, var(--border-color))'
 
 const WHATSAPP_NUMBER = '2348162465247'
 const waLink = (text) => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`
+
+// Fixed duration tiers — a model only ever offers the subset of these it
+// actually supports (via supported_durations). 30/45 exist here for
+// future models; today's models cap out lower and simply won't show them.
+const DURATION_TIERS = ['10', '15', '30', '45']
 
 const HUMAN_MODES = [
   { label: 'No human',   value: 'none' },
@@ -97,12 +109,14 @@ export default function CreateIQAdsPage() {
   const showModelPicker = !modelsLoading && models.length > 1
 
   const supportsResolutionChoice = iqadsSupportsResolutionChoice(selectedModel)
-  const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15']
+  const durations = selectedModel?.supported_durations?.length
+    ? DURATION_TIERS.filter((d) => selectedModel.supported_durations.includes(d))
+    : []
   const aspectRatios  = selectedModel?.supported_aspect_ratios?.length ? selectedModel.supported_aspect_ratios : ['9:16', '16:9', '1:1']
 
   useEffect(() => {
     if (!selectedModel) return
-    if (!durations.includes(duration)) setDuration(durations[0])
+    if (!durations.includes(duration)) setDuration(durations[0] || '')
     if (!aspectRatios.includes(aspectRatio)) setAspectRatio(aspectRatios[0])
     if (!supportsResolutionChoice) setResolution('480p')
   }, [modelValue]) // eslint-disable-line
@@ -127,6 +141,12 @@ export default function CreateIQAdsPage() {
       .finally(() => { if (!cancelled) setPricing(false) })
     return () => { cancelled = true }
   }, [selectedModel, duration, resolution])
+
+  // ── credit cost derived from the same priced object — this IS what's
+  // charged (see lib/iqads.js payIqadsOrderWithCredits). Naira never
+  // surfaces in this UI. ──────────────────────────────────────────────
+  const creditCost = priced?.credits ?? 0
+  const canAfford   = !priced || credits >= creditCost
 
   // ── upload handlers ────────────────────────────────────────────────────
   const handleFlyerUpload = async (e) => {
@@ -153,7 +173,8 @@ export default function CreateIQAdsPage() {
     return publicUrl
   }
 
-  const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced && !pricing &&
+  const canCheckout = !!flyer && !!selectedModel && !!duration && !!priced && !pricing && canAfford &&
+    durations.length > 0 &&
     (contentType === 'event' || humanMode !== 'uploaded' || !!humanRef) && !submitting
 
   // ── checkout ────────────────────────────────────────────────────────────
@@ -201,7 +222,7 @@ export default function CreateIQAdsPage() {
   }
 
   const generateLabel = priced
-    ? `Generate · ₦${priced.priceNgn.toLocaleString()}`
+    ? `Generate · ${creditCost} cr`
     : pricing ? 'Calculating…' : 'Generate'
 
   return (
@@ -295,7 +316,7 @@ export default function CreateIQAdsPage() {
                 options={[{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }]}
                 value={resolution} onChange={setResolution} accent={ACCENT} />
             )}
-            {durations.length > 1 && (
+            {durations.length > 0 && (
               <SettingChips label="Duration"
                 options={durations.map((d) => ({ label: `${d}s`, value: d }))}
                 value={duration} onChange={setDuration} accent={ACCENT} />
@@ -413,8 +434,17 @@ export default function CreateIQAdsPage() {
           {contentType === 'product' && humanMode === 'uploaded' && !humanRef && (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
           )}
+          {selectedModel && durations.length === 0 && (
+            <p className="text-xs text-center" style={{ color: '#fbbf24' }}>This model has no valid duration configured yet.</p>
+          )}
+          {priced && !canAfford && (
+            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+              Not enough credits.{' '}
+              <button onClick={() => navigate('/profile')} className="font-semibold" style={{ color: ACCENT }}>Top up</button>
+            </p>
+          )}
         </div>
       </div>
     </div>
   )
-            }
+}
