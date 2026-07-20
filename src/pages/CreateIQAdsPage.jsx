@@ -1,7 +1,7 @@
 // src/pages/CreateIQAdsPage.jsx
 //
 // Flyer → cinematic video ad. Upload a flyer (self-made or from any tool),
-// pick a model/resolution/duration, optionally add direction, pay, done.
+// optionally add direction, pay, done.
 // "No flyer?" and "Want something custom?" both route to the IQ Ads
 // creative team on WhatsApp rather than building more self-serve surface
 // for those two segments — see thread history for why.
@@ -13,10 +13,20 @@
 // Pricing preview is now async (calculateIqadsPrice hits Supabase for the
 // tool margin + global rate settings via lib/pricing.js) so it's computed
 // in an effect rather than a useMemo.
+//
+// Minimalist pass: header shows only "IQ Ads" (no subtitle, no credit
+// balance). Model dropdown only renders when more than one model is
+// active — most launches will run Seedance-only, so the picker disappears
+// entirely rather than showing a single disabled-looking option. "This
+// video costs ₦x" line is gone; cost now lives inline on the Generate
+// button, matching the pattern on CreateVideoPage. Paystack is a
+// de-emphasized secondary action, not a competing CTA. Direction input
+// starts collapsed behind a toggle — most users on this page are not
+// power users and don't need an open textarea staring at them.
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Palette, Clapperboard, Loader2 } from 'lucide-react'
+import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Palette, Plus, ChevronUp, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -64,6 +74,7 @@ export default function CreateIQAdsPage() {
   const [humanMode, setHumanMode]     = useState('ai_generate')
   const [humanRef, setHumanRef]       = useState(null)    // { file, url }
   const [userDirection, setUserDirection] = useState('')
+  const [showDirection, setShowDirection] = useState(false)
 
   const [priced, setPriced]           = useState(null)
   const [pricing, setPricing]         = useState(false)
@@ -83,9 +94,10 @@ export default function CreateIQAdsPage() {
   }, [])
 
   const selectedModel = models.find((m) => m.value === modelValue)
+  const showModelPicker = !modelsLoading && models.length > 1
 
   const supportsResolutionChoice = iqadsSupportsResolutionChoice(selectedModel)
-  const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15', '30']
+  const durations     = selectedModel?.supported_durations?.length ? selectedModel.supported_durations : ['15']
   const aspectRatios  = selectedModel?.supported_aspect_ratios?.length ? selectedModel.supported_aspect_ratios : ['9:16', '16:9', '1:1']
 
   useEffect(() => {
@@ -188,6 +200,10 @@ export default function CreateIQAdsPage() {
     }
   }
 
+  const generateLabel = priced
+    ? `Generate · ₦${priced.priceNgn.toLocaleString()}`
+    : pricing ? 'Calculating…' : 'Generate'
+
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <AnimatePresence>
@@ -205,29 +221,21 @@ export default function CreateIQAdsPage() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Header — minimal: title only, model picker only if there's a real choice, no balance */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
         style={{ borderBottom: '1px solid var(--border-color)', borderLeft: `3px solid ${ACCENT}` }}>
         <button onClick={() => navigate('/create', { state: { tab: 'utilities' } })} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
         </button>
-        <div className="flex flex-col items-center">
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>IQ Ads</h1>
-          <span className="text-xs font-medium" style={{ color: ACCENT }}>Flyer to Cinematic Video</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {!modelsLoading && (
-            <ModelDropdown
-              models={models} value={modelValue} onChange={setModelValue}
-              accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
-            />
-          )}
-          <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-            <Zap size={12} style={{ color: 'var(--brand)' }} fill="currentColor" />
-            {Math.floor(credits)}
-          </div>
-        </div>
+        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>IQ Ads</h1>
+        {showModelPicker ? (
+          <ModelDropdown
+            models={models} value={modelValue} onChange={setModelValue}
+            accent={ACCENT} accentSub={ACCENT_SUB} accentBdr={ACCENT_BDR}
+          />
+        ) : (
+          <div style={{ width: 20 }} /> // balances the back button so title stays centered
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -280,16 +288,18 @@ export default function CreateIQAdsPage() {
             />
           </div>
 
-         {/* Resolution / Duration / Aspect ratio */}
+          {/* Resolution / Duration / Aspect ratio */}
           <div>
             {supportsResolutionChoice && (
               <SettingChips label="Resolution"
                 options={[{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }]}
                 value={resolution} onChange={setResolution} accent={ACCENT} />
             )}
-            <SettingChips label="Duration"
-              options={durations.map((d) => ({ label: `${d}s`, value: d }))}
-              value={duration} onChange={setDuration} accent={ACCENT} />
+            {durations.length > 1 && (
+              <SettingChips label="Duration"
+                options={durations.map((d) => ({ label: `${d}s`, value: d }))}
+                value={duration} onChange={setDuration} accent={ACCENT} />
+            )}
             <SettingChips label="Aspect Ratio"
               options={aspectRatios.map((a) => ({ label: a, value: a }))}
               value={aspectRatio} onChange={setAspectRatio} accent={ACCENT} />
@@ -330,14 +340,40 @@ export default function CreateIQAdsPage() {
             </div>
           )}
 
-          {/* Optional direction */}
-          <Textarea
-            label="Direction (optional)"
-            value={userDirection}
-            onChange={(e) => setUserDirection(e.target.value.slice(0, 300))}
-            placeholder="Any specific scene, story, or detail you want — e.g. 'pouring into a chilled glass at sunset'"
-            rows={2} maxLength={300}
-          />
+          {/* Direction — collapsed by default, revealed on tap */}
+          <div>
+            {showDirection ? (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                    Direction (optional)
+                  </label>
+                  <button
+                    onClick={() => { setShowDirection(false); setUserDirection('') }}
+                    className="flex items-center gap-1 text-xs"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <ChevronUp size={12} /> Hide
+                  </button>
+                </div>
+                <Textarea
+                  value={userDirection}
+                  onChange={(e) => setUserDirection(e.target.value.slice(0, 300))}
+                  placeholder="Any specific scene, story, or detail you want — e.g. 'pouring into a chilled glass at sunset'"
+                  rows={2} maxLength={300}
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDirection(true)}
+                className="flex items-center gap-2 text-xs font-medium"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <Plus size={13} /> Add direction (optional)
+              </button>
+            )}
+          </div>
 
           {/* Want something custom? */}
           <a href={waLink("Hi! I'd like a custom ad concept made by the IQ Ads creative team.")}
@@ -353,32 +389,26 @@ export default function CreateIQAdsPage() {
         </div>
       </div>
 
-      {/* Checkout */}
+      {/* Checkout — Generate (credit) is the one real CTA; Paystack is a quiet secondary link */}
       <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
         <div className="mx-auto w-full max-w-xl flex flex-col gap-2">
-          {priced && (
-            <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-              This video costs <strong style={{ color: ACCENT }}>₦{priced.priceNgn.toLocaleString()}</strong>
-            </p>
-          )}
-          {!priced && !pricing && selectedModel && duration && (
-            <p className="text-xs text-center" style={{ color: '#fbbf24' }}>
-              This model isn't priced yet — contact support.
-            </p>
-          )}
-          <div className="flex gap-2">
-            <button onClick={() => handleCheckout('credit')} disabled={!canCheckout}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-              style={{ background: canCheckout ? 'var(--bg-elevated)' : 'var(--bg-elevated)', color: canCheckout ? 'var(--text-primary)' : 'var(--text-muted)', border: `1px solid ${ACCENT_BDR}`, opacity: canCheckout ? 1 : 0.5 }}>
-              <Zap size={14} fill="currentColor" />
-              Pay with Credit
-            </button>
-            <button onClick={() => handleCheckout('paystack')} disabled={!canCheckout}
-              className="flex-1 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
-              style={{ background: canCheckout ? ACCENT : 'var(--bg-elevated)', color: canCheckout ? '#fff' : 'var(--text-muted)' }}>
-              Pay with Paystack
-            </button>
-          </div>
+          <button onClick={() => handleCheckout('credit')} disabled={!canCheckout}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-bold transition-all active:scale-[0.98]"
+            style={{
+              background: canCheckout ? ACCENT : 'var(--bg-elevated)',
+              color: canCheckout ? '#fff' : 'var(--text-muted)',
+              opacity: canCheckout ? 1 : 0.5,
+            }}>
+            <Zap size={14} fill="currentColor" />
+            {generateLabel}
+          </button>
+
+          <button onClick={() => handleCheckout('paystack')} disabled={!canCheckout}
+            className="w-full py-2 text-xs font-medium text-center transition-all"
+            style={{ color: canCheckout ? 'var(--text-muted)' : 'var(--text-muted)', opacity: canCheckout ? 1 : 0.4 }}>
+            Or pay with Paystack instead
+          </button>
+
           {!flyer && <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a flyer to continue</p>}
           {contentType === 'product' && humanMode === 'uploaded' && !humanRef && (
             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Upload a human reference photo to continue</p>
@@ -387,4 +417,4 @@ export default function CreateIQAdsPage() {
       </div>
     </div>
   )
-}
+            }
