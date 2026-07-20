@@ -31,6 +31,7 @@ const KNOWN_TOOLS = [
   { key: 'video_upscale',  label: 'Video Upscaler' },
   { key: 'ugc',            label: 'UGC Character' },
   { key: 'ugc_brand',      label: 'UGC Brand' },
+  { key: 'cinematic_transition',label: 'Cinematic Transition' },
 ]
 
 // ── inline editable row for one global setting ──────────────────────────
