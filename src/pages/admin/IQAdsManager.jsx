@@ -14,7 +14,6 @@
 // flags "no cost" models in search results.
 import { useState, useEffect, useCallback } from 'react'
 import { Search, X, Info } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -47,7 +46,7 @@ const ModelRow = ({ model, onToggle }) => {
   )
 }
 
-export default function IQAdsManager() {
+export default function IQAdsManager({ onNavigateToPricing }) {
   const [query,       setQuery]       = useState('')
   const [searching,   setSearching]   = useState(false)
   const [results,     setResults]     = useState([])
@@ -108,8 +107,17 @@ export default function IQAdsManager() {
         <Info size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 1 }} />
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
           Cost, margin, and currency rates live on the{' '}
-          <Link to="/admin/model-pricing" style={{ color: 'var(--brand)', fontWeight: 700 }}>Model Pricing</Link> page now.
-          This page only controls which models show up in IQ Ads and in what order.
+          {onNavigateToPricing ? (
+            <button
+              onClick={onNavigateToPricing}
+              style={{ color: 'var(--brand)', fontWeight: 700, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              Model Pricing
+            </button>
+          ) : (
+            <strong style={{ color: 'var(--text-primary)' }}>Model Pricing</strong>
+          )}
+          {' '}tab now. This page only controls which models show up in IQ Ads and in what order.
         </p>
       </div>
 
