@@ -7,6 +7,11 @@
 // Paystack path reuses the existing initialize/verify functions with
 // packageSlug = 'iqads_order'.
 //
+// Credits are the source of truth (credits_charged, snapshotted at order
+// creation). Naira only exists as a derived amount for the Paystack path —
+// same relationship as CreateVideoPage, just computed once at order time
+// instead of live per-generation.
+//
 // Pricing math itself lives in lib/pricing.js and is shared with every
 // other tool — this file just supplies IQAds' tool_key ('iqads') and
 // wires the result into an order row.
@@ -44,7 +49,10 @@ export async function fetchIqadsModels() {
 
 // ── order creation ────────────────────────────────────────────────────────
 // Creates a 'pending' iqads_orders row with the price snapshotted at
-// today's cost + margin + rate. Both payment paths start from this row.
+// today's cost + margin + rate. credits_charged is the authoritative
+// amount spent; amount_ngn/usd_to_ngn_rate/margin_multiplier are kept only
+// as an audit-trail snapshot of what that credit amount was worth in ₦ at
+// order time, for the Paystack path to charge against.
 export async function createIqadsOrder({
   userId, flyerUrl, contentType, model, duration, resolution, aspectRatio,
   humanMode, humanReferenceUrl, userDirection, paymentMethod,
@@ -69,10 +77,11 @@ export async function createIqadsOrder({
       human_mode:              humanMode,
       human_reference_url:     humanReferenceUrl || null,
       user_direction:          userDirection || null,
+      credits_charged:          priced.credits,
       cost_usd:                priced.costUsd,
-      usd_to_ngn_rate:          priced.priceNgn / priced.priceUsd, // effective rate, for audit trail
+      usd_to_ngn_rate:          priced.priceNgn / priced.priceUsd, // audit trail only — not authoritative
       margin_multiplier:        priced.priceUsd / priced.costUsd,
-      amount_ngn:               priced.priceNgn,
+      amount_ngn:               priced.priceNgn,                   // audit trail / paystack charge amount
       payment_method:           paymentMethod,
     })
     .select()
@@ -83,19 +92,16 @@ export async function createIqadsOrder({
 }
 
 // ── credit path ───────────────────────────────────────────────────────────
+// credits_charged was snapshotted at order creation — no re-derivation
+// from currency settings needed (previously this tried to convert via a
+// ngnPerCredit field that fetchGlobalPricingSettings never returned,
+// which meant this path always threw).
 export async function payIqadsOrderWithCredits({ order, userId }) {
-  const { ngnPerCredit } = await fetchGlobalPricingSettings()
-  if (!ngnPerCredit) {
-    throw new Error('Credit pricing is not configured. Use Paystack instead.')
-  }
-
-  const creditsAmount = Math.ceil(Number(order.amount_ngn) / ngnPerCredit)
-
   const { data, error } = await supabase.rpc('process_iqads_order_payment', {
     p_order_id:       order.id,
     p_user_id:        userId,
     p_payment_method: 'credit',
-    p_credits_amount: creditsAmount,
+    p_credits_amount: order.credits_charged,
   })
 
   if (error) throw new Error(error.message || 'Credit payment failed')
