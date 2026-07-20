@@ -1,3 +1,4 @@
+// src/pages/CreateImagePage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -19,6 +20,9 @@ import { usePromptTagging } from '@/hooks/usePromptTagging'
 import { fetchMentionLibrary, fetchBrandProducts } from '@/lib/ugcMentions'
 import { saveDraftImages, loadDraftImages, saveDraftJSON, loadDraftJSON, draftDelete } from '@/lib/draftCache'
 import { watchForEarlyFailure } from '@/lib/generationWatch'
+import {
+  modelSupportsResolutionChoice, fetchGlobalPricingSettings, fetchToolMargin, calculatePrice,
+} from '@/lib/pricing'
 
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
@@ -28,6 +32,7 @@ const DRAFT_PROMPT = 'create_image:prompt'
 const DRAFT_IMAGES = 'create_image:images'
 
 const MAX_SINGLE_IMAGES = 1
+const TOOL_KEY = 'create_image'
 
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
@@ -190,13 +195,28 @@ export default function CreateImagePage() {
   const [aspectRatio,   setAspectRatio]   = useState('9:16')
   const [autoRatio,     setAutoRatio]     = useState(false)
   const [model,         setModel]         = useState('')
-  const [resolution,    setResolution]    = useState('1k')
+  const [resolution,    setResolution]    = useState(null)
 const [fullscreenIdx, setFullscreenIdx] = useState(null)
   const [submitting,    setSubmitting]    = useState(false)
 
   const [mentionLibrary,       setMentionLibrary]       = useState({ characters: [], brands: [] })
   const [brandProducts,        setBrandProducts]        = useState([])
   const [brandProductsLoading, setBrandProductsLoading] = useState(false)
+
+  // ── pricing engine state — real $ cost × this tool's margin ÷ $/credit ────
+  const [globalSettings, setGlobalSettings] = useState(null)
+  const [toolMargin,     setToolMargin]     = useState(null)
+
+  useEffect(() => {
+    (async () => {
+      const [gs, margin] = await Promise.all([
+        fetchGlobalPricingSettings(),
+        fetchToolMargin(TOOL_KEY),
+      ])
+      setGlobalSettings(gs)
+      setToolMargin(margin)
+    })()
+  }, [])
 
   const skipRefinement = !(profile?.ai_prompt_refinement ?? true)
 
@@ -276,9 +296,18 @@ const loadModels = useCallback(async () => {
   const modelMaxRefImages  = selectedModel?.max_ref_images ?? 1
   const [multiMode, setMultiMode] = useState(false)
 
+  // ── resolution tiers now come from cost_usd_resolution, not the old
+  // credit_cost_resolution column. Snap to the model's first real tier
+  // whenever the model changes.
+  const supportsResolutionChoice = modelSupportsResolutionChoice(selectedModel)
+  useEffect(() => {
+    if (!selectedModel) { setResolution(null); return }
+    const keys = Object.keys(selectedModel.cost_usd_resolution || {}).filter((k) => k !== 'standard')
+    setResolution(keys.length ? keys[0] : null)
+  }, [model]) // eslint-disable-line
+
   useEffect(() => {
     setMultiMode(false)
-    setResolution('1k')
     if (!modelSupportsImage) {
       clearAllImages()
     } else if (!modelSupportsMulti && images.length > 1) {
@@ -291,18 +320,37 @@ const loadModels = useCallback(async () => {
 
   const hasImages = images.length > 0
   const type = hasImages && modelSupportsImage ? 'image_to_image' : 'text_to_image'
-  const resolutionCosts = selectedModel?.credit_cost_resolution ?? null
-  const creditCost = selectedModel
-    ? resolutionCosts
-      ? (resolutionCosts[resolution] ?? resolutionCosts['1k'] ?? 0)
-      : (hasImages && modelSupportsImage ? selectedModel.credit_cost_i2i : selectedModel.credit_cost_t2i) || 0
-    : 0
+
+  // ── price this generation via the shared pricing engine ───────────────
+  const priced = (selectedModel && globalSettings && toolMargin)
+    ? calculatePrice({
+        model: selectedModel,
+        resolution: supportsResolutionChoice ? resolution : undefined,
+        duration: undefined,
+        marginMultiplier: toolMargin,
+        globalSettings,
+      })
+    : null
+  const isPriced   = priced !== null
+  const creditCost = priced?.credits ?? 0
+
+  // Per-resolution credit labels for the Quality chips — computed live so
+  // margin/rate changes in admin are reflected without touching this page.
+  const resolutionOptions = (supportsResolutionChoice && selectedModel && globalSettings && toolMargin)
+    ? Object.keys(selectedModel.cost_usd_resolution || {})
+        .filter((k) => k !== 'standard')
+        .map((key) => {
+          const p = calculatePrice({ model: selectedModel, resolution: key, marginMultiplier: toolMargin, globalSettings })
+          return { key, label: `${key.toUpperCase()} · ${p?.credits ?? '—'} cr` }
+        })
+    : []
+
 const canAfford      = credits >= creditCost
   const promptEmpty    = !prompt.trim()
   const imageRequired  = modelRequiresImage && !hasImages
   const { blocked: concurrencyBlocked, reason: concurrencyReason } = useModelConcurrency(selectedModel)
   const buttonDisabled = promptEmpty || !canAfford || submitting || !selectedModel || imageRequired || concurrencyBlocked
-    || (creditCost === 0 && !!selectedModel && selectedModel?.model_access_type !== 'render_window')
+    || !isPriced
 
   useEffect(() => {
     if (!selectedModel) return
@@ -431,6 +479,7 @@ const canAfford      = credits >= creditCost
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Enter a prompt')
     if (!selectedModel) return toast.error('Pick a model')
+    if (!isPriced)       return toast.error('This model isn\'t priced yet — contact support')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
@@ -465,7 +514,7 @@ const canAfford      = credits >= creditCost
         prompt,
         model,
         aspect_ratio: aspectRatio,
-        resolution: resolutionCosts ? resolution : null,
+        resolution: supportsResolutionChoice ? resolution : null,
         credits_charged: creditCost,
         output_type: 'image',
         start_frame_url: null,
@@ -701,19 +750,22 @@ const canAfford      = credits >= creditCost
               />
             </div>
 
-            {resolutionCosts && (
+            {supportsResolutionChoice && resolutionOptions.length > 0 && (
               <div className="pt-1">
                 <SettingChips
                   label="Quality"
-                  options={Object.entries(resolutionCosts).map(([key, cost]) => ({
-                    label: `${key.toUpperCase()} · ${cost} cr`,
-                    value: key,
-                  }))}
+                  options={resolutionOptions.map((o) => ({ label: o.label, value: o.key }))}
                   value={resolution}
                   onChange={setResolution}
                   accent={ACCENT}
                 />
               </div>
+            )}
+
+            {selectedModel && !isPriced && (
+              <p className="text-xs text-center" style={{ color: '#fbbf24' }}>
+                This model isn't priced yet — contact support.
+              </p>
             )}
 
           </div>
@@ -757,4 +809,4 @@ const canAfford      = credits >= creditCost
 
     </div>
   )
-}
+  }
