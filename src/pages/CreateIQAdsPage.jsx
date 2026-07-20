@@ -222,7 +222,7 @@ export default function CreateIQAdsPage() {
       if (method === 'credit') {
         await payIqadsOrderWithCredits({ order, userId: user.id })
         await refreshProfile()
-        toast.success('Payment confirmed — your video is being generated 🎬')
+       toast.success('Your video is being generated. Check your Media page.', { duration: 4000 })
         await triggerIqadsGeneration(order.id)
         navigate('/media')
         return
@@ -274,9 +274,9 @@ export default function CreateIQAdsPage() {
             className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
             style={{ backdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.4)' }}
           >
-            <Loader2 size={32} className="animate-spin" style={{ color: '#fff' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: '#fff' }} />
             <p className="text-sm font-semibold" style={{ color: '#fff' }}>
-              {paying === 'credit' ? 'Processing payment…' : 'Redirecting to Paystack…'}
+              {paying === 'credit' ? 'Generating…' : 'Redirecting to Paystack…'}
             </p>
           </motion.div>
         )}
