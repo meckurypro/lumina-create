@@ -16,8 +16,14 @@
 //     gets multiplied by duration.
 //   tool_pricing_settings        one row per tool_key, one margin_multiplier
 //     applied to every model used in that tool. Not model-specific.
-//   app_settings.global_usd_to_ngn_rate / global_ngn_per_credit — the two
-//     currency conversion numbers, shared by every tool.
+//   app_settings.global_usd_per_credit  — USD value of 1 credit. Credits
+//     charged to the user = price_usd / this value. This is the ONLY thing
+//     credits are derived from — WaveSpeed/fal bill us in USD, so credits
+//     are pegged to USD, never to Naira.
+//   app_settings.global_usd_to_ngn_rate — USD → NGN exchange rate. Used
+//     ONLY for pages that let a user pay Naira directly (e.g. IQ Ads via
+//     Paystack) or that want to display a "≈ ₦X" label. It has zero role
+//     in computing how many credits a generation costs.
 import { supabase } from '@/lib/supabase'
 
 // ── real provider cost for one model at one resolution/duration ──────────
@@ -56,12 +62,12 @@ export async function fetchGlobalPricingSettings() {
   const { data } = await supabase
     .from('app_settings')
     .select('key, value')
-    .in('key', ['global_usd_to_ngn_rate', 'global_ngn_per_credit'])
+    .in('key', ['global_usd_to_ngn_rate', 'global_usd_per_credit'])
   const map = {}
   for (const row of data || []) map[row.key] = Number(row.value)
   return {
     usdToNgnRate: map.global_usd_to_ngn_rate ?? null,
-    ngnPerCredit: map.global_ngn_per_credit ?? null,
+    usdPerCredit: map.global_usd_per_credit  ?? null,
   }
 }
 
@@ -104,16 +110,23 @@ export async function saveToolMargin(toolKey, marginMultiplier) {
 // Pass in already-fetched globalSettings/marginMultiplier when calling this
 // repeatedly (e.g. on every keystroke in a duration/resolution picker) so
 // each call isn't a fresh round-trip — fetch those once per page load.
+//
+// Credits are derived PURELY from USD cost: credits = price_usd / usd_per_credit.
+// NGN is a separate, optional output — only populated when a usdToNgnRate is
+// available, and only meant for pages that need to show/charge Naira directly
+// (e.g. IQ Ads' Paystack flow). It never feeds into the credit calculation.
 export function calculatePrice({ model, resolution, duration, marginMultiplier, globalSettings }) {
-  if (!marginMultiplier || !globalSettings?.usdToNgnRate || !globalSettings?.ngnPerCredit) return null
+  if (!marginMultiplier || !globalSettings?.usdPerCredit) return null
 
   const costUsd = calculateModelCostUsd({ model, resolution, duration })
   if (costUsd == null) return null
 
   const priceUsd = costUsd * marginMultiplier
-  const priceNgn = Math.round(priceUsd * globalSettings.usdToNgnRate)
-  const credits  = Math.ceil(priceNgn / globalSettings.ngnPerCredit)
+  const credits  = Math.ceil(priceUsd / globalSettings.usdPerCredit)
+
+  const priceNgn = globalSettings.usdToNgnRate
+    ? Math.round(priceUsd * globalSettings.usdToNgnRate)
+    : null
 
   return { costUsd, priceUsd, priceNgn, credits }
 }
-
