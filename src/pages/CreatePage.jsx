@@ -2,66 +2,157 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle, Crown, Mic, Clock, ScanSearch, Maximize, Clapperboard } from 'lucide-react'
+import {
+  ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle,
+  Crown, Mic, Clock, ScanSearch, Maximize, Clapperboard,
+} from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { TopBar } from '@/components/layout/TopBar'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 
-const TYPE_LABELS = {
-  text_to_image:   'Text to Image',
-  image_to_image:  'Image to Image',
-  text_to_video:   'Text to Video',
-  image_to_video:  'Image to Video',
-  start_end_frame: 'Start + End Frame',
-  end_frame_text:  'End Frame + Text',
-  motion_transfer: 'Motion Transfer',
+// ── Accent system ────────────────────────────────────────────────────────────
+// Color is a category signal, not a per-feature decoration: every tile that
+// produces the same kind of output shares the same accent. Four families
+// only — image, video, voice, and UGC (character-driven, spans both) — so a
+// color always means the same thing everywhere it appears, in both themes.
+// These map onto the existing tokens in index.css; no new CSS is required.
+const ACCENTS = {
+  image: { color: 'var(--tool-image)', subtle: 'var(--tool-image-subtle)', border: 'var(--tool-image-border)' },
+  video: { color: 'var(--tool-video)', subtle: 'var(--tool-video-subtle)', border: 'var(--tool-video-border)' },
+  voice: { color: 'var(--tool-talking-head)', subtle: 'var(--tool-talking-head-subtle)', border: 'var(--tool-talking-head-border)' },
+  ugc:   { color: 'var(--tool-ugc)', subtle: 'var(--tool-ugc-subtle)', border: 'var(--tool-ugc-border)' },
 }
 
+// ── Tools ────────────────────────────────────────────────────────────────────
+// requiresMaster / comingSoonForPublic are real flags a tile is driven by,
+// not dead props — flip either one and the tile locks/greys out on its own.
 const TOOLS = [
   {
-    id:        'create_image',
-    label:     'Create Image',
-    subtitle:  'From text or reference photo',
-    icon:      ImageIcon,
-    route:     '/create/image',
-    accentVar: '--tool-image',
+    id: 'create_image', label: 'Create Image', subtitle: 'From text or reference photo',
+    icon: ImageIcon, route: '/create/image', accent: 'image',
   },
   {
-    id:        'create_video',
-    label:     'Create Video',
-    subtitle:  'Animate, generate or transform frames',
-    icon:      VideoIcon,
-    route:     '/create/video',
-    accentVar: '--tool-video',
-  },
-{
-    id:        'copy_motion',
-    label:     'Copy Motion',
-    subtitle:  'Transfer motion from video to image',
-    icon:      Layers,
-    route:     '/create/copy-motion',
-    accentVar: '--tool-motion',
+    id: 'create_video', label: 'Create Video', subtitle: 'Animate, generate or transform frames',
+    icon: VideoIcon, route: '/create/video', accent: 'video',
   },
   {
-    id:        'talking_head',
-    label:     'Talking Head',
-    subtitle:  'Animate faces with text, voice or audio',
-    icon:      Mic,
-    route:     '/create/talking-head',
-    accentVar: '--tool-talking-head',
+    id: 'copy_motion', label: 'Copy Motion', subtitle: 'Transfer motion from video to image',
+    icon: Layers, route: '/create/copy-motion', accent: 'video',
   },
   {
-    id:        'create_ugc',
-    label:     'UGC',
-    subtitle:  'Generate content with your characters',
-    icon:      UserCircle,
-    route:     '/create/ugc',
-    accentVar: '--tool-ugc',
+    id: 'talking_head', label: 'Talking Head', subtitle: 'Animate faces with text, voice or audio',
+    icon: Mic, route: '/create/talking-head', accent: 'voice',
+  },
+  {
+    id: 'create_ugc', label: 'UGC', subtitle: 'Generate content with your characters',
+    icon: UserCircle, route: '/create/ugc', accent: 'ugc',
   },
 ]
 
-// ── Template Card ─────────────────────────────────────────────────────────────
+// ── Utilities ────────────────────────────────────────────────────────────────
+const UTILITY_SECTIONS = [
+  {
+    title: 'IQ Ads',
+    items: [
+      { id: 'iq_ads', label: 'IQ Ads', subtitle: 'Turn your flyer into a cinematic commercial', icon: Clapperboard, route: '/create/iq-ads', accent: 'video' },
+    ],
+  },
+  {
+    title: 'Photo Tools',
+    items: [
+      { id: 'photo_polish', label: 'Photo Polish', subtitle: 'Transform any photo into a cinematic shot', icon: Sparkles, route: '/create/photo-polish', accent: 'image' },
+      { id: 'image_upscaler', label: 'Image Upscaler', subtitle: 'Enlarge and sharpen any image with AI', icon: ScanSearch, route: '/create/image-upscaler', accent: 'image' },
+    ],
+  },
+  {
+    title: 'Video Tools',
+    items: [
+      { id: 'video_upscaler', label: 'Video Upscaler', subtitle: 'Upscale any video to higher resolution', icon: Maximize, route: '/create/video-upscaler', accent: 'video' },
+    ],
+  },
+]
+
+const TABS = ['utilities', 'tools', 'templates', 'canvas']
+
+// ── Feature tile ─────────────────────────────────────────────────────────────
+// One card component for both the Tools tab and the Utilities tab, so the
+// two tabs read as the same product instead of two different ones. The
+// "Open" affordance is always visible rather than hover-only — this is a
+// touch-first app, and most users will never see a :hover state.
+function FeatureTile({ label, subtitle, icon: Icon, route, accent, index, navigate, locked, comingSoon, badge }) {
+  const a = ACCENTS[accent] ?? ACCENTS.image
+  const disabled = locked || comingSoon
+
+  const handleClick = () => {
+    if (!disabled) navigate(route)
+  }
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index, 8) * 0.04 }}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      onClick={handleClick}
+      aria-disabled={disabled}
+      className="flex flex-col items-start text-left rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
+      style={{
+        background: 'var(--bg-card)',
+        border: `1px solid ${disabled ? 'var(--border-color)' : a.border}`,
+        padding: '18px',
+        opacity: disabled ? 0.65 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      <div
+        className="rounded-2xl flex items-center justify-center flex-shrink-0 mb-3"
+        style={{
+          width: 44,
+          height: 44,
+          background: disabled ? 'var(--bg-elevated)' : a.subtle,
+          border: `1px solid ${disabled ? 'var(--border-color)' : a.border}`,
+        }}
+      >
+        <Icon
+          style={{ width: 20, height: 20, color: disabled ? 'var(--text-muted)' : a.color }}
+          strokeWidth={1.4}
+        />
+      </div>
+
+      <span className="text-sm font-bold mb-1" style={{ color: disabled ? 'var(--text-muted)' : a.color }}>
+        {label}
+      </span>
+      <span className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+        {subtitle}
+      </span>
+
+      <div className="w-full flex items-center justify-between mt-4">
+        {locked ? (
+          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--brand)' }}>
+            <Crown size={11} /> Master
+          </span>
+        ) : comingSoon ? (
+          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+            <Clock size={11} /> Coming soon
+          </span>
+        ) : badge ? (
+          <span
+            className="px-1.5 py-0.5 rounded-md font-semibold"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: 11 }}
+          >
+            {badge}
+          </span>
+        ) : (
+          <span />
+        )}
+        {!disabled && <ArrowRight size={14} style={{ color: 'var(--text-muted)' }} />}
+      </div>
+    </motion.button>
+  )
+}
+
+// ── Template card ─────────────────────────────────────────────────────────────
 const TemplateCard = ({ template, index, onClick }) => (
   <motion.button
     initial={{ opacity: 0, y: 16 }}
@@ -74,12 +165,7 @@ const TemplateCard = ({ template, index, onClick }) => (
   >
     <div
       className="w-full relative flex items-center justify-center overflow-hidden"
-      style={{
-        aspectRatio: '1 / 1',
-        background: template.thumbnail_url || template.demo_video_url
-          ? undefined
-          : 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(234,88,12,0.06))',
-      }}
+      style={{ aspectRatio: '1 / 1', background: 'var(--bg-elevated)' }}
     >
       {template.demo_video_url ? (
         <video
@@ -95,7 +181,7 @@ const TemplateCard = ({ template, index, onClick }) => (
           className="absolute inset-0 w-full h-full object-cover"
         />
       ) : (
-        <Sparkles size={28} style={{ color: 'var(--brand)', opacity: 0.35 }} />
+        <Sparkles size={26} style={{ color: 'var(--text-muted)' }} strokeWidth={1.4} />
       )}
     </div>
 
@@ -104,7 +190,7 @@ const TemplateCard = ({ template, index, onClick }) => (
         <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
           {template.name}
         </p>
-        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+        <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
           {template.description}
         </p>
       </div>
@@ -113,212 +199,24 @@ const TemplateCard = ({ template, index, onClick }) => (
   </motion.button>
 )
 
-// ── Square tool card (first 2 tools) ─────────────────────────────────────────
-function ToolCard({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate }) {
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={() => navigate(route)}
-      className="flex flex-col items-center justify-between rounded-2xl overflow-hidden transition-all"
-      style={{
-        background:  'var(--bg-card)',
-        border:      `1px solid var(${accentVar}-border, var(--border-color))`,
-        aspectRatio: '1 / 1',
-        width:       '100%',
-        padding:     '20px',
-      }}
-    >
-      <div className="flex flex-1 items-center justify-center w-full">
-        <div
-          className="rounded-2xl flex items-center justify-center"
-          style={{
-            width:       '65%',
-            aspectRatio: '1 / 1',
-            background:  `var(${accentVar}-subtle, var(--bg-elevated))`,
-            border:      `1px solid var(${accentVar}-border, var(--border-color))`,
-          }}
-        >
-          <Icon
-            style={{
-              width:  '42%',
-              height: '42%',
-              color:  `var(${accentVar}, var(--text-primary))`,
-            }}
-            strokeWidth={1.4}
-          />
-        </div>
-      </div>
-      <div className="w-full flex flex-col gap-0.5 items-center text-center flex-shrink-0">
-        <span
-          className="text-sm font-bold"
-          style={{ color: `var(${accentVar}, var(--text-primary))` }}
-        >
-          {label}
-        </span>
-        <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-          {subtitle}
-        </span>
-      </div>
-    </motion.button>
-  )
-}
-
-// ── Wide tool card (remaining tools) ─────────────────────────────────────────
-function ToolCardWide({ id, label, subtitle, icon: Icon, route, accentVar, index, navigate, locked, weeklyBadge, comingSoon }) {
-  const handleClick = () => {
-    if (!locked && !comingSoon) navigate(route)
-  }
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08 }}
-      whileTap={{ scale: locked || comingSoon ? 1 : 0.97 }}
-      onClick={handleClick}
-      className="flex items-center gap-4 w-full rounded-2xl transition-all"
-      style={{
-        background: 'var(--bg-card)',
-        border:     `1px solid var(${accentVar}-border, var(--border-color))`,
-        padding:    '16px 20px',
-        opacity:    locked ? 0.75 : 1,
-        cursor:     locked || comingSoon ? 'default' : 'pointer',
-      }}
-    >
-      <div
-        className="rounded-2xl flex items-center justify-center flex-shrink-0"
-        style={{
-          width:      52,
-          height:     52,
-          background: `var(${accentVar}-subtle, var(--bg-elevated))`,
-          border:     `1px solid var(${accentVar}-border, var(--border-color))`,
-        }}
-      >
-        <Icon
-          style={{
-            width:  22,
-            height: 22,
-            color:  comingSoon
-              ? 'var(--text-muted)'
-              : `var(${accentVar}, var(--text-primary))`,
-          }}
-          strokeWidth={1.4}
-        />
-      </div>
-
-      <div className="flex flex-col gap-0.5 text-left flex-1 min-w-0">
-        <span
-          className="text-sm font-bold"
-          style={{
-            color: comingSoon
-              ? 'var(--text-muted)'
-              : `var(${accentVar}, var(--text-primary))`,
-          }}
-        >
-          {label}
-        </span>
-
-        {locked ? (
-          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--brand)' }}>
-            <Crown size={10} />
-            Upgrade to Master
-          </span>
-        ) : comingSoon ? (
-          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-            <Clock size={10} />
-            Coming soon
-          </span>
-        ) : weeklyBadge ? (
-          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-            {subtitle}
-            <span
-              className="ml-2 px-1.5 py-0.5 rounded-md text-xs font-semibold"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: 10 }}
-            >
-              {weeklyBadge}
-            </span>
-          </span>
-        ) : (
-          <span className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-            {subtitle}
-          </span>
-        )}
-      </div>
-
-      {locked
-        ? <Crown size={15} style={{ color: 'var(--brand)', flexShrink: 0 }} />
-        : comingSoon
-          ? <Clock size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          : <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-      }
-    </motion.button>
-  )
-}
-
-// ── Utility tile — grid card shared between Photo Polish, Image Upscaler, Video Upscaler
-//
-// Icon-on-top layout instead of a horizontal row: scales cleanly from a
-// single mobile column into a 2–3 column grid on desktop (see Utilities
-// tab below), where the old full-width row just left the rest of the
-// screen empty. "Open ↦" appears on hover instead of a static arrow, so
-// the resting state stays quiet and the affordance shows up on intent.
-function UtilityTile({ Icon, iconColor, iconBg, iconBorder, title, titleColor, subtitle, route, navigate, delay }) {
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      whileTap={{ scale: 0.97 }}
-      onClick={() => navigate(route)}
-      className="group flex flex-col items-start text-left rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--tile-accent-border)] hover:shadow-[var(--shadow)]"
-      style={{
-        background:              'var(--bg-card)',
-        border:                  '1px solid var(--border-color)',
-        padding:                 '22px',
-        '--tile-accent-border':  iconBorder,
-      }}
-    >
-      <div
-        className="rounded-2xl flex items-center justify-center flex-shrink-0 mb-4"
-        style={{ width: 46, height: 46, background: iconBg, border: `1px solid ${iconBorder}` }}
-      >
-        <Icon style={{ width: 20, height: 20, color: iconColor }} strokeWidth={1.4} />
-      </div>
-      <span className="text-sm font-bold mb-1" style={{ color: titleColor }}>{title}</span>
-      <span className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{subtitle}</span>
-      <div
-        className="flex items-center gap-1 mt-4 text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ color: titleColor }}
-      >
-        Open
-        <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </motion.button>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function CreatePage() {
-  const navigate                        = useNavigate()
-  const location                        = useLocation()
-  const { isStaff, isAdmin, profile }   = useAuth()
-  const isNovice                        = profile?.user_tier !== 'master'
-  const [activeTab, setActiveTab]       = useState(location.state?.tab || 'tools')
-  useEffect(() => {
-  if (location.state?.tab) {
-    setActiveTab(location.state.tab)
-  }
-}, [location.state?.tab])
-  const [templates,  setTemplates]      = useState([])
-  const [loading,    setLoading]        = useState(true)
-  const [weeklyUsed, setWeeklyUsed]     = useState(null)
-  const [weeklyLimit, setWeeklyLimit]   = useState(20)
+  const navigate                      = useNavigate()
+  const location                      = useLocation()
+  const { isStaff, isAdmin, profile } = useAuth()
+  const isNovice                      = profile?.user_tier !== 'master'
+  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'tools')
+  const [templates, setTemplates]     = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [weeklyUsed, setWeeklyUsed]   = useState(null)
+  const [weeklyLimit, setWeeklyLimit] = useState(20)
 
   // Admins and staff bypass coming-soon gates
   const isPrivileged = isAdmin || isStaff
+
+  useEffect(() => {
+    if (location.state?.tab) setActiveTab(location.state.tab)
+  }, [location.state?.tab])
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -330,7 +228,7 @@ export default function CreatePage() {
     fetchTemplates()
   }, [])
 
-  // Fetch weekly Copy Motion usage for Novices (only when Copy Motion is live for them)
+  // Weekly Copy Motion usage, for the Novice weekly-count badge
   useEffect(() => {
     if (!isNovice || !profile?.id || !isPrivileged) return
     const fetchWeekly = async () => {
@@ -349,9 +247,13 @@ export default function CreatePage() {
     fetchWeekly()
   }, [isNovice, profile?.id, isPrivileged])
 
-  const handleTemplateSelect = (template) => {
-    navigate(`/create/${template.slug}`)
-  }
+  const handleTemplateSelect = (template) => navigate(`/create/${template.slug}`)
+
+  // Consistent, explicit breakpoint grid everywhere a tile grid appears —
+  // matches the Templates tab's own convention instead of introducing a
+  // separate auto-fill pattern that can orphan a lone tile with unclaimed
+  // column tracks.
+  const gridClass = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4'
 
   return (
     <>
@@ -367,7 +269,7 @@ export default function CreatePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
-            {['utilities', 'tools', 'templates', 'canvas'].map((tab) => (
+            {TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -386,81 +288,43 @@ export default function CreatePage() {
           {/* Tab content */}
           <div className="flex flex-col flex-1 min-h-0">
 
-          {/* ── Tools Tab ── */}
+            {/* ── Tools Tab ── */}
             {activeTab === 'tools' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-1 items-center justify-center"
-              >
-                <div className="w-full max-w-2xl">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={gridClass}>
+                {TOOLS.map((tool, i) => {
+                  const locked      = !!tool.requiresMaster && isNovice && !isPrivileged
+                  const comingSoon  = !!tool.comingSoonForPublic && !isPrivileged
+                  const isCopyMotion = tool.id === 'copy_motion'
+                  const badge = isCopyMotion && isNovice && isPrivileged && weeklyUsed !== null
+                    ? `${weeklyUsed}/${weeklyLimit} this week`
+                    : null
 
-                  {/* First row — 2 square cards */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    {TOOLS.slice(0, 2).map(({ id, label, subtitle, icon: Icon, route, accentVar }, i) => (
-                      <ToolCard
-                        key={id}
-                        id={id}
-                        label={label}
-                        subtitle={subtitle}
-                        icon={Icon}
-                        route={route}
-                        accentVar={accentVar}
-                        index={i}
-                        navigate={navigate}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Remaining tools — 2-column grid on desktop, single
-                      column on mobile, instead of one long stacked list. */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {TOOLS.slice(2).map(({ id, label, subtitle, icon: Icon, route, accentVar, comingSoonForPublic }, i) => {
-                      const isCopyMotion = id === 'copy_motion'
-                      const comingSoon   = !!comingSoonForPublic && !isPrivileged
-                      const locked       = false
-                      // Only show weekly badge when Copy Motion is live (privileged) and user is novice
-                      const weeklyBadge  = isCopyMotion && isNovice && isPrivileged && weeklyUsed !== null
-                        ? `${weeklyUsed}/${weeklyLimit} this week`
-                        : null
-
-                      return (
-                        <ToolCardWide
-                          key={id}
-                          id={id}
-                          label={label}
-                          subtitle={subtitle}
-                          icon={Icon}
-                          route={route}
-                          accentVar={accentVar}
-                          index={i + 2}
-                          navigate={navigate}
-                          locked={locked}
-                          comingSoon={comingSoon}
-                          weeklyBadge={weeklyBadge}
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
+                  return (
+                    <FeatureTile
+                      key={tool.id}
+                      label={tool.label}
+                      subtitle={tool.subtitle}
+                      icon={tool.icon}
+                      route={tool.route}
+                      accent={tool.accent}
+                      index={i}
+                      navigate={navigate}
+                      locked={locked}
+                      comingSoon={comingSoon}
+                      badge={badge}
+                    />
+                  )
+                })}
               </motion.div>
             )}
 
             {/* ── Templates Tab ── */}
             {activeTab === 'templates' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="overflow-y-auto"
-              >
-       {loading ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="overflow-y-auto">
+                {loading ? (
+                  <div className={gridClass}>
                     {[...Array(4)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-full rounded-2xl"
-                        style={{ aspectRatio: '1/1', background: 'var(--bg-card)' }}
-                      />
+                      <div key={i} className="w-full rounded-2xl" style={{ aspectRatio: '1/1', background: 'var(--bg-card)' }} />
                     ))}
                   </div>
                 ) : templates.length === 0 ? (
@@ -468,7 +332,7 @@ export default function CreatePage() {
                     No templates yet
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className={gridClass}>
                     {templates.map((template, i) => (
                       <TemplateCard
                         key={template.id}
@@ -482,96 +346,32 @@ export default function CreatePage() {
               </motion.div>
             )}
 
-           {/* ── Utilities Tab ── */}
+            {/* ── Utilities Tab ── */}
             {activeTab === 'utilities' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="overflow-y-auto"
-              >
-                {/* Wider on desktop so the grid has room to breathe into
-                    2–3 columns instead of one narrow centered row. */}
-                <div className="w-full max-w-2xl lg:max-w-5xl">
-
-                  {/* ── IQ Ads ────────────────────────────────────────── */}
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-                    style={{ color: 'var(--text-muted)' }}>
-                    IQ Ads
-                  </p>
-
-                  <div className="grid gap-4 mb-8 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
-                    <UtilityTile
-                      Icon={Clapperboard}
-                      iconColor="var(--tool-iqads, #f97316)"
-                      iconBg="var(--tool-iqads-subtle, var(--bg-elevated))"
-                      iconBorder="var(--tool-iqads-border, var(--border-color))"
-                      title="IQ Ads"
-                      titleColor="var(--tool-iqads, #f97316)"
-                      subtitle="Turn your flyer into a cinematic commercial"
-                      route="/create/iq-ads"
-                      navigate={navigate}
-                      delay={0.02}
-                    />
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="overflow-y-auto">
+                {UTILITY_SECTIONS.map((section, si) => (
+                  <div key={section.title} className={si < UTILITY_SECTIONS.length - 1 ? 'mb-8' : ''}>
+                    <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
+                      {section.title}
+                    </p>
+                    <div className={gridClass}>
+                      {section.items.map((item, i) => (
+                        <FeatureTile
+                          key={item.id}
+                          label={item.label}
+                          subtitle={item.subtitle}
+                          icon={item.icon}
+                          route={item.route}
+                          accent={item.accent}
+                          index={i}
+                          navigate={navigate}
+                          locked={!!item.requiresMaster && isNovice && !isPrivileged}
+                          comingSoon={!!item.comingSoonForPublic && !isPrivileged}
+                        />
+                      ))}
+                    </div>
                   </div>
-
-                  {/* ── Photo Tools ───────────────────────────────────────── */}
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-                    style={{ color: 'var(--text-muted)' }}>
-                    Photo Tools
-                  </p>
-
-                  {/* auto-fill keeps tiles at a natural card width instead of
-                      stretching to fill the row when there are only 1–2 items. */}
-                  <div className="grid gap-4 mb-8 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
-                    <UtilityTile
-                      Icon={Sparkles}
-                      iconColor="var(--tool-polish, #f59e0b)"
-                      iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
-                      iconBorder="var(--tool-polish-border, var(--border-color))"
-                      title="Photo Polish"
-                      titleColor="var(--tool-polish, #f59e0b)"
-                      subtitle="Transform any photo into a cinematic shot"
-                      route="/create/photo-polish"
-                      navigate={navigate}
-                      delay={0.06}
-                    />
-
-                    <UtilityTile
-                      Icon={ScanSearch}
-                      iconColor="var(--tool-polish, #f59e0b)"
-                      iconBg="var(--tool-polish-subtle, var(--bg-elevated))"
-                      iconBorder="var(--tool-polish-border, var(--border-color))"
-                      title="Image Upscaler"
-                      titleColor="var(--tool-polish, #f59e0b)"
-                      subtitle="Enlarge and sharpen any image with AI"
-                      route="/create/image-upscaler"
-                      navigate={navigate}
-                      delay={0.10}
-                    />
-                  </div>
-
-                  {/* ── Video Tools ───────────────────────────────────────── */}
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-                    style={{ color: 'var(--text-muted)' }}>
-                    Video Tools
-                  </p>
-
-<div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
-                    <UtilityTile
-                      Icon={Maximize}
-                      iconColor="var(--tool-motion, #8b5cf6)"
-                      iconBg="var(--tool-motion-subtle, var(--bg-elevated))"
-                      iconBorder="var(--tool-motion-border, var(--border-color))"
-                      title="Video Upscaler"
-                      titleColor="var(--tool-motion, #8b5cf6)"
-                      subtitle="Upscale any video to higher resolution"
-                      route="/create/video-upscaler"
-                      navigate={navigate}
-                      delay={0.14}
-                    />
-                  </div>
-
-                </div>
+                ))}
               </motion.div>
             )}
 
@@ -584,23 +384,11 @@ export default function CreatePage() {
               >
                 <div
                   className="rounded-2xl flex items-center justify-center mb-5"
-                  style={{
-                    width:      64,
-                    height:     64,
-                    background: 'var(--bg-elevated)',
-                    border:     '1px solid var(--border-color)',
-                  }}
+                  style={{ width: 64, height: 64, background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
                 >
-                  <img
-                    src="/icon-192.png"
-                    alt="Canvas"
-                    className="logo-icon"
-                    style={{ width: 36, height: 36 }}
-                  />
+                  <img src="/icon-192.png" alt="Canvas" className="logo-icon" style={{ width: 36, height: 36 }} />
                 </div>
-                <h2 className="text-lg font-black mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Coming Soon
-                </h2>
+                <h2 className="text-lg font-black mb-2" style={{ color: 'var(--text-primary)' }}>Coming Soon</h2>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)', maxWidth: 260 }}>
                   We're putting the finishing touches on something great — check back soon.
                 </p>
