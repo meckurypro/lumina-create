@@ -6,71 +6,30 @@
 // credit-deduction flow in this app (see generationsDb.deductCredits).
 // Paystack path reuses the existing initialize/verify functions with
 // packageSlug = 'iqads_order'.
+//
+// Pricing math itself lives in lib/pricing.js and is shared with every
+// other tool — this file just supplies IQAds' tool_key ('iqads') and
+// wires the result into an order row.
 import { supabase } from '@/lib/supabase'
 import { initializePayment } from '@/lib/paystack'
-import { IQADS_RESOLUTIONS } from '@/lib/iqadsConstants'
+import {
+  fetchGlobalPricingSettings, fetchToolMargin, calculatePrice,
+  modelSupportsResolutionChoice,
+} from '@/lib/pricing'
 
-// ── pricing preview (mirrors the formula used server-side — for display
-// only; the order row snapshots the authoritative price at creation) ──
-//
-// Reads real cost from models.cost_usd_per_second_resolution, e.g.
-//   { "480p": 0.031, "720p": 0.052 }
-// which is the column the admin panel (IQAdsManager.jsx) actually writes
-// to. This used to read model.iqads_cost_per_second_480p_usd and
-// model.iqads_720p_cost_multiplier — neither of which exist in the
-// schema — so this always returned null and silently disabled checkout.
-export function calculateIqadsPrice({ model, duration, resolution }) {
-  const costMap = model?.cost_usd_per_second_resolution
+const TOOL_KEY = 'iqads'
 
-  if (!costMap || typeof costMap !== 'object') {
-    if (import.meta.env.DEV && model?.is_iqads_model) {
-      console.warn(
-        `[iqads] Model "${model.value}" is enabled for IQ Ads but has no cost_usd_per_second_resolution set. ` +
-        `Set real cost data for it in the IQ Ads admin panel — until then it can't be priced or checked out.`
-      )
-    }
-    return null
-  }
+export { modelSupportsResolutionChoice as iqadsSupportsResolutionChoice }
 
-  const raw = costMap[resolution]
-  if (raw == null) {
-    if (import.meta.env.DEV) {
-      console.warn(
-        `[iqads] Model "${model.value}" has no cost entered for resolution "${resolution}". ` +
-        `Available: ${Object.keys(costMap).join(', ') || '(none)'}`
-      )
-    }
-    return null // this model has no real cost entered for this resolution
-  }
-
-  const perUnit = Number(raw)
-  if (Number.isNaN(perUnit)) return null
-
-  const costUsd = model.is_flat_rate ? perUnit : perUnit * Number(duration)
-
-  return { costUsd, perSecond: model.is_flat_rate ? null : perUnit }
-}
-
-// Whether a model has real cost data for more than just the default
-// resolution — drives whether the Resolution chips render at all.
-export function iqadsSupportsResolutionChoice(model) {
-  const costMap = model?.cost_usd_per_second_resolution
-  if (!costMap) return false
-  return IQADS_RESOLUTIONS.filter((res) => costMap[res] != null).length > 1
-}
-
-export async function fetchIqadsGlobalSettings() {
-  const { data } = await supabase
-    .from('app_settings')
-    .select('key, value')
-    .in('key', ['iqads_usd_to_ngn_rate', 'iqads_margin_multiplier', 'iqads_ngn_per_credit'])
-  const map = {}
-  for (const row of data || []) map[row.key] = Number(row.value)
-  return {
-    usdToNgnRate:     map.iqads_usd_to_ngn_rate     ?? null,
-    marginMultiplier: map.iqads_margin_multiplier   ?? null,
-    ngnPerCredit:     map.iqads_ngn_per_credit       ?? null, // flat conversion rate for the credit path
-  }
+// ── pricing preview (for display — the order row snapshots the
+// authoritative price at creation, computed the same way server-side
+// should if/when this moves behind an edge function) ─────────────────
+export async function calculateIqadsPrice({ model, duration, resolution }) {
+  const [globalSettings, marginMultiplier] = await Promise.all([
+    fetchGlobalPricingSettings(),
+    fetchToolMargin(TOOL_KEY),
+  ])
+  return calculatePrice({ model, resolution, duration, marginMultiplier, globalSettings })
 }
 
 export async function fetchIqadsModels() {
@@ -85,24 +44,15 @@ export async function fetchIqadsModels() {
 
 // ── order creation ────────────────────────────────────────────────────────
 // Creates a 'pending' iqads_orders row with the price snapshotted at
-// today's global settings. Both payment paths start from this row.
+// today's cost + margin + rate. Both payment paths start from this row.
 export async function createIqadsOrder({
   userId, flyerUrl, contentType, model, duration, resolution, aspectRatio,
   humanMode, humanReferenceUrl, userDirection, paymentMethod,
 }) {
-  const settings = await fetchIqadsGlobalSettings()
-  if (!settings.usdToNgnRate || !settings.marginMultiplier) {
-    throw new Error('IQ Ads pricing is not configured yet. Contact support.')
-  }
-
-  const priced = calculateIqadsPrice({ model, duration, resolution })
+  const priced = await calculateIqadsPrice({ model, duration, resolution })
   if (!priced) {
-    throw new Error('This model does not support the selected resolution.')
+    throw new Error('This model is not priced for the selected resolution yet. Contact support.')
   }
-
-  const costUsd   = priced.costUsd
-  const costNgn   = costUsd * settings.usdToNgnRate
-  const amountNgn = Math.round(costNgn * settings.marginMultiplier)
 
   const { data: order, error } = await supabase
     .from('iqads_orders')
@@ -119,10 +69,10 @@ export async function createIqadsOrder({
       human_mode:              humanMode,
       human_reference_url:     humanReferenceUrl || null,
       user_direction:          userDirection || null,
-      cost_usd:                costUsd,
-      usd_to_ngn_rate:          settings.usdToNgnRate,
-      margin_multiplier:        settings.marginMultiplier,
-      amount_ngn:               amountNgn,
+      cost_usd:                priced.costUsd,
+      usd_to_ngn_rate:          priced.priceNgn / priced.priceUsd, // effective rate, for audit trail
+      margin_multiplier:        priced.priceUsd / priced.costUsd,
+      amount_ngn:               priced.priceNgn,
       payment_method:           paymentMethod,
     })
     .select()
@@ -134,12 +84,12 @@ export async function createIqadsOrder({
 
 // ── credit path ───────────────────────────────────────────────────────────
 export async function payIqadsOrderWithCredits({ order, userId }) {
-  const settings = await fetchIqadsGlobalSettings()
-  if (!settings.ngnPerCredit) {
-    throw new Error('Credit pricing is not configured for IQ Ads. Use Paystack instead.')
+  const { ngnPerCredit } = await fetchGlobalPricingSettings()
+  if (!ngnPerCredit) {
+    throw new Error('Credit pricing is not configured. Use Paystack instead.')
   }
 
-  const creditsAmount = Math.ceil(Number(order.amount_ngn) / settings.ngnPerCredit)
+  const creditsAmount = Math.ceil(Number(order.amount_ngn) / ngnPerCredit)
 
   const { data, error } = await supabase.rpc('process_iqads_order_payment', {
     p_order_id:       order.id,
@@ -167,9 +117,6 @@ export async function payIqadsOrderWithPaystack({ order, email, userId }) {
 }
 
 // ── trigger generation after payment confirms ───────────────────────────
-// Called after payIqadsOrderWithCredits resolves successfully (Paystack
-// path triggers this from PaymentCallbackPage instead, once verify-payment
-// returns kind: 'iqads_order').
 export async function triggerIqadsGeneration(orderId) {
   const { data, error } = await supabase.functions.invoke('iqads-generate', {
     body: { orderId },
