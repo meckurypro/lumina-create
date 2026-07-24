@@ -19,10 +19,18 @@ import { ModelDropdown } from '@/components/create/ModelDropdown'
 import { SettingChips } from '@/components/create/SettingChips'
 import { applyModelPreferences } from '@/hooks/useModelPreferences'
 import { watchForEarlyFailure } from '@/lib/generationWatch'
+import {
+  calculateModelCostUsd, fetchGlobalPricingSettings, fetchToolMargin,
+} from '@/lib/pricing'
 
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
+
+// NOTE: no existing draft-key or snake_case identity string elsewhere in
+// this file to anchor on — confirm this matches the tool_margins row for
+// this page before shipping, or pricing will silently come back unpriced.
+const TOOL_KEY = 'ugc_brand'
 
 const ALL_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
@@ -177,6 +185,21 @@ const { eligible: canUseRWModels } = useRenderWindowEligibility()
   // break the link between a visible chip and its underlying item.
   const [taggedItems, setTaggedItems] = useState([])
 
+  // ── pricing engine state ──────────────────────────────────────────────
+  const [globalSettings, setGlobalSettings] = useState(null)
+  const [toolMargin,     setToolMargin]     = useState(null)
+
+  useEffect(() => {
+    (async () => {
+      const [gs, margin] = await Promise.all([
+        fetchGlobalPricingSettings(),
+        fetchToolMargin(TOOL_KEY),
+      ])
+      setGlobalSettings(gs)
+      setToolMargin(margin)
+    })()
+  }, [])
+
   useEffect(() => { loadBrand(); loadModels(); loadProducts() }, [brandId, userProfile?.user_tier])
 
   const loadBrand = async () => {
@@ -241,29 +264,40 @@ const loadModels = useCallback(async () => {
   const caps = selectedModel ? {
     supportedDurations:    selectedModel.supported_durations     ?? ['5', '8', '10'],
     supportedAspectRatios: selectedModel.supported_aspect_ratios ?? ['9:16', '16:9', '1:1'],
-    isFlatRate:            selectedModel.is_flat_rate            ?? false,
   } : {
     supportedDurations:    ['5'],
     supportedAspectRatios: ['9:16', '16:9', '1:1'],
-    isFlatRate:            false,
   }
 
-  const hasImages  = images.filter(Boolean).length > 0
-  const creditCost = (() => {
-    if (!selectedModel) return 0
-    const base = outputType === 'image'
-      ? (hasImages
-          ? selectedModel.credit_cost_i2i
-          : selectedModel.credit_cost_t2i) || 0
-      : caps.isFlatRate
-        ? selectedModel.credit_cost_t2i || 0
-        : (selectedModel.credit_cost_t2i || 0) * parseInt(duration)
-    return Math.ceil(base)
+  const hasImages = images.filter(Boolean).length > 0
+
+  // ── Price via the shared pricing engine ──────────────────────────────
+  // Real cost scales with duration via the model's cost_usd_* fields,
+  // resolved inside calculateModelCostUsd — no separate hand-rolled
+  // isFlatRate/duration-multiplier branch, and no i2i-vs-t2i split (the
+  // engine prices off the model's real $ cost, not the credit tier).
+  // Products tab has no model selection, so pricing simply doesn't apply there.
+  const priced = (() => {
+    if (outputType === 'products') return null
+    if (!selectedModel || !globalSettings || !toolMargin) return null
+    const costUsd = calculateModelCostUsd({
+      model:      selectedModel,
+      resolution: undefined,
+      duration:   outputType === 'video' ? parseInt(duration, 10) : undefined,
+    })
+    if (costUsd == null) return null
+
+    const priceUsd = costUsd * toolMargin
+    const credits  = Math.ceil(priceUsd / globalSettings.usdPerCredit)
+    return { costUsd, priceUsd, credits }
   })()
+
+  const isPriced   = outputType === 'products' ? true : priced !== null
+  const creditCost = priced?.credits ?? 0
 
   const canAfford   = credits >= creditCost
   const promptEmpty = !prompt.trim()
-  const btnDisabled = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading
+  const btnDisabled = promptEmpty || !canAfford || submitting || !selectedModel || brandLoading || !isPriced
 
   // ── Image handlers ─────────────────────────────────────────────
   const handleAddImage = async (e, slotIdx) => {
@@ -415,6 +449,7 @@ const selectSlashProduct = (product) => {
   const handleGenerate = async () => {
     if (promptEmpty)    return toast.error('Describe the content you want')
     if (!selectedModel) return toast.error('Pick a model')
+    if (!isPriced)       return toast.error('This model isn\'t priced yet — contact support')
     if (!canAfford)     return toast.error('Not enough credits')
     if (!user)          return toast.error('Please sign in')
 
@@ -872,6 +907,12 @@ const selectSlashProduct = (product) => {
                     </div>
                   </div>
                 </>
+              )}
+
+              {selectedModel && !isPriced && (
+                <p className="text-xs text-center mb-4" style={{ color: '#fbbf24' }}>
+                  This model isn't priced yet — contact support.
+                </p>
               )}
 
               {/* Refinement off notice */}
