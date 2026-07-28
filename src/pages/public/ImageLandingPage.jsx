@@ -8,7 +8,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Type, ImagePlus, Layers, Maximize, Sparkles, Palette } from 'lucide-react'
-
+import { FeaturesFooter } from '@/components/public/FeaturesFooter'
 const ACCENT     = 'var(--tool-image)'
 const ACCENT_SUB = 'var(--tool-image-subtle)'
 const ACCENT_BDR = 'var(--tool-image-border)'
@@ -212,7 +212,7 @@ export default function ImageLandingPage() {
           Try the image generator <ArrowRight size={15} />
         </button>
       </div>
-
+<FeaturesFooter />
     </div>
   )
 }
