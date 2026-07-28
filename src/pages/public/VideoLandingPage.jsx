@@ -8,7 +8,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ImagePlus, Type, Layers, Volume2, Clapperboard, Sparkles } from 'lucide-react'
-
+import { FeaturesFooter } from '@/components/public/FeaturesFooter'
 const ACCENT     = 'var(--tool-video)'
 const ACCENT_SUB = 'var(--tool-video-subtle)'
 const ACCENT_BDR = 'var(--tool-video-border)'
@@ -212,7 +212,7 @@ export default function VideoLandingPage() {
           Try the video generator <ArrowRight size={15} />
         </button>
       </div>
-
+<FeaturesFooter />
     </div>
   )
 }
