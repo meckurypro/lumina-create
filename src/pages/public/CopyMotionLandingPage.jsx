@@ -8,6 +8,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Film, ImageIcon, Wand2, Scissors, Ratio, Clock } from 'lucide-react'
+import { FeaturesFooter } from '@/components/public/FeaturesFooter'
 
 const ACCENT     = 'var(--tool-motion)'
 const ACCENT_SUB = 'var(--tool-motion-subtle)'
@@ -215,7 +216,8 @@ export default function CopyMotionLandingPage() {
         </button>
       </div>
 
+      <FeaturesFooter />
+
     </div>
   )
-}
-
+          }
