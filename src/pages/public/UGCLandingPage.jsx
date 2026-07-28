@@ -9,7 +9,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, User, Building2, Mic, Package, ImageIcon, VideoIcon } from 'lucide-react'
-
+import { FeaturesFooter } from '@/components/public/FeaturesFooter'
 const ACCENT     = 'var(--tool-ugc)'
 const ACCENT_SUB = 'var(--tool-ugc-subtle)'
 const ACCENT_BDR = 'var(--tool-ugc-border)'
@@ -208,7 +208,7 @@ export default function UGCLandingPage() {
           Create your first character or brand <ArrowRight size={15} />
         </button>
       </div>
-
+<FeaturesFooter />
     </div>
   )
 }
