@@ -5,13 +5,67 @@
 // so crawlers can discover the full set from any single page, not just
 // from the homepage — plus the standard legal links.
 //
+// Repurposes the old homepage "Made with Meckury AI" reel-card visual
+// style — each card here is now clickable and routes to its /features/:slug.
+//
 // Usage: import and render once, right before the closing </div> of any
 // public page:
 //   import FeaturesFooter from '@/components/public/FeaturesFooter'
 //   ...
 //   <FeaturesFooter />
 import { useNavigate, useLocation } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { PUBLIC_FEATURES } from '@/config/publicFeatures'
+
+// Same gradient set the homepage reel used — cycled across however many
+// feature cards exist so each one gets a distinct look.
+const CARD_GRADIENTS = [
+  ['#1a0a00', '#f97316', '#7c2d12'],
+  ['#000000', '#1c1c1c', '#2d2d2d'],
+  ['#0a0a1a', '#1e3a5f', '#0ea5e9'],
+  ['#0a1a0a', '#14532d', '#16a34a'],
+  ['#1a0a1a', '#6b21a8', '#a855f7'],
+  ['#1a1000', '#92400e', '#d97706'],
+]
+
+const FeatureReelCard = ({ feature, index, isCurrent, onClick }) => {
+  const colors = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.35, delay: index * 0.05 }}
+      onClick={onClick}
+      disabled={isCurrent}
+      className="relative flex-shrink-0 rounded-2xl overflow-hidden text-left transition-all active:scale-[0.98]"
+      style={{
+        width: '160px',
+        height: '220px',
+        background: `linear-gradient(160deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`,
+        cursor: isCurrent ? 'default' : 'pointer',
+        opacity: isCurrent ? 0.55 : 1,
+      }}
+    >
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.7) 100%)' }}
+      />
+
+      <div className="absolute bottom-0 left-0 right-0 p-3">
+        <p className="text-white text-xs font-semibold leading-tight" style={{ opacity: 0.9 }}>
+          {feature.label}
+        </p>
+        {isCurrent && (
+          <p className="text-white text-[10px] mt-1" style={{ opacity: 0.6 }}>
+            You're here
+          </p>
+        )}
+      </div>
+    </motion.button>
+  )
+}
 
 export default function FeaturesFooter() {
   const navigate = useNavigate()
@@ -24,28 +78,24 @@ export default function FeaturesFooter() {
     >
       <div className="max-w-5xl mx-auto px-4 lg:px-8 py-10 flex flex-col gap-8">
 
-        {/* Feature cross-links */}
+        {/* Feature reel cards */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
             Explore Meckury AI
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
-            {PUBLIC_FEATURES.map((f) => {
-              const path       = `/features/${f.slug}`
-              const isCurrent  = location.pathname === path
+
+          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+            {PUBLIC_FEATURES.map((feature, i) => {
+              const path      = `/features/${feature.slug}`
+              const isCurrent = location.pathname === path
               return (
-                <button
-                  key={f.slug}
+                <FeatureReelCard
+                  key={feature.slug}
+                  feature={feature}
+                  index={i}
+                  isCurrent={isCurrent}
                   onClick={() => !isCurrent && navigate(path)}
-                  className="text-left text-xs font-medium transition-colors"
-                  style={{
-                    color:      isCurrent ? 'var(--text-primary)' : 'var(--text-muted)',
-                    cursor:     isCurrent ? 'default' : 'pointer',
-                    fontWeight: isCurrent ? 700 : 500,
-                  }}
-                >
-                  {f.label}
-                </button>
+                />
               )
             })}
           </div>
@@ -88,4 +138,3 @@ export default function FeaturesFooter() {
     </footer>
   )
 }
-
