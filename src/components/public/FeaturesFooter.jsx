@@ -5,8 +5,9 @@
 // so crawlers can discover the full set from any single page, not just
 // from the homepage — plus the standard legal links.
 //
-// Repurposes the old homepage "Made with Meckury AI" reel-card visual
-// style — each card here is now clickable and routes to its /features/:slug.
+// Each reel card uses a static PNG representing the finished output of
+// that feature (no app UI, no gradients) — images live in
+// /public/images/features/<slug>.png
 //
 // Usage: import and render once, right before the closing </div> of any
 // public page:
@@ -17,20 +18,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { PUBLIC_FEATURES } from '@/config/publicFeatures'
 
-// Same gradient set the homepage reel used — cycled across however many
-// feature cards exist so each one gets a distinct look.
-const CARD_GRADIENTS = [
-  ['#1a0a00', '#f97316', '#7c2d12'],
-  ['#000000', '#1c1c1c', '#2d2d2d'],
-  ['#0a0a1a', '#1e3a5f', '#0ea5e9'],
-  ['#0a1a0a', '#14532d', '#16a34a'],
-  ['#1a0a1a', '#6b21a8', '#a855f7'],
-  ['#1a1000', '#92400e', '#d97706'],
-]
-
 const FeatureReelCard = ({ feature, index, isCurrent, onClick }) => {
-  const colors = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
-
   return (
     <motion.button
       initial={{ opacity: 0, y: 16 }}
@@ -43,14 +31,16 @@ const FeatureReelCard = ({ feature, index, isCurrent, onClick }) => {
       style={{
         width: '160px',
         height: '220px',
-        background: `linear-gradient(160deg, ${colors[0]}, ${colors[1]}, ${colors[2]})`,
+        backgroundImage: `url(/images/features/${feature.slug}.png)`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         cursor: isCurrent ? 'default' : 'pointer',
         opacity: isCurrent ? 0.55 : 1,
       }}
     >
       <div
         className="absolute inset-0"
-        style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.7) 100%)' }}
+        style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.75) 100%)' }}
       />
 
       <div className="absolute bottom-0 left-0 right-0 p-3">
