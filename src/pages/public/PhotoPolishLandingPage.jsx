@@ -8,7 +8,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Sparkles, RotateCcw, Aperture, ShieldCheck } from 'lucide-react'
-
+import { FeaturesFooter } from '@/components/public/FeaturesFooter'
 const ACCENT     = 'var(--tool-polish)'
 const ACCENT_SUB = 'var(--tool-polish-subtle)'
 const ACCENT_BDR = 'var(--tool-polish-border)'
@@ -212,7 +212,7 @@ export default function PhotoPolishLandingPage() {
           Try Photo Polish <ArrowRight size={15} />
         </button>
       </div>
-
+<FeaturesFooter />
     </div>
   )
 }
