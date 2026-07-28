@@ -12,7 +12,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ImagePlus, Wand2, Video, Users, Building2, PartyPopper, MessageCircle } from 'lucide-react'
-import { FeaturesFooter } from '@/components/public/FeaturesFooter'
+import FeaturesFooter from '@/components/public/FeaturesFooter'
 
 const ACCENT     = 'var(--tool-iqads, #f97316)'
 const ACCENT_SUB = 'var(--tool-iqads-subtle, var(--bg-elevated))'
