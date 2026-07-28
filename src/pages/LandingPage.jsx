@@ -2,32 +2,7 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
-import { PUBLIC_FEATURES } from '@/config/publicFeatures'
 import FeaturesFooter from '@/components/public/FeaturesFooter'
-
-// ── Feature card (homepage grid — links out to /features/:slug) ───────────
-const FeatureCard = ({ feature, index, onClick }) => (
-  <motion.button
-    initial={{ opacity: 0, y: 16 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true }}
-    transition={{ duration: 0.35, delay: index * 0.05 }}
-    onClick={onClick}
-    className="flex flex-col gap-3 p-5 rounded-2xl text-left transition-all active:scale-[0.98]"
-    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
-  >
-    <div
-      className="w-10 h-10 rounded-xl flex items-center justify-center"
-      style={{ background: 'var(--bg-elevated)' }}
-    >
-      <feature.icon size={18} style={{ color: 'var(--brand)' }} />
-    </div>
-    <div>
-      <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{feature.label}</p>
-      <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{feature.blurb}</p>
-    </div>
-  </motion.button>
-)
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -136,34 +111,7 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* ── Features grid ─────────────────────────────── */}
-        {/* Primary internal-linking surface for the 8 public /features/*
-            pages — homepage carries the most crawl authority on the site,
-            so this is the highest-value place to link out from. */}
-        <div className="w-full max-w-screen-xl mx-auto px-8 py-16" style={{ borderTop: '1px solid var(--border-color)' }}>
-          <div className="flex items-end justify-between mb-8">
-            <div>
-              <h2 className="text-xl lg:text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-                Everything you can create
-              </h2>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-                One AI studio, every format you need to post.
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {PUBLIC_FEATURES.map((feature, i) => (
-              <FeatureCard
-                key={feature.slug}
-                feature={feature}
-                index={i}
-                onClick={() => navigate(`/features/${feature.slug}`)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* ── Footer ─────────────────────────────────────── */}
+        {/* ── Footer (includes the "Explore Meckury AI" feature reel) ── */}
         <div className="mt-auto">
           <FeaturesFooter />
         </div>
