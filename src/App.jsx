@@ -61,6 +61,20 @@ import FilmaScenePage           from '@/pages/filma/FilmaScenePage'
 import FilmaShotPage            from '@/pages/filma/FilmaShotPage'
 import FilmaActorProfilePage    from '@/pages/filma/FilmaActorProfilePage'
 
+// ── Public feature landing pages (SEO — no auth gate) ──────────
+// Each corresponds to an authenticated /create/* tool above, but is a
+// standalone public page so Google can index and match content-specific
+// searches (e.g. "flyer to video ad", "AI talking avatar") without the
+// person needing to sign in first.
+import IQAdsLandingPage         from '@/pages/public/IQAdsLandingPage'
+import VideoLandingPage         from '@/pages/public/VideoLandingPage'
+import ImageLandingPage         from '@/pages/public/ImageLandingPage'
+import TalkingHeadLandingPage   from '@/pages/public/TalkingHeadLandingPage'
+import CopyMotionLandingPage    from '@/pages/public/CopyMotionLandingPage'
+import UGCLandingPage           from '@/pages/public/UGCLandingPage'
+import PhotoPolishLandingPage   from '@/pages/public/PhotoPolishLandingPage'
+import UpscalerLandingPage      from '@/pages/public/UpscalerLandingPage'
+
 import { BottomNav }    from '@/components/layout/BottomNav'
 import PWAUpdateToast   from '@/components/PWAUpdateToast'
 
@@ -160,6 +174,16 @@ export default function App() {
         <Route path="/terms"            element={<TermsPage />} />
         <Route path="/refund-policy"    element={<RefundPolicyPage />} />
         <Route path="/pricing"          element={<PricingPage />} />
+
+        {/* ── Public feature landing pages (SEO) ───────────────── */}
+        <Route path="/features/iq-ads"       element={<IQAdsLandingPage />} />
+        <Route path="/features/video"        element={<VideoLandingPage />} />
+        <Route path="/features/image"        element={<ImageLandingPage />} />
+        <Route path="/features/talking-head" element={<TalkingHeadLandingPage />} />
+        <Route path="/features/copy-motion"  element={<CopyMotionLandingPage />} />
+        <Route path="/features/ugc"          element={<UGCLandingPage />} />
+        <Route path="/features/photo-polish" element={<PhotoPolishLandingPage />} />
+        <Route path="/features/upscaler"     element={<UpscalerLandingPage />} />
 
         {loading ? (
           <Route path="*" element={<FullLoader />} />
