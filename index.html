@@ -43,6 +43,24 @@
     <!-- ── MS Tile (Windows / Edge) ── -->
     <meta name="msapplication:TileColor" content="#000000" />
     <meta name="msapplication:TileImage" content="/icon-144.png" />
+    <!-- ── Organization structured data (helps Google disambiguate
+         "Meckury AI" from similarly-named products like Mercury.ai) ── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Meckury AI",
+      "url": "https://meckury.ai",
+      "logo": "https://meckury.ai/icon.png",
+      "description": "Meckury AI is a cinematic AI content generation platform for building AI characters, cloning voices, and creating video ads, UGC content, and more.",
+      "sameAs": [
+        "https://www.tiktok.com/@meckury.ai",
+        "https://www.instagram.com/meckury.ai",
+        "https://youtube.com/@meckuryai",
+        "https://x.com/MeckuryAI"
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
