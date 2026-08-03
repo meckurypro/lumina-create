@@ -18,6 +18,23 @@ const FACE_SHOT_TYPES = {
   photo_face_side_90:       'side_90',
 }
 
+// TinyFaceDetector is trained mostly on frontal/near-frontal faces, so a true
+// 90° side profile (often only one eye visible, sometimes none at all)
+// reliably scores lower than a front-facing shot. We loosen the confidence
+// threshold for that slot instead of rejecting perfectly good photos. Front
+// and ¾ shots stay stricter since detection there is easy and a miss is
+// usually a genuine problem with the photo.
+const FACE_DETECTION_THRESHOLD = {
+  face_front:    0.5,
+  three_quarter: 0.4,
+  side_90:       0.2,
+}
+const DEFAULT_FACE_DETECTION_THRESHOLD = 0.5
+
+// Larger inputSize improves detection on angled/partial faces at a modest
+// perf cost — worth it here since this runs once per photo, not per frame.
+const FACE_DETECTOR_INPUT_SIZE = 512
+
 const MIN_BODY_DIMENSION = 480 // px, on the shorter side
 const OUTPUT_QUALITY     = 0.92
 
@@ -63,6 +80,18 @@ function blobToDataUrl(blob) {
     reader.onerror = reject
     reader.readAsDataURL(blob)
   })
+}
+
+// Render a full, uncropped copy of the source image to a canvas. Used as the
+// fallback path when face detection can't be trusted (load failure, or a
+// user override on a hard-to-detect angle) — the photo still goes through
+// the quality-check stage untouched instead of being auto-cropped.
+function fullFrameCanvas(img) {
+  const canvas = document.createElement('canvas')
+  canvas.width  = img.naturalWidth
+  canvas.height = img.naturalHeight
+  canvas.getContext('2d').drawImage(img, 0, 0)
+  return canvas
 }
 
 // Crop to a 3:4 portrait region around the detected face box, with generous
@@ -166,6 +195,11 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
   const isFaceShot = slotKey in FACE_SHOT_TYPES
   const shotType   = FACE_SHOT_TYPES[slotKey]
 
+  // Side-90 is the hardest angle for a frontal-trained detector — one eye is
+  // frequently fully occluded. Give that slot a manual "use anyway" escape
+  // hatch on the reject screen in case even the loosened threshold misses.
+  const allowManualOverride = shotType === 'side_90'
+
   // stage: 'loading' | 'face_check' | 'reject_no_face' | 'reject_multi_face'
   //      | 'preview' | 'quality_check' | 'result' | 'body_preview' | 'reject_low_res'
   const [stage,        setStage]        = useState('loading')
@@ -188,10 +222,7 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
       console.error('face-api failed to load, skipping detection:', err)
       // Graceful fallback — proceed without crop, straight to quality check
       // on the original image
-      const canvas = document.createElement('canvas')
-      canvas.width  = img.naturalWidth
-      canvas.height = img.naturalHeight
-      canvas.getContext('2d').drawImage(img, 0, 0)
+      const canvas = fullFrameCanvas(img)
       setProcessedCanvas(canvas)
       const blob = await canvasToBlob(canvas)
       setProcessedUrl(URL.createObjectURL(blob))
@@ -203,7 +234,10 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
     try {
       detections = await faceapi.detectAllFaces(
         img,
-        new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: FACE_DETECTOR_INPUT_SIZE,
+          scoreThreshold: FACE_DETECTION_THRESHOLD[shotType] ?? DEFAULT_FACE_DETECTION_THRESHOLD,
+        })
       )
     } catch (err) {
       console.error('Face detection failed:', err)
@@ -225,7 +259,7 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
     const blob = await canvasToBlob(canvas)
     setProcessedUrl(URL.createObjectURL(blob))
     setStage('preview')
-  }, [])
+  }, [shotType])
 
   // ── Body shots: lightweight resolution check only ─────────────────────────
   const runBodyPipeline = useCallback(async (img) => {
@@ -301,6 +335,18 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
     }
   }
 
+  // ── Manual override — used when detection rejects a shot the user is sure
+  // is fine (currently offered only for the side-90 slot). Skips cropping
+  // entirely and sends the untouched original into the preview stage. ──────
+  const overrideNoFaceDetected = async () => {
+    if (!imgRef.current) return
+    const canvas = fullFrameCanvas(imgRef.current)
+    setProcessedCanvas(canvas)
+    const blob = await canvasToBlob(canvas)
+    setProcessedUrl(URL.createObjectURL(blob))
+    setStage('preview')
+  }
+
   // ── Final approve — hand processed blob back to parent ────────────────────
   const approveFace = async () => {
     const blob = await canvasToBlob(processedCanvas)
@@ -355,8 +401,15 @@ export default function UGCPhotoValidator({ file, slotKey, onApprove, onCancel }
             <RejectPanel
               icon={<ImageOff size={28} />}
               title="No face detected"
-              message={error || "We couldn't find a clear face in this photo. Please choose a photo where your face is visible and unobstructed."}
+              message={
+                error ||
+                (allowManualOverride
+                  ? "We couldn't confirm a face at this angle. Side profiles can be tricky to detect automatically — if you're confident this photo is clear and unobstructed, you can use it anyway."
+                  : "We couldn't find a clear face in this photo. Please choose a photo where your face is visible and unobstructed.")
+              }
               onCancel={onCancel}
+              onOverride={allowManualOverride ? overrideNoFaceDetected : null}
+              overrideLabel="Use This Photo Anyway"
             />
           )}
 
@@ -474,20 +527,35 @@ const PreviewCard = ({ label, src, accent }) => (
   </div>
 )
 
-const RejectPanel = ({ icon, title, message, onCancel }) => (
+const RejectPanel = ({ icon, title, message, onCancel, onOverride, overrideLabel = 'Use Anyway' }) => (
   <div className="flex flex-col items-center text-center py-8 gap-3">
     <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
       {icon}
     </div>
     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{title}</p>
     <p className="text-xs max-w-xs" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>{message}</p>
-    <button
-      onClick={onCancel}
-      className="mt-2 px-5 py-2.5 rounded-xl text-xs font-bold"
-      style={{ background: ACCENT, color: '#fff' }}
-    >
-      Choose Different Photo
-    </button>
+    <div className="flex gap-2 mt-2">
+      <button
+        onClick={onCancel}
+        className="px-5 py-2.5 rounded-xl text-xs font-bold"
+        style={{
+          background: 'var(--bg-elevated)',
+          color:      'var(--text-secondary)',
+          border:     '1px solid var(--border-color)',
+        }}
+      >
+        Choose Different Photo
+      </button>
+      {onOverride && (
+        <button
+          onClick={onOverride}
+          className="px-5 py-2.5 rounded-xl text-xs font-bold"
+          style={{ background: ACCENT, color: '#fff' }}
+        >
+          {overrideLabel}
+        </button>
+      )}
+    </div>
   </div>
 )
 
