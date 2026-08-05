@@ -296,6 +296,7 @@ export default function App() {
             {/* ── Profile / Settings / Admin ──────────────────── */}
             <Route path="/profile"         element={<Auth><ProfilePage /></Auth>} />
             <Route path="/credits"         element={<Auth><CreditsPage /></Auth>} />
+            <Route path="/billing"         element={<Auth><CreditsPage /></Auth>} />
             <Route path="/render-window"        element={<Auth><RenderWindowPage /></Auth>} />
             <Route path="/render-window/book"   element={<Auth><PrivateBookingPage /></Auth>} />
             <Route path="/referrals"       element={<Auth><ReferralsPage /></Auth>} />
