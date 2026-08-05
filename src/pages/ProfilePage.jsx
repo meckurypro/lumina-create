@@ -106,7 +106,7 @@ export default function ProfilePage() {
         </button>
 
         {/* ── Support ── */}
-        
+        <a
           href="https://wa.me/2348162465247?text=Hi%2C%20I%20need%20help%20with%20Meckury%20AI"
           target="_blank"
           rel="noopener noreferrer"
