@@ -43,8 +43,6 @@ const DRAFT_REF_IMAGES  = 'create_video:ref_images'
 
 // ─── cross-page handoff keys — stay on sessionStorage, NOT draftCache ─────────
 const SS_OMNI_REF = 'meckury_video_omni_ref'
-const TH_SS_SUBJECT_IMG     = 'meckury_th_subject_img'
-const TH_SS_LIPSYNC_PREFILL = 'meckury_th_lipsync_prefill'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const ALL_ASPECT_RATIOS = [
@@ -102,6 +100,8 @@ function getModelCaps(model) {
     requiresImage:         model.requires_image          ?? false,
     requiresVideo:         model.requires_video           ?? false,
     requiresAudio:         model.requires_audio          ?? false,
+    supportsAudioUpload:    model.supports_audio_upload    ?? false,
+    supportsNativeDialogue: model.supports_native_dialogue ?? false,
   }
 }
 
@@ -1020,7 +1020,7 @@ const merged = [...(byFeature || [])]
     if (!caps.isVideoEdit) {
       setEditVideo(null); setTrimTarget(null); setTrimStart(0); setConvertedSettings(null)
     }
-    if (!caps.requiresAudio) {
+   if (!caps.requiresAudio && !caps.supportsAudioUpload) {
       setAudioSlots([])
     }
   }, [model]) // eslint-disable-line
@@ -1322,39 +1322,6 @@ const merged = [...(byFeature || [])]
     })
   }
 
-  // ── lipsync redirect ──────────────────────────────────────────────────────
-  const handleLipsyncRedirect = useCallback(({ extractedSpeech, startFrameFile, startFrameUrl }) => {
-    if (startFrameFile) {
-      try {
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          sessionStorage.setItem(TH_SS_SUBJECT_IMG, JSON.stringify({
-            base64: ev.target.result,
-            name:   startFrameFile.name,
-            type:   startFrameFile.type,
-          }))
-        }
-        reader.readAsDataURL(startFrameFile)
-      } catch {}
-    } else if (startFrameUrl) {
-      try {
-        sessionStorage.setItem(TH_SS_SUBJECT_IMG, JSON.stringify({
-          url:  startFrameUrl,
-          name: 'subject.jpg',
-        }))
-      } catch {}
-    }
-
-    try {
-      sessionStorage.setItem(TH_SS_LIPSYNC_PREFILL, JSON.stringify({
-        script:    extractedSpeech ?? '',
-        model:     'kling_v1_ai_avatar_standard',
-        audioMode: 'text',
-      }))
-    } catch {}
-
-    navigate('/create/talking-head')
-  }, [navigate])
 
   // ── audio upload to storage ───────────────────────────────────────────────
   const uploadAudioToStorage = async (fileOrBlob, name = 'audio.wav') => {
@@ -1509,19 +1476,38 @@ const uploadedRefUrls = []
         }
       }
 
+     let extractedSpeech = null
+
       if (type === 'image_to_video' && (startFrameUrl || uploadedRefUrls.length)) {
         const { data: checkData } = await supabase.functions.invoke(
           'video-generate',
           { body: { lipsync_check_only: true, prompt, image_url: startFrameUrl ?? uploadedRefUrls[0], aspect_ratio: aspectRatio } }
         )
         if (checkData?.lipsync_redirect) {
-          setPhase(null)
-          handleLipsyncRedirect({
-            extractedSpeech: checkData.extracted_speech,
-            startFrameFile:  activeStartFrame?.file ?? null,
-            startFrameUrl:   startFrameUrl ?? checkData.image_url,
-          })
-          return
+          if (caps.supportsNativeDialogue) {
+            // Model can generate the spoken line itself — carry the exact
+            // words through so the backend preserves them verbatim.
+            extractedSpeech = checkData.extracted_speech ?? null
+          } else {
+            setPhase(null)
+            toast.custom((t) => (
+              <div className="flex flex-col gap-2 p-4 rounded-2xl max-w-sm"
+                style={{ background: 'var(--bg-elevated)', border: `1px solid ${ACCENT_BDR}` }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  This model can't make a character speak specific words
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Switch to a model with native dialogue, or use Talking Head, to generate lip-synced speech.
+                </p>
+                <button onClick={() => toast.dismiss(t.id)}
+                  className="self-end px-3 py-1.5 rounded-lg text-xs font-semibold"
+                  style={{ background: ACCENT, color: '#fff' }}>
+                  Got it
+                </button>
+              </div>
+            ), { duration: Infinity })
+            return
+          }
         }
       }
 
@@ -1554,7 +1540,9 @@ const uploadedRefUrls = []
         with_sound:             withSound,
        skip_prompt_refinement: skipRefinement,
         audio_url:              resolvedAudioUrl || null,
-        generation_metadata:    imageRefsMeta.length ? { image_refs: imageRefsMeta } : null,
+        generation_metadata:    (imageRefsMeta.length || extractedSpeech)
+          ? { ...(imageRefsMeta.length ? { image_refs: imageRefsMeta } : {}), ...(extractedSpeech ? { extracted_speech: extractedSpeech } : {}) }
+          : null,
         is_system_prompt:       false,
       })
       if (genErr || !genRow) throw new Error(genErr?.message || 'Could not create generation')
@@ -1875,11 +1863,13 @@ const uploadedRefUrls = []
             </div>
           )}
 
-          {caps.requiresAudio && (
+         {(caps.requiresAudio || caps.supportsAudioUpload) && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Audio <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— required</span>
+                  Audio <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                    {caps.requiresAudio ? '— required' : '— optional, native audio otherwise'}
+                  </span>
                 </p>
                 {audioSlots.filter(Boolean).length > 0 && (() => {
                   const used      = totalSlotDuration(audioSlots)
