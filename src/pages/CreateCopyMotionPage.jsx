@@ -576,9 +576,11 @@ export default function CreateCopyMotionPage() {
   }, [])
 
   // ── Load models ──────────────────────────────────────────
+const COPY_MOTION_CROSSOVER_ALLOWLIST = ['meckury_vipro']
+
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const [{ data }, activeRWModelIds] = await Promise.all([
+    const [{ data }, { data: crossover }, activeRWModelIds] = await Promise.all([
       supabase
         .from('models')
         .select('*')
@@ -587,10 +589,20 @@ const loadModels = useCallback(async () => {
         .eq('is_user_facing', true)
         .eq('feature', 'motion_transfer')
         .order('sort_order'),
+      supabase
+        .from('models')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .in('value', COPY_MOTION_CROSSOVER_ALLOWLIST),
       canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
     ])
+    const merged = [...(data || [])]
+    for (const m of crossover || []) {
+      if (!merged.some((x) => x.value === m.value)) merged.push(m)
+    }
     const isMaster      = profile?.user_tier === 'master'
-    const tierFiltered  = (data || [])
+    const tierFiltered  = merged
       .filter((m) => isMaster || m.tier_required !== 'master')
       .filter((m) => m.model_access_type !== 'render_window' || (canUseRWModels && activeRWModelIds.has(m.id)))
     const list          = await applyModelPreferences(tierFiltered, user?.id)
@@ -599,8 +611,6 @@ const loadModels = useCallback(async () => {
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
   }, [profile?.user_tier, canUseRWModels])
-
-  useEffect(() => { loadModels() }, [loadModels])
 
   // ── Derived model config ─────────────────────────────────
   const selectedModel         = models.find((m) => m.value === model)
