@@ -44,6 +44,10 @@ const ALL_ASPECT_RATIOS = [
 
 const VIDEO_TRIM_COST = 2
 
+// Models that don't carry feature: 'lipsync' but can still do a single-image
+// talking-head job — mirrors CROSSOVER_ALLOWLIST on CreateVideoPage.jsx, in reverse.
+const TALKING_HEAD_CROSSOVER_ALLOWLIST = ['meckury_vipro']
+
 // ─── helpers to read metadata straight from a picker URL (no local File) ──────
 
 function readImageMetaFromUrl(url) {
@@ -1049,7 +1053,7 @@ export default function CreateTalkingHeadPage() {
   // ── Load models ──────────────────────────────────────────────────────────
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
-    const [{ data }, activeRWModelIds] = await Promise.all([
+    const [{ data: byFeature }, { data: crossover }, activeRWModelIds] = await Promise.all([
       supabase
         .from('models')
         .select('*')
@@ -1057,10 +1061,20 @@ const loadModels = useCallback(async () => {
         .eq('is_active', true)
         .eq('is_user_facing', true)
         .order('sort_order'),
+      supabase
+        .from('models')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_user_facing', true)
+        .in('value', TALKING_HEAD_CROSSOVER_ALLOWLIST),
       canUseRWModels ? getActiveRenderWindowModelIds() : Promise.resolve(new Set()),
     ])
+    const merged = [...(byFeature || [])]
+    for (const m of crossover || []) {
+      if (!merged.some((x) => x.value === m.value)) merged.push(m)
+    }
     const isMaster     = profile?.user_tier === 'master'
-    const tierFiltered = (data || [])
+    const tierFiltered = merged
       .filter((m) => isMaster || m.tier_required !== 'master')
       // Same render-window gate as CreateVideoPage — hide ComfyUI models
       // (e.g. meckury_i2v_max) unless the user has an active RW subscription,
