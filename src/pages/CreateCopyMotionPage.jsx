@@ -611,7 +611,9 @@ const loadModels = useCallback(async () => {
     setModel(firstUnlocked?.value || '')
     setModelsLoading(false)
   }, [profile?.user_tier, canUseRWModels])
-
+useEffect(() => {
+    loadModels()
+  }, [loadModels])
   // ── Derived model config ─────────────────────────────────
   const selectedModel         = models.find((m) => m.value === model)
   const supportedAspectRatios = selectedModel?.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
