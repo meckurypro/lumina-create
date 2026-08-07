@@ -93,6 +93,15 @@ export function isPreDispatchFailure(g) {
   return g.status === 'failed' && g.error_message === 'pre_dispatch_failure'
 }
 
+// Queued jobs sitting in the render-window pod queue can be pushed to
+// the model's RunPod serverless endpoint instead of waiting their turn —
+// but only if that model actually has serverless dispatch enabled.
+function canProcessNow(gen, modelsList) {
+  if (!gen || gen.status !== 'queued') return false
+  const model = modelsList.find((m) => m.value === gen.model)
+  return !!model?.supports_serverless
+}
+
 function pendingKey(items) {
   return items
     .filter(isInProgress)
@@ -147,6 +156,7 @@ export default function MediaPageCore({
   const [regenLoading,     setRegenLoading]     = useState(false)
   const [editLoading,      setEditLoading]      = useState(false)
   const [refreshLoading,   setRefreshLoading]   = useState(false)
+  const [processNowLoading, setProcessNowLoading] = useState(false)
   const [pendingDeleteGen, setPendingDeleteGen] = useState(null)
   const [savingAsset,      setSavingAsset]      = useState(false)
   const [extractingId,     setExtractingId]     = useState(null)
@@ -520,6 +530,29 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
     }
   }
 
+  const handleProcessNow = async (gen) => {
+    if (!gen) return
+    setProcessNowLoading(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('process-now', {
+        body: { generationId: gen.id },
+      })
+      if (error) throw new Error(error.message || 'Process Now failed')
+      if (data?.error) throw new Error(data.error)
+
+      setItems((prev) => prev.map((g) =>
+        g.id === gen.id ? { ...g, status: 'processing', dispatch_target: 'serverless' } : g
+      ))
+      refreshProfile()
+      toast.success('Sent to serverless — this will be quick!')
+      closeSheet()
+    } catch (err) {
+      toast.error(err.message || 'Could not process now')
+    } finally {
+      setProcessNowLoading(false)
+    }
+  }
+
   const handleRetry = async (gen) => {
     closeSheet()
     if (!onRegenerate) return
@@ -777,8 +810,15 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
             onSaveAsset={() => handleSaveAsset(activeGen)}
             onRetry={isPreDispatchFailure(activeGen) && !activeGen.is_system_prompt ? () => handleRetry(activeGen) : undefined}
             onExtractEndFrame={activeGen?.output_type === 'video' ? () => handleOpenFramePicker(activeGen) : undefined}
+            onProcessNow={canProcessNow(activeGen, models) ? () => handleProcessNow(activeGen) : undefined}
             extractLoading={extractingId === activeGen?.id}
             refreshLoading={refreshLoading}
+            processNowLoading={processNowLoading}
+            processNowCost={
+              canProcessNow(activeGen, models) && computeCreditCost
+                ? computeCreditCost(models.find((m) => m.value === activeGen.model), activeGen)
+                : null
+            }
           />
         )}
         {activeGen && sheetMode === 'regenerate' && !activeGen.is_system_prompt && (
