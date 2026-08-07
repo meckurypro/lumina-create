@@ -6,7 +6,7 @@ import {
   Download, RefreshCw, Trash2,
   MoreHorizontal, ChevronDown,
   Copy, Check, Sparkles, Zap,
-  Pencil, Bookmark, ScanLine,
+  Pencil, Bookmark, ScanLine, Wand2,
 } from 'lucide-react'
 
 export const EST_DURATION = {
@@ -685,20 +685,23 @@ const ActionRow = ({ icon, label, sub, tone = 'neutral', onClick, danger, isLast
 export const ActionSheet = ({
   gen, onClose,
   onDelete, onRegenerate, onEdit, onRefresh, onDownload, onSaveAsset, onRetry,
-  onExtractEndFrame,
+  onExtractEndFrame, onProcessNow,
   refreshLoading = false,
   extractLoading = false,
+  processNowLoading = false,
+  processNowCost = null,
 }) => {
   const isCompleted     = gen.status === 'completed'
   const isProcessing    = gen.status === 'processing' || gen.status === 'pending' || gen.status === 'queued'
+  const isQueued        = gen.status === 'queued'
   const canShowPrompt   = !gen.is_system_prompt
 
   const gridItems = []
   if (isCompleted && gen.output_url && onEdit) {
     gridItems.push({ icon: Pencil, label: 'Edit', onClick: onEdit })
   }
-  if (canShowPrompt) {
-    gridItems.push({ icon: RefreshCw, label: 'Regenerate', onClick: onRegenerate })
+ if (canShowPrompt) {
+    gridItems.push({ icon: Wand2, label: 'Regenerate', onClick: onRegenerate })
   }
 if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEndFrame) {
     gridItems.push({
@@ -787,6 +790,23 @@ if (isCompleted && gen.output_type === 'video' && gen.output_url && onExtractEnd
                   isLast
                 />
               )}
+            </ActionRowGroup>
+          </div>
+        )}
+
+        {/* Contextual group — Process Now (skip the render-window queue) */}
+        {isQueued && onProcessNow && (
+          <div className="px-4 mb-2.5">
+            <ActionRowGroup>
+              <ActionRow
+                icon={Zap}
+                tone="warn"
+                isLast
+                label={processNowLoading ? 'Processing…' : 'Process Now'}
+                sub={processNowCost != null ? `Skip the queue — dispatch instantly for ${processNowCost} cr` : 'Skip the queue — dispatch instantly'}
+                onClick={onProcessNow}
+                loading={processNowLoading}
+              />
             </ActionRowGroup>
           </div>
         )}
