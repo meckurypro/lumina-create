@@ -225,6 +225,62 @@ function CostPill({ label, value, onSave, color }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// INLINE TEXT EDITOR (for serverless endpoint IDs, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+function TextPill({ label, value, onSave, color, placeholder }) {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(value || '')
+
+  const commit = async () => {
+    const v = draft.trim()
+    await onSave(v || null)
+    setEditing(false)
+  }
+
+  const cancel = () => { setDraft(value || ''); setEditing(false) }
+
+  if (editing) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          placeholder={placeholder}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel() }}
+          style={{
+            width: 140, padding: '2px 6px', fontSize: 11, fontWeight: 600,
+            borderRadius: 6, border: `1.5px solid ${color}`,
+            background: 'var(--bg-input, #1a1a2e)', color: 'var(--text-primary, #fff)',
+            outline: 'none',
+          }}
+        />
+        <button onClick={commit}  style={{ color: '#10b981', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><Check size={12} /></button>
+        <button onClick={cancel}  style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><X size={12} /></button>
+      </span>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => { setDraft(value || ''); setEditing(true) }}
+      title={`Edit ${label}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        padding: '2px 8px', borderRadius: 8, border: `1px solid ${color}33`,
+        background: `${color}15`, color, fontSize: 10, fontWeight: 700,
+        cursor: 'pointer', letterSpacing: '0.03em', whiteSpace: 'nowrap',
+        maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis',
+      }}
+    >
+      <Pencil size={8} style={{ opacity: 0.7 }} />
+      {label}: {value || placeholder}
+    </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MODEL ROW
 // ─────────────────────────────────────────────────────────────────────────────
 function ModelRow({ model, onUpdate, catColor }) {
@@ -273,6 +329,7 @@ function ModelRow({ model, onUpdate, catColor }) {
   const isLocked      = model.is_locked
   const isMaster      = model.tier_required === 'master'
   const isRWModel     = model.model_access_type === 'render_window'
+  const isServerless  = model.supports_serverless === true
 
   return (
     <div
@@ -327,7 +384,7 @@ function ModelRow({ model, onUpdate, catColor }) {
             </span>
           )}
 
-          {isRWModel && (
+         {isRWModel && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 5,
@@ -335,6 +392,16 @@ function ModelRow({ model, onUpdate, catColor }) {
               letterSpacing: '0.06em', textTransform: 'uppercase',
             }}>
               🪟 WINDOW
+            </span>
+          )}
+          {isServerless && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 5,
+              background: 'rgba(16,185,129,0.15)', color: '#10b981',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}>
+              ⚙️ SERVERLESS
             </span>
           )}
 
@@ -362,12 +429,22 @@ function ModelRow({ model, onUpdate, catColor }) {
             color={catColor}
             onSave={v => saveCost('credit_cost_t2i', v)}
           />
-          <CostPill
+         <CostPill
             label="I2I"
             value={model.credit_cost_i2i}
             color={catColor}
             onSave={v => saveCost('credit_cost_i2i', v)}
           />
+
+          {isServerless && (
+            <TextPill
+              label="RunPod"
+              value={model.serverless_endpoint_id}
+              placeholder="endpoint id"
+              color="#10b981"
+              onSave={v => saveCost('serverless_endpoint_id', v)}
+            />
+          )}
 
           {/* WaveSpeed pricing reference — read only */}
           {ws && (
@@ -480,18 +557,21 @@ function ModelRow({ model, onUpdate, catColor }) {
           }
         </button>
 
-        {/* Access type toggle — Credits ↔ Render Window */}
+       {/* Access type toggle — Credits ↔ Render Window */}
         <button
           onClick={async () => {
             const newType = isRWModel ? 'credits' : 'render_window'
+            const patch = { model_access_type: newType, updated_at: new Date().toISOString() }
+            // Leaving render_window drops serverless eligibility (DB constraint requires it)
+            if (isRWModel && isServerless) patch.supports_serverless = false
             setSaving('model_access_type')
             const { error } = await supabase
               .from('models')
-              .update({ model_access_type: newType, updated_at: new Date().toISOString() })
+              .update(patch)
               .eq('id', model.id)
             setSaving(null)
             if (error) { toast.error('Access type update failed'); return }
-            onUpdate(model.id, { model_access_type: newType })
+            onUpdate(model.id, patch)
             toast.success(`${model.label} — access type set to ${newType}`)
           }}
           disabled={saving === 'model_access_type'}
@@ -510,6 +590,41 @@ function ModelRow({ model, onUpdate, catColor }) {
           {saving === 'model_access_type' ? '…' : isRWModel
             ? <>🪟 Window</>
             : <>⚡ Credits</>
+          }
+        </button>
+
+        {/* Serverless toggle — only valid for Render Window models */}
+        <button
+          onClick={async () => {
+            if (!isRWModel) { toast.error('Set access type to Render Window first'); return }
+            const newVal = !isServerless
+            setSaving('supports_serverless')
+            const { error } = await supabase
+              .from('models')
+              .update({ supports_serverless: newVal, updated_at: new Date().toISOString() })
+              .eq('id', model.id)
+            setSaving(null)
+            if (error) { toast.error('Serverless update failed'); return }
+            onUpdate(model.id, { supports_serverless: newVal })
+            toast.success(`${model.label} — serverless ${newVal ? 'enabled' : 'disabled'}`)
+          }}
+          disabled={saving === 'supports_serverless' || !isRWModel}
+          title={!isRWModel ? 'Only Render Window models can be serverless' : isServerless ? 'Disable serverless dispatch' : 'Enable serverless dispatch'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '4px 10px', borderRadius: 10, border: 'none',
+            fontSize: 10, fontWeight: 800, cursor: isRWModel ? 'pointer' : 'not-allowed',
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+            transition: 'all 0.15s',
+            background: isServerless ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.06)',
+            color: isServerless ? '#10b981' : 'var(--text-muted, #888)',
+            opacity: isRWModel ? 1 : 0.4,
+            minWidth: 76, justifyContent: 'center',
+          }}
+        >
+          {saving === 'supports_serverless' ? '…' : isServerless
+            ? <>⚙️ Serverless</>
+            : <>⚙️ Pod only</>
           }
         </button>
       </div>
@@ -624,6 +739,7 @@ function StatsBar({ models }) {
   const verified = models.filter(m => m.is_verified).length
   const locked   = models.filter(m => m.is_locked).length
   const masters  = models.filter(m => m.tier_required === 'master').length // ── NEW
+  const serverless = models.filter(m => m.supports_serverless).length // ── NEW
 
   const stat = (label, value, color) => (
     <div style={{ textAlign: 'center', padding: '8px 16px' }}>
@@ -648,6 +764,55 @@ function StatsBar({ models }) {
       {stat('Verified', verified, '#818cf8')}
       {stat('Locked',   locked,   '#ef4444')}
       {stat('Masters',  masters,  '#eab308')} {/* ── NEW */}
+      {stat('Serverless', serverless, '#10b981')} {/* ── NEW */}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEARCH BAR (smart search — matches label, aka, sublabel, value, description)
+// ─────────────────────────────────────────────────────────────────────────────
+function searchMatches(model, query) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const haystack = [
+    model.label, model.aka, model.sublabel, model.value, model.description,
+  ].filter(Boolean).join(' ').toLowerCase()
+  // AND-match every whitespace-separated term, so "kling pro" matches
+  // "Kling V3 Pro" even though the words aren't adjacent in the query.
+  return q.split(/\s+/).every(term => haystack.includes(term))
+}
+
+function SearchBar({ value, onChange }) {
+  return (
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Search by name, alias, or value…"
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          padding: '9px 12px', borderRadius: 12,
+          border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+          background: 'var(--bg-card, rgba(255,255,255,0.04))',
+          color: 'var(--text-primary, #fff)', fontSize: 12, fontWeight: 500,
+          outline: 'none',
+        }}
+      />
+      {value && (
+        <button
+          onClick={() => onChange('')}
+          title="Clear search"
+          style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-muted, #888)', display: 'flex', padding: 0,
+          }}
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   )
 }
@@ -684,6 +849,7 @@ function FilterBar({ filter, setFilter }) {
       {btn('master',     'Master only', '#eab308' )} {/* ── NEW */}
       {btn('free',       'Free',        '#aaa'    )}
       {btn('rw',         '🪟 Window',   '#818cf8' )}
+      {btn('serverless', '⚙️ Serverless','#10b981' )}
       {btn('image',      'Images',      '#6366f1' )}
       {btn('video',      'Videos',      '#f59e0b' )}
     </div>
@@ -697,6 +863,7 @@ export default function ModelsManager() {
   const [models,  setModels]  = useState([])
   const [loading, setLoading] = useState(true)
   const [filter,  setFilter]  = useState('all')
+  const [search,  setSearch]  = useState('')
 
   const loadModels = useCallback(async () => {
     setLoading(true)
@@ -726,10 +893,11 @@ export default function ModelsManager() {
     if (filter === 'master')     return  m.tier_required === 'master' // ── NEW
     if (filter === 'free')       return  m.tier_required !== 'master'
     if (filter === 'rw')         return  m.model_access_type === 'render_window'
+    if (filter === 'serverless') return  m.supports_serverless === true
     if (filter === 'image')      return  m.type === 'image'
-    if (filter === 'video')      return  m.type === 'video'
+   if (filter === 'video')      return  m.type === 'video'
     return true
-  })
+  }).filter(m => searchMatches(m, search))
 
   if (loading) {
     return (
@@ -752,6 +920,7 @@ export default function ModelsManager() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
       <StatsBar models={models} />
+      <SearchBar value={search} onChange={setSearch} />
       <FilterBar filter={filter} setFilter={setFilter} />
 
       {/* Helper text */}
