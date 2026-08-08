@@ -762,14 +762,14 @@ useEffect(() => {
     convertedSettings.duration    !== targetDuration
   )
 
-  const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort
+  const needsConversion = !!motionVideo && !compat.compatible && !compat.fixes?.tooShort && !compat.fixes?.tooLong
 
   const showReconvertWarning  = needsConversion && settingsDrifted
   const showFirstConvertPanel = needsConversion && !settingsDrifted
 
   const compatStatus = !motionVideo
     ? null
-    : compat.fixes?.tooShort
+    : (compat.fixes?.tooShort || compat.fixes?.tooLong)
       ? 'rejected'
       : settingsDrifted
         ? 'reconvert'
@@ -1158,7 +1158,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                       onUpload={handleVideoUpload}
                       onRemove={handleRemoveVideo}
                       compatStatus={compatStatus}
-                      tooShort={!!compat.fixes?.tooShort}
+                      tooShort={!!compat.fixes?.tooShort || !!compat.fixes?.tooLong}
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -1174,7 +1174,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
 
                 {/* Too short — hard reject */}
                 <AnimatePresence>
-                  {compat.fixes?.tooShort && (
+                  {(compat.fixes?.tooShort || compat.fixes?.tooLong) && (
                     <motion.div
                       initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.18 }}
