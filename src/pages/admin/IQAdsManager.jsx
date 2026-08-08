@@ -18,7 +18,8 @@ import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 const ModelRow = ({ model, onToggle }) => {
-  const hasCost = !!model.cost_usd_resolution
+  const hasCost    = !!model.cost_usd_resolution
+  const isInactive = !model.is_active
 
   return (
     <div
@@ -30,6 +31,7 @@ const ModelRow = ({ model, onToggle }) => {
         <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
           {model.value} · {model.provider}
           {!hasCost && <span style={{ color: '#fbbf24' }}> · no cost saved — won't be orderable</span>}
+          {isInactive && <span style={{ color: '#ef4444' }}> · inactive — won't show on the page</span>}
         </p>
       </div>
       <button
