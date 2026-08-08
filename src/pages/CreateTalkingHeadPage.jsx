@@ -46,7 +46,7 @@ const VIDEO_TRIM_COST = 2
 
 // Models that don't carry feature: 'lipsync' but can still do a single-image
 // talking-head job — mirrors CROSSOVER_ALLOWLIST on CreateVideoPage.jsx, in reverse.
-const TALKING_HEAD_CROSSOVER_ALLOWLIST = ['meckury_vipro']
+const TALKING_HEAD_CROSSOVER_ALLOWLIST = ['meckury_vipro', 'meckury_v3']
 
 // ─── helpers to read metadata straight from a picker URL (no local File) ──────
 
