@@ -75,16 +75,37 @@ function checkVideoCompatibility({ videoMeta, model, targetAspectRatio, targetDu
     return { compatible: false, reason: 'Video or model not ready', fixes: { needsTrim: false, needsCrop: false } }
   }
 
-  const supportedRatios = model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
-  const durations       = (model.supported_durations ?? []).map(Number).sort((a, b) => a - b)
+  const supportedRatios   = model.supported_aspect_ratios ?? ['9:16', '16:9', '1:1']
+  const aspectOk          = supportedRatios.includes(videoMeta.aspectRatio) &&
+                            videoMeta.aspectRatio === targetAspectRatio
+  const isFlexibleDuration = model.model_access_type === 'render_window' && model.max_duration_seconds != null
+
+  if (isFlexibleDuration) {
+    if (videoMeta.duration != null && videoMeta.duration > model.max_duration_seconds) {
+      return {
+        compatible: false,
+        reason: `Video is ${videoMeta.duration}s — max is ${model.max_duration_seconds}s for this model.`,
+        fixes: { needsTrim: false, needsCrop: false, tooShort: false, tooLong: true },
+      }
+    }
+    const needsCrop = !aspectOk
+    if (!needsCrop) {
+      return { compatible: true, reason: null, fixes: { needsTrim: false, needsCrop: false } }
+    }
+    return {
+      compatible: false,
+      reason:     `Aspect ratio ${videoMeta.aspectRatio || 'unknown'} → ${targetAspectRatio}`,
+      fixes:      { needsTrim: false, needsCrop: true, tooShort: false },
+    }
+  }
+
+  const durations = (model.supported_durations ?? []).map(Number).sort((a, b) => a - b)
 
   if (durations.length === 0) {
     return { compatible: false, reason: 'Model has no supported durations configured', fixes: { needsTrim: false, needsCrop: false } }
   }
 
-  const minDur   = durations[0]
-  const aspectOk = supportedRatios.includes(videoMeta.aspectRatio) &&
-                   videoMeta.aspectRatio === targetAspectRatio
+  const minDur = durations[0]
 
   if (videoMeta.duration != null && videoMeta.duration < minDur) {
     return {
@@ -623,6 +644,8 @@ useEffect(() => {
       ? selectedModel.supported_durations.map(Number).sort((a, b) => a - b)
       : []
   ), [selectedModel])
+  const isFlexibleDuration    = selectedModel?.model_access_type === 'render_window'
+    && selectedModel?.max_duration_seconds != null
 
   // ── Restore session on mount ─────────────────────────────
   useEffect(() => {
@@ -693,6 +716,11 @@ useEffect(() => {
 
   // Default targetDuration
   useEffect(() => {
+    if (isFlexibleDuration) {
+      setTargetDuration(motionVideo?.duration != null ? Math.round(motionVideo.duration) : null)
+      setTrimStart(0)
+      return
+    }
     if (modelDurations.length === 0) { setTargetDuration(null); return }
     if (motionVideo?.duration == null) { setTargetDuration(modelDurations[0]); return }
     const exact = modelDurations.find((d) => d === motionVideo.duration)
@@ -700,7 +728,7 @@ useEffect(() => {
     const fits = modelDurations.filter((d) => d <= motionVideo.duration)
     setTargetDuration(fits.length ? fits[fits.length - 1] : modelDurations[0])
     setTrimStart(0)
-  }, [motionVideo?.duration, modelDurations])
+  }, [motionVideo?.duration, modelDurations, isFlexibleDuration])
 
   // Clamp trimStart
   useEffect(() => {
@@ -804,9 +832,11 @@ const videoRequired   = selectedModel?.requires_video ?? true
     const url  = URL.createObjectURL(file)
     const meta = await readVideoMetadata(file)
 
-    if (meta.duration != null && meta.duration > 35) {
+    const uploadCap = isFlexibleDuration ? selectedModel.max_duration_seconds : 35
+
+    if (meta.duration != null && meta.duration > uploadCap) {
       URL.revokeObjectURL(url)
-      toast.error('Video must be 35 seconds or under.')
+      toast.error(`Video must be ${uploadCap} seconds or under.`)
       e.target.value = ''
       return
     }
@@ -1171,7 +1201,7 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
               </div>
 
               {/* Trim UI */}
-              {motionVideo && !compat.fixes?.tooShort && modelDurations.length > 0 && (
+              {motionVideo && !compat.fixes?.tooShort && !isFlexibleDuration && modelDurations.length > 0 && (
                 <div className="rounded-2xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2 mb-3">
                     <Scissors size={14} style={{ color: ACCENT }} />
