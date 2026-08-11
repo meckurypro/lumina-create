@@ -212,7 +212,7 @@ export default function CreateIQAdsPage() {
         model:              selectedModel,
         duration,
         resolution,
-        aspectRatio,
+        aspectRatio:        selectedModel?.aspect_ratio_locked_to_input ? null : aspectRatio,
         humanMode:          contentType === 'event' ? null : humanMode,
         humanReferenceUrl:  humanUrl,
         userDirection:       userDirection.trim() || null,
@@ -361,9 +361,11 @@ export default function CreateIQAdsPage() {
                 options={durations.map((d) => ({ label: `${d}s`, value: d }))}
                 value={duration} onChange={setDuration} accent={ACCENT} />
             )}
-            <SettingChips label="Aspect Ratio"
-              options={aspectRatios.map((a) => ({ label: a, value: a }))}
-              value={aspectRatio} onChange={setAspectRatio} accent={ACCENT} />
+           {!selectedModel?.aspect_ratio_locked_to_input && (
+              <SettingChips label="Aspect Ratio"
+                options={aspectRatios.map((a) => ({ label: a, value: a }))}
+                value={aspectRatio} onChange={setAspectRatio} accent={ACCENT} />
+            )}
           </div>
 
           {/* Human mode — product flyers only; event flyers show whoever's already in them */}
