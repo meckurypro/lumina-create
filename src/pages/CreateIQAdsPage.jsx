@@ -212,7 +212,7 @@ export default function CreateIQAdsPage() {
         model:              selectedModel,
         duration,
         resolution,
-        aspectRatio:        selectedModel?.aspect_ratio_locked_to_input ? null : aspectRatio,
+        aspectRatio,
         humanMode:          contentType === 'event' ? null : humanMode,
         humanReferenceUrl:  humanUrl,
         userDirection:       userDirection.trim() || null,
