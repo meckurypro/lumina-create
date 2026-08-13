@@ -17,7 +17,7 @@ export async function applyModelPreferences(models, userId) {
 
   return models.filter((m) => {
     if (m.is_required) return true          // always show required
-    if (prefMap[m.id] === undefined) return false  // has prefs but model not in them = hidden
+    if (prefMap[m.id] === undefined) return true   // no explicit pref yet = show by default
     return prefMap[m.id]                    // respect explicit preference
   })
 }
