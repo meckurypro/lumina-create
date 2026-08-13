@@ -597,7 +597,7 @@ export default function CreateCopyMotionPage() {
   }, [])
 
   // ── Load models ──────────────────────────────────────────
-const COPY_MOTION_CROSSOVER_ALLOWLIST = ['meckury_vipro']
+const COPY_MOTION_CROSSOVER_ALLOWLIST = ['meckury_vipro', 'meckury_facex']
 
 const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -696,7 +696,7 @@ useEffect(() => {
           .from('generations')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('generation_type', 'motion_transfer')
+          .in('generation_type', ['motion_transfer', 'face_swap'])
           .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
       ])
       if (settingRow) setWeeklyLimit(Number(JSON.parse(settingRow.value)))
@@ -1021,9 +1021,9 @@ const videoRequired   = selectedModel?.requires_video ?? true
           .getPublicUrl(imgPath))
       }
 
-      const { data: genRow, error: genErr } = await generationsDb.create({
+    const { data: genRow, error: genErr } = await generationsDb.create({
         user_id:                user.id,
-        generation_type:        'motion_transfer',
+        generation_type:        selectedModel?.feature === 'face_swap' ? 'face_swap' : 'motion_transfer',
         status:                 'pending',
         prompt:                 null,
         model,
@@ -1141,8 +1141,17 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
               <div className="rounded-2xl px-4 py-3 flex gap-3 items-start" style={{ background: ACCENT_SUB, border: `1px solid ${ACCENT_BDR}` }}>
                 <Film size={16} style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }} />
                 <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                  Upload a <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the motion from the video onto your image.
+                  {selectedModel?.feature === 'face_swap' ? (
+                    <>
+                      Upload a <strong style={{ color: 'var(--text-primary)' }}>video</strong> and a{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>face reference image</strong>. The AI transfers the face identity onto the video's existing motion.
+                    </>
+                  ) : (
+                    <>
+                      Upload a <strong style={{ color: 'var(--text-primary)' }}>motion reference video</strong> and a{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>subject image</strong>. The AI copies the motion from the video onto your image.
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -1151,7 +1160,9 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                 <p className="text-xs font-semibold mb-3 uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Inputs</p>
                 <div className="grid grid-cols-2 gap-3 items-start">
                   <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Motion Video</p>
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                      {selectedModel?.feature === 'face_swap' ? 'Video' : 'Motion Video'}
+                    </p>
                     <VideoUploadZone
                       value={motionVideo}
                       ghostMeta={videoGhostMeta}
@@ -1161,8 +1172,10 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
                       tooShort={!!compat.fixes?.tooShort || !!compat.fixes?.tooLong}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Subject Image</p>
+                 <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                      {selectedModel?.feature === 'face_swap' ? 'Face Reference' : 'Subject Image'}
+                    </p>
                     <ImageUploadZone
                       value={subjectImage}
                       onUpload={handleSubjectUpload}
