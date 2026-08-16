@@ -37,6 +37,7 @@ import CreatePhotoPolishPage    from '@/pages/CreatePhotoPolishPage'
 import CreateImageUpscalerPage  from '@/pages/CreateImageUpscalerPage'
 import CreateVideoUpscalerPage  from '@/pages/CreateVideoUpscalerPage'
 import CreateIQAdsPage          from '@/pages/CreateIQAdsPage'
+import CreateDAWPage            from '@/pages/CreateDAWPage'
 import ModelPreferencesPage     from '@/pages/ModelPreferencesPage'
 import MusePage from '@/pages/MusePage'
 
@@ -220,6 +221,7 @@ export default function App() {
             <Route path="/create/image-upscaler" element={<Auth><CreateImageUpscalerPage /></Auth>} />
             <Route path="/create/video-upscaler" element={<Auth><CreateVideoUpscalerPage /></Auth>} />
             <Route path="/create/iq-ads"         element={<Auth><CreateIQAdsPage /></Auth>} />
+            <Route path="/create/daw"            element={<Auth><CreateDAWPage /></Auth>} />
 
             {/* ── Cinematic ───────────────────────────────────── */}
             <Route path="/create/cinematic-transition" element={<Auth><CinematicTransitionPage /></Auth>} />
