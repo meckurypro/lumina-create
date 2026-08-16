@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ImageIcon, VideoIcon, Sparkles, ArrowRight, Layers, UserCircle,
-  Crown, Mic, Clock, ScanSearch, Maximize, Clapperboard,
+  Crown, Mic, Clock, ScanSearch, Maximize, Clapperboard, Music2,
 } from 'lucide-react'
 import { templates as templatesDb, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -26,6 +26,7 @@ const ACCENTS = {
   voice:  { color: 'var(--tool-talking-head)', subtle: 'var(--tool-talking-head-subtle)', border: 'var(--tool-talking-head-border)' },
   ugc:    { color: 'var(--tool-ugc)', subtle: 'var(--tool-ugc-subtle)', border: 'var(--tool-ugc-border)' },
   motion: { color: 'var(--tool-motion)', subtle: 'var(--tool-motion-subtle)', border: 'var(--tool-motion-border)' },
+  music:  { color: 'var(--tool-music, #a855f7)', subtle: 'var(--tool-music-subtle, rgba(168,85,247,0.12))', border: 'var(--tool-music-border, rgba(168,85,247,0.32))' },
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,10 @@ const TOOLS = [
   {
     id: 'create_ugc', label: 'UGC', subtitle: 'Generate content with your characters',
     icon: UserCircle, route: '/create/ugc', accent: 'ugc',
+  },
+  {
+    id: 'create_daw', label: 'DAW AI', subtitle: 'Compose, edit and master full songs',
+    icon: Music2, route: '/create/daw', accent: 'music',
   },
 ]
 
