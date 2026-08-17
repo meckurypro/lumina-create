@@ -96,7 +96,7 @@ function parseSections(lyricsText) {
 // COLLAPSIBLE SECTION
 // ─────────────────────────────────────────────────────────────────────────
 
-function CollapsibleSection({ title, defaultOpen = false, badge, children }) {
+function CollapsibleSection({ title, defaultOpen = false, badge, headerExtra, children }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${ACCENT_BDR}`, background: 'var(--bg-card)' }}>
@@ -112,10 +112,13 @@ function CollapsibleSection({ title, defaultOpen = false, badge, children }) {
             </span>
           )}
         </div>
-        <ChevronDown
-          size={16}
-          style={{ color: 'var(--text-muted)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
-        />
+        <div className="flex items-center gap-2">
+          {headerExtra}
+          <ChevronDown
+            size={16}
+            style={{ color: 'var(--text-muted)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+          />
+        </div>
       </button>
       <AnimatePresence initial={false}>
         {open && (
@@ -499,7 +502,19 @@ export default function CreateDAWPage() {
 
           {/* Voice — song mode only, collapsed by default */}
           {mode === 'song' && (
-            <CollapsibleSection title="Voice" badge={voiceId ? '1 selected' : 'Optional'}>
+            <CollapsibleSection
+              title="Voice"
+              badge={voiceId ? '1 selected' : 'Optional'}
+              headerExtra={
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate('/create/daw/voices') }}
+                  className="text-xs font-semibold"
+                  style={{ color: ACCENT }}
+                >
+                  Manage
+                </button>
+              }
+            >
               {voicesLoading ? (
                 <div className="flex justify-center py-4">
                   <Loader2 size={16} className="animate-spin" style={{ color: ACCENT }} />
