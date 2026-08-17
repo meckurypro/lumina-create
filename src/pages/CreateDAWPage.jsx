@@ -175,6 +175,33 @@ function SectionVoiceRow({ section, voiceEnabled, entry, onChange }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// SLIDER CONTROL — shared shape for Creativity / Prompt Influence /
+// Reference Audio Influence. Raw <input type="range">, same styling
+// convention as the trim slider in CreateVideoPage (accentColor prop).
+// ─────────────────────────────────────────────────────────────────────────
+
+function SliderControl({ label, value, onChange, lowLabel, highLabel, hint }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{label}</span>
+        <span className="text-xs font-bold" style={{ color: ACCENT }}>{value}%</span>
+      </div>
+      <input
+        type="range" min={0} max={100} step={1}
+        value={value} onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full" style={{ accentColor: ACCENT }}
+      />
+      <div className="flex items-center justify-between">
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{lowLabel}</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{highLabel}</span>
+      </div>
+      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>{hint}</p>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -201,6 +228,14 @@ export default function CreateDAWPage() {
 
   const [variationCount, setVariationCount] = useState(1)
   const [submitting,     setSubmitting]     = useState(false)
+
+  // Creative controls — same triad as Suno/Udio's advanced sliders,
+  // mapped to real ACE-Step params server-side (LM temperature, cfg,
+  // denoise/cover_strength). 0–100 stored as-is; range mapping happens
+  // at workflow-injection time in daw-generate.
+  const [creativity,          setCreativity]          = useState(50)
+  const [promptInfluence,     setPromptInfluence]     = useState(65)
+  const [referenceInfluence,  setReferenceInfluence]  = useState(55)
 
   const isMaster = profile?.user_tier === 'master'
   const refCapSeconds = isMaster ? REF_MAX_SECONDS_MASTER : REF_MAX_SECONDS_NOVICE
@@ -357,6 +392,9 @@ export default function CreateDAWPage() {
           variation_count:          variationCount,
           credits_charged:          creditCost,
           status:                   'pending',
+          creativity,
+          prompt_influence:         promptInfluence,
+          reference_influence:      referenceAudioUrl ? referenceInfluence : null,
         })
         .select('id')
         .single()
@@ -559,7 +597,7 @@ export default function CreateDAWPage() {
             </CollapsibleSection>
           )}
 
-          {/* Variations */}
+         {/* Variations */}
           <div>
             <SettingChips
               label="Variations"
@@ -569,6 +607,30 @@ export default function CreateDAWPage() {
               accent={ACCENT}
             />
           </div>
+
+          {/* Creative controls — collapsed by default, power-user territory,
+              same as Suno's "Advanced options" */}
+          <CollapsibleSection title="Creative Controls" badge="Advanced">
+            <div className="flex flex-col gap-5">
+              <SliderControl
+                label="Creativity" value={creativity} onChange={setCreativity}
+                lowLabel="Safe" highLabel="Chaos"
+                hint="Low keeps it predictable. High gets experimental."
+              />
+              <SliderControl
+                label="Prompt Influence" value={promptInfluence} onChange={setPromptInfluence}
+                lowLabel="Loose" highLabel="Strict"
+                hint="How literally the style prompt and lyrics are followed."
+              />
+             {referenceMeta && (
+                <SliderControl
+                  label="Audio Influence" value={referenceInfluence} onChange={setReferenceInfluence}
+                  lowLabel="Subtle" highLabel="Strong"
+                  hint="How much your uploaded reference shapes the result."
+                />
+              )}
+            </div>
+          </CollapsibleSection>
 
         </div>
       </div>
