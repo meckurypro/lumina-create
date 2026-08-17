@@ -19,6 +19,7 @@ import { Film, Image as ImageIcon }              from 'lucide-react'
 import MediaPageCore                             from '@/components/media/MediaPageCore.jsx'
 import { MediaEmptyState }                       from '@/components/media/MediaCardComponents.jsx'
 import AssetsPage                                from '@/components/media/AssetsPage.jsx'
+import DawGenerationsPanel                       from '@/components/media/DawGenerationsPanel.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tabs
@@ -26,6 +27,7 @@ import AssetsPage                                from '@/components/media/Assets
 
 const TABS = [
   { value: 'generations', label: 'Generations' },
+  { value: 'daw',         label: 'DAW AI'       },
   { value: 'assets',      label: 'Assets'      },
 ]
 
@@ -372,7 +374,7 @@ export default function MediaPage() {
         {headerSlot({ totalCount })}
       </div>
 
-      {activeTab === 'generations' ? (
+  {activeTab === 'generations' ? (
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           <MediaPageCoreInner
             isNovice={isNovice}
@@ -380,6 +382,8 @@ export default function MediaPage() {
             onTotalCountChange={setTotalCount}
           />
         </div>
+      ) : activeTab === 'daw' ? (
+        <DawGenerationsPanel />
       ) : (
         <AssetsPage />
       )}
