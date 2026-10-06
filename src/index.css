@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -462,4 +462,123 @@ input, textarea, select { font: inherit; }
     scroll-behavior:           auto   !important;
     transition-duration:       0.01ms !important;
   }
+}
+
+
+/* ============================================================
+   REBRAND v2 — CINEMATIC (dark-first, theme + device aware)
+   Same token names as before, so every page re-themes at once.
+   ============================================================ */
+
+:root {
+  --background: 40 25% 98%;  --foreground: 240 20% 6%;
+  --card: 0 0% 100%;         --card-foreground: 240 20% 6%;
+  --popover: 0 0% 100%;      --popover-foreground: 240 20% 6%;
+  --primary: 247 85% 58%;    --primary-foreground: 0 0% 100%;
+  --secondary: 40 15% 94%;   --secondary-foreground: 240 20% 8%;
+  --muted: 40 15% 94%;       --muted-foreground: 240 6% 42%;
+  --accent: 40 15% 94%;      --accent-foreground: 240 20% 8%;
+  --border: 240 10% 88%;     --input: 240 10% 88%;  --ring: 247 85% 58%;
+
+  --bg-primary:   #fbfaf8;
+  --bg-secondary: #f4f2ee;
+  --bg-card:      #ffffff;
+  --bg-elevated:  #efece7;
+  --bg-input:     #f1eee9;
+  --text-primary:   #0d0d12;
+  --text-secondary: #3b3b48;
+  --text-muted:     #6b6b7b;
+  --border-color: rgba(13,13,18,0.10);
+  --border-focus: #5B4DF0;
+
+  --brand:       #5B4DF0;
+  --brand-light: #eeebff;
+  --brand-dark:  #4638d6;
+  --gold:        #C98A0B;
+  --gradient-brand: linear-gradient(135deg, #5B4DF0 0%, #A24BE8 60%, #E8903A 100%);
+  --glass-bg:     rgba(255,255,255,0.78);
+  --glass-border: rgba(13,13,18,0.08);
+  --shadow-brand:    0 12px 30px -18px rgba(91,77,240,0.55);
+  --shadow-brand-lg: 0 18px 42px -18px rgba(91,77,240,0.6);
+  --grain-opacity: 0.03;
+  --sidebar-w: 0px;
+}
+
+[data-theme='dark'], .dark {
+  --background: 240 25% 4%;  --foreground: 240 20% 96%;
+  --card: 240 20% 7%;        --card-foreground: 240 20% 96%;
+  --popover: 240 20% 7%;     --popover-foreground: 240 20% 96%;
+  --primary: 250 100% 70%;   --primary-foreground: 0 0% 100%;
+  --secondary: 240 18% 11%;  --secondary-foreground: 240 20% 96%;
+  --muted: 240 18% 11%;      --muted-foreground: 240 8% 60%;
+  --accent: 240 18% 11%;     --accent-foreground: 240 20% 96%;
+  --border: 240 12% 16%;     --input: 240 14% 12%;  --ring: 250 100% 70%;
+
+  --bg-primary:   #07070b;
+  --bg-secondary: #0b0b11;
+  --bg-card:      #101017;
+  --bg-elevated:  #181823;
+  --bg-input:     #14141d;
+  --text-primary:   #f4f4f8;
+  --text-secondary: #c9c9d6;
+  --text-muted:     #8a8a9c;
+  --text-inverse:   #07070b;
+  --border-color: rgba(255,255,255,0.08);
+  --border-focus: rgba(255,255,255,0.30);
+
+  --brand:       #7C6CFF;
+  --brand-light: rgba(124,108,255,0.14);
+  --brand-dark:  #A79BFF;
+  --gold:        #F5B83D;
+  --gradient-brand: linear-gradient(135deg, #7C6CFF 0%, #C66BFF 60%, #F5B83D 100%);
+  --glass-bg:     rgba(16,16,23,0.72);
+  --glass-border: rgba(255,255,255,0.09);
+  --shadow-brand:    0 12px 34px -16px rgba(124,108,255,0.65);
+  --shadow-brand-lg: 0 18px 46px -16px rgba(124,108,255,0.7);
+  --grain-opacity: 0.05;
+}
+
+/* Device-aware sidebar width: none on phones, rail on laptops, full on large screens */
+@media (min-width: 1024px) { :root { --sidebar-w: 72px;  --bottom-nav-height: 0px; } }
+@media (min-width: 1280px) { :root { --sidebar-w: 232px; } }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Sora', 'Inter', -apple-system, sans-serif !important;
+  letter-spacing: -0.035em;
+}
+
+.brand-gradient      { background: var(--gradient-brand); }
+.brand-gradient-text { background: var(--gradient-brand); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+::selection          { background: color-mix(in srgb, var(--brand) 28%, transparent); }
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+
+/* Film grain — subtle, non-interactive */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+  opacity: var(--grain-opacity); mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Shell: content shifts right of the desktop sidebar */
+.app-shell-main { padding-left: var(--sidebar-w); }
+
+/* Desktop: single-column phone forms get room to breathe */
+@media (min-width: 1024px) {
+  .max-w-xl { max-width: 46rem; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+}
+
+/* Touch devices: comfortable tap targets, no sticky hover */
+@media (pointer: coarse) { button, [role='button'], a { touch-action: manipulation; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

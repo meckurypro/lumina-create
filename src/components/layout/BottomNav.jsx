@@ -41,7 +41,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
         <motion.span
           layoutId="nav-pill"
           className="absolute inset-0"
-          style={{ background: 'var(--bg-elevated)', borderRadius: '14px' }}
+          style={{ background: 'var(--brand-light)', borderRadius: '14px' }}
           transition={{ type: 'spring', damping: 30, stiffness: 400 }}
         />
       )}
@@ -49,7 +49,7 @@ const NavItem = ({ path, icon: Icon, label }) => {
         <Icon
           size={22}
           strokeWidth={active ? 2 : 1.5}
-          style={{ color: active ? 'var(--text-primary)' : 'var(--text-muted)', transition: 'color 0.2s ease' }}
+          style={{ color: active ? 'var(--brand)' : 'var(--text-muted)', transition: 'color 0.2s ease' }}
         />
       </span>
     </NavLink>
@@ -81,8 +81,8 @@ export const BottomNav = () => {
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
         style={{
-          background:    'var(--bg-card)',
-          borderTop:     '1px solid var(--border-color)',
+          background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+          borderTop:     '1px solid var(--glass-border)',
           borderRadius:  '24px 24px 0 0',
           paddingBottom: 'env(safe-area-inset-bottom, 8px)',
         }}

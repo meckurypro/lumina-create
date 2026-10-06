@@ -1,5 +1,6 @@
 // src/pages/CreateImagePage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { GenerationPreviewPane } from '@/components/create/GenerationPreviewPane'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, Maximize2, Plus } from 'lucide-react'
@@ -584,7 +585,7 @@ const canAfford      = credits >= creditCost
 
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 lg:px-8 h-14"
-        style={{ borderBottom: `1px solid var(--border-color)`, borderLeft: `3px solid ${ACCENT}` }}
+        style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)' }}
       >
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
@@ -632,8 +633,9 @@ const canAfford      = credits >= creditCost
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-5">
+      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 lg:flex-none lg:w-[480px] lg:border-r overflow-y-auto" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-6 py-6 flex flex-col gap-5">
 
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -771,16 +773,19 @@ const canAfford      = credits >= creditCost
           </div>
         </div>
       </div>
+      <GenerationPreviewPane outputType="image" />
+      </div>
 
-      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: `1px solid ${ACCENT_BDR}` }}>
+      <div className="flex-shrink-0 px-4 lg:px-8 py-4" style={{ borderTop: '1px solid var(--glass-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)' }}>
         <div className="mx-auto w-full max-w-xl">
           <button
             onClick={handleGenerate}
             disabled={buttonDisabled}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: buttonDisabled ? 'var(--bg-elevated)' : ACCENT,
+              background: buttonDisabled ? 'var(--bg-elevated)' : 'var(--gradient-brand)',
               color:      buttonDisabled ? 'var(--text-muted)'  : '#ffffff',
+              boxShadow:  buttonDisabled ? 'none' : 'var(--shadow-brand-lg)',
             }}
           >
             <Zap size={15} fill="currentColor" />

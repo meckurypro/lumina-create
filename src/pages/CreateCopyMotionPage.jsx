@@ -1,5 +1,6 @@
 // src/pages/CreateCopyMotionPage.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { GenerationPreviewPane } from '@/components/create/GenerationPreviewPane'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -1124,8 +1125,9 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
+      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 lg:flex-none lg:w-[480px] lg:border-r overflow-y-auto" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-6 py-6 flex flex-col gap-6">
 
           {modelsLoading ? (
             <div className="flex flex-col gap-4">
@@ -1340,6 +1342,8 @@ const { data: invokeData, error: invokeErr } = await supabase.functions
             </>
           )}
         </div>
+      </div>
+      <GenerationPreviewPane outputType="video" />
       </div>
 
       {/* Generate button */}

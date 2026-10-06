@@ -79,6 +79,7 @@ import PhotoPolishLandingPage   from '@/pages/public/PhotoPolishLandingPage'
 import UpscalerLandingPage      from '@/pages/public/UpscalerLandingPage'
 
 import { BottomNav }    from '@/components/layout/BottomNav'
+import { Sidebar }      from '@/components/layout/Sidebar'
 import PWAUpdateToast   from '@/components/PWAUpdateToast'
 
 // ── Loaders / guards ──────────────────────────────────────────
@@ -146,7 +147,8 @@ function RequireMaster({ children }) {
 
 const AppLayout = ({ children }) => (
   <div className="w-full h-dvh overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-    <div className="h-full overflow-y-auto" style={{ paddingBottom: 'var(--bottom-nav-height)' }}>
+    <Sidebar />
+    <div className="app-shell-main h-full overflow-y-auto" style={{ paddingBottom: 'var(--bottom-nav-height)' }}>
       {children}
     </div>
     <BottomNav />

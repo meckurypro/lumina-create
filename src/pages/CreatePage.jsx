@@ -76,7 +76,8 @@ const UTILITIES_REST = [
 
 const UTILITIES = [UTILITIES_PINNED, ...UTILITIES_REST]
 
-const TABS = ['utilities', 'tools', 'templates', 'canvas']
+const TABS = ['tools', 'utilities', 'templates', 'canvas']
+const TAB_LABELS = { tools: 'Studios', utilities: 'Utilities', templates: 'Templates', canvas: 'Canvas' }
 
 // ── Feature tile ─────────────────────────────────────────────────────────────
 // One card component for both the Tools tab and the Utilities tab, so the
@@ -99,11 +100,15 @@ function FeatureTile({ label, subtitle, icon: Icon, route, accent, index, naviga
       whileTap={disabled ? undefined : { scale: 0.97 }}
       onClick={handleClick}
       aria-disabled={disabled}
-      className="flex flex-col items-start text-left rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
+      className="flex flex-col items-start text-left transition-all duration-200 hover:-translate-y-0.5"
       style={{
-        background: 'var(--bg-card)',
+        background: disabled
+          ? 'var(--bg-card)'
+          : `radial-gradient(120% 90% at 100% 0%, ${a.subtle}, transparent 62%), var(--bg-card)`,
         border: `1px solid ${disabled ? 'var(--border-color)' : a.border}`,
-        padding: '18px',
+        borderRadius: 20,
+        minHeight: 156,
+        padding: '20px',
         opacity: disabled ? 0.65 : 1,
         cursor: disabled ? 'default' : 'pointer',
       }}
@@ -168,7 +173,7 @@ const TemplateCard = ({ template, index, onClick }) => (
   >
     <div
       className="w-full relative flex items-center justify-center overflow-hidden"
-      style={{ aspectRatio: '1 / 1', background: 'var(--bg-elevated)' }}
+      style={{ aspectRatio: '4 / 5', background: 'var(--bg-elevated)' }}
     >
       {template.demo_video_url ? (
         <video
@@ -186,6 +191,8 @@ const TemplateCard = ({ template, index, onClick }) => (
       ) : (
         <Sparkles size={26} style={{ color: 'var(--text-muted)' }} strokeWidth={1.4} />
       )}
+      <div className="absolute inset-x-0 bottom-0 h-1/3 pointer-events-none"
+        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.45), transparent)' }} />
     </div>
 
     <div className="px-3 py-2.5 flex items-center justify-between">
@@ -208,7 +215,7 @@ export default function CreatePage() {
   const location                      = useLocation()
   const { isStaff, isAdmin, profile } = useAuth()
   const isNovice                      = profile?.user_tier !== 'master'
-  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'utilities')
+  const [activeTab, setActiveTab]     = useState(location.state?.tab || 'tools')
   const [templates, setTemplates]     = useState([])
   const [loading, setLoading]         = useState(true)
   const [weeklyUsed, setWeeklyUsed]   = useState(null)
@@ -265,25 +272,54 @@ export default function CreatePage() {
         <div className="flex flex-col h-full">
 
           {/* Header */}
-          <div className="pt-2 pb-6 flex-shrink-0">
-            <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Create</h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>What are we making today?</p>
+          <div className="pt-2 pb-5 flex-shrink-0">
+            <h1 className="text-3xl lg:text-4xl font-black">
+              What will you <span className="brand-gradient-text">direct</span> today?
+            </h1>
+            <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
+              Pick a studio, or start a full film.
+            </p>
           </div>
 
+          {/* Flagship: Filma */}
+          <motion.button
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            whileTap={{ scale: 0.99 }} onClick={() => navigate('/filma')}
+            className="relative w-full overflow-hidden text-left mb-6 flex-shrink-0"
+            style={{
+              borderRadius: 24, padding: '24px',
+              background: 'radial-gradient(90% 140% at 100% 0%, color-mix(in srgb, var(--tool-filma) 26%, transparent), transparent 60%), radial-gradient(70% 120% at 0% 100%, var(--brand-light), transparent 60%), var(--bg-card)',
+              border: '1px solid var(--tool-filma-border)',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Clapperboard size={16} style={{ color: 'var(--tool-filma)' }} />
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tool-filma)' }}>Filma · Film studio</span>
+            </div>
+            <h2 className="text-xl lg:text-2xl font-black mb-1">Script to scenes to shots</h2>
+            <p className="text-sm mb-4 max-w-md" style={{ color: 'var(--text-secondary)' }}>
+              Cast your actors, build scenes and direct every shot with consistent characters.
+            </p>
+            <span className="inline-flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-full text-white"
+              style={{ background: 'var(--gradient-brand)', boxShadow: 'var(--shadow-brand)' }}>
+              Open Filma <ArrowRight size={14} />
+            </span>
+          </motion.button>
+
           {/* Tabs */}
-          <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0" style={{ background: 'var(--bg-elevated)' }}>
+          <div className="flex gap-1 p-1 rounded-2xl mb-6 flex-shrink-0 overflow-x-auto no-scrollbar lg:w-fit" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
             {TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200"
+                className="flex-1 lg:flex-none lg:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
                   background: activeTab === tab ? 'var(--bg-card)' : 'transparent',
                   color:      activeTab === tab ? 'var(--text-primary)' : 'var(--text-muted)',
                   boxShadow:  activeTab === tab ? 'var(--shadow)' : 'none',
                 }}
               >
-                {tab}
+                {TAB_LABELS[tab]}
               </button>
             ))}
           </div>
