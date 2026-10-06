@@ -4,7 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Home, Grip, Clapperboard, GalleryHorizontalEnd, Cpu, CreditCard,
-  User, Settings, Shield, Zap, Sun, Moon,
+  User, Settings, Shield, Zap, Sun, Moon, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
@@ -13,6 +13,7 @@ import PromptIQPage from '@/pages/PromptIQPage'
 const MAIN = [
   { path: '/feed',          icon: Home,                 label: 'Home' },
   { path: '/create',        icon: Grip,                 label: 'Create' },
+  { path: '/muse',          icon: Sparkles,             label: 'Muse' },
   { path: '/filma',         icon: Clapperboard,         label: 'Filma' },
   { path: '/media',         icon: GalleryHorizontalEnd, label: 'Media' },
   { path: '/render-window', icon: Cpu,                  label: 'Render Window' },

@@ -20,6 +20,7 @@ const STARTER_PROMPTS = [
   'Turn a photo into a short video',
   'Make my product photo look cinematic',
   'Create a talking-head clip',
+  'Copy the motion from a video onto my photo',
 ]
 
 const MAX_TEXTAREA_HEIGHT = 200 // px — stops growing, scrolls internally past this
@@ -232,7 +233,7 @@ export default function MusePage() {
             className="text-[26px] font-black text-center mb-8"
             style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
           >
-            What are we making today?
+            What will we <span className="brand-gradient-text">direct</span> today?
           </motion.h1>
 
           <motion.div
@@ -406,7 +407,7 @@ function Composer({
           onClick={onSend}
           disabled={!input.trim() || sending}
           className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 transition-all active:scale-90 disabled:opacity-30"
-          style={{ background: input.trim() ? 'var(--brand)' : 'var(--bg-elevated)' }}
+          style={{ background: input.trim() ? 'var(--gradient-brand)' : 'var(--bg-elevated)', boxShadow: input.trim() ? 'var(--shadow-brand)' : 'none' }}
           aria-label="Send"
         >
           <ArrowUp size={16} color={input.trim() ? '#fff' : 'var(--text-muted)'} strokeWidth={2.5} />
