@@ -151,8 +151,9 @@ const PrimaryButton = ({ onClick, loading, children }) => (
     disabled={loading}
     className="w-full py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
     style={{
-      background: 'var(--text-primary)',
-      color:      'var(--text-inverse)',
+      background: 'var(--gradient-brand)',
+      color:      '#ffffff',
+      boxShadow:  loading ? 'none' : 'var(--shadow-brand)',
       opacity:    loading ? 0.6 : 1,
       cursor:     loading ? 'not-allowed' : 'pointer',
     }}
@@ -393,12 +394,9 @@ export default function AuthPage() {
             role="link"
             aria-label="Go to homepage"
           >
-            <img
-              src="/icon.png"
-              alt="Meckury AI"
-              className="h-7 w-auto rounded-lg object-contain logo-icon"
-            />
-            <span className="font-bold text-base tracking-tight">Meckury AI</span>
+            <span className="flex items-center justify-center rounded-xl font-black text-white"
+              style={{ width: 30, height: 30, background: 'var(--gradient-brand)' }}>M</span>
+            <span className="font-extrabold text-base" style={{ fontFamily: 'Sora, Inter, sans-serif', letterSpacing: '-0.03em' }}>Meckury AI</span>
           </div>
         </div>
 

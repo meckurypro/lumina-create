@@ -47,9 +47,9 @@ export default defineConfig({
         description:      'Build AI characters, clone your voice, and create cinematic content effortlessly. Meckury AI — the future of storytelling.',
         start_url:        '/',
         display:          'standalone',
-        orientation:      'portrait',
-        background_color: '#000000',
-        theme_color:      '#000000',
+        orientation:      'any',
+        background_color: '#07070b',
+        theme_color:      '#07070b',
         lang:             'en',
         scope:            '/',
         icons: [

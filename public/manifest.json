@@ -4,9 +4,9 @@
   "description": "Cinematic AI videos and images in seconds.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
-  "orientation": "portrait",
+  "background_color": "#07070b",
+  "theme_color": "#07070b",
+  "orientation": "any",
   "icons": [
     { "src": "/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png" },
     { "src": "/icons/icon-96.png",  "sizes": "96x96",   "type": "image/png" },
