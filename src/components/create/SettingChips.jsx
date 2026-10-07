@@ -16,9 +16,11 @@ export function SettingChips({ label, options, value, onChange, accent = 'var(--
             key={opt.value}
             onClick={() => !opt.disabled && onChange(opt.value)}
             disabled={opt.disabled}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+            className="px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150 active:scale-95"
             style={{
               background: value === opt.value ? accent : 'var(--bg-elevated)',
+              border: `1px solid ${value === opt.value ? accent : 'var(--border-color)'}`,
+              boxShadow: value === opt.value ? 'var(--shadow-brand)' : 'none',
               color: value === opt.value ? '#ffffff' : 'var(--text-secondary)',
               opacity: opt.disabled ? 0.3 : 1,
               cursor: opt.disabled ? 'not-allowed' : 'pointer',

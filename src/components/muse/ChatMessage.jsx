@@ -41,7 +41,7 @@ export default function ChatMessage({ message }) {
         {message.tool?.kind === 'proposal' && (
           <div
             className="rounded-2xl px-4 py-3 flex flex-col gap-1.5 max-w-full"
-            style={{ background: 'var(--brand-light)', border: '1px solid var(--border-color)' }}
+            style={{ background: 'var(--brand-light)', border: '1px solid var(--border-color)', borderLeft: '3px solid var(--brand)' }}
           >
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--brand)' }}>
               Ready when you are
@@ -50,7 +50,7 @@ export default function ChatMessage({ message }) {
               {message.tool.summary}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              ~{message.tool.estimated_credits} credits · {message.tool.model_value}
+              {message.tool.estimated_credits} credits · {message.tool.model_value}
             </p>
           </div>
         )}

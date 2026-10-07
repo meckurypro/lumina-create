@@ -12,7 +12,7 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
           exit={{ opacity: 0 }}
           onClick={onClose}
           className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
-          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'rgba(3,3,8,0.72)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
         >
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
@@ -20,9 +20,10 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className={`w-full ${sizes[size]} max-h-[90vh] overflow-auto rounded-t-3xl sm:rounded-3xl`}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+            className={`w-full ${sizes[size]} max-h-[90vh] overflow-auto rounded-t-[28px] sm:rounded-3xl`}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 30px 80px -20px rgba(0,0,0,0.6)' }}
           >
+            <div className="sm:hidden flex justify-center pt-2.5"><span className="rounded-full" style={{ width: 36, height: 4, background: 'var(--border-color)' }} /></div>
             {title && (
               <div
                 className="flex items-center justify-between p-5"
@@ -30,7 +31,7 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
               >
                 <h2
                   className="text-lg font-bold"
-                  style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-primary)' }}
+                  style={{ fontFamily: 'Sora, Inter, sans-serif', color: 'var(--text-primary)' }}
                 >
                   {title}
                 </h2>
@@ -100,7 +101,7 @@ export const CreditBadge = ({ credits, size = 'md', showIcon = true }) => {
         background:  'var(--bg-elevated)',
         border:      '1px solid var(--border-color)',
         color:       'var(--text-secondary)',
-        fontFamily:  'Syne, sans-serif',
+        fontFamily:  'Sora, Inter, sans-serif',
       }}
     >
       {showIcon && (
@@ -123,7 +124,7 @@ export const EmptyState = ({ icon: Icon, title, description, action }) => (
     )}
     <h3
       className="mb-2 text-lg font-bold"
-      style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-primary)' }}
+      style={{ fontFamily: 'Sora, Inter, sans-serif', color: 'var(--text-primary)' }}
     >
       {title}
     </h3>

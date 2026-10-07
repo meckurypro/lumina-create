@@ -29,7 +29,7 @@ export const TemplateCard = ({ template, onClick, variant = 'default', index = 0
       </div>
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-center gap-2">
-          <h3 className="truncate text-sm font-bold" style={{ fontFamily: 'Syne, sans-serif' }}>{template.name}</h3>
+          <h3 className="truncate text-sm font-bold" style={{ fontFamily: 'Sora, Inter, sans-serif' }}>{template.name}</h3>
           {showVisibilityBadge && (
             <span
               className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold"

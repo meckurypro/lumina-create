@@ -8,7 +8,7 @@ import { CreditBadge } from '@/components/ui/Modal'
 import PromptIQPage from '@/pages/PromptIQPage'
 
 // Keep in sync with BottomNav.jsx's MUSE_ENABLED flag
-const MUSE_ENABLED = false
+const MUSE_ENABLED = true
 
 const NAV_ITEMS = [
   { path: '/feed',    icon: Home,          label: 'Home'    },
@@ -64,12 +64,13 @@ export const TopBar = ({
   return (
     <>
       <header
-        className="fixed top-0 left-0 right-0 z-30 px-4 lg:px-8"
+        className="fixed top-0 right-0 z-30 px-4 lg:px-8"
         style={{
+          left:                 'var(--sidebar-w)',
           background:           'color-mix(in srgb, var(--bg-primary) 88%, transparent)',
           borderBottom:         '1px solid var(--border-color)',
-          backdropFilter:       'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
+          backdropFilter:       'blur(20px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
           height:               '56px',
         }}
       >
@@ -89,7 +90,7 @@ export const TopBar = ({
             ) : showLogo ? (
               <button
                 onClick={() => navigate('/feed')}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 lg:hidden"
                 aria-label="Home"
               >
                 <img
@@ -104,10 +105,10 @@ export const TopBar = ({
 
           {/* ── Center: page title (mobile) or desktop nav ── */}
           {title && (
-            <h1 className="shrink-0 text-base font-extrabold lg:hidden">{title}</h1>
+            <h1 className="shrink-0 text-base lg:text-lg font-extrabold">{title}</h1>
           )}
 
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden items-center gap-1">
             {NAV_ITEMS.map(({ path, label }) => (
               <DesktopNavItem key={path} path={path} label={label} />
             ))}
