@@ -520,7 +520,7 @@ export default function FeedPage() {
         {/* ── Feed section: splash or trending ── */}
         {configLoading ? (
           /* Config still loading — show skeleton trending layout */
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 mb-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
           </div>
         ) : !feedEnabled ? (
@@ -535,7 +535,7 @@ export default function FeedPage() {
             </div>
 
             {trendingLoading ? (
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 mb-4">
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-3xl" />)}
               </div>
             ) : trending.length === 0 ? (

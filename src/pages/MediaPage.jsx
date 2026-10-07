@@ -300,9 +300,9 @@ export default function MediaPage() {
                 onClick={() => setActiveTab(tab.value)}
                 className="px-4 py-1.5 rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  background: isActive ? 'var(--bg-primary)' : 'transparent',
-                  color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                  boxShadow:  isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
+                  background: isActive ? 'var(--brand-light)' : 'transparent',
+                  color:      isActive ? 'var(--brand)' : 'var(--text-muted)',
+                  boxShadow:  'none',
                 }}
               >
                 {tab.label}

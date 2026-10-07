@@ -582,3 +582,6 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Wide screens: discovery and library pages use the extra room */
+@media (min-width: 1280px) { .max-w-xl { max-width: 56rem; } }
