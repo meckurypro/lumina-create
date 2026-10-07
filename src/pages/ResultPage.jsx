@@ -147,7 +147,7 @@ export default function ResultPage() {
       {/* ── Header ── */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 h-14 z-10"
-        style={{ borderBottom: '1px solid var(--border-color)' }}
+        style={{ borderBottom: '1px solid var(--glass-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)' }}
       >
         <button
           onClick={() => navigate(-1)}
@@ -157,14 +157,17 @@ export default function ResultPage() {
         >
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-sm lg:text-base font-bold" style={{ color: 'var(--text-primary)' }}>
           Your creation
         </h1>
         <div className="w-10" />
       </div>
 
-      {/* ── Media ── */}
-      <div className="flex-1 overflow-hidden flex items-center justify-center p-4">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+
+      {/* ── Media (screening room) ── */}
+      <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center p-4 lg:p-10"
+        style={{ background: 'radial-gradient(70% 60% at 50% 40%, var(--brand-light), transparent 70%), var(--bg-secondary)' }}>
         <AnimatePresence mode="wait">
           {showSkeleton ? (
             <motion.div
@@ -197,7 +200,7 @@ export default function ResultPage() {
                   preload="metadata"
                   onCanPlay={() => setMediaReady(true)}
                   className="rounded-2xl object-contain"
-                  style={{ maxWidth: '100%', maxHeight: '100%', background: '#000' }}
+                  style={{ maxWidth: '100%', maxHeight: '100%', background: '#000', border: '1px solid var(--glass-border)', boxShadow: '0 40px 90px -40px rgba(0,0,0,0.75)' }}
                 />
               ) : (
                 <img
@@ -208,7 +211,7 @@ export default function ResultPage() {
                   decoding="async"
                   onLoad={() => setMediaReady(true)}
                   className="rounded-2xl object-contain"
-                  style={{ maxWidth: '100%', maxHeight: '100%' }}
+                  style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid var(--glass-border)', boxShadow: '0 40px 90px -40px rgba(0,0,0,0.75)' }}
                 />
               )}
             </motion.div>
@@ -233,9 +236,25 @@ export default function ResultPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.2 }}
-            className="flex-shrink-0 px-4 pb-6 pt-3"
-            style={{ borderTop: '1px solid var(--border-color)' }}
+            className="flex-shrink-0 px-4 pb-6 pt-3 border-t lg:border-t-0 lg:border-l lg:w-[360px] lg:pt-8 lg:px-6 lg:overflow-y-auto"
+            style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}
           >
+            {/* Details */}
+            {generation && (generation.prompt || generation.model) && (
+              <div className="mb-4">
+                {generation.prompt && (
+                  <p className="text-sm leading-relaxed mb-3 line-clamp-3 lg:line-clamp-6" style={{ color: 'var(--text-secondary)' }}>
+                    {generation.prompt}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {[generation.model, generation.aspect_ratio, generation.duration ? `${generation.duration}s` : null].filter(Boolean).map((t) => (
+                    <span key={t} className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                      style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Primary — Download + Share */}
             <div className="flex gap-2 mb-2">
               <button
@@ -243,8 +262,9 @@ export default function ResultPage() {
                 disabled={dlLoading}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.97]"
                 style={{
-                  background: 'var(--text-primary)',
-                  color:      'var(--text-inverse)',
+                  background: 'var(--gradient-brand)',
+                  color:      '#ffffff',
+                  boxShadow:  'var(--shadow-brand)',
                   opacity:    dlLoading ? 0.7 : 1,
                 }}
               >
@@ -300,6 +320,7 @@ export default function ResultPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
     </div>
   )
