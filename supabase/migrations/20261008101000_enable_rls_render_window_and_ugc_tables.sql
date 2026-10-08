@@ -1,0 +1,31 @@
+-- RLS for the 12 previously exposed tables. Server-only tables get no policies (service_role / definer RPCs only).
+create or replace function public._rw_owns_team(p_team uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from render_window_teams t where t.id = p_team and t.owner_id = (select auth.uid())) $$;
+create or replace function public._rw_in_team(p_team uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (select 1 from render_window_team_seats s where s.team_id = p_team and s.member_id = (select auth.uid()) and s.removed_at is null) $$;
+revoke all on function public._rw_owns_team(uuid), public._rw_in_team(uuid) from public, anon;
+grant execute on function public._rw_owns_team(uuid), public._rw_in_team(uuid) to authenticated, service_role;
+alter table public.render_window_models enable row level security;
+alter table public.ugc_brand_products enable row level security;
+alter table public.render_window_team_tiers enable row level security;
+alter table public.render_window_teams enable row level security;
+alter table public.render_window_team_seats enable row level security;
+alter table public.render_window_team_seat_usage enable row level security;
+alter table public.render_window_cohorts enable row level security;
+alter table public.render_window_cohort_seats enable row level security;
+alter table public.render_window_cohort_seat_usage enable row level security;
+alter table public.model_workflow_backups enable row level security;
+alter table public.render_window_booking_coupons enable row level security;
+alter table public.render_window_booking_coupon_redemptions enable row level security;
+create policy rw_coupons_admin_all on public.render_window_booking_coupons for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy rw_models_read on public.render_window_models for select to authenticated using (true);
+create policy rw_models_admin_write on public.render_window_models for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy rw_team_tiers_read on public.render_window_team_tiers for select to authenticated using (true);
+create policy rw_team_tiers_admin_write on public.render_window_team_tiers for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy rw_teams_read on public.render_window_teams for select to authenticated using (owner_id = (select auth.uid()) or public._rw_in_team(id) or (select public.is_admin()));
+create policy rw_team_seats_read on public.render_window_team_seats for select to authenticated using (member_id = (select auth.uid()) or public._rw_owns_team(team_id) or (select public.is_admin()));
+create policy rw_team_seat_usage_read on public.render_window_team_seat_usage for select to authenticated using (public._rw_owns_team(team_id) or public._rw_in_team(team_id) or (select public.is_admin()));
+create policy rw_cohorts_admin_read on public.render_window_cohorts for select to authenticated using ((select public.is_admin()));
+create policy rw_cohort_seats_admin_read on public.render_window_cohort_seats for select to authenticated using ((select public.is_admin()));
+create policy rw_cohort_seat_usage_admin_read on public.render_window_cohort_seat_usage for select to authenticated using ((select public.is_admin()));
+create policy ugc_brand_products_owner_all on public.ugc_brand_products for all to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
