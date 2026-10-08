@@ -721,7 +721,7 @@ export default function UGCSpeechToTextPage() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Speech to Text</h1>
+          <h1 className="text-sm lg:text-base font-bold" style={{ color: 'var(--text-primary)' }}>Speech to Text</h1>
           <span className="text-xs font-medium" style={{ color: ACCENT }}>Record · Upload · Transcribe</span>
         </div>
         <div

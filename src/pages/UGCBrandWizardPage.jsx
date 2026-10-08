@@ -141,7 +141,7 @@ const LogoSlot = ({ value, onChange, onRemove, uploading }) => (
           <button
             onClick={onRemove}
             className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+            style={{ background: 'var(--gradient-brand)', color: '#ffffff' }}
           >
             <X size={11} />
           </button>
@@ -466,7 +466,7 @@ export default function UGCBrandWizardPage() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-sm lg:text-base font-bold" style={{ color: 'var(--text-primary)' }}>
             {isEdit ? 'Edit Brand' : resumeId ? 'Complete Brand' : 'New Brand'}
           </h1>
           <span className="text-xs" style={{ color: ACCENT }}>Step {step} of {STEPS.length}</span>

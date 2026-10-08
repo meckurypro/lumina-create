@@ -574,8 +574,8 @@ export default function CommunityFeedPage() {
             <ArrowLeft size={16} />
             <span className="text-sm font-semibold">Back to Discover</span>
           </button>
-          <h1 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-            Community
+          <h1 className="text-3xl lg:text-4xl font-black" style={{ color: 'var(--text-primary)' }}>
+            The <span className="brand-gradient-text">Community</span>
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
             {totalCount > 0 ? `${totalCount} creation${totalCount !== 1 ? 's' : ''}` : 'All community posts'}
@@ -583,7 +583,7 @@ export default function CommunityFeedPage() {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="aspect-square rounded-3xl" />
             ))}
@@ -596,7 +596,7 @@ export default function CommunityFeedPage() {
           />
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {posts.map((post, i) => (
                 <motion.div
                   key={post.id}

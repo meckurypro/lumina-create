@@ -733,8 +733,8 @@ export default function RenderWindowPage() {
                   onClick={() => setActiveTab(t.id)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
                   style={{
-                    background: isActive ? 'var(--bg-elevated)' : 'transparent',
-                    color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                    background: isActive ? 'var(--brand-light)' : 'transparent',
+                    color:      isActive ? 'var(--brand)' : 'var(--text-muted)',
                   }}
                 >
                   {t.label}

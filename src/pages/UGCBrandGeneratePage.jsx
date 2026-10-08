@@ -108,7 +108,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                   <button
                     onClick={() => onRemove(idx)}
                     className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
-                    style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
+                    style={{ background: 'var(--gradient-brand)', color: '#ffffff' }}
                   >
                     <X size={11} />
                   </button>

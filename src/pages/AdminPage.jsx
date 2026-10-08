@@ -45,7 +45,7 @@ const StatCard = ({ icon: Icon, label, value, color = 'var(--brand)', sub }) => 
       </div>
       <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</span>
     </div>
-    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value ?? '—'}</p>
+    <p className="text-2xl font-black" style={{ color: 'var(--text-primary)', fontFamily: 'Sora, Inter, sans-serif' }}>{value ?? '—'}</p>
     {sub && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
   </div>
 )
@@ -77,6 +77,19 @@ const TABS = (pendingCount) => [
   { id: 'credit_packages', label: '💳 Credit Packages'                                 },
   { id: 'analytics',      label: 'Analytics'                                           },
 ]
+
+// ─── Navigation groups (23 tabs -> 6 groups) ──────────────
+
+const ADMIN_GROUPS = [
+  { id: 'overview', label: 'Overview',        tabs: ['dashboard', 'analytics'] },
+  { id: 'people',   label: 'People',          tabs: ['users', 'staff'] },
+  { id: 'gen',      label: 'Generation',      tabs: ['models', 'model_pricing', 'generations', 'usage', 'prompts', 'templates'] },
+  { id: 'rw',       label: 'Render Window',   tabs: ['render_windows', 'rw_models', 'rw_analytics', 'rw_team_tiers', 'rw_sellers', 'rw_bookings', 'rw_cohorts'] },
+  { id: 'revenue',  label: 'Products',        tabs: ['credit_packages', 'settings', 'iqads'] },
+  { id: 'content',  label: 'Content',         tabs: ['cinematic', 'feed', 'email'] },
+]
+const cleanLabel = (l) => l.replace(/^[^\p{L}\p{N}]+/u, '')
+const groupOf = (tabId) => ADMIN_GROUPS.find((g) => g.tabs.includes(tabId)) || ADMIN_GROUPS[0]
 
 // ─── Admin Page ───────────────────────────────────────────
 
@@ -147,41 +160,75 @@ export default function AdminPage() {
   const tabs = TABS(pendingPosts.length)
 
   return (
-    <div className="page-container min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
+    <div className="page-container min-h-dvh lg:flex" style={{ background: 'var(--bg-primary)' }}>
 
+      {/* Desktop: grouped sidebar */}
+      <aside className="hidden lg:flex flex-col w-[248px] flex-shrink-0 sticky top-0 h-dvh overflow-y-auto px-3 py-4"
+        style={{ background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)' }}>
+        <button onClick={() => navigate('/profile')} className="flex items-center gap-2 px-2 mb-5 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
+          <ArrowLeft size={16} /> Back to app
+        </button>
+        <p className="px-2 mb-4 text-lg font-black" style={{ fontFamily: 'Sora, Inter, sans-serif' }}>Admin</p>
+        {ADMIN_GROUPS.map((g) => (
+          <div key={g.id} className="mb-4">
+            <p className="px-2 mb-1.5 text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{g.label}</p>
+            {g.tabs.map((id) => {
+              const t = tabs.find((x) => x.id === id); if (!t) return null
+              const on = activeTab === id
+              return (
+                <button key={id} onClick={() => setActiveTab(id)} className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors"
+                  style={{ background: on ? 'var(--brand-light)' : 'transparent', color: on ? 'var(--brand)' : 'var(--text-secondary)' }}>
+                  {cleanLabel(t.label)}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </aside>
+
+      <div className="flex-1 min-w-0">
       {/* Header */}
       <div
-        className="sticky top-0 z-40 flex items-center gap-3 px-4 h-14"
-        style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)' }}
+        className="sticky top-0 z-40 flex items-center gap-3 px-4 lg:px-8 h-14 glass"
+        style={{ borderTop: 0, borderLeft: 0, borderRight: 0 }}
       >
-        <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
+        <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-xl lg:hidden" style={{ color: 'var(--text-secondary)' }} aria-label="Back">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-base font-bold flex-1" style={{ color: 'var(--text-primary)' }}>Admin Panel</h1>
-        <button onClick={loadData} className="p-2 rounded-xl" style={{ color: 'var(--text-muted)' }}>
+        <h1 className="text-base lg:text-lg font-bold flex-1" style={{ color: 'var(--text-primary)' }}>
+          <span className="lg:hidden">Admin Panel</span>
+          <span className="hidden lg:inline">{cleanLabel(tabs.find((t) => t.id === activeTab)?.label || '')}</span>
+        </h1>
+        <button onClick={loadData} className="p-2 rounded-xl" style={{ color: 'var(--text-muted)' }} aria-label="Refresh">
           <RotateCcw size={16} />
         </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto px-4 py-3 no-scrollbar" style={{ borderBottom: '1px solid var(--border-color)' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all"
-            style={{
-              background: activeTab === tab.id ? 'var(--brand)' : 'var(--bg-elevated)',
-              color:      activeTab === tab.id ? 'white' : 'var(--text-muted)',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Mobile: group row + section row */}
+      <div className="lg:hidden" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <div className="flex gap-1.5 overflow-x-auto px-4 pt-3 no-scrollbar">
+          {ADMIN_GROUPS.map((g) => {
+            const on = groupOf(activeTab).id === g.id
+            return (
+              <button key={g.id} onClick={() => setActiveTab(g.tabs[0])} className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap"
+                style={{ background: on ? 'var(--brand)' : 'var(--bg-elevated)', color: on ? '#fff' : 'var(--text-muted)' }}>{g.label}</button>
+            )
+          })}
+        </div>
+        <div className="flex gap-1 overflow-x-auto px-4 py-3 no-scrollbar">
+          {groupOf(activeTab).tabs.map((id) => {
+            const t = tabs.find((x) => x.id === id); if (!t) return null
+            const on = activeTab === id
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} className="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all"
+                style={{ background: on ? 'var(--brand-light)' : 'transparent', color: on ? 'var(--brand)' : 'var(--text-muted)' }}>{cleanLabel(t.label)}</button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Tab content */}
-      <div className="px-4 py-5 pb-24">
+      <div className="px-4 lg:px-8 py-5 pb-24 max-w-6xl">
 
         {/* ── Dashboard ── */}
         {activeTab === 'dashboard' && (
@@ -193,7 +240,7 @@ export default function AdminPage() {
             ) : stats ? (
               <>
            
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <StatCard icon={Users}         label="Total users"       value={stats.total_users?.toLocaleString()}             sub={`+${stats.new_users_today} new today`}                    />
                   <StatCard icon={Film}          label="Total generations" value={stats.total_generations?.toLocaleString()}        sub={`${stats.generations_today} today`}    color="#8b5cf6"    />
                   <StatCard icon={TrendingUp}    label="Success rate"      value={`${stats.success_rate_today}%`}                  sub="Today"                                 color="#10b981"    />
@@ -412,6 +459,7 @@ export default function AdminPage() {
           </motion.div>
         )}
 
+      </div>
       </div>
     </div>
   )

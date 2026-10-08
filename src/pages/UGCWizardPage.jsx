@@ -663,7 +663,7 @@ export default function UGCWizardPage() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex flex-col items-center">
-          <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-sm lg:text-base font-bold" style={{ color: 'var(--text-primary)' }}>
             {isEdit ? 'Edit Character' : resumeId ? 'Complete Character' : 'New Character'}
           </h1>
           <span className="text-xs" style={{ color: ACCENT }}>Step {step} of {STEPS.length}</span>

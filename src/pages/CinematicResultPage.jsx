@@ -432,8 +432,8 @@ export default function CinematicResultPage() {
                 disabled={downloading}
                 className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
                 style={{
-                  background: 'var(--text-primary)',
-                  color:      'var(--text-inverse)',
+                  background: 'var(--gradient-brand)',
+                  color:      '#ffffff',
                   opacity:    downloading ? 0.5 : 1,
                 }}
               >

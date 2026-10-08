@@ -971,7 +971,7 @@ const EditorView = ({
       {/* Header */}
       <div
         className="sticky top-0 z-10 flex items-center gap-3 px-4 h-14"
-        style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}
+        style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)', borderBottom: '1px solid var(--glass-border)' }}
       >
         <button onClick={onBack} className="p-2 -ml-2 rounded-xl" style={{ color: 'var(--text-secondary)' }}>
           <ArrowLeft size={20} />
@@ -1166,8 +1166,8 @@ const EditorView = ({
             disabled={!canGenerate}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
             style={{
-              background: 'var(--text-primary)',
-              color:      'var(--text-inverse)',
+              background: 'var(--gradient-brand)',
+              color:      '#ffffff',
               opacity:    !canGenerate ? 0.5 : 1,
             }}
           >
