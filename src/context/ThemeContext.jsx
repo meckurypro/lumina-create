@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 const ThemeContext = createContext(null)
-const CHROME = { dark: '#07070b', light: '#fbfaf8' }
+const CHROME = { dark: '#000000', light: '#ffffff' }
 
 const getInitialTheme = () => localStorage.getItem('meckury-theme') || 'dark'
 const resolveTheme = (theme) =>

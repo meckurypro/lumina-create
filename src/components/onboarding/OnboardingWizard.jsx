@@ -52,10 +52,10 @@ const ChoiceGrid = ({ options, value, onChange, cols = 2 }) => (
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold">{label}</span>
-            {selected && <Check size={14} aria-hidden="true" style={{ color: 'var(--brand)' }} />}
+            {selected && <Check size={14} aria-hidden="true" />}
           </div>
           {hint && (
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs mt-0.5" style={{ color: selected ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>
               {hint}
             </p>
           )}
@@ -87,10 +87,9 @@ const MultiChoiceGrid = ({ options, value = [], onChange, cols = 2 }) => {
             onClick={() => toggle(val)}
             className="text-left p-3.5 rounded-xl transition-all active:scale-[0.98]"
             style={{
-              background: selected ? 'var(--brand-light)' : 'var(--bg-elevated)',
-              color:      'var(--text-primary)',
-              border:     `1px solid ${selected ? 'var(--brand)' : 'var(--border-color)'}`,
-              boxShadow:  selected ? 'var(--shadow-brand)' : 'none',
+              background: selected ? 'var(--text-primary)' : 'var(--bg-elevated)',
+              color:      selected ? 'var(--text-inverse)' : 'var(--text-primary)',
+              border:     `1px solid ${selected ? 'var(--text-primary)' : 'var(--border)'}`,
             }}
           >
             <div className="flex items-center justify-between gap-2">
@@ -298,7 +297,7 @@ export default function OnboardingWizard({ onComplete }) {
               animate={{ width: i <= step ? '100%' : '0%' }}
               transition={{ duration: 0.3 }}
               className="h-full"
-              style={{ background: 'var(--gradient-brand)' }}
+              style={{ background: 'var(--text-primary)' }}
             />
           </div>
         ))}
@@ -312,7 +311,7 @@ export default function OnboardingWizard({ onComplete }) {
               style={{ color: 'var(--text-muted)' }}>
               Step {step + 1} of {total}
             </p>
-            <h2 className="text-3xl lg:text-4xl font-black mb-2 tracking-tight">{current.title}</h2>
+            <h2 className="text-3xl font-black mb-2 tracking-tight">{current.title}</h2>
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{current.subtitle}</p>
           </div>
           {current.render()}
@@ -332,7 +331,7 @@ export default function OnboardingWizard({ onComplete }) {
             style={{
               background: 'var(--bg-elevated)',
               color:      'var(--text-secondary)',
-              border:     '1px solid var(--border-color)',
+              border:     '1px solid var(--border)',
             }}
           >
             Back
@@ -343,9 +342,8 @@ export default function OnboardingWizard({ onComplete }) {
           disabled={loading}
           className="flex-1 py-4 rounded-2xl text-sm font-bold tracking-tight transition-all active:scale-[0.98]"
           style={{
-            background: 'var(--gradient-brand)',
-            color:      '#ffffff',
-            boxShadow:  loading ? 'none' : 'var(--shadow-brand)',
+            background: 'var(--text-primary)',
+            color:      'var(--text-inverse)',
             opacity:    loading ? 0.6 : 1,
             cursor:     loading ? 'not-allowed' : 'pointer',
           }}

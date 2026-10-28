@@ -79,7 +79,6 @@ import PhotoPolishLandingPage   from '@/pages/public/PhotoPolishLandingPage'
 import UpscalerLandingPage      from '@/pages/public/UpscalerLandingPage'
 
 import { BottomNav }    from '@/components/layout/BottomNav'
-import { Sidebar }      from '@/components/layout/Sidebar'
 import PWAUpdateToast   from '@/components/PWAUpdateToast'
 
 // ── Loaders / guards ──────────────────────────────────────────
@@ -147,8 +146,7 @@ function RequireMaster({ children }) {
 
 const AppLayout = ({ children }) => (
   <div className="w-full h-dvh overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-    <Sidebar />
-    <div className="app-shell-main h-full overflow-y-auto" style={{ paddingBottom: 'var(--bottom-nav-height)' }}>
+    <div className="h-full overflow-y-auto" style={{ paddingBottom: 'var(--bottom-nav-height)' }}>
       {children}
     </div>
     <BottomNav />
@@ -157,16 +155,6 @@ const AppLayout = ({ children }) => (
 
 // ── Shorthand wrappers ────────────────────────────────────────
 // keeps route declarations concise
-
-// Full-screen routes (Muse, Filma): desktop sidebar, no mobile bottom nav
-const Shell = ({ children }) => (
-  <RequireAuth>
-    <div className="w-full h-dvh overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <Sidebar />
-      <div className="app-shell-main h-full overflow-y-auto">{children}</div>
-    </div>
-  </RequireAuth>
-)
 
 const Auth   = ({ children }) => <RequireAuth><AppLayout>{children}</AppLayout></RequireAuth>
 const Admin  = ({ children }) => <RequireAdmin>{children}</RequireAdmin>
@@ -244,19 +232,19 @@ export default function App() {
             <Route path="/cinematic/:projectId"        element={<Auth><CinematicResultPage /></Auth>} />
 
             {/* ── Muse (full-screen — no AppLayout/BottomNav) ── */}
-            <Route path="/muse"              element={<Shell><MusePage /></Shell>} />
-            <Route path="/muse/:sessionId"   element={<Shell><MusePage /></Shell>} />
+            <Route path="/muse"              element={<RequireAuth><MusePage /></RequireAuth>} />
+            <Route path="/muse/:sessionId"   element={<RequireAuth><MusePage /></RequireAuth>} />
 
             {/* ── Filma (full-screen — no AppLayout/BottomNav) ── */}
-            <Route path="/filma"                        element={<Shell><FilmaHubPage /></Shell>} />
-            <Route path="/filma/new"                    element={<Shell><FilmaSetupPage /></Shell>} />
-            <Route path="/filma/:filmId/edit"           element={<Shell><FilmaSetupPage /></Shell>} />
-            <Route path="/filma/:filmId/story-summary"  element={<Shell><FilmaStorySummaryPage /></Shell>} />
-            <Route path="/filma/:filmId/actor/:actorId" element={<Shell><FilmaActorProfilePage /></Shell>} />
-            <Route path="/filma/:filmId/cast"           element={<Shell><FilmaCastPage /></Shell>} />
-            <Route path="/filma/:filmId/structure"      element={<Shell><FilmaStructurePage /></Shell>} />
-            <Route path="/filma/:filmId/scene/:sceneId" element={<Shell><FilmaScenePage /></Shell>} />
-            <Route path="/filma/:filmId/shot/:shotId"   element={<Shell><FilmaShotPage /></Shell>} />
+            <Route path="/filma"                        element={<RequireAuth><FilmaHubPage /></RequireAuth>} />
+            <Route path="/filma/new"                    element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/edit"           element={<RequireAuth><FilmaSetupPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/story-summary"  element={<RequireAuth><FilmaStorySummaryPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/actor/:actorId" element={<RequireAuth><FilmaActorProfilePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/cast"           element={<RequireAuth><FilmaCastPage /></RequireAuth>} />
+            <Route path="/filma/:filmId/structure"      element={<RequireAuth><FilmaStructurePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/scene/:sceneId" element={<RequireAuth><FilmaScenePage /></RequireAuth>} />
+            <Route path="/filma/:filmId/shot/:shotId"   element={<RequireAuth><FilmaShotPage /></RequireAuth>} />
 
             {/* ── UGC — hub ───────────────────────────────────── */}
             <Route path="/create/ugc"

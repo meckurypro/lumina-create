@@ -1,6 +1,5 @@
 // src/pages/UGCBrandGeneratePage.jsx
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { GenerationPreviewPane } from '@/components/create/GenerationPreviewPane'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -108,7 +107,7 @@ const MultiImageGrid = ({ images, maxImages, onAdd, onRemove, onTagInsert, onFul
                   <button
                     onClick={() => onRemove(idx)}
                     className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
-                    style={{ background: 'var(--gradient-brand)', color: '#ffffff' }}
+                    style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
                   >
                     <X size={11} />
                   </button>
@@ -697,9 +696,8 @@ const selectSlashProduct = (product) => {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 min-h-0 flex">
-      <div className="flex-1 lg:flex-none lg:w-[480px] lg:border-r overflow-y-auto" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-6 py-6 flex flex-col gap-1">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-1">
 
           {/* Output type toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-5" style={{ background: 'var(--bg-elevated)' }}>
@@ -933,8 +931,6 @@ const selectSlashProduct = (product) => {
           )}
 
         </div>
-      </div>
-      <GenerationPreviewPane outputType={outputType} />
       </div>
 
       {/* Generate button */}
