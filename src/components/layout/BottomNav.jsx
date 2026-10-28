@@ -8,7 +8,7 @@ import PromptIQPage from '@/pages/PromptIQPage'
 
 // Flip to true when Muse is ready to launch — routes, edge function, and
 // FeedPage stay wired regardless; this is the single on/off switch for nav.
-const MUSE_ENABLED = false
+export const MUSE_ENABLED = false
 
 const NAV_ITEMS = [
   { path: '/feed',    icon: Home,                 label: 'Home'    },

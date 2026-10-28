@@ -39,6 +39,7 @@
 // priority-ordered blocking reason instead of stacking every unmet
 // condition at once.
 import { useState, useEffect } from 'react'
+import { IqAdsPreviewPane } from '@/components/create/StudioPreviewPanes'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Zap, X, ImagePlus, MessageCircle, Palette, Plus, ChevronUp, Loader2 } from 'lucide-react'
@@ -299,8 +300,9 @@ export default function CreateIQAdsPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-xl px-4 lg:px-0 py-6 flex flex-col gap-6">
+      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 lg:flex-none lg:w-[480px] lg:border-r overflow-y-auto" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="mx-auto w-full max-w-xl px-4 lg:px-6 py-6 flex flex-col gap-6">
 
           {/* No flyer? */}
           <a href={waLink("Hi! I don't have a flyer yet and I'd like IQ Ads to design one for me.")}
@@ -450,6 +452,8 @@ export default function CreateIQAdsPage() {
           </a>
 
         </div>
+      </div>
+      <IqAdsPreviewPane />
       </div>
 
       {/* Checkout — Generate (credit) is the one real CTA; Paystack is a quiet secondary link.

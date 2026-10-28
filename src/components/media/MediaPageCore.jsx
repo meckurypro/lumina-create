@@ -723,7 +723,7 @@ const runExtractFrame = async (blob, { isEndFrame } = {}) => {
                 />
 
           ) : allowGridView && viewMode === 'grid' ? (
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
               {visibleItems.map((gen, i) => (
                 <GridCard
                   key={gen.id}

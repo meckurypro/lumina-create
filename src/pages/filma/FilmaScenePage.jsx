@@ -10,6 +10,7 @@
 // DB: filma_scene_environments.direction = 'master' | 'N' | 'E' | 'S' | 'W'
 
 import { useState, useEffect, useRef } from 'react'
+import { ShotTimeline } from '@/components/filma/ShotTimeline'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -1492,6 +1493,8 @@ return // don't hit the finally block's setScaffolding(false) yet
               {scaffolding ? 'Re-scaffolding…' : 'Re-scaffold Scene'}
             </button>
           )}
+
+          <ShotTimeline shots={shots} onOpen={(shot) => navigate(`/filma/${filmId}/shot/${shot.id}`)} />
 
           {shots.length > 0 && (
             <div>

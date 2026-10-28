@@ -463,3 +463,13 @@ input, textarea, select { font: inherit; }
     transition-duration:       0.01ms !important;
   }
 }
+
+
+/* ============================================================
+   Desktop layout — sidebar shell + split create workspace
+   ============================================================ */
+:root { --sidebar-w: 0px; }
+@media (min-width: 1024px) { :root { --sidebar-w: 72px; } }
+@media (min-width: 1280px) { :root { --sidebar-w: 232px; } }
+.app-shell-main { padding-left: var(--sidebar-w); }
+:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }

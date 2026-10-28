@@ -23,6 +23,7 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
             className={`w-full ${sizes[size]} max-h-[90vh] overflow-auto rounded-t-3xl sm:rounded-3xl`}
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
           >
+            <div className="sm:hidden flex justify-center pt-2.5"><span className="rounded-full" style={{ width: 36, height: 4, background: 'var(--border-color)' }} /></div>
             {title && (
               <div
                 className="flex items-center justify-between p-5"
